@@ -137,6 +137,12 @@ export interface ToolLoopHelpers {
 export interface ToolLoopExecutorOptions {
   readonly name: string;
   readonly version?: string;
+  /**
+   * Fail a context overflow as `ASSERTION_INCONCLUSIVE` instead of shrinking
+   * the history and retrying: for an assertion loop whose earlier screens are
+   * evidence it must not drop.
+   */
+  readonly inconclusiveOnOverflow?: boolean;
   /** AI SDK language model; defaults to the config-resolved `agent.model`. */
   readonly model?: SdkLanguageModel;
   /**
@@ -222,7 +228,7 @@ export function createToolLoopExecutor(options: ToolLoopExecutorOptions): StepEx
 
 /** One step's loop state and wiring; constructed fresh per runStep. */
 class LoopRun {
-  private readonly conclusion = createVerdictTool();
+  private readonly conclusion;
   private hardStop: AgentError | undefined;
   private guardStop: string | undefined;
   private noticedGuardReason: string | undefined;
@@ -263,6 +269,7 @@ class LoopRun {
     private readonly context: StepExecutorContext,
     private readonly model: SdkLanguageModel,
   ) {
+    this.conclusion = createVerdictTool(context.step.kind);
     this.toolChoice = FREE_TOOL_CHOICE_MODELS.has(model) ? 'auto' : 'required';
     this.requestModel = withStallGuard(ai, model, (stallMs) => {
       this.note(`turn ${String(this.turnsUsed + 1)} got no response in ${String(stallMs / 1000)}s: sending it again`);
@@ -517,6 +524,12 @@ class LoopRun {
   private overflowRetry(cause: unknown): ModelMessage[] | undefined {
     if (this.overflowNote !== undefined || this.lastRequest === undefined) return undefined;
     if (this.context.signal.aborted || this.hardStop !== undefined || !isContextOverflow(cause)) return undefined;
+    if (this.options.inconclusiveOnOverflow === true) {
+      throw new AgentError(
+        'ASSERTION_INCONCLUSIVE',
+        'step evidence exceeds the model context window; earlier viewports cannot be discarded',
+      );
+    }
     const before = textChars(this.lastRequest);
     const shrunk = shrinkForOverflow(this.lastRequest);
     const after = textChars(shrunk);

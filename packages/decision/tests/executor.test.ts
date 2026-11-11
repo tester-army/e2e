@@ -15,20 +15,22 @@ describe('construction', () => {
       expect(() => decisionExecutor({ model, minConfidence: bad })).toThrow(invalidConfig('between 0 and 1'));
     }
   });
-  it('rejects a model without choice support', () => {
-    const { model } = scriptedDecision(() => ({ choice: 'done' }), { supported: [] });
-    expect(() => decisionExecutor({ model })).toThrow(invalidConfig('got scripted/scripted-1, which does not answer choice questions'));
-  });
+  const EXAMPLE = "pass an AI SDK decision model, e.g. decisionExecutor({ model: typeSafeAi.decisionModel('jev-latest') })";
   it.each([
-    ['no options', undefined, 'decisionExecutor() takes an options object'],
-    ['no model', {}, 'decisionExecutor({ model }) got undefined;'],
-    ['a model id', { model: 'openai/gpt-5' }, 'decisionExecutor({ model }) got the string "openai/gpt-5";'],
-    ['an uncalled provider factory', { model: (id: string) => id }, 'decisionExecutor({ model }) got a function, not a model; call it'],
-    ['a language model', { model: scriptedText([]).model }, 'got the language model scripted-text/scripted-text-1;'],
-    ['a plain object', { model: { modelId: 'x' } }, 'got an object that is not a decision model;'],
-    ['a v3 model', { model: { specificationVersion: 'v3', provider: 'p', modelId: 'm', doDecide: () => undefined } }, 'got p/m, a v3 model'],
+    ['no options', undefined, `decisionExecutor() takes an options object; ${EXAMPLE}`],
+    ['no model', {}, `decisionExecutor({ model }) got undefined; ${EXAMPLE}`],
+    ['a model id', { model: 'openai/gpt-5' }, `decisionExecutor({ model }) got the string "openai/gpt-5"; ${EXAMPLE}`],
+    ['an uncalled provider factory', { model: (id: string) => id }, `decisionExecutor({ model }) got a function, not a model; call it with a model id, ${EXAMPLE}`],
+    ['a language model', { model: scriptedText([]).model }, `decisionExecutor({ model }) got the language model scripted-text/scripted-text-1; ${EXAMPLE}`],
+    ['a plain object', { model: { modelId: 'x' } }, `decisionExecutor({ model }) got an object that is not a decision model; ${EXAMPLE}`],
+    ['a v3 model', { model: { specificationVersion: 'v3', provider: 'p', modelId: 'm', doDecide: () => undefined } }, 'decisionExecutor({ model }) got p/m, a v3 model; the AI SDK decides with v4 decision models'],
+    [
+      'a decision model without choice questions',
+      { model: scriptedDecision(() => ({ choice: 'done' }), { supported: ['boolean'] }).model },
+      'decisionExecutor({ model }) got scripted/scripted-1, which does not answer choice questions',
+    ],
   ])('rejects %s as INVALID_CONFIG naming the fix', (_name, options, message) => {
-    expect(() => decisionExecutor(options as never)).toThrow(invalidConfig(message));
+    expect(() => decisionExecutor(options as never)).toThrow(expect.objectContaining({ name: 'ConfigurationError', code: 'INVALID_CONFIG', message }));
   });
   it('accepts a decision model and a deprecated evaluation model', () => {
     for (const legacy of [undefined, true] as const) {

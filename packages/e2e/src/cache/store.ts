@@ -18,7 +18,8 @@ import { mkdir, readdir, readFile, stat, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { writeFileAtomic } from '../internal/atomic-write.ts';
 import { errorMessage } from '../internal/errors.ts';
-import { buildTraceEntry, readTraceEntry, type ActionTrace, type TraceEntry } from './trace.ts';
+import { buildTraceEntry, type ActionTrace, type TraceEntry } from './trace.ts';
+import { readTraceEntry } from './trace-read.ts';
 
 /** Hard wire ceiling on one entry, on both the read and the write path. */
 export const MAX_CACHE_WIRE_BYTES = 1_048_576;

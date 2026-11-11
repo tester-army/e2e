@@ -27,6 +27,8 @@ vi.mock('node:child_process', () => ({ spawnSync: vi.fn() }));
 
 let dir: string;
 let stdoutSpy: ReturnType<typeof vi.spyOn>;
+/** What each multiselect question answers; a test sets one before calling init. */
+let answers: Record<'engines' | 'skills' | 'mcp', string[] | typeof clack.CANCEL_SYMBOL>;
 
 /** Whether this host lets the tests create symlinks; Windows needs a privilege for them. */
 const symlinks = ((): boolean => {
@@ -73,11 +75,13 @@ beforeEach(() => {
   vi.mocked(clack.select).mockReset().mockResolvedValue('none');
   vi.mocked(clack.text).mockReset().mockResolvedValue('http://127.0.0.1:11434/v1');
   vi.mocked(clack.confirm).mockReset().mockResolvedValue(false);
+  answers = { engines: [], skills: ['.agents/skills', '.claude/skills'], mcp: ['.mcp.json', '.cursor/mcp.json', '.codex/config.toml'] };
   vi.mocked(clack.multiselect)
     .mockReset()
-    .mockImplementation(async (prompt) =>
-      String(prompt.message).includes('MCP') ? ['.mcp.json', '.cursor/mcp.json'] : ['.agents/skills', '.claude/skills'],
-    );
+    .mockImplementation(async (prompt) => {
+      const message = String(prompt.message);
+      return message.includes('MCP') ? answers.mcp : message.includes('Which engines') ? answers.engines : answers.skills;
+    });
   vi.mocked(clack.isCancel).mockImplementation((value) => typeof value === 'symbol');
   vi.mocked(spawnSync).mockReset().mockReturnValue(spawnResult(0));
 });
@@ -115,11 +119,14 @@ describe('e2e init', () => {
     expect(read('tests/example.e2e.ts')).not.toContain('fetch(');
     expect(JSON.parse(read('.mcp.json'))).toEqual({ mcpServers: { e2e: { command: 'npx', args: ['e2e', 'mcp'] } } });
     expect(JSON.parse(read('.cursor/mcp.json'))).toEqual({ mcpServers: { e2e: { command: 'npx', args: ['e2e', 'mcp'] } } });
+    expect(read('.codex/config.toml')).toContain('[mcp_servers.e2e]');
+    expect(read('.codex/config.toml')).toContain('command = "npx"');
+    expect(output()).toContain('trusted projects');
     expect(read('.gitignore')).toContain('node_modules/');
     expect(read('.gitignore')).toContain('.e2e/junit.xml');
     expect(read('.gitignore')).toContain('.e2e/summary.md');
     expect(read('.gitignore')).toContain('.e2e/cache/');
-    expect(output()).toContain('.e2e/cache/ is ignored; committing agent.act replays is opt-in, see https://e2e.tester.army/docs/cache#commit-the-replay-cache');
+    expect(output()).toContain('.e2e/cache/ is ignored; committing agent.act replays is opt-in, see https://e2e.com/docs/cache#commit-the-replay-cache');
     expect(read('.agents/skills/e2e/SKILL.md')).toMatch(/^---\nname: e2e\n/);
     expect(read('.claude/skills/e2e/references/setup.md')).toContain('# Setting up e2e');
     expect(clack.confirm).not.toHaveBeenCalled();
@@ -131,9 +138,17 @@ describe('e2e init', () => {
     expect(output()).toContain('Next: npm install, then APP_URL=http://localhost:3000 npm run test:e2e');
   });
 
+  it('registers the MCP server through bunx in a Bun project', async () => {
+    writeFileSync(path.join(dir, 'bun.lock'), '');
+    expect((await init(dir, { yes: true })).exitCode).toBe(0);
+    expect(JSON.parse(read('.mcp.json'))).toEqual({ mcpServers: { e2e: { command: 'bunx', args: ['e2e', 'mcp'] } } });
+    expect(read('.codex/config.toml')).toContain('command = "bunx"');
+  });
+
   it('hands back what --yes chose, then that a second run had nothing to do', async () => {
     expect(await init(dir, { yes: true })).toEqual({
       exitCode: 0,
+      ready: false,
       result: 'scaffolded',
       yes: true,
       example: null,
@@ -155,10 +170,13 @@ describe('e2e init', () => {
 
   it('hands back the prompted choices, a cancellation with what was chosen so far, and a failed install', async () => {
     const cancel: typeof clack.CANCEL_SYMBOL = clack.CANCEL_SYMBOL;
-    vi.mocked(clack.select).mockResolvedValueOnce('mobile').mockResolvedValueOnce('none');
-    vi.mocked(clack.multiselect).mockResolvedValueOnce(['.agents/skills']).mockResolvedValueOnce(cancel);
+    answers.engines = ['mobile'];
+    vi.mocked(clack.select).mockResolvedValueOnce('none');
+    answers.skills = ['.agents/skills'];
+    answers.mcp = cancel;
     expect(await init(dir)).toEqual({
       exitCode: 0,
+      ready: false,
       result: 'cancelled',
       yes: false,
       example: null,
@@ -170,10 +188,18 @@ describe('e2e init', () => {
       install: false,
     });
 
-    vi.mocked(clack.select).mockResolvedValueOnce('web').mockResolvedValueOnce('openrouter');
+    answers.engines = ['web'];
+    answers.mcp = ['.mcp.json'];
+    vi.mocked(clack.select).mockResolvedValueOnce('openrouter');
     vi.mocked(clack.confirm).mockResolvedValueOnce(true).mockResolvedValueOnce(true);
     vi.mocked(spawnSync).mockReturnValueOnce(spawnResult(1));
     expect(await init(dir)).toMatchObject({ exitCode: 2, result: 'install-failed', engine: 'web', gateway: 'openrouter', install: true });
+
+    rmSync(path.join(dir, 'e2e.config.ts'));
+    answers.engines = ['mobile', 'web'];
+    vi.mocked(clack.select).mockResolvedValueOnce('none');
+    vi.mocked(clack.confirm).mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+    expect(await init(dir)).toMatchObject({ exitCode: 0, result: 'scaffolded', engine: 'web,mobile' });
   });
 
   it('hands back a run that could not start', async () => {
@@ -187,7 +213,8 @@ describe('e2e init', () => {
     { engine: 'web', ai: true },
     { engine: 'mobile', ai: true },
   ] as const)('matches imports and dependencies to engine=$engine, ai=$ai', async ({ engine, ai }) => {
-    vi.mocked(clack.select).mockResolvedValueOnce(engine).mockResolvedValueOnce(ai ? 'openrouter' : 'none');
+    answers.engines = engine === 'none' ? [] : [engine];
+    vi.mocked(clack.select).mockResolvedValueOnce(ai ? 'openrouter' : 'none');
     vi.mocked(clack.confirm).mockResolvedValueOnce(true).mockResolvedValueOnce(false);
     await init(dir);
     const manifest = JSON.parse(read('package.json'));
@@ -220,30 +247,66 @@ describe('e2e init', () => {
     { host: 'linux', platform: 'android', app: 'com.android.settings', label: 'Network & internet' },
   ] as const)('defaults agent-device to $platform on $host', async ({ host, platform, app, label }) => {
     vi.spyOn(os, 'platform').mockReturnValue(host);
-    vi.mocked(clack.select).mockResolvedValueOnce('mobile').mockResolvedValueOnce('none');
+    answers.engines = ['mobile'];
+    vi.mocked(clack.select).mockResolvedValueOnce('none');
     vi.mocked(clack.confirm).mockResolvedValueOnce(true).mockResolvedValueOnce(false);
 
     expect((await init(dir)).exitCode).toBe(0);
-    expect(clack.select).toHaveBeenCalledTimes(2);
-    expect(clack.select).toHaveBeenCalledWith(expect.objectContaining({
-      initialValue: 'web',
+    expect(clack.select).toHaveBeenCalledTimes(1);
+    expect(clack.multiselect).toHaveBeenCalledWith(expect.objectContaining({
+      message: expect.stringContaining('Which engines?'),
+      initialValues: ['web'],
+      required: false,
       options: [
         expect.objectContaining({ value: 'web', label: 'Web', hint: 'Playwright' }),
         expect.objectContaining({ value: 'mobile', label: 'Mobile (iOS/Android)', hint: 'agent-device' }),
-        expect.objectContaining({ value: 'none', label: 'None' }),
       ],
     }));
     expect(read('e2e.config.ts')).toContain(`engine: mobile({ platform: '${platform}' }), app: { bundleId: '${app}' }`);
     expect(read('tests/example.e2e.ts')).toContain(label);
   });
 
+  it('writes one target and one example file per engine when both are selected', async () => {
+    vi.spyOn(os, 'platform').mockReturnValue('darwin');
+    answers.engines = ['web', 'mobile'];
+    vi.mocked(clack.select).mockResolvedValueOnce('vercel');
+    vi.mocked(clack.confirm).mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+
+    expect(await init(dir)).toMatchObject({ exitCode: 0, engine: 'web,mobile' });
+    expect(Object.keys(JSON.parse(read('package.json')).devDependencies)).toEqual(['e2e', '@e2e-dev/web', '@e2e-dev/mobile', 'ai', 'zod']);
+    expect(read('e2e.config.ts')).toContain("import { web } from '@e2e-dev/web';\nimport { mobile } from '@e2e-dev/mobile';\n");
+    expect(read('e2e.config.ts')).toContain(`  targets: [
+    {
+      engine: web(),
+      app: {
+        url: process.env.APP_URL ?? 'http://localhost:3000',
+        // Or let the runner start the dev server:
+        // command: { executable: 'npm', args: ['run', 'dev'] },
+      },
+    },
+    // Replace Settings with your app's bundle id.
+    { name: 'ios', engine: mobile({ platform: 'ios' }), app: { bundleId: 'Settings' } },
+  ],
+  workers: 1,
+}`);
+    expect(existsSync(path.join(dir, 'tests/example.e2e.ts'))).toBe(false);
+    expect(read('tests/web.e2e.ts')).toContain("test('app opens', { requires: ['browser'] }, async ({ app, browser }) => {");
+    expect(read('tests/web.e2e.ts')).toContain("// test('the agent drives a flow', { requires: ['browser'] }, async ({ app, agent }) => {");
+    expect(read('tests/mobile.e2e.ts')).toContain("test('Settings opens', { requires: ['device'] }, async ({ app, screen }) => {");
+    expect(read('tests/mobile.e2e.ts')).toContain("// test('the agent opens General', { requires: ['device'] }, async ({ agent, app, device }) => {");
+    expect(output()).toContain('  - Create tests/web.e2e.ts\n');
+    expect(output()).toContain('  - Create tests/mobile.e2e.ts\n');
+    expect(output()).toContain('Next: npm install, then APP_URL=http://localhost:3000 npm run test:e2e');
+  });
+
   it('offers every gateway and none, and asks an OpenAI-compatible endpoint for its URL', async () => {
-    vi.mocked(clack.select).mockResolvedValueOnce('web').mockResolvedValueOnce('openai-compatible');
+    answers.engines = ['web'];
+    vi.mocked(clack.select).mockResolvedValueOnce('openai-compatible');
     vi.mocked(clack.text).mockResolvedValueOnce(' http://127.0.0.1:11434/v1 ');
     vi.mocked(clack.confirm).mockResolvedValueOnce(true).mockResolvedValueOnce(false);
 
     expect((await init(dir)).exitCode).toBe(0);
-    expect(clack.select).toHaveBeenNthCalledWith(2, expect.objectContaining({
+    expect(clack.select).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
       message: expect.stringContaining('Which model gateway'),
       initialValue: 'vercel',
       options: [
@@ -279,7 +342,8 @@ describe('e2e init', () => {
     },
     { gateway: 'grok', provider: 'spacexai', line: "import { grok } from 'e2e/oauth/grok';", model: "model: grok('grok-4'),", sdk: ['@ai-sdk/xai'] },
   ] as const)('writes a $gateway subscription model and names the sign-in as the next step', async ({ gateway, provider, line, model, sdk }) => {
-    vi.mocked(clack.select).mockResolvedValueOnce('web').mockResolvedValueOnce(gateway);
+    answers.engines = ['web'];
+    vi.mocked(clack.select).mockResolvedValueOnce(gateway);
     vi.mocked(clack.confirm).mockResolvedValueOnce(true).mockResolvedValueOnce(false);
 
     expect((await init(dir)).exitCode).toBe(0);
@@ -296,7 +360,7 @@ describe('e2e init', () => {
   it('takes every answer from flags under --yes and writes only the chosen locations', async () => {
     const outcome = await init(dir, {
       yes: true,
-      engine: 'mobile',
+      engines: ['mobile'],
       gateway: 'openrouter',
       skills: ['.agents/skills'],
       mcp: ['.mcp.json'],
@@ -304,6 +368,7 @@ describe('e2e init', () => {
     });
     expect(outcome).toEqual({
       exitCode: 0,
+      ready: false,
       result: 'scaffolded',
       yes: true,
       example: null,
@@ -327,7 +392,7 @@ describe('e2e init', () => {
   });
 
   it('writes no model, skill, or MCP config when each flag says none', async () => {
-    expect(await init(dir, { yes: true, engine: 'none', gateway: 'none', skills: [], mcp: [] })).toMatchObject({
+    expect(await init(dir, { yes: true, engines: [], gateway: 'none', skills: [], mcp: [] })).toMatchObject({
       exitCode: 0,
       engine: 'none',
       gateway: 'none',
@@ -354,7 +419,7 @@ describe('e2e init', () => {
   it('asks only the questions no flag answered', async () => {
     vi.mocked(clack.select).mockResolvedValueOnce('none');
     vi.mocked(clack.confirm).mockResolvedValueOnce(true);
-    expect(await init(dir, { engine: 'web', skills: ['.claude/skills'], mcp: [], install: false })).toMatchObject({
+    expect(await init(dir, { engines: ['web'], skills: ['.claude/skills'], mcp: [], install: false })).toMatchObject({
       exitCode: 0,
       engine: 'web',
       gateway: 'none',
@@ -370,9 +435,22 @@ describe('e2e init', () => {
 
   it('warns that engine and gateway flags do not apply to an existing config', async () => {
     writeFileSync(path.join(dir, 'e2e.config.ts'), 'export default {};\n');
-    expect(await init(dir, { yes: true, engine: 'mobile', gateway: 'openrouter' })).toMatchObject({ exitCode: 0, engine: null, gateway: null });
+    expect(await init(dir, { yes: true, engines: ['mobile'], gateway: 'openrouter' })).toMatchObject({ exitCode: 0, engine: null, gateway: null });
     expect(read('e2e.config.ts')).toBe('export default {};\n');
     expect(output()).toContain('Ignoring --engine, --gateway: e2e.config.ts exists, and these apply to a new config only');
+  });
+
+  it('adds only the missing script to package.json beside an existing config, with no engine or gateway packages', async () => {
+    writeFileSync(path.join(dir, 'e2e.config.ts'), 'export default {};\n');
+    writeFileSync(path.join(dir, 'package.json'), `${JSON.stringify({ name: 'existing-app', type: 'module', devDependencies: { e2e: '1.2.3' } }, null, 2)}\n`);
+    expect((await init(dir, { yes: true })).exitCode).toBe(0);
+    expect(JSON.parse(read('package.json'))).toEqual({
+      name: 'existing-app',
+      type: 'module',
+      devDependencies: { e2e: '1.2.3' },
+      scripts: { 'test:e2e': 'e2e run' },
+    });
+    expect(read('e2e.config.ts')).toBe('export default {};\n');
   });
 
   it('installs the skill exactly where --skills says on a re-run, leaving earlier locations untouched', async () => {
@@ -384,7 +462,7 @@ describe('e2e init', () => {
   });
 
   it('refuses to run without a terminal and without --yes even when flags answer every question', async () => {
-    const flags = { engine: 'web', gateway: 'none', skills: [], mcp: [], install: false } as const;
+    const flags = { engines: ['web'], gateway: 'none', skills: [], mcp: [], install: false } as const;
     expect(await init(dir, { interactive: false, ...flags })).toMatchObject({ exitCode: 2, result: 'not-interactive' });
     expect(readdirSync(dir)).toEqual([]);
     expect(clack.confirm).not.toHaveBeenCalled();
@@ -392,7 +470,8 @@ describe('e2e init', () => {
   });
 
   it('validates the endpoint the way config resolution will', async () => {
-    vi.mocked(clack.select).mockResolvedValueOnce('web').mockResolvedValueOnce('openai-compatible');
+    answers.engines = ['web'];
+    vi.mocked(clack.select).mockResolvedValueOnce('openai-compatible');
     vi.mocked(clack.confirm).mockResolvedValueOnce(true).mockResolvedValueOnce(false);
     expect((await init(dir)).exitCode).toBe(0);
     const { validate } = vi.mocked(clack.text).mock.calls[0]![0] as { validate: (value: string | undefined) => string | undefined };
@@ -405,7 +484,8 @@ describe('e2e init', () => {
   });
 
   it('accepts interactive selections and installs once after writing all files', async () => {
-    vi.mocked(clack.select).mockResolvedValueOnce('web').mockResolvedValueOnce('vercel');
+    answers.engines = ['web'];
+    vi.mocked(clack.select).mockResolvedValueOnce('vercel');
     vi.mocked(clack.confirm).mockResolvedValueOnce(true).mockResolvedValueOnce(true);
     vi.mocked(spawnSync).mockImplementationOnce(() => {
       expect(JSON.parse(read('package.json')).devDependencies).toHaveProperty('ai', '^7.0.0');
@@ -424,7 +504,8 @@ describe('e2e init', () => {
   });
 
   it('writes the selected dependencies when installation is declined', async () => {
-    vi.mocked(clack.select).mockResolvedValueOnce('web').mockResolvedValueOnce('vercel');
+    answers.engines = ['web'];
+    vi.mocked(clack.select).mockResolvedValueOnce('vercel');
     vi.mocked(clack.confirm).mockResolvedValueOnce(true).mockResolvedValueOnce(false);
     expect((await init(dir)).exitCode).toBe(0);
     expect(JSON.parse(read('package.json')).devDependencies).toHaveProperty('ai', '^7.0.0');
@@ -432,15 +513,57 @@ describe('e2e init', () => {
     expect(output()).toContain('Next: npm install, then APP_URL=');
   });
 
+  describe('with continueWith', () => {
+    const explore = ['e2e', 'explore', "Check the cart's totals", '--max-steps', '4'];
+    const quoted = "e2e explore 'Check the cart'\\''s totals' --max-steps 4";
+
+    beforeEach(() => {
+      vi.stubEnv('AI_GATEWAY_API_KEY', 'key');
+      vi.stubEnv('VERCEL_OIDC_TOKEN', undefined);
+      vi.stubEnv('OPENROUTER_API_KEY', undefined);
+      vi.stubEnv('APP_URL', undefined);
+    });
+
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    it.skipIf(process.platform === 'win32')('hands over once the install leaves nothing to do by hand, naming the URL it explores', async () => {
+      answers.engines = ['web'];
+      vi.mocked(clack.select).mockResolvedValueOnce('vercel');
+      vi.mocked(clack.confirm).mockResolvedValueOnce(true).mockResolvedValueOnce(true);
+      vi.mocked(spawnSync).mockReturnValueOnce(spawnResult(0));
+      expect(await init(dir, { continueWith: explore })).toMatchObject({ exitCode: 0, result: 'scaffolded', ready: true });
+      expect(output()).toContain(`Starting ${quoted} on http://localhost:3000 (set APP_URL for another URL)`);
+      expect(output()).not.toContain('Next:');
+    });
+
+    it.skipIf(process.platform === 'win32').each([
+      ['the install is declined', ['web'], 'vercel', false, `Next: npm install, then APP_URL=http://localhost:3000 npm exec -- ${quoted}`],
+      ['a subscription needs a sign-in', ['web'], 'chatgpt', true, `Next: npm exec -- e2e login openai, then APP_URL=http://localhost:3000 npm exec -- ${quoted}`],
+      ['the gateway key is unset', ['web'], 'openrouter', true, `Next: set OPENROUTER_API_KEY, then APP_URL=http://localhost:3000 npm exec -- ${quoted}`],
+      ['no gateway was chosen', ['web'], 'none', true, 'Next: add a model to agents in e2e.config.ts, then APP_URL='],
+      ['no engine was chosen', [], 'vercel', true, 'Next: add an engine target to e2e.config.ts, then APP_URL='],
+      ['the mobile target is a placeholder', ['mobile'], 'vercel', true, `Next: point the mobile target in e2e.config.ts at your app, then npm exec -- ${quoted}`],
+    ])('ends the Next line with the command and is not ready when %s', async (_case, engines, gateway, install, next) => {
+      answers.engines = engines;
+      vi.mocked(clack.select).mockResolvedValueOnce(gateway);
+      vi.mocked(clack.confirm).mockResolvedValueOnce(true).mockResolvedValueOnce(install);
+      vi.mocked(spawnSync).mockReturnValueOnce(spawnResult(0));
+      expect(await init(dir, { continueWith: explore })).toMatchObject({ exitCode: 0, result: 'scaffolded', ready: false });
+      expect(output()).toContain(next);
+    });
+  });
+
   it.each(['engine', 'gateway', 'endpoint', 'skill', 'mcp', 'files', 'install'])('leaves the directory untouched when cancelling at %s', async (stage) => {
     const cancel: typeof clack.CANCEL_SYMBOL = clack.CANCEL_SYMBOL;
-    vi.mocked(clack.select)
-      .mockResolvedValueOnce(stage === 'engine' ? cancel : 'web')
-      .mockResolvedValueOnce(stage === 'gateway' ? cancel : 'openai-compatible');
+    answers = {
+      engines: stage === 'engine' ? cancel : ['web', 'mobile'],
+      skills: stage === 'skill' ? cancel : ['.agents/skills'],
+      mcp: stage === 'mcp' ? cancel : ['.mcp.json'],
+    };
+    vi.mocked(clack.select).mockResolvedValueOnce(stage === 'gateway' ? cancel : 'openai-compatible');
     vi.mocked(clack.text).mockResolvedValueOnce(stage === 'endpoint' ? cancel : 'http://127.0.0.1:11434/v1');
-    vi.mocked(clack.multiselect)
-      .mockResolvedValueOnce(stage === 'skill' ? cancel : ['.agents/skills'])
-      .mockResolvedValueOnce(stage === 'mcp' ? cancel : ['.mcp.json']);
     vi.mocked(clack.confirm)
       .mockResolvedValueOnce(stage !== 'files')
       .mockResolvedValueOnce(cancel);
@@ -472,7 +595,8 @@ describe('e2e init', () => {
     ['e2e runner --ci', 'npm exec -- e2e run'],
   ])('keeps an existing test:e2e script (%s) and points the run step at %s', async (script, step) => {
     writeFileSync(path.join(dir, 'package.json'), `${JSON.stringify({ name: 'existing-app', scripts: { 'test:e2e': script } })}\n`);
-    vi.mocked(clack.select).mockResolvedValueOnce('web').mockResolvedValueOnce('none');
+    answers.engines = ['web'];
+    vi.mocked(clack.select).mockResolvedValueOnce('none');
     vi.mocked(clack.confirm).mockResolvedValueOnce(true).mockResolvedValueOnce(false);
     expect((await init(dir)).exitCode).toBe(0);
     expect(JSON.parse(read('package.json')).scripts).toEqual({ 'test:e2e': script });
@@ -487,7 +611,8 @@ describe('e2e init', () => {
       custom: { enabled: true },
     };
     writeFileSync(path.join(dir, 'package.json'), `${JSON.stringify(manifest, null, 4).replaceAll('\n', '\r\n')}\r\n`);
-    vi.mocked(clack.select).mockResolvedValueOnce('web').mockResolvedValueOnce('vercel');
+    answers.engines = ['web'];
+    vi.mocked(clack.select).mockResolvedValueOnce('vercel');
     vi.mocked(clack.confirm).mockResolvedValueOnce(true).mockResolvedValueOnce(false);
     await init(dir);
     expect(JSON.parse(read('package.json'))).toEqual({
@@ -555,7 +680,7 @@ describe('e2e init', () => {
 
   it('does not create the directory when cancelling', async () => {
     const target = path.join(dir, 'later');
-    vi.mocked(clack.select).mockResolvedValueOnce(Symbol('cancel'));
+    answers.engines = clack.CANCEL_SYMBOL;
     expect((await init(target, { directory: 'later' })).exitCode).toBe(0);
     expect(existsSync(target)).toBe(false);
   });
@@ -607,23 +732,23 @@ describe('e2e init', () => {
     await init(dir, { yes: true });
     expect(read('e2e.config.ts')).toBe('// custom config\n');
     expect(read('tests/example.e2e.ts')).toBe('// custom test\n');
-    expect(read('.gitignore')).toBe(`${older}.e2e/results/\n.e2e/ai-trace.json\n.e2e/junit.xml\n.e2e/summary.md\n.e2e/logs/\n.e2e/videos/\n`);
+    expect(read('.gitignore')).toBe(`${older}.e2e/results/\n.e2e/ai-trace.json\n.e2e/timings.json\n.e2e/junit.xml\n.e2e/summary.md\n.e2e/logs/\n.e2e/videos/\n`);
     expect(output()).not.toContain('commit-the-replay-cache');
   });
 
   it('installs the skill where selected, then refreshes only those copies', async () => {
-    vi.mocked(clack.multiselect).mockResolvedValueOnce(['.claude/skills']);
+    answers.skills = ['.claude/skills'];
     vi.mocked(clack.confirm).mockResolvedValueOnce(true).mockResolvedValueOnce(false);
     expect((await init(dir)).exitCode).toBe(0);
-    expect(clack.multiselect).toHaveBeenCalledTimes(2);
+    expect(clack.multiselect).toHaveBeenCalledTimes(3);
     expect(clack.multiselect).toHaveBeenCalledWith(expect.objectContaining({
       options: [expect.objectContaining({ value: '.agents/skills' }), expect.objectContaining({ value: '.claude/skills' })],
       initialValues: ['.agents/skills', '.claude/skills'],
       required: false,
     }));
     expect(clack.multiselect).toHaveBeenCalledWith(expect.objectContaining({
-      options: [expect.objectContaining({ value: '.mcp.json' }), expect.objectContaining({ value: '.cursor/mcp.json' })],
-      initialValues: ['.mcp.json', '.cursor/mcp.json'],
+      options: [expect.objectContaining({ value: '.mcp.json' }), expect.objectContaining({ value: '.cursor/mcp.json' }), expect.objectContaining({ value: '.codex/config.toml' })],
+      initialValues: ['.mcp.json', '.cursor/mcp.json', '.codex/config.toml'],
       required: false,
     }));
     expect(read('.mcp.json')).toContain('"e2e"');
@@ -639,7 +764,7 @@ describe('e2e init', () => {
     expect((await init(dir, { yes: true })).exitCode).toBe(0);
     expect(read('.claude/skills/e2e/references/setup.md')).toBe(shipped);
     expect(existsSync(path.join(dir, '.agents/skills'))).toBe(false);
-    expect(clack.multiselect).toHaveBeenCalledTimes(2);
+    expect(clack.multiselect).toHaveBeenCalledTimes(3);
     expect(output()).toContain('Updated .claude/skills/e2e/');
   });
 
@@ -746,7 +871,7 @@ describe('e2e init', () => {
 
   it('offers the skill to an initialized project and points at e2e guide when declined', async () => {
     writeFileSync(path.join(dir, 'e2e.config.ts'), '// custom config\n');
-    vi.mocked(clack.multiselect).mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+    answers = { engines: ['web'], skills: [], mcp: [] };
     vi.mocked(clack.confirm).mockResolvedValueOnce(true).mockResolvedValueOnce(false);
     expect((await init(dir)).exitCode).toBe(0);
     expect(clack.select).not.toHaveBeenCalled();
@@ -755,11 +880,12 @@ describe('e2e init', () => {
     expect(existsSync(path.join(dir, '.claude'))).toBe(false);
     expect(existsSync(path.join(dir, '.mcp.json'))).toBe(false);
     expect(output()).toContain('npm exec -- e2e guide');
-    expect(output()).toContain('claude mcp add --scope project e2e -- npx e2e mcp');
+    expect(output()).toContain('e2e init --yes --skills none --mcp .codex/config.toml,.mcp.json,.cursor/mcp.json');
   });
 
   it('is idempotent', async () => {
-    vi.mocked(clack.select).mockResolvedValueOnce('web').mockResolvedValueOnce('vercel');
+    answers.engines = ['web'];
+    vi.mocked(clack.select).mockResolvedValueOnce('vercel');
     vi.mocked(clack.confirm).mockResolvedValueOnce(true).mockResolvedValueOnce(false);
     await init(dir);
     const files = ['package.json', 'e2e.config.ts', 'tests/example.e2e.ts', '.gitignore', '.agents/skills/e2e/SKILL.md'];
@@ -769,6 +895,14 @@ describe('e2e init', () => {
     expect(files.map(read)).toEqual(before);
     expect(output()).toContain('Nothing to create; project already initialized');
     expect(spawnSync).not.toHaveBeenCalled();
+  });
+
+  it('is idempotent with both engines and adds no engine-less example beside theirs', async () => {
+    expect((await init(dir, { yes: true, engines: ['web', 'mobile'] })).exitCode).toBe(0);
+    stdoutSpy.mockClear();
+    expect(await init(dir, { yes: true })).toMatchObject({ exitCode: 0, result: 'already-initialized' });
+    expect(existsSync(path.join(dir, 'tests/example.e2e.ts'))).toBe(false);
+    expect(readdirSync(path.join(dir, 'tests')).toSorted()).toEqual(['mobile.e2e.ts', 'web.e2e.ts']);
   });
 
   it('preserves existing ignores and appends only missing entries', async () => {

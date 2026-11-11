@@ -1,5 +1,11 @@
 # @e2e-dev/smol
 
+## 0.1.2
+
+### Patch Changes
+
+- [#1275](https://github.com/tester-army/e2e/pull/1275) [`6a59d1a`](https://github.com/tester-army/e2e/commit/6a59d1acfba13745ce126817e3226cee71d033e5) Thanks [@kacperkapusciak](https://github.com/kacperkapusciak)! - Update dependencies: the web engine drives Playwright 1.64.1 (and the Chromium it installs), and smol machines boot the matching `mcr.microsoft.com/playwright:v1.64.1-noble` image. The runner moves to `oxc-parser`, `oxc-transform`, and `@oxc-project/runtime` 0.154.0, `@vitest/expect` 5.0.5, and `@ai-sdk/provider` 4.0.28.
+
 ## 0.1.1
 
 ### Patch Changes

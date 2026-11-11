@@ -1,9 +1,8 @@
 ---
 title: Quickstart
 description: Set up e2e with one prompt to your coding agent, or step by step.
-icon: "rocket"
-"og:image": "https://e2e.tester.army/docs/images/og/quickstart.png?v=4a3569d569"
-"twitter:image": "https://e2e.tester.army/docs/images/og/quickstart.png?v=4a3569d569"
+"og:image": "https://e2e.com/docs/images/og/quickstart.png?v=4a3569d569"
+"twitter:image": "https://e2e.com/docs/images/og/quickstart.png?v=4a3569d569"
 ---
 
 import { ModelProvider } from './snippets/model-provider.jsx';
@@ -11,7 +10,7 @@ import { SetupPrompt } from './snippets/setup-prompt-card.jsx';
 import { Video } from './snippets/video.jsx';
 import { VideoCard } from './snippets/video-card.jsx';
 
-export const setupPrompt = `Set up e2e end-to-end tests in this project. Docs: \`https://e2e.tester.army/docs/quickstart.md\`
+export const setupPrompt = `Set up e2e end-to-end tests in this project. Docs: \`https://e2e.com/docs/quickstart.md\`
 
 1. Run \`npx e2e init --yes\` (or the pnpm or bun equivalent for this project). It writes a web config using Vercel AI Gateway, an example test, the e2e skill, and MCP config. It installs nothing yet.
 2. Read the e2e skill (\`npx e2e guide\` prints it, \`npx e2e guide <topic>\` prints a topic) and follow it for every step below.
@@ -41,7 +40,7 @@ The agent installs the [e2e skill](/coding-agents), so later prompts such as
 "add a test for checkout" need no more setup.
 
 <Note>
-Use Node.js 24.8 or newer (22.22.3 or newer on Node.js 22). On Windows, run inside WSL. Mobile tests also
+Use Node.js 24.8 or newer (22.22.3 or newer on Node.js 22), or [Bun](/reference/cli#bun) 1.4.3 or newer for web tests. On Windows, run inside WSL. Mobile tests also
 need Xcode with an iOS simulator runtime, or the Android SDK with an emulator.
 </Note>
 
@@ -103,8 +102,8 @@ test('app opens', async ({ app, browser }) => {
     </Accordion>
     </Tab>
     <Tab title="Mobile">
-    Run `npx agent-device doctor` to check your setup. The wizard picks iOS
-    on macOS and Android elsewhere. The example opens the Settings app.
+    Run `npx e2e doctor` to check your setup. The wizard picks iOS on macOS
+    and Android elsewhere. The example opens the Settings app.
 
     <Accordion title="Example iOS config and test">
     This config uses Vercel AI Gateway. For Android, the wizard sets
@@ -136,25 +135,6 @@ test('Settings opens', async ({ app, screen }) => {
     See [Mobile](/mobile) to use your own app.
     </Tab>
   </Tabs>
-
-  <Accordion title="Use JavaScript instead of TypeScript">
-  Rename `e2e.config.ts` to `e2e.config.js` and `tests/example.e2e.ts` to
-  `tests/example.e2e.js`. In the config, delete the
-  `import type { E2EConfig } from 'e2e';` line and `satisfies E2EConfig`.
-  Then add a JSDoc type and set `tests`:
-
-```js title="e2e.config.js"
-/** @type {import('e2e').E2EConfig} */
-export default {
-  tests: 'tests/**/*.e2e.js',
-  // ...the rest of the config, unchanged
-};
-```
-
-  The example test has no types to remove. Name later tests `*.e2e.js`. See
-  [JavaScript](/reference/config#javascript) for type checks and mixing
-  JavaScript with TypeScript.
-  </Accordion>
   </Step>
   <Step title="Run the example">
   <CodeGroup>
@@ -298,7 +278,7 @@ after `init`:
 | pick the test files | `tests` | [tests](/reference/config#tests) |
 | keep traces and videos | `trace`, `video` | [Recording](/reference/config#recording) |
 | write a JUnit report | `reporters: ['list', 'junit']` | [reporters](/reference/config#reporters) |
-| sign in and pass API keys | `credentials`, `secrets` | [Signing in](/authentication) |
+| sign in and pass API keys | `credentials`, `secrets` | [Authentication](/authentication) |
 | write the replay cache in CI | `cache: 'read-write'` | [Caching](/cache) |
 
 <Accordion title="Example config with common options">
@@ -335,13 +315,13 @@ one server process.
   <Card title="Core concepts" icon="pen-to-square" href="/core-concepts">
     Goals, assertions, and locators.
   </Card>
-  <Card title="Signing in" icon="key" href="/authentication">
+  <Card title="Authentication" icon="key" href="/authentication">
     Reuse an app login and keep passwords out of model input.
   </Card>
   <Card title="Debugging" icon="bug" href="/debugging">
     Read failures, screenshots, and traces.
   </Card>
   <Card title="Continuous integration" icon="code-branch" href="/ci">
-    Run your tests on GitHub Actions, EAS Workflows, Bitrise, or Codemagic.
+    Run your tests on GitHub Actions, Expo Workflows, Bitrise, or Codemagic.
   </Card>
 </CardGroup>

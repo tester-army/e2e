@@ -27,9 +27,8 @@
     "secrecy": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["tainted", "names"],
+      "required": ["names"],
       "properties": {
-        "tainted": { "type": "boolean" },
         "names": {
           "type": "array",
           "uniqueItems": true,

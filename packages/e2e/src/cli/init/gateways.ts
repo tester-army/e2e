@@ -23,6 +23,8 @@ export interface GatewayPreset {
   readonly comment: string;
   /** For a subscription: the `e2e login` provider that signs in, which init names as the next step. */
   readonly login?: string;
+  /** The environment variables the provider authenticates with, any one of them enough; the first is the one to set. */
+  readonly keys?: readonly string[];
   /** The model expression, with the endpoint the user typed for an OpenAI-compatible one. */
   model(endpoint: string | undefined): string;
 }
@@ -35,6 +37,7 @@ export const GATEWAYS: readonly GatewayPreset[] = [
     dependencies: {},
     import: "import { gateway } from 'ai';",
     comment: 'The Vercel AI Gateway serves the model id and reads AI_GATEWAY_API_KEY, or the OIDC token of a linked Vercel project.',
+    keys: ['AI_GATEWAY_API_KEY', 'VERCEL_OIDC_TOKEN'],
     model: () => "gateway('openai/gpt-6-luna-fast')",
   },
   {
@@ -44,6 +47,7 @@ export const GATEWAYS: readonly GatewayPreset[] = [
     dependencies: { '@openrouter/ai-sdk-provider': '^3.0.0' },
     import: "import { openrouter } from '@openrouter/ai-sdk-provider';",
     comment: 'OpenRouter serves the model id and reads OPENROUTER_API_KEY.',
+    keys: ['OPENROUTER_API_KEY'],
     model: () => "openrouter('openai/gpt-6-luna-fast')",
   },
   {

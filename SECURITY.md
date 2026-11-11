@@ -1,15 +1,15 @@
 # Security
 
 The user-facing version of this document is
-[e2e.tester.army/docs/security](https://e2e.tester.army/docs/security). Every
+[e2e.com/docs/security](https://e2e.com/docs/security). Every
 rule and limit, as the code enforces it, is in
-[e2e.tester.army/docs/reference/security](https://e2e.tester.army/docs/reference/security).
+[e2e.com/docs/reference/security](https://e2e.com/docs/reference/security).
 
 ## Reporting a vulnerability
 
 Report privately through
-[GitHub security advisories](https://github.com/tester-army/e2e/security/advisories/new)
-or by mail to security@tester.army. Do not open a public issue for anything
+[GitHub security advisories](https://github.com/e2e-inc/e2e/security/advisories/new)
+or by mail to security@e2e.com. Do not open a public issue for anything
 that lets a page, a model, or a committed file act with more authority than
 this document grants it.
 
@@ -40,16 +40,20 @@ will not protect you from your own dependencies.
 Text, accessibility trees, and pixels from the app under test are quoted to
 the model as untrusted; the runner, not the model, decides what a tool call
 may do. Every model tool call is parsed into a closed schema and authorized
-right before dispatch. Unknown tools or fields, stale observation references,
-and denied destinations fail with `POLICY_DENIED`. Model text is never
+right before dispatch. Unknown tools or undeclared fields never run; the
+model reads the refusal as the call's result and can try again. A node id
+that cannot be resolved on the current screen fails with
+`LOCATOR_NOT_FOUND`. Policy refusals, such as a denied destination or a
+forbidden secret fill, fail with `POLICY_DENIED`. Model text is never
 evaluated as code, selectors, shell, or config.
 
-Secrets follow from that split. A `Secret` never reaches model input, digests,
-logs, reports, or artifacts. A secret fill is authorized by the runner from
+Secrets follow from that split. A `Secret` value never reaches model input,
+digests, logs, reports, or artifacts as text. A secret fill is authorized by the runner from
 its own observation (an unresolved handle, a secure sink, an editable node
 with a compatible purpose, no control transfer since); the
-model never sees or picks the value. Once a secret is filled, the viewport
-stays pixel-tainted for the rest of the attempt, and a text download (`.txt`,
+model never sees or picks the value. Screenshots mask secure fields only, so
+a value the app shows anywhere else, a secret filled into a plain input
+included, is in the pixels the model gets. A text download (`.txt`,
 `.csv`, `.json`, `.html`) is rewritten before it is registered or stored, every secret value becoming
 `<secret:name>`; any other download is kept as served and marked
 `incomplete`. Sessions are per-run, target-bound, encrypted
@@ -108,7 +112,7 @@ arguments or results, exploration goals, or findings. Engine names, platforms, m
 ids, and MCP client names are sent as declared when they are plain tokens and as
 `other` otherwise; an error code that is not an upper-case token is `OTHER`.
 Every property
-is listed at [e2e.tester.army/docs/telemetry](https://e2e.tester.army/docs/telemetry),
+is listed at [e2e.com/docs/telemetry](https://e2e.com/docs/telemetry),
 and `E2E_TELEMETRY_DEBUG=1` prints each event instead of sending it. PostHog
 stores no request address and, because every event carries
 `$geoip_disable: true`, derives no location from it.
@@ -119,8 +123,9 @@ telemetry: one `e2e_run_completed` event per run that returns a report, under
 the same opt-outs.
 Telemetry falls under the disclosure policy above.
 
-There is no crash reporting and no update check. The complete list of
-outbound connections a run can make:
+There is no crash reporting. The main outbound connections are below; the
+full list, integrations and reporters included, is under
+[Outbound connections](https://e2e.com/docs/reference/security#outbound-connections):
 
 - one telemetry request per CLI invocation or completed `run()` to
   `eu.i.posthog.com`, plus at most one per session that `e2e mcp` serves,
@@ -128,6 +133,14 @@ outbound connections a run can make:
 - one request to `eu.i.posthog.com` per `e2e feedback` someone runs, carrying
   the report written into its flags; `E2E_TELEMETRY_DISABLED` and
   `DO_NOT_TRACK` stop it
+- `registry.npmjs.org`, to check for a newer e2e release: at most once a day
+  from a CLI command on a terminal (never in CI, with stderr piped, for
+  `e2e mcp` or `e2e upgrade`, or under `E2E_UPDATE_CHECK_DISABLED`,
+  `NO_UPDATE_NOTIFIER`, `E2E_TELEMETRY_DISABLED`, or `DO_NOT_TRACK`), and
+  once per `e2e feedback` unless `--allow-outdated`, `E2E_TELEMETRY_DISABLED`,
+  or `DO_NOT_TRACK` is set; `e2e upgrade` also reads the versions of every
+  `e2e` or `@e2e-dev/*` package the project lists with a registry version,
+  from `npm_config_registry` when it is set
 - the model endpoint owned by the AI SDK instance in your config (agent steps
   only; deterministic suites make no model calls, and cached steps replay
   without one)

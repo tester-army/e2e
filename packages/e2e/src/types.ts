@@ -7,6 +7,8 @@ import type { expectationBrand, testCaseBrand } from './internal/brands.ts';
 import type { CredentialConfig, Secret, SecretConfig } from './config/secrets.ts';
 import type { Unique } from './params.ts';
 import type { StepExecutor } from './agent/executor.ts';
+import type { RecordedAction } from './cache/trace.ts';
+import type { PROJECT_TOOL_EVENT_PREFIX } from './agent/action-names.ts';
 import type { StepCacheInfo } from './run/steps.ts';
 import type { EngineHandle } from './engine/index.ts';
 import type { KeyModifier, Momentum, ScrollDirection, SelectOption, ViewportPoint } from './engine/contract.ts';
@@ -147,8 +149,19 @@ export interface AgentOption {
   agent?: string;
 }
 
-/** `assert` options: one judgment plus one repair round, within `timeout`. */
+/** `assert` options: one judgment, or opt-in bounded viewport exploration. */
 export interface AssertOptions extends VisionOption, AgentOption {
+  /** Look around by scrolling before judging; defaults to false. */
+  explore?: boolean;
+  /** Scroll budget; requires explore, defaults to min(10, configured maxSteps). */
+  maxSteps?: number;
+  /** Model-call budget; requires explore, defaults to min(6, configured maxModelCalls). */
+  maxModelCalls?: number;
+  /**
+   * Values the assertion refers to as `{name}`, with the same rules as `act`
+   * params. A `Secret` reaches the judge by name only, never its value.
+   */
+  params?: AgentParams;
   /** Deadline in milliseconds; defaults to the agent's `judgmentTimeout`, 30000. */
   timeout?: number;
   /** Attach a redacted screenshot to the step; on by default. */
@@ -157,6 +170,11 @@ export interface AssertOptions extends VisionOption, AgentOption {
 
 /** `waitFor` options: a judgment at most once per `interval` until `timeout`. */
 export interface WaitForOptions extends VisionOption, AgentOption {
+  /**
+   * Values the condition refers to as `{name}`, with the same rules as `act`
+   * params. A `Secret` reaches the judge by name only, never its value.
+   */
+  params?: AgentParams;
   /** Deadline in milliseconds; defaults to the agent's `judgmentTimeout`, 30000. */
   timeout?: number;
   /** Least time between two judgments, in milliseconds; 100 through 60000, default 3000. */
@@ -198,20 +216,63 @@ export interface ActOptions extends AgentOption {
    * Observe only: drive nothing from it. A throw fails the step.
    */
   onAction?: ActionHook;
+  /**
+   * Runs before each action, replayed ones included, and the step waits for
+   * it. Observe only: drive nothing from it. A throw fails the step before
+   * the action runs.
+   */
+  onBeforeAction?: BeforeActionHook;
 }
+
+/** The `onBeforeAction` hook of an `act` call. */
+export type BeforeActionHook = (event: BeforeActionEvent) => void | Promise<void>;
 
 /** The `onAction` hook of an `act` call. */
 export type ActionHook = (event: ActionEvent) => void | Promise<void>;
 
-/** One completed action of an `act` step, as `onAction` receives it. */
-export interface ActionEvent {
+/** The name `onAction` reports a committed grammar action under, e.g. `tap`, `navigate`, or `dragAt`. */
+export type ActionName = Exclude<RecordedAction['name'], 'tool'>;
+
+/**
+ * The fields `onAction` adds for an action, by action name; other actions add
+ * none. Points are in the same space as `screen.tapAt` and `boundingBox()`,
+ * rounded and clamped to the viewport.
+ */
+export interface ActionDetails {
+  /** The dispatched point. */
+  readonly tapAt: { readonly point: Point };
+  /** The dispatched point. Mobile engines have no `hoverAt`. */
+  readonly hoverAt: { readonly point: Point };
+  /** The dispatched start and end. Mobile engines have no `dragAt`. */
+  readonly dragAt: { readonly from: Point; readonly to: Point };
+}
+
+/** What every `onAction` event carries. */
+interface ActionEventBase {
   /** 1-based position in the step's action budget; a failed attempt uses a number too. */
   readonly index: number;
-  /** The committed action, e.g. `tap` or `navigate`; a mutating project tool reads `tool:<name>`. */
-  readonly action: string;
   /** What the action did, secrets redacted. */
   readonly summary: string;
   /** `model` when the executor chose the action, `replay` when the cache replayed it. */
+  readonly source: 'model' | 'replay';
+}
+
+/**
+ * One completed action of an `act` step, as `onAction` receives it. Narrow on
+ * `action` to read its {@link ActionDetails}; a mutating project tool reads
+ * `tool:<name>`.
+ */
+export type ActionEvent =
+  | {
+      readonly [A in ActionName]: ActionEventBase & { readonly action: A } & (A extends keyof ActionDetails ? ActionDetails[A] : unknown);
+    }[ActionName]
+  | (ActionEventBase & { readonly action: `${typeof PROJECT_TOOL_EVENT_PREFIX}${string}` });
+
+/** One action of an `act` step about to run, as `onBeforeAction` receives it. */
+export interface BeforeActionEvent {
+  /** The same `index` the action's `onAction` event carries. */
+  readonly index: number;
+  /** `model` when the executor chose the action, `replay` when the cache replays it. */
   readonly source: 'model' | 'replay';
 }
 
@@ -384,7 +445,8 @@ export interface ActionOptions {
 /**
  * A point in CSS pixels. For `screen.tapAt`, `screen.doubleTapAt`, and `screen.swipe` the origin is
  * the viewport's top-left corner, the space `boundingBox()` reports in; for
- * `tap({ position })` it is the node's own top-left corner.
+ * `tap({ position })` it is the node's own top-left corner, inside its
+ * border on a document platform.
  */
 export type Point = ViewportPoint;
 
@@ -402,11 +464,11 @@ export interface ClickOptions extends ActionOptions {
 /** `tap` and `click` options. */
 export interface TapOptions extends ClickOptions {
   /**
-   * Where to tap, relative to the node's top-left corner. Without it the
-   * platform picks a point of the node, usually its center, behind its own
-   * actionability checks; with it the pointer is dispatched at that point
-   * once the node is in view and has a box, which needs the engine's `tap`
-   * pointer action.
+   * Where to tap, relative to the node's top-left corner, inside its border
+   * on a document platform. Without it the platform picks a point of the
+   * node, usually its center, behind its own actionability checks; with it
+   * the pointer is dispatched at that point once the node is in view and has
+   * a box, which needs the engine's `tap` pointer action.
    */
   position?: Point;
 }
@@ -521,7 +583,7 @@ export interface Locator extends Omit<Screen, 'tree' | 'debug'> {
   focus(options?: ActionOptions): Promise<void>;
   /** Hovers over exactly one matching actionable node. */
   hover(options?: ActionOptions): Promise<void>;
-  /** Sets the files of exactly one file input; paths resolve from the project root. */
+  /** Sets the files of exactly one file input, or of a control that opens a file chooser; paths resolve from the project root, and an empty array clears the input. */
   setInputFiles(paths: string | readonly string[], options?: ActionOptions): Promise<void>;
   /** Drags exactly one node to exactly one target. */
   dragTo(target: Locator, options?: ActionOptions): Promise<void>;
@@ -531,7 +593,7 @@ export interface Locator extends Omit<Screen, 'tree' | 'debug'> {
   swipe(options: SwipeOptions & ActionOptions): Promise<void>;
   /** Reads normalized text once a match exists, without retrying for a particular value. */
   textContent(): Promise<string | null>;
-  /** Reads the current input value. */
+  /** Reads the current input value; throws `ACTION_FAILED` on a node with no value, such as a heading. */
   inputValue(): Promise<string>;
   /** Reads one attribute. */
   getAttribute(name: string): Promise<string | null>;
@@ -543,7 +605,7 @@ export interface Locator extends Omit<Screen, 'tree' | 'debug'> {
   isEnabled(): Promise<boolean>;
   /** Reads current disabled state, the negation of `isEnabled`. */
   isDisabled(): Promise<boolean>;
-  /** Reads current checked state. */
+  /** Reads current checked state; throws `ACTION_FAILED` on a node with no checked state, such as a button. */
   isChecked(): Promise<boolean>;
   /** Reads the current viewport-relative rectangle. */
   boundingBox(): Promise<{ x: number; y: number; width: number; height: number } | null>;
@@ -560,7 +622,7 @@ export interface Locator extends Omit<Screen, 'tree' | 'debug'> {
    */
   waitFor(options?: { state?: 'attached' | 'detached' | 'visible' | 'hidden'; timeout?: number }): Promise<void>;
   /** Adds deterministic locator filters. */
-  filter(options: { hasText?: TextMatch; has?: Locator }): Locator;
+  filter(options: { hasText?: TextMatch; hasNotText?: TextMatch; has?: Locator; hasNot?: Locator }): Locator;
   /** Matches either locator, deduplicated in traversal order; both must belong to this screen. */
   or(other: Locator): Locator;
   /** Selects the first current match. */
@@ -574,8 +636,9 @@ export interface Locator extends Omit<Screen, 'tree' | 'debug'> {
 export interface App {
   /**
    * The resolved base URL of the target's app, with the port the run
-   * allocated when `app.url` declared port 0; undefined for a target that
-   * declares no `app.url`.
+   * allocated when `app.url` declared port 0 and no trailing slash, so
+   * `${app.baseUrl}/api/users` joins with one slash; undefined for a target
+   * that declares no `app.url`.
    */
   readonly baseUrl: string | undefined;
   /**
@@ -598,6 +661,44 @@ export interface App {
   back(): Promise<void>;
   /** Captures a redacted evidence screenshot and returns its absolute path. */
   screenshot(label?: string): Promise<string>;
+  /**
+   * Starts recording the screen, until `stopRecording`. One recording at a
+   * time, and none while the test's `video` records: set `{ video: 'off' }`
+   * on the test.
+   */
+  startRecording(options?: RecordingOptions): Promise<void>;
+  /**
+   * Stops the recording and returns its videos in play order: one, or on the
+   * web one per page when the page was replaced while it recorded.
+   */
+  stopRecording(): Promise<readonly [RecordedVideo, ...RecordedVideo[]]>;
+}
+
+/** How `app.startRecording` names its file. */
+export interface RecordingOptions {
+  /** File name stem, `recordings/001-<name>.<ext>`; defaults to `recording`. */
+  readonly name?: string;
+}
+
+/** One video `app.stopRecording` returns: a file, or a link to a recording a hosted service keeps. */
+export type RecordedVideo = RecordedVideoFile | RecordedVideoLink;
+
+/** A video file under the attempt's `recordings/` directory. */
+export interface RecordedVideoFile {
+  /** Absolute path of the file. */
+  readonly path: string;
+  /** When it started recording, as an ISO timestamp. */
+  readonly startedAt: string;
+}
+
+/** A recording a hosted browser or device service keeps, by URL. */
+export interface RecordedVideoLink {
+  /** `http(s)` URL of the recording. */
+  readonly url: string;
+  /** Media type of what the URL serves: `video/mp4`, or `text/html` for a player page. */
+  readonly mediaType: string;
+  /** When it started recording, as an ISO timestamp. */
+  readonly startedAt: string;
 }
 
 export interface SetupSession {
@@ -608,7 +709,7 @@ export interface SetupSession {
 export interface TestFixtures {
   /** Agent steps. Acquiring the built-in agent without a configured model is `MODEL_UNAVAILABLE`. */
   readonly agent: Agent;
-  /** App lifecycle: open, restart, clear state, back, screenshot. */
+  /** App lifecycle: open, restart, clear state, back, screenshot, recording. */
   readonly app: App;
   /** Semantic queries and the actions on their matches. */
   readonly screen: Screen;
@@ -635,6 +736,12 @@ export interface TestOptions {
   tags?: readonly string[];
   /** Skips the test; a string is the reason. Any truthy layer skips. */
   skip?: boolean | string;
+  /**
+   * Expects the test to fail; a string is the reason. A test failure then
+   * passes it, and a pass fails it with `UNEXPECTED_PASS`. Not allowed inside
+   * a serial group.
+   */
+  fail?: boolean | string;
   /** Focuses the test locally. CI rejects it with `ONLY_IN_CI`. */
   only?: boolean;
   /** Platforms the test runs on; other targets skip it. Innermost wins. */
@@ -669,12 +776,12 @@ export interface TestOptions {
   video?: RecordingMode;
 }
 
-export interface DescribeOptions extends Omit<TestOptions, 'only'> {
+export interface DescribeOptions extends Omit<TestOptions, 'only' | 'fail'> {
   /** Runs the group as one ordered retry unit with shared app state. Nesting one serial group in another is a `COLLECTION_ERROR`. */
   serial?: boolean;
 }
 
-export interface SetupOptions extends Omit<TestOptions, 'session' | 'only' | 'skip' | 'agent'> {
+export interface SetupOptions extends Omit<TestOptions, 'session' | 'only' | 'skip' | 'fail' | 'agent'> {
   /** Session names this setup test MUST save. */
   sessions: readonly string[];
   /** A setup test runs once per target, so it pins at most one agent. */
@@ -738,6 +845,19 @@ export interface TestAPI<Fixtures = TestFixtures> {
    */
   skip(condition: boolean, reason?: string): void;
   skip(reason?: string): void;
+  /** Registers one test that is expected to fail. */
+  fail(title: string, fn: TestFn<Fixtures>): TestCase;
+  /**
+   * Inside a running test: marks it expected to fail when `condition` is
+   * true (or always, with no condition). The body keeps running. A test
+   * failure then passes the test, keeping the error and `reason` in the
+   * report; a pass fails it with `UNEXPECTED_PASS`. Infrastructure failures
+   * and interrupts are not covered. A setup test or a serial group member
+   * cannot be marked. Outside a test body this form is `COLLECTION_ERROR`;
+   * use `test.fail(title, fn)` or the `fail` option to mark at collection.
+   */
+  fail(condition: boolean, reason?: string): void;
+  fail(reason?: string): void;
   /** Registers one focused local test. CI rejects focused tests. */
   only(title: string, fn: TestFn<Fixtures>): TestCase;
   /** Registers one setup test with statically declared session outputs. */
@@ -1144,8 +1264,11 @@ export interface TargetApp {
    */
   launchArguments?: readonly string[] | undefined;
   /**
-   * Permissions a device app holds on every fresh launch, by name, each
-   * granted, denied, or reset before the app starts.
+   * Permissions the app holds, by name. A device app has each granted,
+   * denied, or reset before every fresh launch. A browser target takes
+   * `grant` only and holds it on every page of the attempt; what it leaves
+   * out is the browser's default, which headless Chromium refuses. The
+   * engine checks the names its platform knows.
    */
   permissions?: Readonly<Record<string, AppPermissionState>> | undefined;
   /**
@@ -1362,9 +1485,9 @@ export interface AgentOptions {
   /** An AI SDK model instance; no implicit default. */
   model?: ModelInstance;
   /**
-   * The model that judges `assert`, `waitFor`, and `extract`; defaults to
-   * `model`. A judge of its own separates the model that grades a flow from
-   * the one that drove it.
+   * The model for non-exploring `assert`, `waitFor`, and `extract`; defaults
+   * to `model`. Built-in exploring assertions use `model` even when `judge`
+   * is configured.
    */
   judge?: ModelInstance;
   /**
@@ -1463,6 +1586,13 @@ export interface FinishedRun {
    * out here. A reporter that keeps one place current folds this run into it.
    */
   readonly lastRun?: Report;
+  /**
+   * Replaces every fixed-value secret and credential password in `text`, and
+   * any run of 8 or more consecutive characters of one. The report is
+   * redacted already; this is for text a reporter adds from elsewhere, such
+   * as lines of a test file.
+   */
+  redact(text: string): string;
 }
 
 /** Rows a reporter hands back for the terminal summary: a label and its text, a URL or a path. */
@@ -1491,6 +1621,82 @@ export interface Reporter {
   onEvent?(event: RunEvent): void;
   /** Runs once the report is written and the summary printed; awaited one minute. Returned rows print under the summary. */
   onRunFinished?(run: FinishedRun, signal: AbortSignal): Promise<ReporterSummary | void>;
+}
+
+/**
+ * Leaves collected tests out of a run before anything starts. Called at most
+ * once, in the runner process; workers load the config too and never call
+ * it, so constructing one must have no side effects: read git, the
+ * environment, or the network inside `filter`. A call that throws, returns
+ * an invalid result, or runs past 5 minutes leaves nothing out.
+ */
+export interface TestFilter {
+  /** Names the filter in the report and in errors: ASCII letters, numbers, `_`, `-`, and `.`, not only dots, at most 256 characters, unique among `filters`. */
+  readonly name: string;
+  /** Decides which of `tests` to leave out; every test the result does not name runs. */
+  readonly filter: (tests: readonly TestFilterCandidate[], context: TestFilterContext) => TestFilterResult | Promise<TestFilterResult>;
+}
+
+/** One test a filter may leave out: what names it, never its body. */
+export interface TestFilterCandidate {
+  /** Stable test id (`<file>::<titles>`), the report's `testId`, and the key `exclude` takes. */
+  readonly id: string;
+  /** Project-relative POSIX path of the test file. */
+  readonly file: string;
+  /** The describe titles, then the test title. */
+  readonly titlePath: readonly string[];
+  /** The describe chain's tags, outermost first, then the test's own. */
+  readonly tags: readonly string[];
+  /** Project-relative POSIX path of the setup test file that saves the test's session; absent when the test uses none. */
+  readonly setupFile?: string;
+}
+
+/** What a run's test filters judge: every file that differs from the base commit. */
+export interface TestFilterChanges {
+  /** The commit the change is measured from: the merge base of the base ref and HEAD. */
+  readonly base: string;
+  /** Absolute path of the git repository root, spelled as on disk like `projectRoot`; `files` are relative to it. */
+  readonly root: string;
+  /**
+   * Repository-relative POSIX paths of every file added, modified, or
+   * deleted since `base`, both paths of a rename, uncommitted and untracked
+   * files included; sorted, never empty. Spelled as git prints them, which
+   * on macOS is NFC while a test's `file` keeps the bytes on disk, so
+   * compare a non-ASCII path with `.normalize('NFC')` on both sides.
+   */
+  readonly files: readonly string[];
+}
+
+/** What the runner hands a filter besides its tests. */
+export interface TestFilterContext {
+  /** Absolute project root, spelled as on disk like `changes.root`: symlinks resolved, names in on-disk case; a test's `file` is relative to it. */
+  readonly projectRoot: string;
+  /** The change the filter judges; the same for every filter of the run. */
+  readonly changes: TestFilterChanges;
+  /**
+   * The config file this run loaded, whatever its name, as a POSIX path
+   * relative to `changes.root` like `changes.files`, in its on-disk bytes
+   * (compare in NFC, as with a test's `file`); `undefined` when the run was
+   * given a config object or loaded one outside the repository.
+   */
+  readonly configFile?: string | undefined;
+  /**
+   * Aborts when the run is interrupted, or with a `TimeoutError` reason after
+   * 5 minutes; hand it to every model and network call.
+   */
+  readonly signal: AbortSignal;
+  /** Prints one progress line as a run notice. */
+  log(line: string): void;
+  /** Replaces every fixed-value secret and credential password in `text`, and any run of 8 or more consecutive characters of one. */
+  redact(text: string): string;
+}
+
+/** A filter's answer: every test it does not name runs. */
+export interface TestFilterResult {
+  /** The tests to leave out, by `TestFilterCandidate.id`, each with the reason the report shows; a test of a serial group still runs when another test of its group does. */
+  readonly exclude: Readonly<Record<string, string>>;
+  /** One line about the whole decision, such as `the diff is too large to judge`. */
+  readonly note?: string;
 }
 
 export interface E2EConfig {
@@ -1565,6 +1771,8 @@ export interface E2EConfig {
    * construct their own, exactly like model instances.
    */
   agents?: Readonly<Record<string, AgentConfig>>;
+  /** Test filters, in order, run with `--changed-since`: each judges the tests the one before it kept. */
+  filters?: readonly TestFilter[];
   /**
    * The adaptive replay cache. Opt-out: unset means
    * `read-write`, and `'off'` disables it, as does the `--no-cache` flag,

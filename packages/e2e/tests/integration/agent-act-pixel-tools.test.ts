@@ -3,15 +3,16 @@
  * and `select_at`. The scripted model cannot see; under test is the runner
  * half: a screenshot attached to a tool result as an image, a point in that
  * image scaled and hit-tested against the tree, a listed control acted on by
- * id underneath (tapped, typed, pressed, selected), a bare point tapped
+ * id underneath (typed, pressed, selected), a point tapped
  * through the engine or focused and typed into through the keyboard, every
  * later result carrying a fresh screenshot, the point verbs answering with a
- * line before any screenshot, and every pixel verb withheld once a secret was
- * filled.
+ * line before any screenshot, and every pixel verb still offered once a
+ * secret was filled.
  */
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { StepExecutor } from '../../src/agent/executor.ts';
+import { defineEngine, type LocatorAction, type NodeRef } from '../../src/engine/index.ts';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 import { installFakeLoopModel, loopCalls, type LoopCall } from '../helpers/fake-loop-model.ts';
 import { resultByTitle, runProject, type FixtureProject } from '../helpers/run-project.ts';
@@ -21,14 +22,41 @@ const SUITE = `import { test, credentials, expect } from 'e2e';
 
 test('taps a canvas pin the tree does not list', async ({ app, agent, screen }) => {
   await app.open('/canvas');
-  await agent.act('pick the red pin on the map');
+  await agent.act('pick the red pin on the map', {
+    onAction: ({ point }) => { expect(point).toEqual({ x: 300, y: 60 }); },
+  });
   await expect(screen.getByRole('status')).toHaveText('red');
 });
 
-test('taps a listed control by id when the point lands on it', async ({ app, agent, screen }) => {
+test('taps the bare point on a listed control and names it', async ({ app, agent, screen }) => {
   await app.open('/canvas');
   await agent.act('press the reset button under the map');
   await expect(screen.getByRole('status')).toHaveText('reset');
+});
+
+test('taps the bare point inside a full-screen control whose center is covered', async ({ app, agent, screen }) => {
+  await app.open('/popover');
+  await agent.act('dismiss the calendar popover');
+  await expect(screen.getByRole('status')).toHaveText('dismissed');
+});
+
+test('drags a drawn pin the tree does not list', async ({ app, agent, screen }) => {
+  await app.open('/canvas');
+  await agent.act('drag the red pin to the middle of the map', {
+    onAction: ({ from, to }) => {
+      expect(from).toEqual({ x: 300, y: 60 });
+      expect(to).toEqual({ x: 200, y: 100 });
+    },
+  });
+  await expect(screen.getByRole('status')).toHaveText('moved red to 200,100');
+  await screen.tapAt({ x: 200, y: 100 });
+  await expect(screen.getByRole('status')).toHaveText('red');
+});
+
+test('drags between the bare points on listed controls and names them', async ({ app, agent, screen }) => {
+  await app.open('/canvas');
+  await agent.act('drag the reset button onto the note field');
+  await expect(screen.getByRole('status')).toHaveText('none');
 });
 
 test('opens a bare canvas with a screenshot already attached', async ({ app, agent, screen }) => {
@@ -47,7 +75,7 @@ test('asks for a screenshot before typing at a point', async ({ app, agent }) =>
   await agent.act('type at a point before any screenshot');
 });
 
-test('offers no pixel verbs after a secret fill', async ({ app, agent, screen }) => {
+test('offers pixel verbs after a secret fill', async ({ app, agent, screen }) => {
   await app.open();
   await screen.getByLabel('Password').fill(credentials.user('member').password);
   await agent.act('note the page');
@@ -114,6 +142,24 @@ function actModel(call: LoopCall) {
     // The Reset button is fixed at left 0, top 260, 100 by 30: CSS (50, 275) is image (30, 165).
     if (calls === 0) return [{ toolName: 'screenshot', input: {} }];
     if (calls === 1) return [{ toolName: 'tap_at', input: { x: 30, y: 165 } }];
+    return conclude('passed');
+  }
+  if (call.prompt.includes('dismiss the calendar popover')) {
+    // CSS (100, 100), outside the popover, is image (60, 60): inside only the dismiss control, whose center the popover covers.
+    if (calls === 0) return [{ toolName: 'screenshot', input: {} }];
+    if (calls === 1) return [{ toolName: 'tap_at', input: { x: 60, y: 60 } }];
+    return conclude('passed');
+  }
+  if (call.prompt.includes('drag the red pin')) {
+    // The red pin at CSS (300, 60) is image (180, 36); the map's middle, CSS (200, 100), is image (120, 60).
+    if (calls === 0) return [{ toolName: 'screenshot', input: {} }];
+    if (calls === 1) return [{ toolName: 'drag_at', input: { x: 180, y: 36, to_x: 120, to_y: 60 } }];
+    return conclude('passed');
+  }
+  if (call.prompt.includes('drag the reset button onto the note field')) {
+    // Reset's center, CSS (50, 275), is image (30, 165); the Note field's, CSS (100, 315), is image (60, 189).
+    if (calls === 0) return [{ toolName: 'screenshot', input: {} }];
+    if (calls === 1) return [{ toolName: 'drag_at', input: { x: 30, y: 165, to_x: 60, to_y: 189 } }];
     return conclude('passed');
   }
   if (call.prompt.includes('pick the blue pin on the bare map')) {
@@ -184,7 +230,7 @@ function actModel(call: LoopCall) {
   return conclude('passed');
 }
 
-const POINT_VERBS = ['screenshot', 'tap_at', 'type_at', 'press_at', 'select_at'];
+const POINT_VERBS = ['screenshot', 'tap_at', 'drag_at', 'type_at', 'press_at', 'select_at'];
 
 describe('agent.act pixel verbs', () => {
   let app: FixtureApp;
@@ -253,14 +299,43 @@ describe('agent.act pixel verbs', () => {
     expect(third!.lastToolResult).toContain('"type":"file"');
   });
 
-  it('taps a listed control through its id when the point lands on it', () => {
-    expect(resultByTitle(outcome, 'taps a listed control by id when the point lands on it').status).toBe('passed');
-    const step = stepOf('taps a listed control by id when the point lands on it');
+  it('taps the bare point when it lands on a listed control, naming the control', () => {
+    expect(resultByTitle(outcome, 'taps the bare point on a listed control and names it').status).toBe('passed');
+    const step = stepOf('taps the bare point on a listed control and names it');
     const actions = step.events.filter((event) => event.kind === 'engine');
-    expect(actions.map((event) => event.name)).toEqual(['tap']);
-    expect(actions[0]!.detail).toBe('tap button "Reset"');
+    expect(actions.map((event) => event.name)).toEqual(['tapAt']);
     const [, , third] = turnsOf('press the reset button');
-    expect(third!.lastToolResult).toMatch(/Tapped #\S+ button \\"Reset\\", the control at \(50, 275\)/);
+    expect(third!.lastToolResult).toMatch(/Tapped the point \(50, 275\) inside #\S+ button \\"Reset\\"/);
+  });
+
+  it('taps the bare point, not the center, of a control something else covers', () => {
+    const title = 'taps the bare point inside a full-screen control whose center is covered';
+    expect(resultByTitle(outcome, title).status).toBe('passed');
+    const actions = stepOf(title).events.filter((event) => event.kind === 'engine');
+    expect(actions.map((event) => event.name)).toEqual(['tapAt']);
+    const [, , third] = turnsOf('dismiss the calendar popover');
+    expect(third!.lastToolResult).toMatch(/Tapped the point \(100, 100\) inside #\S+ button \\"Dismiss popover\\"/);
+  });
+
+  it('drags between two bare points through the engine when no listed controls hold them', () => {
+    expect(resultByTitle(outcome, 'drags a drawn pin the tree does not list').status).toBe('passed');
+    const step = stepOf('drags a drawn pin the tree does not list');
+    const actions = step.events.filter((event) => event.kind === 'engine');
+    expect(actions.map((event) => event.name)).toEqual(['dragAt']);
+    expect(actions[0]!.detail).toBe('drag from the point (300, 60) to the point (200, 100)');
+    const [, , third] = turnsOf('drag the red pin');
+    expect(third!.lastToolResult).toContain('Dragged from the point (300, 60) to the point (200, 100); no listed control is at either end.');
+    expect(third!.lastToolResult).toContain('"type":"file"');
+  });
+
+  it('drags between the bare points when they land on listed controls, naming the controls', () => {
+    const title = 'drags between the bare points on listed controls and names them';
+    expect(resultByTitle(outcome, title).status).toBe('passed');
+    const actions = stepOf(title).events.filter((event) => event.kind === 'engine');
+    expect(actions.map((event) => event.name)).toEqual(['dragAt']);
+    expect(actions[0]!.detail).toBe('drag from the point (50, 275) on button "Reset" to the point (100, 315) on textbox "Note"');
+    const [, , third] = turnsOf('drag the reset button onto the note field');
+    expect(third!.lastToolResult).toMatch(/Dragged from the point \(50, 275\) inside #\S+ button \\"Reset\\" to the point \(100, 315\) inside #\S+ textbox \\"Note\\"\./);
   });
 
   it('attaches a screenshot to the opening prompt of a screen with nothing to tap by id', () => {
@@ -292,10 +367,11 @@ describe('agent.act pixel verbs', () => {
     }
   });
 
-  it('leaves every pixel verb out of the vocabulary once a secret was filled', () => {
-    expect(resultByTitle(outcome, 'offers no pixel verbs after a secret fill').status).toBe('passed');
+  it('keeps every pixel verb in the vocabulary after a secret fill', () => {
+    expect(resultByTitle(outcome, 'offers pixel verbs after a secret fill').status).toBe('passed');
     const [first] = turnsOf('note the page');
-    for (const verb of POINT_VERBS) expect(first!.toolNames).not.toContain(verb);
+    for (const verb of POINT_VERBS) expect(first!.toolNames).toContain(verb);
+    expect(first!.toolNames).toContain('screenshot');
     expect(first!.toolNames).toContain('tap');
     expect(first!.toolNames).toContain('type');
   });
@@ -461,5 +537,150 @@ test('a point tap issued alongside a node tap lands first', async ({ app, agent,
     expect(actions).toEqual(['tapAt', 'tap']);
     expect(step.metrics!.modelCalls).toBe(0);
     expect(step.model).toBeUndefined();
+  });
+});
+
+/**
+ * The popover layout on an engine with node taps and no `performAt`: a point
+ * outside the popover still taps the dismiss control by id, since a bare
+ * point is not an option, even though its center is covered.
+ */
+describe('actions.tapAt on an engine that taps listed nodes only', () => {
+  const performed: string[] = [];
+  let summary: string | undefined;
+  let outcome: RunOutcome;
+  let project: FixtureProject;
+
+  beforeAll(async () => {
+    const rect = (x: number, y: number, width: number, height: number) => ({ x, y, width, height });
+    const engine = defineEngine({
+      name: 'node-taps-only', version: '1', spiVersion: 1, platform: 'fixture',
+      actions: ['tap'],
+      perform: async (ref: NodeRef) => { performed.push(ref.id); },
+      observe: async () => ({
+        root: {
+          ref: { id: 'root', revision: '' },
+          rect: rect(0, 0, 1280, 720),
+          children: [
+            { ref: { id: 'dismiss', revision: '' }, role: 'button', name: 'Dismiss popover', rect: rect(0, 0, 1280, 720) },
+            {
+              ref: { id: 'dialog', revision: '' },
+              role: 'dialog',
+              name: 'Calendar',
+              rect: rect(540, 260, 200, 200),
+              children: [{ ref: { id: 'day', revision: '' }, role: 'button', name: '15', rect: rect(540, 260, 200, 200) }],
+            },
+          ],
+        },
+        viewport: { width: 1280, height: 720 },
+      }),
+    });
+    const executor: StepExecutor = {
+      name: 'outside-tapper',
+      version: '1',
+      async runStep(context) {
+        await context.observe();
+        ({ summary } = await context.actions.tapAt({ x: 100, y: 100 }));
+        return { status: 'passed', summary };
+      },
+    };
+    const run = await runProject(
+      {
+        'tests/outside.e2e.ts': `import { test, expect } from 'e2e';
+test('taps outside the popover', async ({ agent }) => {
+  await agent.act('dismiss the calendar popover', {
+    onAction: (event) => { expect(event).not.toHaveProperty('point'); },
+  });
+});
+`,
+      },
+      {
+        appUrl: 'https://fixture.test',
+        config: { tests: 'tests/**/*.e2e.ts', cache: 'off', targets: [{ name: 'fixture', engine }], agents: { default: { executor } } },
+      },
+    );
+    outcome = run.outcome;
+    project = run.project;
+  }, 120_000);
+
+  afterAll(() => project?.cleanup());
+
+  it('taps the covered control by id and says so', () => {
+    const result = resultByTitle(outcome, 'taps outside the popover');
+    expect(result.status, JSON.stringify(result.attempts[0]?.error)).toBe('passed');
+    expect(performed).toEqual(['dismiss']);
+    expect(summary).toMatch(/^Tapped #\S+ button "Dismiss popover", the control at \(100, 100\)\.$/);
+  });
+});
+
+describe('actions.dragAt on an engine that drags listed nodes only', () => {
+  const performed: string[] = [];
+  let summary: string | undefined;
+  let refused: string | undefined;
+  let outcome: RunOutcome;
+  let project: FixtureProject;
+
+  beforeAll(async () => {
+    const rect = (x: number, y: number, width: number, height: number) => ({ x, y, width, height });
+    const engine = defineEngine({
+      name: 'node-drags-only', version: '1', spiVersion: 1, platform: 'fixture',
+      actions: ['dragTo'],
+      perform: async (ref: NodeRef, action: LocatorAction) => { performed.push(action.kind === 'dragTo' ? `${ref.id} onto ${action.target.id}` : ref.id); },
+      observe: async () => ({
+        root: {
+          ref: { id: 'root', revision: '' },
+          rect: rect(0, 0, 1280, 720),
+          children: [
+            { ref: { id: 'card', revision: '' }, role: 'button', name: 'Card', rect: rect(100, 100, 200, 100) },
+            { ref: { id: 'done', revision: '' }, role: 'button', name: 'Done', rect: rect(600, 100, 200, 100) },
+          ],
+        },
+        viewport: { width: 1280, height: 720 },
+      }),
+    });
+    const executor: StepExecutor = {
+      name: 'card-dragger',
+      version: '1',
+      async runStep(context) {
+        await context.observe();
+        ({ summary } = await context.actions.dragAt({ x: 150, y: 150 }, { x: 700, y: 150 }));
+        try {
+          await context.actions.dragAt({ x: 120, y: 120 }, { x: 280, y: 180 });
+        } catch (error) {
+          refused = (error as { code?: string }).code;
+        }
+        return { status: 'passed', summary };
+      },
+    };
+    const run = await runProject(
+      {
+        'tests/board.e2e.ts': `import { test, expect } from 'e2e';
+test('moves the card to done', async ({ agent }) => {
+  await agent.act('move the card to done', {
+    onAction: (event) => {
+      expect(event).not.toHaveProperty('from');
+      expect(event).not.toHaveProperty('to');
+    },
+  });
+});
+`,
+      },
+      {
+        appUrl: 'https://fixture.test',
+        config: { tests: 'tests/**/*.e2e.ts', cache: 'off', targets: [{ name: 'fixture', engine }], agents: { default: { executor } } },
+      },
+    );
+    outcome = run.outcome;
+    project = run.project;
+  }, 120_000);
+
+  afterAll(() => project?.cleanup());
+
+  it('joins the two controls by id and says so, and refuses a drag inside one control', () => {
+    const result = resultByTitle(outcome, 'moves the card to done');
+    expect(result.status, JSON.stringify(result.attempts[0]?.error)).toBe('passed');
+    expect(performed).toEqual(['card onto done']);
+    expect(summary).toMatch(/^Dragged #\S+ button "Card", the control at \(150, 150\), onto #\S+ button "Done", the control at \(700, 150\)\.$/);
+    expect(refused).toBe('UNSUPPORTED_CAPABILITY');
   });
 });

@@ -2,7 +2,7 @@
 
 A Next.js App Router greeting app with three locator tests and two agent tests.
 
-![Next.js example app with the greeting "Hello, Ada!"](screenshot.png)
+![Next.js example app with the greeting "hello, Ada!"](screenshot.png)
 
 ## Run
 
@@ -28,6 +28,6 @@ Without the key, the agent tests skip. Add `-- --no-cache` to use fresh
 model calls. Results are in `.e2e/report.json`.
 
 See [e2e.config.ts](e2e.config.ts) and [tests/](tests/) for the setup.
-For your own app, follow the [Quickstart](https://e2e.tester.army/docs/quickstart).
+For your own app, follow the [Quickstart](https://e2e.com/docs/quickstart).
 
-Last checked with e2e 0.21.2, @e2e-dev/web 0.15.2, Next.js 16.4, and Node 22.
+Last checked with e2e 0.22.0, @e2e-dev/web 0.15.4, Next.js 16.4, and Node 22.

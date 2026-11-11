@@ -15,6 +15,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { ExecutorNode } from '../../src/agent/executor.ts';
 import type { ArtifactStore, StoredArtifact } from '../../src/types.ts';
 import type { RunOutcome } from '../../src/run/runner.ts';
+import { findNode } from '../helpers/executor-tree.ts';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 import { contentsUnder, createProject, resultByTitle, runExisting, type FixtureProject } from '../helpers/run-project.ts';
 import { entriesFor, readEntries } from '../helpers/trace-cache.ts';
@@ -94,15 +95,7 @@ describe('filled secrets', () => {
               name: 'secret-filler',
               async runStep(context) {
                 const observation = await context.observe({ tree: true });
-                const find = (match: (node: ExecutorNode) => boolean) =>
-                  (function walk(node: ExecutorNode): ExecutorNode | undefined {
-                    if (match(node)) return node;
-                    for (const child of node.children ?? []) {
-                      const found = walk(child);
-                      if (found !== undefined) return found;
-                    }
-                    return undefined;
-                  })(observation.tree!);
+                const find = (match: (node: ExecutorNode) => boolean) => findNode(observation.tree, match);
                 // Declared secrets are keyed by the credential's name, not the param's.
                 await context.actions.typeSecret({ id: find((node) => node.states?.secure === true)!.id }, 'member.password');
                 // A secure field never shows its value, so the fill alone leaves nothing a replay

@@ -4,7 +4,7 @@ A .NET MAUI greeting app with three locator tests and two agent tests per
 platform. Android and iOS share one page, `MainPage.xaml`. The test project
 is in `e2e/`, next to the .NET project.
 
-<img src="screenshot-android.png" alt=".NET MAUI app on Android with the greeting Hello, Ada!" width="300" /> <img src="screenshot-ios.png" alt=".NET MAUI app on iOS with the greeting Hello, Ada!" width="300" />
+<img src="screenshot-android.png" alt=".NET MAUI app on Android with the greeting hello, Ada!" width="300" /> <img src="screenshot-ios.png" alt=".NET MAUI app on iOS with the greeting hello, Ada!" width="300" />
 
 ## Run
 
@@ -52,21 +52,20 @@ model calls. Results are in `e2e/.e2e/report.json`.
   iOS. On Android, MAUI writes it as the resource id
   `dev.e2e.examples.maui:id/<AutomationId>`, and `getByTestId('greet')`
   finds it without the package.
-- The placeholder is not a name. iOS takes the field's name from
-  `SemanticProperties.Description`. On Android, MAUI also writes the
-  description into the field's text, so a filled field reads `Name, Ada`.
-  [MainPage.xaml](MainPage.xaml) sets it on iOS only.
+- iOS takes the field's name from `SemanticProperties.Description`. On
+  Android, MAUI also writes the description into the field's text, so a
+  filled field reads `name, Ada`. [MainPage.xaml](MainPage.xaml) sets it on
+  iOS only, and Android reads the visible `name` label instead.
 - A Debug build for Android keeps its assemblies outside the APK (Fast
   Deployment), and `app.clearState()` deletes them with the app data. The
   app then exits at start. For tests that clear app data, build with
   `-p:EmbedAssembliesIntoApk=true`.
 
 See [e2e/e2e.config.ts](e2e/e2e.config.ts) and [e2e/tests/](e2e/tests/) for the setup.
-For device setup and CI, see the [Mobile guide](https://e2e.tester.army/docs/mobile).
+For device setup and CI, see the [Mobile guide](https://e2e.com/docs/mobile).
 
 The bundled fonts use the [SIL Open Font License](Resources/Fonts/OFL.txt).
 
-Last checked on 2026-10-17 with e2e 0.21.2, @e2e-dev/mobile 0.12.3, .NET
-SDK 10.0.201, and MAUI 10.0.20 on an Android 15 emulator and an iOS 26.4
-simulator. Three locator tests passed on each; the agent tests skipped
-without a key.
+Last checked on 2026-11-04 with e2e 0.22.0, @e2e-dev/mobile 0.12.5, .NET
+SDK 10.0.403, and MAUI 10.0.110 on an Android 16 emulator and an iOS 26.5
+simulator. The three locator tests and the two agent tests passed on each.

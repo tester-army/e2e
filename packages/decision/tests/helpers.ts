@@ -2,7 +2,7 @@ import type { LanguageModel } from 'ai';
 import type { DecisionExecutorOptions } from '../src/index.ts';
 import type { ExecutorActions, ExecutorModelCall, ExecutorNode, ExecutorObservation, ExecutorPixels, JsonValue, StepExecutorContext, StepTurn } from 'e2e';
 import { expect, vi } from 'vitest';
-import { PNG } from 'pngjs';
+import { whitePng } from './png-helpers.ts';
 /** One scripted answer: the choice, its distribution, and the reported confidence. */
 export interface ScriptedAnswer {
   readonly choice: string;
@@ -127,7 +127,6 @@ export function context(options: {
   params?: Readonly<Record<string, JsonValue>>;
   secrets?: StepExecutorContext['step']['secrets'];
   vision?: StepExecutorContext['step']['vision'];
-  pixelsTainted?: boolean;
 } = {}) {
   const signal = options.signal ?? new AbortController().signal;
   const noop = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
@@ -143,9 +142,10 @@ export function context(options: {
     navigate: vi.fn<ExecutorActions['navigate']>().mockResolvedValue(undefined),
     doubleTap: noop, longPress: noop, secondaryTap: noop, hover: noop,
     drag: noop, scrollTo: noop, scrollUntil: noop, upload: noop,
-    typeText: noop, pressKey: noop, dismissKeyboard: noop,
+    typeText: noop, pressKey: noop, dismissKeyboard: noop, resize: noop,
     tapAt: vi.fn<ExecutorActions['tapAt']>().mockImplementation(async (point) => ({ point, summary: 'tap' })),
     hoverAt: vi.fn<ExecutorActions['hoverAt']>().mockImplementation(async (point) => ({ point, summary: 'hover' })),
+    dragAt: vi.fn<ExecutorActions['dragAt']>().mockImplementation(async (from, to) => ({ from, to, summary: 'drag' })),
     hitTest: vi.fn<ExecutorActions['hitTest']>().mockImplementation(async (point) => ({ point, summary: 'hit' })),
   };
   const tree = options.tree ?? { id: 'root', children: [{ id: 'name', role: 'textbox', name: 'Name', value: '' }] };
@@ -159,11 +159,11 @@ export function context(options: {
   const transcripts: string[] = [];
   const ctx: StepExecutorContext = {
     step: { kind: options.kind ?? 'act', index: 0, instruction: 'Do the thing', params: options.params, secrets: options.secrets ?? [{ name: 'password', purpose: 'password' }], ...(options.vision === undefined ? {} : { vision: options.vision }) },
-    attempt: { testId: 'test', attemptId: 'attempt', index: 0, signal, memory: new Map() },
+    attempt: { testId: 'test', attemptId: 'attempt', titlePath: [], index: 0, signal, memory: new Map() },
     signal, target: { name: 'web', platform: 'web', verbs: new Set(options.verbs ?? (Object.keys(actions) as (keyof ExecutorActions)[])), tapModifiers: false },
     model: options.model as StepExecutorContext['model'], providerOptions: undefined,
     ledger: options.ledger ?? '', agentContext: undefined,
-    actions, observe, pixelsTainted: options.pixelsTainted ?? false,
+    actions, observe,
     attachTranscript: (text) => { transcripts.push(text); }, attachTurns: (seen) => { turns.push(...seen); }, attachScreenshot: async () => 'screenshot',
     budgets: { maxActions: 25, maxModelCalls: options.maxModelCalls ?? 25, remainingMs: () => 60000, actionsUsed: () => 0, recordModelCall: (call) => { usage.push(call ?? {}); }, runTool: (_call, body) => body() },
     ...(options.replayedPrefix === undefined ? {} : { replayedPrefix: options.replayedPrefix }),
@@ -187,7 +187,5 @@ export const FIELD: ExecutorNode = { id: 'root', children: [
 ]};
 /** A decodable white screenshot of the fixture viewport. */
 export function whitePixels(): ExecutorPixels {
-  const png = new PNG({ width: 800, height: 600 });
-  png.data.fill(255);
-  return { data: new Uint8Array(PNG.sync.write(png)), mediaType: 'image/png', width: 800, height: 600, scale: 1, maskedRegionCount: 0 };
+  return { data: whitePng(800, 600), mediaType: 'image/png', width: 800, height: 600, scale: 1, maskedRegionCount: 0 };
 }

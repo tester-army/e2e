@@ -1,6 +1,6 @@
 {
   "name": "@e2e-dev/limrun",
-  "version": "0.2.1",
+  "version": "0.2.4",
   "description": "Limrun hosted iOS simulators and Android emulators for e2e mobile tests",
   "keywords": [
     "e2e",
@@ -16,13 +16,13 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/tester-army/e2e.git",
+    "url": "git+https://github.com/e2e-inc/e2e.git",
     "directory": "packages/limrun"
   },
   "bugs": {
-    "url": "https://github.com/tester-army/e2e/issues"
+    "url": "https://github.com/e2e-inc/e2e/issues"
   },
-  "homepage": "https://github.com/tester-army/e2e/tree/main/packages/limrun#readme",
+  "homepage": "https://github.com/e2e-inc/e2e/tree/main/packages/limrun#readme",
   "publishConfig": {
     "registry": "https://registry.npmjs.org/",
     "access": "public",
@@ -49,21 +49,21 @@
   },
   "peerDependencies": {
     "@e2e-dev/mobile": ">=0.11.1 <1",
-    "e2e": ">=0.15.0 <1",
-    "@limrun/api": ">=0.59.0 <1"
+    "@limrun/api": ">=0.59.0 <1",
+    "e2e": ">=0.15.0 <1"
   },
   "devDependencies": {
     "@e2e-dev/mobile": "workspace:*",
-    "@types/node": "26.6.2",
+    "@limrun/api": "0.69.4",
+    "@types/node": "26.6.6",
     "e2e": "workspace:*",
     "typescript": "7.0.2",
-    "vitest": "5.0.1",
-    "@limrun/api": "0.59.0"
+    "vitest": "5.1.0"
   },
   "engines": {
     "node": "^22.22.3 || >=24.8.0"
   },
   "dependencies": {
-    "agent-device": "0.21.29"
+    "agent-device": "0.21.36"
   }
 }

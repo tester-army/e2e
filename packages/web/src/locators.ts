@@ -191,14 +191,30 @@ export type PostStep =
  * never selects or retains a node that state calls hidden, and the surface's
  * hold of a terminal query to the batch-read state agrees with it.
  */
-function visibleQueryToPw(scope: PwScope, query: SemanticQuery, testIdAttribute: string): PwLocator {
-  return narrowedToVisible(queryToPw(scope, query, testIdAttribute), query);
+function visibleQueryToPw(scope: PwScope, query: SemanticQuery, options: ProjectionOptions): PwLocator {
+  return narrowedToVisible(queryToPw(scope, query, options.testIdAttribute), query, options.frameHidden);
 }
 
-/** The visibility narrowing above, on a locator already built for `query`; identity unless the query is `visible`. */
-function narrowedToVisible(located: PwLocator, query: SemanticQuery): PwLocator {
+/**
+ * Matches no element. Inside a hidden frame every node reads as hidden, which
+ * the frame's own document cannot see, so a query that never matches a
+ * hidden node, a `visible` or a role query, narrows to it there.
+ */
+const NOTHING_SELECTOR = 'css=:not(*)';
+
+/** The visibility narrowing above, on a locator already built for `query`; identity unless the query keeps shown nodes alone. */
+function narrowedToVisible(located: PwLocator, query: SemanticQuery, frameHidden: boolean): PwLocator {
+  if (frameHidden && (query.visible === true || query.kind === 'role')) return located.locator(NOTHING_SELECTOR);
   if (query.visible !== true) return located;
   return located.locator(SHOWN_SELECTOR);
+}
+
+/** What a projection reads besides the expression. */
+export interface ProjectionOptions {
+  /** The attribute a `testId` query reads. */
+  readonly testIdAttribute: string;
+  /** True when a frame along the expression's frame chain is hidden, so every node in it is. */
+  readonly frameHidden: boolean;
 }
 
 export interface ProjectedLocator {
@@ -256,7 +272,7 @@ function plain(locator: PwLocator): ProjectedLocator {
 }
 
 const DISPLAY_VALUE_COMPOSITION_MESSAGE =
-  'displayValue queries cannot scope child queries or serve as a has-filter in this engine';
+  'displayValue queries cannot scope child queries or serve as a has or hasNot filter in this engine';
 
 /**
  * Projects a complete immutable expression onto a Playwright locator within
@@ -266,13 +282,13 @@ const DISPLAY_VALUE_COMPOSITION_MESSAGE =
  * it (see `Candidates`), so a scope, a `has` filter, and an index reach
  * across a closed boundary. Two compositions stay Playwright's own and stop
  * at one: a `selector` expression is the platform's CSS or XPath, and
- * `filter({ hasText })` reads an element's text as Playwright does, light DOM
- * and open roots, so text inside a closed root does not count toward an
- * element outside it.
+ * `filter({ hasText, hasNotText })` reads an element's text as Playwright
+ * does, light DOM and open roots, so text inside a closed root does not count
+ * toward an element outside it.
  *
  * A display-value query resolves to a candidate locator plus a value predicate
  * the surface applies once the candidates are read. Per-element filters
- * (`filter({ hasText, has })`) commute with that predicate, so they compose
+ * (`filter({ hasText, hasNotText, has, hasNot })`) commute with that predicate, so they compose
  * onto the candidate locator as for any other query. Positional selection does
  * not commute (positions are relative to the value-filtered matches), so it is
  * recorded as a step and applied after filtering; a filter that follows a
@@ -281,21 +297,21 @@ const DISPLAY_VALUE_COMPOSITION_MESSAGE =
  * unsupported: a display-value query as the scope of a child query, and as a
  * `has` filter.
  */
-function project(scope: PwScope, expression: LocatorExpression, testIdAttribute: string): ProjectedLocator {
+function project(scope: PwScope, expression: LocatorExpression, options: ProjectionOptions): ProjectedLocator {
   switch (expression.kind) {
     case 'union': {
-      const left = requireComposable(project(scope, expression.left, testIdAttribute));
-      const right = requireComposable(project(scope, expression.right, testIdAttribute));
+      const left = requireComposable(project(scope, expression.left, options));
+      const right = requireComposable(project(scope, expression.right, options));
       return plain(left.or(right));
     }
     case 'query': {
       const inner =
         expression.scope === undefined
           ? scope
-          : requireComposable(project(scope, expression.scope, testIdAttribute));
+          : requireComposable(project(scope, expression.scope, options));
       const { query } = expression;
       const exactLabel = query.kind === 'label' && query.value.kind === 'string' && query.value.exact ? query.value : null;
-      const locator = visibleQueryToPw(inner, query, testIdAttribute);
+      const locator = visibleQueryToPw(inner, query, options);
       return {
         locator,
         displayValue: query.kind === 'displayValue' ? query.value : null,
@@ -306,24 +322,28 @@ function project(scope: PwScope, expression: LocatorExpression, testIdAttribute:
       };
     }
     case 'filter': {
-      const source = project(scope, expression.source, testIdAttribute);
-      const options: PwFilterOptions = {};
-      if (expression.hasText !== undefined) options.hasText = patternToPw(expression.hasText);
+      const source = project(scope, expression.source, options);
+      const filter: PwFilterOptions = {};
+      if (expression.hasText !== undefined) filter.hasText = patternToPw(expression.hasText);
+      if (expression.hasNotText !== undefined) filter.hasNotText = patternToPw(expression.hasNotText);
       if (expression.has !== undefined) {
-        options.has = requireComposable(project(scope, expression.has, testIdAttribute));
+        filter.has = requireComposable(project(scope, expression.has, options));
+      }
+      if (expression.hasNot !== undefined) {
+        filter.hasNot = requireComposable(project(scope, expression.hasNot, options));
       }
       if (source.steps.length > 0) {
-        return { ...source, steps: [...source.steps, { kind: 'filter', options }] };
+        return { ...source, steps: [...source.steps, { kind: 'filter', options: filter }] };
       }
       return {
         ...source,
-        locator: source.locator.filter(options),
-        composable: source.composable === null ? null : source.composable.filter(options),
+        locator: source.locator.filter(filter),
+        composable: source.composable === null ? null : source.composable.filter(filter),
         steps: [],
       };
     }
     case 'index': {
-      const source = project(scope, expression.source, testIdAttribute);
+      const source = project(scope, expression.source, options);
       if (source.displayValue !== null || source.name !== null) {
         return {
           ...source,
@@ -336,17 +356,17 @@ function project(scope: PwScope, expression: LocatorExpression, testIdAttribute:
     case 'selector':
       return plain(scope.locator(expression.selector));
     case 'frame':
-      return project(scope.frameLocator(expression.selector), expression.source, testIdAttribute);
+      return project(scope.frameLocator(expression.selector), expression.source, options);
   }
 }
 
-/** Projects an expression onto the page; `testIdAttribute` is what a `testId` query reads. */
+/** Projects an expression onto the page. */
 export function projectExpression(
   page: Page,
   expression: LocatorExpression,
-  testIdAttribute: string,
+  options: ProjectionOptions,
 ): ProjectedLocator {
-  return project(page, expression, testIdAttribute);
+  return project(page, expression, options);
 }
 
 /**

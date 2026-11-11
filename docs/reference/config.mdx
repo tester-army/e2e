@@ -1,9 +1,8 @@
 ---
 title: E2EConfig
 description: Every configuration key, its default, its valid range, and the environment variables.
-icon: "sliders"
-"og:image": "https://e2e.tester.army/docs/images/og/reference/config.png?v=6c4dead1fc"
-"twitter:image": "https://e2e.tester.army/docs/images/og/reference/config.png?v=6c4dead1fc"
+"og:image": "https://e2e.com/docs/images/og/reference/config.png?v=6c4dead1fc"
+"twitter:image": "https://e2e.com/docs/images/og/reference/config.png?v=6c4dead1fc"
 ---
 
 `e2e.config.ts` configures the runner: the targets tests run on, the app each
@@ -52,6 +51,7 @@ export default {
 | [`trace`](#trace) | `RecordingMode` | `'retain-on-failure'` |
 | [`video`](#video) | `RecordingMode` | `'off'` |
 | [`agents`](#agents) | `Record<string, AgentConfig>` | `default`, no model |
+| [`filters`](#filters) | `TestFilter[]` | - |
 | [`cache`](#cache) | `CacheMode \| CacheConfig` | `'read-write'`, `'read-only'` in CI |
 | [`credentials`](#credentials) | `Record<string, CredentialConfig>` | - |
 | [`secrets`](#secrets) | `Record<string, SecretConfig>` | - |
@@ -140,7 +140,9 @@ actionTimeout: 10_000, // default: 30000
 ```
 
 - A targeted agent action is bounded by the smaller of `actionTimeout` and 15 s.
-- A call's own `timeout` option wins over it.
+- A call's own `timeout` option wins over it. `timeout: 0` sets no deadline
+  for that call; the test timeout, or `cleanupTimeout` in `afterEach`, still
+  bounds it.
 - `--action-timeout <ms>` overrides it for one run.
 
 #### `assertionTimeout`
@@ -151,7 +153,9 @@ The default `expect` deadline, in milliseconds.
 assertionTimeout: 10_000, // default: 5000
 ```
 
-- A matcher's own `timeout` option wins over it.
+- A matcher's own `timeout` option wins over it. `timeout: 0` sets no deadline
+  for that matcher; the test timeout, or `cleanupTimeout` in `afterEach`,
+  still bounds it.
 - `--assertion-timeout <ms>` overrides it for one run.
 
 #### `cleanupTimeout`
@@ -352,8 +356,8 @@ targets: [
 Each engine checks the keys at config load, with `INVALID_CONFIG` naming the
 target. A target with `app` needs an [engine](#engine).
 
-- A `web()` target needs `app.url` and refuses `bundleId`, `appPath`,
-  `launchArguments`, and `permissions`.
+- A `web()` target needs `app.url` and refuses `bundleId`, `appPath`, and
+  `launchArguments`.
 - A `mobile()` target needs `app.bundleId` or `app.appPath`. `app.url` on a
   mobile target is not supported yet.
 - An unknown key in `app` or `app.command` fails with a did-you-mean.
@@ -452,14 +456,28 @@ own `identity`.
 
 #### `permissions`
 
-Permissions the app holds on every fresh launch, by name.
+Permissions the app holds, by name.
 
 ```ts
 permissions: { camera: 'grant' },
 ```
 
-Each is `'grant'`, `'deny'`, or `'reset'`. See
-[permissions](/reference/mobile#engine).
+Each is `'grant'`, `'deny'`, or `'reset'`.
+
+- A `mobile()` target sets each one before every fresh launch. See
+  [permissions](/reference/mobile#engine).
+- A `web()` target takes `'grant'` only and grants it to every page of the
+  attempt, on any origin. Headless Chromium refuses a permission left out. See
+  [Granting browser permissions](/web#granting-browser-permissions).
+
+| Browser | Names |
+| --- | --- |
+| `chromium` | `accelerometer`, `ambient-light-sensor`, `background-sync`, `camera`, `clipboard-read`, `clipboard-write`, `geolocation`, `gyroscope`, `local-fonts`, `local-network-access`, `magnetometer`, `microphone`, `midi`, `midi-sysex`, `notifications`, `payment-handler`, `screen-wake-lock`, `storage-access` |
+| `firefox` | `geolocation`, `local-network-access`, `notifications`, `persistent-storage`, `push`, `screen-wake-lock` |
+| `webkit` | `camera`, `clipboard-read`, `geolocation`, `microphone`, `notifications`, `screen-wake-lock` |
+
+A browser provider or `connect` takes the `chromium` names: the engine drives
+it over CDP, Lightpanda included.
 
 #### `command`
 
@@ -502,9 +520,12 @@ command: {
 - `shutdownTimeout` is the grace period before force-kill.
 - `log` receives the process's stdout and stderr, appended, resolved from the
   project root. It must stay inside the project root.
-- A startup failure quotes the last 20 lines appended since the command
-  started, with `command.env` and `inheritEnv` values replaced by
-  `<secret:NAME>` markers.
+- With a `log`, a failure after the command started quotes the lines any
+  process appended since then, with `command.env` and `inheritEnv` values of
+  at least four characters replaced by `<secret:NAME>` markers. A log of up to
+  40 lines inside 8 KiB is quoted whole. Otherwise the quote keeps up to 20
+  lines from each end, with `[startup output omitted]` between them, and for a
+  log past 8 KiB those lines come from its first and last 4 KiB.
 - `reuseExisting`: when the readiness URL already answers before the command
   starts, the runner uses that process. It starts nothing and stops nothing.
   CI ignores it, with a notice, and always starts the command.
@@ -599,6 +620,7 @@ overrides it for one run.
 | `report.json` | The canonical report; `--last-failed` reads the one here |
 | `junit.xml`, `summary.md` | The `junit` and `markdown` reporters' files |
 | `ai-trace.json` | `--ai-trace` |
+| `timings.json` | How long each file took, smoothed over recent runs. A run with more than one worker starts the longest files first by it; see [Cache the timings history](/ci#cache-the-timings-history) |
 | `results/` | One directory per test: its [trace page](/debugging#traces), `trace.md`, when the [`trace`](#trace) mode keeps one, and its screenshots, videos, downloads, and logs, one `attempt-<n>/` per attempt. Cleared once a run's tests start, so it holds the latest run's evidence and nothing its report no longer names. A `--last-failed` rerun keeps the files the report it reruns names and writes its own attempts under each test's `rerun-<n>/` |
 | `sessions/` | The run's encrypted `test.setup` sessions, deleted when it ends |
 | `videos/<session>/` | [`e2e mcp`](/reference/mcp#recording) session recordings |
@@ -932,14 +954,15 @@ See [Models](/models) and [`ModelInstance`](#modelinstance).
 
 #### `judge`
 
-The model for `assert`, `waitFor`, and `extract`.
+The model for non-exploring `assert`, `waitFor`, and `extract`. Built-in
+exploring assertions use `agents.<name>.model`, even when `judge` is set.
 
 ```ts
 judge: gateway('anthropic/claude-opus-5'), // default: model
 ```
 
 - Judgments allow 8192 output tokens per call.
-- A judgment sees the instruction and the current screen only.
+- A judgment sees the instruction, its params, the agent's context, and the current screen with its location.
 
 See [A judge of its own](/models#a-judge-of-its-own).
 
@@ -1068,6 +1091,33 @@ value in an old shape fails the config load with `INVALID_CONFIG`:
 | top-level `limits.maxModelTokensPerCall` | `maxInputTokens` on each agent |
 | top-level `limits.maxAgentContextBytes`, `maxLedgerBytes`, `maxEventsPerStep` | removed; the runner fixes them at 16384 bytes, 8192 bytes, and 1000 events |
 
+### filters
+
+[Test filters](/filters) that leave out the tests a change can't affect,
+applied in order when the run passes `--changed-since`.
+
+```ts title="e2e.config.ts"
+import type { E2EConfig } from 'e2e';
+import { web } from '@e2e-dev/web';
+import { gateway } from 'ai';
+import { decisionFilter } from '@e2e-dev/decision';
+
+export default {
+  targets: [{ engine: web(), app: { url: 'http://localhost:3000' } }],
+  filters: [decisionFilter({ model: gateway.decisionModel('typesafe-ai/jev') })],
+} satisfies E2EConfig;
+```
+
+Which tests always run is on
+[Test filters](/filters#what-always-runs). A `name` follows the target name
+rules, is at most 256 characters, and is unique among `filters`.
+
+| Throws | When |
+| --- | --- |
+| `INVALID_CONFIG` | A bad `name`, an item that isn't `{ name, filter }`, or a bare function such as `decisionFilter` in place of `decisionFilter({ model })`. |
+
+The declarations are under [`TestFilter`](#testfilter), exported from `e2e`.
+
 ### credentials
 
 Named accounts. Each entry is a username and a password the model never sees.
@@ -1095,7 +1145,7 @@ credentials: {
 | `INVALID_CONFIG` | A `secrets` entry named exactly `admin.password` beside an `admin` credential. |
 | `INVALID_CONFIG` | Two credentials whose names map to one `E2E_USER_<NAME>_*` override, like `svc-a` and `svc_a` (see [Environment variables](/reference/environment)). |
 
-See [Signing in](/authentication). The declarations are under
+See [Authentication](/authentication). The declarations are under
 [`CredentialConfig`](#credentialconfig).
 
 #### `username`
@@ -1511,6 +1561,8 @@ export interface E2EConfig {
   reporters?: readonly (BuiltinReporter | Reporter)[];
   /** Named agents: the built-in agent's options, or `{ executor }` for a custom brain. */
   agents?: Readonly<Record<string, AgentConfig>>;
+  /** Test filters, in order, run with `--changed-since`: each judges the tests the one before it kept. */
+  filters?: readonly TestFilter[];
   /** Replay cache mode or options; default `read-write`, `read-only` in CI. */
   cache?: CacheMode | CacheConfig;
   /** Named accounts: a username and a password the model never sees. */
@@ -1685,6 +1737,63 @@ export interface ModelInstance {
   readonly doGenerate: (...args: never[]) => unknown;
 }
 ```
+
+### `TestFilter`
+
+```ts
+interface TestFilter {
+  /** Names the filter in the report and in errors. */
+  readonly name: string;
+  readonly filter: (tests: readonly TestFilterCandidate[], context: TestFilterContext) => TestFilterResult | Promise<TestFilterResult>;
+}
+
+interface TestFilterCandidate {
+  /** The report's `testId`, and the key `exclude` takes. */
+  readonly id: string;
+  /** Project-relative path of the test file. */
+  readonly file: string;
+  /** The describe titles, then the test title. */
+  readonly titlePath: readonly string[];
+  /** The describe chain's tags, then the test's own. */
+  readonly tags: readonly string[];
+  /** Project-relative path of the setup test file that saves the test's session; absent without one. */
+  readonly setupFile?: string;
+}
+
+interface TestFilterContext {
+  /** Absolute project root, spelled as on disk like `changes.root`. */
+  readonly projectRoot: string;
+  /** The change every filter of the run judges. */
+  readonly changes: TestFilterChanges;
+  /** The config file the run loaded, relative to `changes.root` like `changes.files`; `undefined` for a config object or one outside the repository. */
+  readonly configFile?: string | undefined;
+  /** Aborts when the run is interrupted, or with a `TimeoutError` after 5 minutes. */
+  readonly signal: AbortSignal;
+  /** Prints one progress line. */
+  log(line: string): void;
+  /** Replaces every fixed-value secret and credential password in `text`, and any run of 8 or more consecutive characters of one. */
+  redact(text: string): string;
+}
+
+interface TestFilterChanges {
+  /** The merge base of the `--changed-since` ref and `HEAD`. */
+  readonly base: string;
+  /** Absolute path of the repository root, spelled as on disk like `projectRoot`. */
+  readonly root: string;
+  /** Repository-relative POSIX paths of every changed file, uncommitted and untracked files included. Sorted, never empty. */
+  readonly files: readonly string[];
+}
+
+interface TestFilterResult {
+  /** The tests to leave out, by `id`, each with a non-empty reason the report shows. An `id` of a collected test this filter wasn't given is ignored; any other fails the filter. */
+  readonly exclude: Readonly<Record<string, string>>;
+  /** One line about the whole decision. */
+  readonly note?: string;
+}
+```
+
+`TestFilter`, `TestFilterCandidate`, `TestFilterContext`,
+`TestFilterChanges`, and `TestFilterResult` are exported from `e2e`.
 
 ### `CredentialConfig`
 

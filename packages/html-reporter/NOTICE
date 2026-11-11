@@ -1,0 +1,16 @@
+@e2e-dev/html-reporter
+Copyright 2026 TesterArmy, Inc.
+
+This product includes software developed at TesterArmy, Inc.
+(https://tester.army).
+
+The report page embeds these fonts, each under the SIL Open Font License 1.1
+(full text in app/fonts/*-OFL.txt):
+- Geist, Copyright 2024 The Geist Project Authors
+- JetBrains Mono, Copyright 2020 The JetBrains Mono Project Authors
+
+The report page includes icons from Lucide (https://lucide.dev), under the
+ISC License, some of them derived from Feather under the MIT License
+(full text in app/Lucide-LICENSE.txt):
+- Copyright (c) 2026 Lucide Icons and Contributors
+- Copyright (c) 2013-present Cole Bemis

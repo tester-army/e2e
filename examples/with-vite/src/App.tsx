@@ -21,45 +21,45 @@ export function App() {
   return (
     <div className="page">
       <header className="nav">
-        <img src="/e2e-lockup-32-white.svg" alt="e2e" width={109} height={32} />
+        <img src="/e2e-logotype-white.svg" alt="e2e" width={69} height={24} />
       </header>
 
       <main className="hero">
-        <p className="eyebrow">[01] with-vite</p>
-        <h1 className="title">Say hello</h1>
+        <p className="eyebrow">[ with-vite ]</p>
+        <h1 className="title">say hello</h1>
         <p className="lede">A demo screen for the e2e examples. Type a name and the app greets you.</p>
 
         <form className="form" onSubmit={greet}>
-          <label className="label" htmlFor="name">
-            Name
-          </label>
-          <div className="row">
+          <div className="field">
             <input
               id="name"
-              className="field"
+              className="field-input"
               autoComplete="off"
-              placeholder="Ada Lovelace"
+              aria-invalid={error}
               value={name}
               onChange={(event) => setName(event.target.value)}
             />
-            <button className="button" type="submit">
-              Greet
-            </button>
+            <label className="field-label" htmlFor="name">
+              name
+            </label>
           </div>
+          <button className="button" type="submit">
+            greet
+          </button>
           {error ? (
             <p className="error" role="alert">
-              Enter a name first.
+              enter a name first.
             </p>
           ) : null}
           {greeted !== null ? (
             <p className="status" role="status">
-              Hello, {greeted}!
+              hello, {greeted}!
             </p>
           ) : null}
         </form>
       </main>
 
-      <footer className="footer">Example app for e2e. The tests live in tests/.</footer>
+      <footer className="footer">example app for e2e. the tests live in tests/.</footer>
     </div>
   );
 }

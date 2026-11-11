@@ -14,13 +14,13 @@ Android emulator, or phone.
   skill and feature map on top of e2e. Invoke it with
   `/e2e:create-verification-skill` in Claude Code or
   `$e2e:create-verification-skill` in Codex. It loads only when invoked.
-- **migrate-to-e2e**: port a Playwright, Cypress, Selenium, Detox, or Maestro
-  suite to e2e one slice at a time, with the old suite running beside the
+- **migrate-to-e2e**: port a Playwright, Cypress, Selenium, Appium, Detox, Maestro,
+  or TesterArmy suite to e2e one slice at a time, with the old suite running beside the
   new one and a `MIGRATION.md` file the next session resumes from.
 
 ## Install
 
-The [tester-army/e2e](https://github.com/tester-army/e2e) repository is a
+The [e2e-inc/e2e](https://github.com/e2e-inc/e2e) repository is a
 marketplace for Claude Code, Codex, and Cursor. All three marketplace files
 point to `plugins/e2e`, and installation copies this directory into the
 client's cache. Grok Build reads the Claude Code files.
@@ -28,14 +28,14 @@ client's cache. Grok Build reads the Claude Code files.
 Claude Code:
 
 ```bash
-claude plugin marketplace add tester-army/e2e
+claude plugin marketplace add e2e-inc/e2e
 claude plugin install e2e@e2e
 ```
 
 Codex:
 
 ```bash
-codex plugin marketplace add tester-army/e2e
+codex plugin marketplace add e2e-inc/e2e
 codex plugin add e2e@e2e
 ```
 
@@ -44,14 +44,14 @@ there, then run **Developer: Reload Window**:
 
 ```bash
 repo=$(mktemp -d)
-git clone --depth 1 https://github.com/tester-army/e2e "$repo"
+git clone --depth 1 https://github.com/e2e-inc/e2e "$repo"
 mkdir -p ~/.cursor/plugins/local
 rm -rf ~/.cursor/plugins/local/e2e
 cp -R "$repo/plugins/e2e" ~/.cursor/plugins/local/
 ```
 
 On Teams and Enterprise, local plugins need the admin setting Allow Local
-Plugin Imports, or an admin imports `tester-army/e2e` under Team Marketplaces
+Plugin Imports, or an admin imports `e2e-inc/e2e` under Team Marketplaces
 in the Cursor dashboard.
 
 Start a new session after installing. The plugin's version follows e2e
@@ -61,7 +61,7 @@ releases. Update it with `claude plugin marketplace update e2e` followed by
 Cursor, run the commands above again.
 
 To try local changes, run the same commands from the monorepo root with
-`./` in place of `tester-army/e2e`. Claude Code reads a local marketplace
+`./` in place of `e2e-inc/e2e`. Claude Code reads a local marketplace
 in place, so edits show at the next session start or `/reload-plugins`. For
 a one-session preview, run `claude --plugin-dir ./plugins/e2e` or
 `agent --plugin-dir ./plugins/e2e`.
@@ -78,8 +78,12 @@ model: an AI SDK provider key, or a ChatGPT subscription through
 ## MCP server
 
 The plugin does not bundle the e2e MCP server, which runs from the project's
-own `e2e` install. To let Codex drive the running app, add it to the
-project's `.codex/config.toml`:
+own `e2e` install. `e2e init` offers to register it for Codex. In an existing
+project, run `e2e init --yes --skills none --mcp .codex/config.toml` with the installed CLI
+or add the entry below. Install dependencies, trust the project, and start a
+new Codex session from the project directory. In a directory with no e2e
+config, the agent can still open a session by naming the engine package:
+`open_session {engine: "@e2e-dev/web", app: {url: "http://localhost:3000"}}`.
 
 ```toml
 [mcp_servers.e2e]
@@ -101,11 +105,11 @@ Writing and running tests through the CLI does not require an MCP connection.
   failure codes; never test content, app content, or credentials) to a
   PostHog project run by the e2e maintainers. Turn it off with
   `E2E_TELEMETRY_DISABLED=1`, `DO_NOT_TRACK=1`, or `npx e2e telemetry disable`.
-  See [Telemetry](https://e2e.tester.army/docs/telemetry).
+  See [Telemetry](https://e2e.com/docs/telemetry).
 - `npx e2e feedback` sends a report to the same project. The skill shows the
   report first and sends it only when you agree.
 - Agent steps send the redacted screen to the model provider you configure.
-  See [Security](https://e2e.tester.army/docs/reference/security) for what
+  See [Security](https://e2e.com/docs/reference/security) for what
   is redacted.
 
 ## Maintain the package
@@ -122,6 +126,6 @@ work without the rest of the monorepo. The repo's development `.mcp.json`
 is outside this package.
 
 The initial Codex manifest, icons, and skill UI metadata came from
-[tester-army/plugins at 9954005](https://github.com/tester-army/plugins/tree/9954005c9688bb1928bdaad20cb8098160406931/plugins/e2e).
+[e2e-inc/plugins at 9954005](https://github.com/e2e-inc/plugins/tree/9954005c9688bb1928bdaad20cb8098160406931/plugins/e2e).
 The shared skill content follows this monorepo's current sources.
-Docs: <https://e2e.tester.army/docs>.
+Docs: <https://e2e.com/docs>.

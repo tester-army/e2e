@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
+import { createToolLoopExecutor } from '../../src/agent/tool-loop.ts';
+import { projectTools } from '../../src/agent/default-agent.ts';
 import { defineTool } from '../../src/agent/tool.ts';
 import { resolveConfig } from '../../src/config/resolve.ts';
 import { defineEngine, type EngineHandle } from '../../src/engine/index.ts';
@@ -32,7 +34,7 @@ function runtime(engine: EngineHandle, overrides: Partial<E2EConfig> = {}) {
     budget: new AttemptBudget(signal, new Deadline(10_000)),
     runId: 'run',
     attemptId: 'attempt',
-    attempt: { testId: 'test', attemptId: 'attempt', index: 0, signal, memory: new Map() },
+    attempt: { testId: 'test', attemptId: 'attempt', titlePath: [], index: 0, signal, memory: new Map() },
     artifacts: { dir: '/tmp', register: () => 'artifact', link: () => 'artifact' },
     priorSteps: () => steps.completed(),
     agentContext: undefined,
@@ -79,15 +81,16 @@ const OVERFLOW = 'prompt is too long: 300000 tokens > 200000 maximum';
 const peek = defineTool({ inputSchema: z.object({}), execute: async () => 'looked' }, { mutates: false });
 
 describe('tool loop context overflow', () => {
-  it('shrinks the history and retries once when the provider refuses the request as too large', async () => {
+  it.each(['act', 'assert'] as const)('shrinks overflow history for a %s loop unless inconclusiveOnOverflow is set', async kind => {
     const model = installFakeLoopModel(({ turn }) => {
       if (turn === 1) return [{ toolName: 'peek', input: {} }];
       if (turn === 2) throw new Error(OVERFLOW);
       return [{ toolName: 'complete_step', input: { status: 'passed', summary: 'read the rows' } }];
     });
-    const { fixtures, steps } = runtime(bigScreen(), { agents: { default: { tools: { peek }, model } } });
+    const executor = kind === 'assert' ? createToolLoopExecutor({ name: 'custom-loop', tools: context => projectTools(context, { peek }), buildPrompt: async context => (await context.observe()).text }) : undefined;
+    const { fixtures, steps } = runtime(bigScreen(), { agents: { default: executor === undefined ? { tools: { peek }, model } : { executor, model } } });
 
-    await fixtures.agent.act('read the big output');
+    await fixtures.agent[kind]('read the big output');
 
     expect(loopCalls).toHaveLength(3);
     // The second request carried the whole opening screen; the retried request
@@ -168,4 +171,17 @@ describe('tool loop context overflow', () => {
     await expect(fixtures.agent.act('read the big output')).rejects.toMatchObject({ code: 'MODEL_PROVIDER_FAILED' });
     expect(loopCalls).toHaveLength(2);
   });
+});
+
+it('fails an overflow as inconclusive without shrinking the history when inconclusiveOnOverflow is set', async () => {
+  const model = installFakeLoopModel(() => { throw new Error(OVERFLOW); });
+  const executor = createToolLoopExecutor({
+    name: 'evidence-keeping-loop',
+    inconclusiveOnOverflow: true,
+    tools: () => ({}),
+    buildPrompt: async context => (await context.observe()).text,
+  });
+  const { fixtures } = runtime(bigScreen(), { agents: { default: { model, executor } } });
+  await expect(fixtures.agent.assert('inspect the evidence')).rejects.toMatchObject({ code: 'ASSERTION_INCONCLUSIVE' });
+  expect(loopCalls).toHaveLength(1);
 });

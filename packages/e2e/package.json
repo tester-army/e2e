@@ -1,8 +1,8 @@
 {
   "name": "e2e",
-  "version": "0.21.2",
+  "version": "0.23.0",
   "description": "SDK, runner, and CLI for agentic end-to-end testing",
-  "mcpName": "io.github.tester-army/e2e",
+  "mcpName": "io.github.e2e-inc/e2e",
   "keywords": [
     "e2e",
     "end-to-end",
@@ -26,13 +26,13 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/tester-army/e2e.git",
+    "url": "git+https://github.com/e2e-inc/e2e.git",
     "directory": "packages/e2e"
   },
   "bugs": {
-    "url": "https://github.com/tester-army/e2e/issues"
+    "url": "https://github.com/e2e-inc/e2e/issues"
   },
-  "homepage": "https://github.com/tester-army/e2e#readme",
+  "homepage": "https://github.com/e2e-inc/e2e#readme",
   "publishConfig": {
     "registry": "https://registry.npmjs.org/",
     "access": "public",
@@ -92,20 +92,21 @@
     "test:unit": "vitest run tests/unit"
   },
   "dependencies": {
-    "@ai-sdk/provider": "4.0.28",
-    "@clack/prompts": "1.8.1",
+    "@ai-sdk/provider": "4.0.37",
+    "@clack/prompts": "1.9.0",
     "@jridgewell/remapping": "2.3.5",
-    "@modelcontextprotocol/server": "2.3.1",
-    "@oxc-project/runtime": "0.154.0",
-    "@vitest/expect": "5.0.5",
-    "commander": "15.0.0",
-    "fast-png": "8.0.0",
+    "@modelcontextprotocol/server": "2.4.0",
+    "@napi-rs/image": "1.16.0",
+    "@oxc-project/runtime": "0.158.0",
+    "@vitest/expect": "5.1.0",
+    "commander": "15.1.0",
     "get-tsconfig": "4.14.3",
-    "oxc-parser": "0.154.0",
-    "oxc-transform": "0.154.0",
+    "oxc-parser": "0.158.0",
+    "oxc-transform": "0.158.0",
     "picocolors": "1.1.1",
     "pixelmatch": "8.0.0",
-    "zod": "4.6.1"
+    "toml-eslint-parser": "1.0.3",
+    "zod": "4.6.7"
   },
   "peerDependencies": {
     "@ai-sdk/anthropic": "^4.0.0",
@@ -136,22 +137,20 @@
     }
   },
   "devDependencies": {
-    "@ai-sdk/anthropic": "4.0.58",
-    "@ai-sdk/google": "4.0.77",
-    "@ai-sdk/openai": "4.0.90",
-    "@ai-sdk/openai-compatible": "3.0.53",
-    "@ai-sdk/xai": "5.0.4",
+    "@ai-sdk/anthropic": "4.0.99",
+    "@ai-sdk/google": "4.0.114",
+    "@ai-sdk/openai": "4.0.111",
+    "@ai-sdk/openai-compatible": "3.0.87",
+    "@ai-sdk/xai": "5.0.40",
     "@e2e-dev/web": "workspace:*",
-    "@modelcontextprotocol/client": "2.3.0",
+    "@modelcontextprotocol/client": "2.4.0",
     "@openrouter/ai-sdk-provider": "3.1.0",
-    "@types/node": "26.6.2",
-    "@types/pngjs": "6.0.5",
-    "ai": "7.0.107",
+    "@types/node": "26.6.6",
+    "ai": "7.0.166",
     "ajv": "8.20.0",
     "ajv-formats": "3.0.1",
-    "pngjs": "7.0.0",
     "typescript": "7.0.2",
-    "vitest": "5.0.1"
+    "vitest": "5.1.0"
   },
   "engines": {
     "node": "^22.22.3 || >=24.8.0"

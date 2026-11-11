@@ -352,6 +352,21 @@ describe('redactFragments', () => {
     expect(ledger.redactFragments('<secret:member> and <secret:member>')).toBe('<secret:member> and <secret:member>');
   });
 
+  it('leaves the whitespace at either end of a fragment, so a +/- line prefix that splits a multi-line value keeps its line break', () => {
+    const value = ['-----BEGIN KEY-----', 'xKeHYQKKYmUIHQUvbL7GD750SXH0WBXc', 'S6zifhBTNEGyB9oJAIa5tz5ysBf2KeiK', 'CWRxVgjsPQIi0i7ipQkTw1bSSj4Do4fN', '-----END KEY-----'].join('\n');
+    const ledger = new SecretLedger([['k', value]]);
+    const diff = '@@ -2,3 +2,3 @@ xKeHYQKKYmUIHQUvbL7GD750SXH0WBXc\n S6zifhBTNEGyB9oJAIa5tz5ysBf2KeiK\n-CWRxVgjsPQIi0i7ipQkTw1bSSj4Do4fN\n+rotated\n other line\n';
+    expect(ledger.redactFragments(diff)).toBe('@@ -2,3 +2,3 @@ <secret:k>\n-<secret:k>\n+rotated\n other line\n');
+  });
+
+  it('rewrites a fragment that starts on the whitespace left after another, so a second pass changes nothing', () => {
+    const ledger = new SecretLedger([['phrase', 'alpha bravo charlie delta']]);
+    const once = ledger.redactFragments('note: bravo charlie\nbravo c\n');
+    expect(once).toBe('note: <secret:phrase>\n<secret:phrase>\n');
+    expect(ledger.redactFragments(once)).toBe(once);
+    expect(new SecretLedger([['k', 'PQRSTUVW zzz abcdefghij']]).redactFragments('PQRSTUVW abcdefg')).toBe('<secret:k> <secret:k>');
+  });
+
   it('names a run two values share after the longer, and a whole shorter value after itself', () => {
     const short = 'ovl-secret-AbCdEfGhIjKlMnOpQrSt';
     const long = `${short}UvWxYz0123456789ABCDEFGHIJKLMN`;
@@ -528,6 +543,16 @@ describe('StreamRedactor', () => {
   it('releases an unfinished character on flush instead of holding it', () => {
     const stream = new StreamRedactor(ledger());
     expect(stream.push(Buffer.from([0x68, 0x69, 0xe2])) + stream.flush()).toBe('hi�');
+  });
+
+  it('releases an unfinished character before a string write instead of letting the string pass it', () => {
+    const stream = new StreamRedactor(new SecretLedger());
+    expect(stream.push(Buffer.from([0xc3])) + stream.push('X') + stream.push(Buffer.from([0xa9])) + stream.flush()).toBe('�X�');
+  });
+
+  it('keeps an unfinished character across an empty string write, which writes nothing', () => {
+    const stream = new StreamRedactor(new SecretLedger());
+    expect(stream.push(Buffer.from([0xc3])) + stream.push('') + stream.push(Buffer.from([0xa9])) + stream.flush()).toBe('é');
   });
 
   describe('a marker split across writes', () => {

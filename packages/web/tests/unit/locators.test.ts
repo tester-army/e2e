@@ -28,12 +28,13 @@ function fakeLocator(chain: readonly string[]): PwLocator {
       fakeLocator([...chain, `label(${String(text)}${options?.exact ? ',exact' : ''})`]),
     getByText: (text: string | RegExp, options?: { exact?: boolean }) =>
       fakeLocator([...chain, `text(${String(text)}${options?.exact ? ',exact' : ''})`]),
-    filter: (options: { hasText?: string | RegExp; has?: PwLocator; visible?: boolean }) =>
+    filter: (options: { hasText?: string | RegExp; has?: PwLocator; hasNot?: PwLocator; visible?: boolean }) =>
       fakeLocator([
         ...chain,
         `filter(${[
           options.hasText === undefined ? '' : `hasText=${String(options.hasText)}`,
           options.has === undefined ? '' : `has=${chainOf(options.has).join('>')}`,
+          options.hasNot === undefined ? '' : `hasNot=${chainOf(options.hasNot).join('>')}`,
           options.visible === undefined ? '' : `visible=${String(options.visible)}`,
         ]
           .filter((part) => part !== '')
@@ -54,7 +55,12 @@ function chainOf(locator: PwLocator): readonly string[] {
 const page = fakeLocator([]) as unknown as Page;
 
 /** Projects with the default test-id attribute; the attribute itself is exercised in its own case. */
-const projectExpression = (target: Page, expression: LocatorExpression) => projectWith(target, expression, 'data-testid');
+const projectExpression = (target: Page, expression: LocatorExpression) =>
+  projectWith(target, expression, { testIdAttribute: 'data-testid', frameHidden: false });
+
+/** Projects with a test-id attribute of the case's own. */
+const projectWithTestId = (target: Page, expression: LocatorExpression, testIdAttribute: string) =>
+  projectWith(target, expression, { testIdAttribute, frameHidden: false });
 
 /** The step every semantic query part starts from: its scope plus the closed shadow roots under it. */
 const ROOTS = 'locator(e2e-roots=)';
@@ -99,6 +105,10 @@ describe('projectExpression', () => {
     expect(chainOf(scoped.locator)).toEqual([EXACT_LABEL, 'first', ROOTS, 'role(textbox)']);
     const rows = projectExpression(page, { kind: 'filter', source: textbox, has: label });
     expect(chainOf(rows.locator)).toEqual([ROOTS, 'role(textbox)', `filter(has=${EXACT_LABEL})`]);
+    const without = projectExpression(page, { kind: 'filter', source: textbox, hasNot: label });
+    expect(chainOf(without.locator)).toEqual([ROOTS, 'role(textbox)', `filter(hasNot=${EXACT_LABEL})`]);
+    const both = projectExpression(page, { kind: 'filter', source: textbox, has: label, hasNot: label });
+    expect(chainOf(both.locator)).toEqual([ROOTS, 'role(textbox)', `filter(has=${EXACT_LABEL},hasNot=${EXACT_LABEL})`]);
     // A substring label query keeps Playwright's own matching.
     const loose = projectExpression(page, {
       kind: 'query',
@@ -138,20 +148,38 @@ describe('projectExpression', () => {
     ]);
   });
 
+  it('narrows a visible or role query inside a hidden frame to nothing, wherever it sits, and leaves other queries alone', () => {
+    const button = (visible?: true): LocatorExpression => ({
+      kind: 'query',
+      query: { kind: 'role', value: { kind: 'string', value: 'button', exact: true }, ...(visible ? { visible } : {}) },
+    });
+    const inHiddenFrame = (expression: LocatorExpression) =>
+      chainOf(projectWith(page, expression, { testIdAttribute: 'data-testid', frameHidden: true }).locator);
+    expect(inHiddenFrame(button(true))).toEqual([ROOTS, 'role(button)', 'locator(css=:not(*))']);
+    expect(inHiddenFrame({ kind: 'index', source: button(true), index: 'first' })).toEqual([
+      ROOTS, 'role(button)', 'locator(css=:not(*))', 'first',
+    ]);
+    expect(inHiddenFrame(button())).toEqual([ROOTS, 'role(button)', 'locator(css=:not(*))']);
+    const text: LocatorExpression = { kind: 'query', query: { kind: 'text', value: { kind: 'string', value: 'Save', exact: true } } };
+    expect(inHiddenFrame(text)).toEqual([ROOTS, 'text(Save,exact)']);
+    const visibleText: LocatorExpression = { kind: 'query', query: { ...text.query, visible: true } };
+    expect(inHiddenFrame(visibleText)).toEqual([ROOTS, 'text(Save,exact)', 'locator(css=:not(*))']);
+  });
+
   it('projects a testId query onto the configured attribute, encoded as getByTestId encodes it', () => {
     const testId = (value: TextPattern): LocatorExpression => ({
       kind: 'query',
       query: { kind: 'testId', value },
     });
-    const exact = projectWith(page, testId({ kind: 'string', value: 'save "draft"', exact: true }), 'data-qa');
+    const exact = projectWithTestId(page, testId({ kind: 'string', value: 'save "draft"', exact: true }), 'data-qa');
     expect(chainOf(exact.locator)).toEqual([ROOTS, 'locator(internal:testid=[data-qa="save \\"draft\\""s])']);
     // A string is always an exact match, whatever `exact` says: getByTestId has no substring mode.
-    const loose = projectWith(page, testId({ kind: 'string', value: 'save', exact: false }), 'data-qa');
+    const loose = projectWithTestId(page, testId({ kind: 'string', value: 'save', exact: false }), 'data-qa');
     expect(chainOf(loose.locator)).toEqual([ROOTS, 'locator(internal:testid=[data-qa="save"s])']);
-    const pattern = projectWith(page, testId({ kind: 'regexp', source: '^row-\\d+$', flags: 'i' }), 'data-test-id');
+    const pattern = projectWithTestId(page, testId({ kind: 'regexp', source: '^row-\\d+$', flags: 'i' }), 'data-test-id');
     expect(chainOf(pattern.locator)).toEqual([ROOTS, 'locator(internal:testid=[data-test-id=/^row-\\d+$/i])']);
     // An attribute with a comma is quoted, as Playwright quotes it.
-    const quoted = projectWith(page, testId({ kind: 'string', value: 'x', exact: true }), 'a,b');
+    const quoted = projectWithTestId(page, testId({ kind: 'string', value: 'x', exact: true }), 'a,b');
     expect(chainOf(quoted.locator)).toEqual([ROOTS, 'locator(internal:testid=["a,b"="x"s])']);
   });
 
@@ -214,12 +242,15 @@ describe('projectExpression', () => {
     expect(projected.steps).toEqual([{ kind: 'index', index: 0 }]);
   });
 
-  it('rejects a displayValue query as a scope or has-filter, and names only those cases', () => {
-    const message = 'displayValue queries cannot scope child queries or serve as a has-filter in this engine';
+  it('rejects a displayValue query as a scope, a has filter, or a hasNot filter, and names only those cases', () => {
+    const message = 'displayValue queries cannot scope child queries or serve as a has or hasNot filter in this engine';
     expect(() => projectExpression(page, { ...textbox, scope: shared })).toThrow(
       expect.objectContaining({ code: 'UNSUPPORTED_CAPABILITY', message }),
     );
     expect(() => projectExpression(page, { kind: 'filter', source: textbox, has: shared })).toThrow(
+      expect.objectContaining({ code: 'UNSUPPORTED_CAPABILITY', message }),
+    );
+    expect(() => projectExpression(page, { kind: 'filter', source: textbox, hasNot: shared })).toThrow(
       expect.objectContaining({ code: 'UNSUPPORTED_CAPABILITY', message }),
     );
   });

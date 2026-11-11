@@ -23,7 +23,7 @@ import { join } from 'node:path';
 import { resolveVision } from '../config/agent.ts';
 import { ConfigurationError } from '../internal/errors.ts';
 import { withAbort, withTimeout } from '../internal/time.ts';
-import type { ActionHook, ActOptions, ActResult, AgentErrorCode, JsonValue, ModelInstance, Secret, VisionMode } from '../types.ts';
+import type { ActionHook, ActOptions, AssertOptions, BeforeActionHook, ActResult, AgentErrorCode, JsonValue, ModelInstance, Secret, VisionMode } from '../types.ts';
 import { AgentError, CATEGORY_BY_CODE, toAgentError } from './error.ts';
 import { redactParams, validateActOptions, validateInstruction, validateParams, validateVerdict } from './act-validation.ts';
 import { ActionDispatcher } from './action-dispatcher.ts';
@@ -42,8 +42,12 @@ import { StepAccounting } from './step-accounting.ts';
 import { failedStepOutcome, StepTraceSession, type StepCacheHost, type StepOutcome } from './step-cache.ts';
 import type { ParamTemplate } from '../cache/template.ts';
 
+/** Default exploration ceilings, capped by the configured agent limits. */
+const EXPLORATION_MAX_ACTIONS = 10;
+const EXPLORATION_MAX_MODEL_CALLS = 6;
+
 /** What a dispatch needs of the agent a step runs with; an interactive step supplies its own. */
-export type DispatchAgent = Pick<AgentSelection, 'name' | 'config' | 'executor' | 'agentContext' | 'keyedContext'>;
+export type DispatchAgent = Pick<AgentSelection, 'name' | 'config' | 'executor' | 'agentContext'>;
 
 /** Everything one dispatched step is, resolved before the step opens. */
 export interface DispatchSpec {
@@ -69,6 +73,8 @@ export interface DispatchSpec {
   readonly vision?: VisionMode;
   /** Act only: the test's hook for each completed action. */
   readonly onAction?: ActionHook | undefined;
+  /** Act only: the test's hook before each action. */
+  readonly onBeforeAction?: BeforeActionHook | undefined;
 }
 
 /** Runs one `agent.act()` call as a harness-dispatched executor step. */
@@ -80,7 +86,7 @@ export async function runActStep(
 ): Promise<ActResult> {
   const normalized = validateInstruction(instruction, 'agent.act');
   validateActOptions(options, extraArguments);
-  const { projected, secrets, templates } = validateParams(options?.params);
+  const { projected, secrets, templates } = validateParams(options?.params, 'agent.act');
   return dispatchAgentStep(runtime, {
     api: 'agent.act',
     kind: 'act',
@@ -94,13 +100,14 @@ export async function runActStep(
     maxModelCalls: options?.maxModelCalls,
     agent: options?.agent,
     onAction: options?.onAction,
+    onBeforeAction: options?.onBeforeAction,
   });
 }
 
 /**
  * Runs one `agent.assert()` call through the executor socket. Used when a
- * custom executor is configured: the brain that plans flows also judges
- * assertions, so swapping brains swaps all the thinking. The built-in
+ * custom executor is configured or exploration is requested. The brain that
+ * plans flows also judges assertions, so swapping brains swaps all the thinking. The built-in
  * single-judgment tier remains the default-path implementation. `screenshot`
  * is harness evidence taken after the verdict, so it is honored here as on
  * the default path; `vision` is what the executor's model sees, so it reaches
@@ -109,9 +116,11 @@ export async function runActStep(
 export async function runAssertStep(
   runtime: AgentContext,
   assertion: string,
-  options: { timeout?: number; vision?: VisionMode; screenshot?: boolean; agent?: string } | undefined,
+  options: AssertOptions | undefined,
 ): Promise<void> {
   const normalized = validateInstruction(assertion, 'agent.assert');
+  // Assertions may scroll, but their secrets are never fillable.
+  const { projected, templates } = validateParams(options?.params, 'agent.assert');
   const agent = runtime.select(options?.agent);
   const vision = resolveVision(options?.vision);
   if (options?.vision !== undefined && agent.executor.vision !== true) {
@@ -124,18 +133,26 @@ export async function runAssertStep(
     api: 'agent.assert',
     kind: 'assert',
     instruction: normalized,
-    params: undefined,
+    params: projected,
     secrets: new Map(),
-    templates: [],
+    templates,
     defaultFailureCode: 'ASSERTION_FAILED',
-    timeout: options?.timeout,
-    maxSteps: undefined,
-    maxModelCalls: undefined,
+    ...assertionLimits(options, agent.config),
     agent: options?.agent,
     ...(options?.screenshot === undefined ? {} : { screenshot: options.screenshot }),
-    // `false` asks for the tree, which is what an executor gets with no option at all.
-    ...(vision === false ? {} : { vision }),
+    // Custom executors own their default evidence policy; the built-in loop enforces tree-only mode.
+    ...(vision === false && agent.customExecutor ? {} : { vision }),
   }, agent);
+}
+
+/** Resolves exploration defaults without changing ordinary assertion limits. */
+function assertionLimits(options: AssertOptions | undefined, config: AgentSelection['config']): Pick<DispatchSpec, 'timeout' | 'maxSteps' | 'maxModelCalls'> {
+  if (options?.explore !== true) return { timeout: options?.timeout, maxSteps: undefined, maxModelCalls: undefined };
+  return {
+    timeout: options.timeout === undefined ? config.judgmentTimeout : options.timeout,
+    maxSteps: options.maxSteps === undefined ? Math.min(EXPLORATION_MAX_ACTIONS, config.maxSteps) : options.maxSteps,
+    maxModelCalls: options.maxModelCalls === undefined ? Math.min(EXPLORATION_MAX_MODEL_CALLS, config.maxModelCalls) : options.maxModelCalls,
+  };
 }
 
 /**
@@ -157,9 +174,8 @@ export async function dispatchAgentStep(
   // Redacted per step, not once per agent: the ledger is live, so a value
   // resolved since the agent was selected is covered too.
   const context = agent.agentContext === undefined ? undefined : runtime.redact(agent.agentContext);
-  const keyedContext = agent.keyedContext === undefined ? undefined : runtime.redact(agent.keyedContext);
   return runtime.steps.run('agent', spec.api, spec.instruction, async () => {
-    const dispatch = new ActDispatch(runtime, spec, { ...agent, agentContext: context, keyedContext });
+    const dispatch = new ActDispatch(runtime, spec, { ...agent, agentContext: context });
     try {
       let verdict: StepVerdict;
       try {
@@ -193,7 +209,7 @@ export async function dispatchAgentStep(
 function redactSpec(spec: DispatchSpec, redact: (text: string) => string): DispatchSpec {
   const instruction = redact(spec.instruction);
   if (spec.params === undefined) return { ...spec, instruction };
-  return { ...spec, instruction, ...redactParams(spec.params, spec.templates, redact) };
+  return { ...spec, instruction, ...redactParams(spec.params, spec.templates, redact, spec.api) };
 }
 
 /** One step's wiring: the collaborators, the executor's context, and the verdict mapping. */
@@ -228,24 +244,26 @@ class ActDispatch {
     // a batched turn from resolving two targets against one stale screen.
     const queue = new OperationQueue();
     this.feed = new ObservationFeed(runtime, this.accounting, queue, {
+      pixelsAllowed: spec.vision !== false,
       maxObservationBytes: agent.config.maxObservationBytes,
       maxInputTokens: agent.config.maxInputTokens,
       instructionBytes: tokenUpperBound(spec.instruction),
     });
     this.dispatcher = new ActionDispatcher(runtime, this.accounting, this.feed, queue, {
+      readOnly: spec.kind === 'assert',
       instruction: spec.instruction,
       params: spec.params,
       secrets: spec.secrets,
       trace: () => this.stepCache,
       onAction: spec.onAction,
+      onBeforeAction: spec.onBeforeAction,
     });
     // The dispatch always runs inside a recorded step (`dispatchAgentStep`
     // opens one); the index names the step to the executor and to the trace cache.
     const stepIndex = runtime.steps.currentStepIndex;
     if (stepIndex === undefined) throw new Error('agent step dispatched outside a recorded step');
     this.stepIndex = stepIndex;
-    // Only act steps are cacheable: an assert must not change state, so its
-    // trace would be empty — nothing to replay, nothing worth a read. An
+    // Only act steps are cacheable: assertions explore live on every run. An
     // executor that declared `cache: 'off'` sees every step itself.
     const cache = spec.kind === 'act' && agent.executor.cache !== 'off' ? runtime.cache : undefined;
     this.stepCache =
@@ -260,9 +278,8 @@ class ActDispatch {
               name: agent.executor.name,
               ...(agent.executor.version === undefined ? {} : { version: agent.executor.version }),
             },
-            // Redacted already (`dispatchAgentStep`): the key digests the context the
-            // executor reads, less the test's title, which the key's test id names.
-            agent: { name: agent.name, context: agent.keyedContext },
+            // Redacted already (`dispatchAgentStep`): the key digests the context the executor reads.
+            agent: { name: agent.name, context: agent.agentContext },
             redact: runtime.redact,
             redactCut: runtime.redactCut,
             maxActions: this.accounting.maxActions,
@@ -294,7 +311,8 @@ class ActDispatch {
         ...(this.spec.vision === undefined ? {} : { vision: this.spec.vision }),
       },
       target: this.runtime.target,
-      attempt: this.runtime.attempt,
+      // Redacted per step like the context: a secret resolved since collection is covered too.
+      attempt: { ...this.runtime.attempt, titlePath: this.runtime.attempt.titlePath.map((part) => this.runtime.redact(part)) },
       ...(replayedPrefix === undefined ? {} : { replayedPrefix }),
       signal: this.accounting.signal,
       // Resolved on first read, so executors that bring their own model (or
@@ -314,9 +332,6 @@ class ActDispatch {
         runTool: (call, body) => this.dispatcher.runTool(call, body),
       },
       observe: (options) => this.feed.observe(options),
-      get pixelsTainted() {
-        return dispatch.runtime.exposure.withholdsModelPixels;
-      },
       attachTranscript: (text) => {
         // Debug detail only: transcripts are model prose and can be large.
         if (this.runtime.debug?.enabled === true && typeof text === 'string' && text !== '') {
@@ -434,7 +449,8 @@ class ActDispatch {
       settled.errorCode !== undefined && settled.errorCode in CATEGORY_BY_CODE
         ? settled.errorCode
         : this.spec.defaultFailureCode;
-    throw new AgentError(code, `${this.spec.api} ${settled.status}: ${settled.summary}`, {
+    const assertionCode = this.assertionCode(code);
+    throw new AgentError(assertionCode, `${this.spec.api} ${settled.status}: ${settled.summary}`, {
       blocked: settled.status === 'blocked',
       ...(screenshot === undefined ? {} : { screenshot }),
     });
@@ -448,9 +464,21 @@ class ActDispatch {
   settleThrown(error: AgentError): AgentError {
     if (!RUNTIME_CODES.has(error.code)) return error;
     const hardStop = this.accounting.hardStop;
-    if (hardStop !== undefined) return hardStop;
-    if (this.accounting.vouches(error.code)) return error;
+    if (hardStop !== undefined) return this.asAssertionError(hardStop);
+    if (this.accounting.vouches(error.code)) return this.asAssertionError(error);
     return this.invented(error.code, error);
+  }
+
+  /** The error with its assertion code, wrapping it only when the code changes. */
+  private asAssertionError(error: AgentError): AgentError {
+    const code = this.assertionCode(error.code);
+    return code === error.code ? error : new AgentError(code, error.message, { cause: error });
+  }
+
+  /** Exhausted exploration cannot establish a product verdict. */
+  private assertionCode(code: AgentErrorCode): AgentErrorCode {
+    return this.spec.kind === 'assert' && (code === 'STEP_BUDGET_EXHAUSTED' || code === 'STEP_TIMEOUT' || code === 'STEP_NO_CONCLUSION')
+      ? 'ASSERTION_INCONCLUSIVE' : code;
   }
 
   /** What the settled step did, for the caller of `agent.act()`. */

@@ -129,6 +129,21 @@ export const FIXTURE_PAGES: readonly FixturePage[] = [
     `,
   },
   {
+    name: 'controls drawn by their label',
+    html: `
+      <style>.shrunk { opacity: 0; width: 0; height: 0; margin: 0; position: absolute; z-index: -1 }</style>
+      <label><input type="checkbox">Plain</label>
+      <label><span><input class="shrunk" type="checkbox"><span class="box"></span></span><span>Agree</span></label>
+      <label><input class="shrunk" type="checkbox" checked>Newsletter</label>
+      <label><input class="shrunk" type="radio" name="size">Large</label>
+      <input class="shrunk" type="checkbox" id="unlabelled-shrunk" aria-label="Unlabelled">
+      <input class="shrunk" type="checkbox" id="hidden-label"><label for="hidden-label" style="display: none">Hidden label</label>
+      <label><input class="shrunk" type="checkbox" style="visibility: hidden">Invisible</label>
+      <label style="display: contents"><input class="shrunk" type="checkbox"><span class="box"></span>Contents</label>
+      <label><input class="shrunk" type="checkbox"><span class="box"></span>Accept <a href="#terms">the terms</a></label>
+    `,
+  },
+  {
     name: 'disabled states',
     html: `
       <button disabled>Disabled native</button>
@@ -262,6 +277,19 @@ export const FIXTURE_PAGES: readonly FixturePage[] = [
       <div role="button" tabindex="0"><span>Nested</span> <b>content</b></div>
       <div contenteditable="true" aria-label="Editor">Hello</div>
       <div contenteditable="true" aria-label="Decorated editor"><h2 role="presentation">Editor title</h2><img alt="" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAAAAAAALAAAAAABAAEAAAIBRAA7"></div>
+    `,
+  },
+  {
+    name: 'list rebuilt every millisecond',
+    html: `
+      <div id="rebuilt-list"></div>
+      <script>
+        const rebuild = () => {
+          document.getElementById('rebuilt-list').innerHTML = '<button type="button">Tap me</button><button type="button">Decoy</button>';
+        };
+        rebuild();
+        setInterval(rebuild, 1);
+      </script>
     `,
   },
 ];

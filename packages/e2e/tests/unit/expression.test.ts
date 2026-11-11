@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import type { LocatorExpression } from '../../src/engine/surface.ts';
 import {
   describeExpression,
   expressionHints,
   filterExpression,
+  filterSpine,
   indexExpression,
   roleQuery,
   testIdQuery,
@@ -57,7 +59,44 @@ describe('locator expressions', () => {
 
   it('rejects empty filters', () => {
     const source = testIdQuery('card', undefined, undefined);
-    expect(() => filterExpression(source, {})).toThrow(/hasText and\/or has/);
+    expect(() => filterExpression(source, {})).toThrow(/hasText, hasNotText, has, and\/or hasNot/);
+  });
+
+  it('lists every prefix of a filtered chain, innermost first', () => {
+    const base = roleQuery('listitem', undefined, undefined);
+    const first = filterExpression(base, { hasText: 'Order' });
+    const second = filterExpression(first, { has: roleQuery('button', undefined, undefined) });
+    expect(filterSpine(second)).toEqual([base, first, second]);
+  });
+
+  it('follows an index step between filters', () => {
+    const base = roleQuery('listitem', undefined, undefined);
+    const filtered = filterExpression(base, { hasText: 'Order' });
+    const indexed = indexExpression(filtered, 'first');
+    const chained = filterExpression(indexed, { hasText: '1042' });
+    expect(filterSpine(chained)).toEqual([base, filtered, indexed, chained]);
+  });
+
+  it('is empty without a filter step', () => {
+    const base = roleQuery('listitem', undefined, undefined);
+    expect(filterSpine(base)).toEqual([]);
+    expect(filterSpine(indexExpression(base, 0))).toEqual([]);
+    expect(filterSpine(textQuery('text', 'Pro', undefined, undefined))).toEqual([]);
+  });
+
+  it('is empty for a union of chains', () => {
+    const base = roleQuery('listitem', undefined, undefined);
+    const filtered = filterExpression(base, { hasText: 'Order' });
+    const union: LocatorExpression = { kind: 'union', left: filtered, right: base };
+    expect(filterSpine(union)).toEqual([]);
+  });
+
+  it('treats a union as a single base to count once, never descending into its sides', () => {
+    const base = roleQuery('listitem', undefined, undefined);
+    const other = roleQuery('button', undefined, undefined);
+    const union: LocatorExpression = { kind: 'union', left: base, right: other };
+    const filtered = filterExpression(union, { hasText: 'Order' });
+    expect(filterSpine(filtered)).toEqual([union, filtered]);
   });
 
   it('rejects negative and fractional nth indices', () => {
@@ -108,6 +147,17 @@ describe('locator expressions', () => {
     );
     expect(describeExpression(filterExpression(source, { hasText: 'Pro', has: inner }))).toBe(
       'getByRole("listitem").filter({ hasText: "Pro", has: getByRole("button", name: "Remove") })',
+    );
+  });
+
+  it('describeExpression renders a hasNot filter with the inner locator, after has when both are set', () => {
+    const inner = roleQuery('button', { name: 'Remove' }, undefined);
+    const source = roleQuery('listitem', undefined, undefined);
+    expect(describeExpression(filterExpression(source, { hasNot: inner }))).toBe(
+      'getByRole("listitem").filter({ hasNot: getByRole("button", name: "Remove") })',
+    );
+    expect(describeExpression(filterExpression(source, { hasText: 'Pro', has: inner, hasNot: inner }))).toBe(
+      'getByRole("listitem").filter({ hasText: "Pro", has: getByRole("button", name: "Remove"), hasNot: getByRole("button", name: "Remove") })',
     );
   });
 });

@@ -36,7 +36,7 @@ run, and after switching branches.
 | `@e2e-dev/mobile` | the mobile benchmark on a simulator or emulator | Real devices; see `apps/mobile-benchmark` |
 | `e2e mcp` | the `e2e` MCP server on the testbed | The tools as a coding agent sees them |
 | `e2e init`, packaging, the skill | packed tarballs in a scratch project under `/tmp` | What a new user gets from npm |
-| Docs pages | `pnpm docs:dev` | The rendered page |
+| Docs pages | `pnpm docs:check` | Links, anchors, examples, package manager tabs, and logos |
 | `@e2e-dev/github` | the PR's own `e2e-github` comments | The comment a user's PR gets |
 
 Commands (run from the app directory; call the CLI directly, since
@@ -49,6 +49,7 @@ cd apps/web-benchmark && pnpm run build     # the Next.js app, once per scenario
 cd apps/web-benchmark && node node_modules/e2e/dist/cli/bin.js run tests/<scenario>.e2e.ts
 cd apps/web-benchmark && node node_modules/e2e/dist/cli/bin.js run --config e2e.agent.config.ts
 pnpm test:testbed && pnpm test:web-benchmark          # the whole gate, as CI runs it
+pnpm --filter @e2e-dev/testbed test:scroll            # scroll_to by text, scripted; its own CI step
 ```
 
 Add a deterministic test next to the behavior when it must stay proven: a

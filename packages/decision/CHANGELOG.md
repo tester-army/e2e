@@ -1,5 +1,29 @@
 # @e2e-dev/decision
 
+## 0.3.2
+
+### Patch Changes
+
+- [#1574](https://github.com/tester-army/e2e/pull/1574) [`db70c36`](https://github.com/tester-army/e2e/commit/db70c36c6ea009ad3207e10b7e27393d3b54ffc3) Thanks [@okwasniewski](https://github.com/okwasniewski)! - On a page with 255 or more elements, the decision executor no longer asks the model a target question with 256 choices, one over the TypeSafe limit of 255. Each question now lists at most 254 targets plus `none`. Elements past the cap are left out as before, and the model can scroll to reach them.
+
+## 0.3.1
+
+### Patch Changes
+
+- [#1382](https://github.com/tester-army/e2e/pull/1382) [`3a8d6f1`](https://github.com/tester-army/e2e/commit/3a8d6f1b6cdaa4c7975c55bf25f67d2e76143b21) Thanks [@okwasniewski](https://github.com/okwasniewski)! - Bump agent-device to 0.21.31, zod to 4.6.7, @modelcontextprotocol/server to 2.4.0, and oxc to 0.155.0.
+
+- [#1437](https://github.com/tester-army/e2e/pull/1437) [`94e6e76`](https://github.com/tester-army/e2e/commit/94e6e7654856b6e3946424534386cb6323a47eb6) Thanks [@okwasniewski](https://github.com/okwasniewski)! - **Breaking:** a secret fill no longer turns off screenshots for the model. `agent.assert(..., { vision: 'only' })`, `vision: true`, the `screenshot` and point tools, `e2e mcp`, and `e2e explore` findings keep working after a sign-in, in serial groups, and in tests that restore a saved session. Screenshots still mask secure fields, and secret values are still redacted from all text. A generic secret filled into a plain input, or a value the app shows outside a secure field, such as behind a show-password toggle, is in the screenshot and reaches your model provider, so use test credentials. `StepExecutorContext.pixelsTainted` is removed, and a new step's `visionDegraded` is never `PIXEL_TAINTED`.
+
+## 0.3.0
+
+### Minor Changes
+
+- [#1206](https://github.com/tester-army/e2e/pull/1206) [`da13624`](https://github.com/tester-army/e2e/commit/da13624d31fa6cf2204c7b99f1474d718ca1a02a) Thanks [@okwasniewski](https://github.com/okwasniewski)! - **Release:** Add `decisionFilter({ model })`, a test filter that asks a decision model which tests a pull request can affect and leaves out the rest, such as `filters: [decisionFilter({ model: gateway.decisionModel('typesafe-ai/jev') })]`. The model must answer `boolean` questions; `providerOptions` passes options such as zero data retention to every call. Needs `e2e` 0.21.3 or later.
+
+### Patch Changes
+
+- [#1345](https://github.com/tester-army/e2e/pull/1345) [`47127f7`](https://github.com/tester-army/e2e/commit/47127f734f34927b040f85aa7db9f9f6a02a2a7d) Thanks [@okwasniewski](https://github.com/okwasniewski)! - `decisionFilter` leaves nothing out when the config file the run loaded changed, whatever its name, such as `e2e list --config e2e.ci.config.ts --changed-since origin/main` after an edit to `e2e.ci.config.ts`. A test filter reads that file as `context.configFile`.
+
 ## 0.2.4
 
 ### Patch Changes

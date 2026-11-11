@@ -5,6 +5,7 @@
  * envelope — is identical and lives here once.
  */
 
+import type { FinishReason } from 'ai';
 import type { ModelInstance } from '../../src/types.ts';
 
 /** Builds a V4-shaped scripted model instance around one doGenerate body. */
@@ -30,12 +31,15 @@ export function createScriptedInstance<Options>(
 /** One scripted generate result with the fixed test usage envelope, and the call warnings a provider attached. */
 export function scriptedResult(
   content: readonly unknown[],
-  finishReason: 'stop' | 'tool-calls',
+  finishReason: FinishReason,
   warnings: readonly ScriptedWarning[] = [],
 ): object {
   return {
     content,
-    finishReason: { unified: finishReason, raw: finishReason },
+    // `raw` carries the provider spelling, not the unified one, so tests can
+    // tell `rawFinishReason` apart from `finishReason` (`length` is the one
+    // whose provider spelling differs: `max_tokens`).
+    finishReason: { unified: finishReason, raw: finishReason === 'length' ? 'max_tokens' : finishReason },
     usage: {
       inputTokens: { total: 100, noCache: 100, cacheRead: 0, cacheWrite: 0 },
       outputTokens: { total: 20, text: 20, reasoning: 0 },

@@ -1,9 +1,8 @@
 ---
 title: expect
 description: "Locator assertions, fixture assertions, and plain value matchers."
-icon: "circle-check"
-"og:image": "https://e2e.tester.army/docs/images/og/reference/expect.png?v=118436cc41"
-"twitter:image": "https://e2e.tester.army/docs/images/og/reference/expect.png?v=118436cc41"
+"og:image": "https://e2e.com/docs/images/og/reference/expect.png?v=118436cc41"
+"twitter:image": "https://e2e.com/docs/images/og/reference/expect.png?v=118436cc41"
 ---
 
 `expect(locator)` waits for an app condition, `expect(screen)` compares the
@@ -621,7 +620,8 @@ await expect.poll(() => readStatus(), { message: 'the batch never finished' }).n
 
 - `timeout` is the deadline in milliseconds, a finite number 0 or more. It is
   capped by the test deadline in the body, or the hook's `cleanupTimeout`
-  during `afterEach`.
+  during `afterEach`. `0` polls until that cap, so outside a test it is
+  `INVALID_CONFIG`.
 - `interval` is the pause between reads in milliseconds, a finite number
   above 0.
 - `message` is an extra line in the timeout error, after the matcher line.
@@ -703,9 +703,10 @@ has held:
 - `toBeHidden`, `toBeVisible({ visible: false })`,
   `toBeAttached({ attached: false })`, negated visibility, and negated
   `toBeAttached` accept zero matches.
-- For those, and for `waitFor({ state: 'detached' })` and `'hidden'`, a
-  locator under a frame that is not in the document is zero matches rather
-  than a wait for the frame.
+- For those, for `toHaveCount` and the list forms, and for
+  `waitFor({ state: 'detached' })` and `'hidden'`, a locator under a frame
+  that is not in the document is zero matches rather than a wait for the
+  frame. `toHaveCount(0)` passes after an iframe closes.
 
 ### Text matching
 

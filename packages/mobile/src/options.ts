@@ -59,8 +59,11 @@ export interface MobileOptions {
    * is a pool: the engine declares one worker per entry and worker slot `n`
    * drives the `n`th, so `workers` at or above the pool size runs the target's
    * files across every device at once. Omitted, the pool is every booted device
-   * of the platform at `prepare`, as many as the run has slots; with none
-   * booted, agent-device boots one. A `DeviceProvider` leases hosted devices
+   * of the platform at `prepare` that no other agent-device session holds, as
+   * many as the run has slots; with none booted, agent-device boots a shut-down
+   * one: a phone or tablet over a TV, then the newest OS, then name order (a
+   * stopped Android emulator reports no OS version, so the name decides). With
+   * every booted one held, `prepare` fails. A `DeviceProvider` leases hosted devices
    * instead: one per worker slot at `prepare`, each driven through the daemon
    * and client configuration the lease names. A replacement worker resumes a
    * healthy agent-device session on the same lease. Forced worker shutdown
@@ -103,16 +106,18 @@ export interface MobileOptions {
    * 500, the length of a modal or screen transition. Accessibility frames
    * report a control's final position from the first frame of a transition,
    * so this budget is the only thing that keeps a test from tapping a point
-   * the control has not reached; controls already on screen at the same
-   * place before the action are acted on at once. Raise it for slower
-   * transitions.
+   * the control has not reached. Unmoved controls are acted on immediately
+   * only when keyboard visibility is unchanged. Opening or closing the
+   * keyboard also uses the remaining budget. Screen swipes in tests wait out
+   * the remaining budget before scrolling. Raise it for slower transitions.
    */
   readonly transition?: number | undefined;
   /**
    * Whether a video recording draws agent-device's touch indicator where a
    * test tapped. Default `true`. `false` records the plain screen, and skips
    * the pass that draws the indicator once the recording stops: on a hosted
-   * daemon that pass can outlast the attempt's `cleanupTimeout`.
+   * daemon such as Expo Simulators' that pass can outlast the attempt's
+   * `cleanupTimeout`.
    */
   readonly videoTouches?: boolean | undefined;
 }

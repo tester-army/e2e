@@ -13,7 +13,7 @@ type Input = Parameters<typeof summarize>[0];
 function pr(overrides: Partial<Input['pr']> = {}): Input['pr'] {
   return {
     number: 7,
-    url: 'https://github.com/tester-army/e2e/pull/7',
+    url: 'https://github.com/e2e-inc/e2e/pull/7',
     state: 'OPEN',
     headRefOid: 'abc123',
     baseRefName: 'main',

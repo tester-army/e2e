@@ -4,6 +4,11 @@ import { changeShape, interactiveNodeCount, isTransitionalObservation, observati
 import { OBSERVED_NAME_LIMIT, OBSERVED_TEXT_LIMIT } from '../../src/engine/contract.ts';
 import { SecretLedger } from '../../src/internal/redact.ts';
 import { describeDelta } from '../../src/cache/anchors.ts';
+import { ObservationFeed } from '../../src/agent/observation-feed.ts';
+import { OperationQueue } from '../../src/agent/operation-queue.ts';
+import type { AgentContext } from '../../src/agent/invocation.ts';
+import type { StepAccounting } from '../../src/agent/step-accounting.ts';
+import { StepRecorder } from '../../src/run/steps.ts';
 
 function node(id: string, extra: Partial<SemanticNode> = {}): SemanticNode {
   return { ref: { id, revision: 'r1' }, ...extra };
@@ -24,6 +29,35 @@ function observation(tree: SemanticNode, pixels?: Observation['pixels']): Extrac
 }
 
 const NO_REDACT = (text: string): string => text;
+
+it('enforces tree-only observation requests, projection, and unavailable-tree fallback', async () => {
+  const pixels = { data: new Uint8Array(4), mediaType: 'image/png' as const, width: 2, height: 2, scale: 1 };
+  let raw: Observation = { ...observation(node('root'), pixels), redaction: { secureNodeCount: 0, maskedRegionCount: 0 } };
+  const capture = vi.fn(async () => raw);
+  const signal = new AbortController().signal;
+  const runtime = {
+    engine: { signal, session: { observe: capture } },
+    app: {}, redact: NO_REDACT, redactCut: NO_REDACT,
+    steps: new StepRecorder('attempt'),
+  } as unknown as AgentContext;
+  const accounting = {
+    api: 'agent.assert', signal, checkpoint: () => undefined,
+    operation: () => ({ signal, timeoutMs: 1_000 }), remainingMs: () => 1_000,
+    metrics: { actionSteps: 0, contextBytes: 0, ledgerBytes: 0, observationBytes: 0 },
+  } as unknown as StepAccounting;
+  const feed = new ObservationFeed(runtime, accounting, new OperationQueue(), {
+    pixelsAllowed: false, maxObservationBytes: 4_096, maxInputTokens: 10_000, instructionBytes: 0,
+  });
+  const view = await feed.observe({ pixels: true });
+  expect(capture).toHaveBeenCalledWith(expect.anything(), { pixels: false, pixelFallback: false });
+  expect(view.pixels).toBeUndefined();
+  raw = {
+    kind: 'pixels', root: node('root').ref, revision: 'r2', capturedAt: '',
+    viewport: { width: 2, height: 2 }, pixels,
+    redaction: { secureNodeCount: 0, maskedRegionCount: 0 },
+  };
+  await expect(feed.observe()).rejects.toMatchObject({ code: 'POLICY_DENIED' });
+});
 
 describe('prepareObservation', () => {
   it('keeps unavailable semantics separate from an empty tree and requires permitted masked evidence', () => {
@@ -407,6 +441,14 @@ describe('disambiguating attributes', () => {
     expect(hrefs).toEqual([`https://app.test${path}`, `https://app.test${long.slice(0, 256)}…`]);
   });
 
+  it('keeps an app link whose path opens with a doubled slash whole, so the model never reads it as another host', () => {
+    const href = 'https://app.test//settings';
+    const tree = node('n1', { role: 'link', name: 'Settings', attributes: { href } });
+    const text = prepareObservation(observation(tree), { redact: NO_REDACT, redactCut: NO_REDACT, maxBytes: 4_096, appOrigin: 'https://app.test' }).text;
+    expect(text).toBe(`#n1 link "Settings" href="${href}"`);
+    expect(projectTree(redactNode(tree, { redact: NO_REDACT, redactCut: NO_REDACT }), 'https://app.test').attributes).toEqual({ href });
+  });
+
   it('redacts a secret in a link target before cutting it, so no part of it survives the cut', () => {
     const ledger = new SecretLedger([['token', 'tok-0123456789']]);
     const path = `/${'p'.repeat(250)}/tok-0123456789`;
@@ -626,6 +668,27 @@ describe('settleObservation', () => {
     const source = scripted(['old', 'old', 'old', 'new', 'new', 'new']);
     const value = await settleObservation(source.capture, (v) => v, clock, { ...fast, changedFrom: leaving() });
     expect(value).toBe('new');
+  });
+
+  it('returns a capture the caller vouches for without proving it holds still, and settles one it declines', async () => {
+    const vouched = scripted(['a', 'b', 'b']);
+    expect(await settleObservation(vouched.capture, (v) => v, clock, { ...fast, settledWhen: () => true })).toBe('a');
+    expect(vouched.calls()).toBe(1);
+    const declined = scripted(['a', 'b', 'b']);
+    expect(await settleObservation(declined.capture, (v) => v, clock, { ...fast, settledWhen: () => false })).toBe('b');
+    expect(declined.calls()).toBe(3);
+  });
+
+  it('still waits out the change wait before asking whether a capture is settled', async () => {
+    const source = scripted(['old', 'old', 'new', 'new']);
+    const asked: string[] = [];
+    const value = await settleObservation(source.capture, (v) => v, clock, {
+      ...fast,
+      changedFrom: leaving(),
+      settledWhen: (v) => { asked.push(v); return true; },
+    });
+    expect(value).toBe('new');
+    expect(asked).toEqual(['new']);
   });
 
   it('returns the unchanged screen once the change wait runs out', async () => {

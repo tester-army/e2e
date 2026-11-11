@@ -33,8 +33,9 @@ export type { EngineObserveOptions, EngineState, VideoSegment } from './index.ts
  * The agent's action grammar, by verb. A session derives which verbs its
  * engine can honor from the action kinds the engine declared, so the agent
  * offers the model exactly that vocabulary. The vision-located tap and hover
- * are not verbs of their own: each rides its node verb when the located
- * point sits on a node the tree lists, and `performAt` when it does not.
+ * are not verbs of their own: each rides `performAt` when the engine
+ * declares its pointer kind, else its node verb on the listed control at
+ * the point.
  */
 export type GrammarVerb =
   | 'tap'
@@ -57,8 +58,12 @@ export type GrammarVerb =
   | 'upload'
   | 'navigate'
   | 'back'
+  /** Sets the viewport size (`session.resize`), for checking a layout at another width. */
+  | 'resize'
   | 'tapAt'
   | 'hoverAt'
+  /** A drag from one viewport point to another (`dragTo` in `pointerActions`), for a drag the tree does not list. */
+  | 'dragAt'
   /** Keyboard input to whatever holds focus: `type` and `press` without a target. */
   | 'typeText'
   | 'pressKey'
@@ -104,6 +109,8 @@ export interface SessionApp {
   open(url: string, operation: OperationContext): Promise<void>;
   /** Navigates back once. */
   back(operation: OperationContext): Promise<void>;
+  /** Sets the viewport size in CSS pixels. */
+  resize(size: ViewportSize, operation: OperationContext): Promise<void>;
   /** Recreates the app context without clearing persisted state; shows nothing until `open`. */
   restart(operation: OperationContext): Promise<void>;
   /** Clears persisted client state and recreates the context; shows nothing until `open`. */

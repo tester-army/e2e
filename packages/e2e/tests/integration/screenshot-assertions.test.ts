@@ -7,7 +7,7 @@
 
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { PNG } from 'pngjs';
+import { JsColorType, Transformer } from '@napi-rs/image';
 import { describe, expect, it } from 'vitest';
 import type { EngineObserveOptions, ObservationPixels, SemanticNode } from '../../src/engine/index.ts';
 import type { E2EConfig } from '../../src/index.ts';
@@ -36,20 +36,20 @@ const TREE: SemanticNode = {
 function screenPng(background: Rgb, button: Rgb, scale = 1): ObservationPixels {
   const width = WIDTH * scale;
   const height = HEIGHT * scale;
-  const png = new PNG({ width, height });
+  const rgba = new Uint8Array(width * height * 4);
   for (let y = 0; y < height; y += 1) {
     for (let x = 0; x < width; x += 1) {
       const inButton =
         x >= BUTTON.x * scale && x < (BUTTON.x + BUTTON.width) * scale && y >= BUTTON.y * scale && y < (BUTTON.y + BUTTON.height) * scale;
       const color = inButton ? button : background;
       const at = (y * width + x) * 4;
-      png.data[at] = color[0];
-      png.data[at + 1] = color[1];
-      png.data[at + 2] = color[2];
-      png.data[at + 3] = 255;
+      rgba[at] = color[0];
+      rgba[at + 1] = color[1];
+      rgba[at + 2] = color[2];
+      rgba[at + 3] = 255;
     }
   }
-  return { data: new Uint8Array(PNG.sync.write(png)), mediaType: 'image/png', width, height, scale };
+  return { data: new Uint8Array(Transformer.fromRgbaPixels(rgba, width, height).pngSync()), mediaType: 'image/png', width, height, scale };
 }
 
 const WHITE: Rgb = [255, 255, 255];
@@ -97,8 +97,13 @@ function attemptOf(outcome: RunOutcome, title: string) {
   return result.attempts.at(-1)!;
 }
 
-function readPng(file: string): PNG {
-  return PNG.sync.read(readFileSync(file));
+/** The PNG at `file` as RGBA, which is how the runner writes every screenshot it stores. */
+function readPng(file: string): { width: number; height: number; data: Uint8Array } {
+  const image = new Transformer(readFileSync(file));
+  const { width, height, format, colorType } = image.metadataSync();
+  if (format !== 'png') throw new Error(`${file} is not a PNG: the bytes are ${format}`);
+  if (colorType !== JsColorType.Rgba8) throw new Error(`${file} is not an 8-bit RGBA PNG: color type ${colorType}`);
+  return { width, height, data: image.rawPixelsSync() };
 }
 
 const SCREEN_TEST = `import { test, expect } from 'e2e';
@@ -203,7 +208,7 @@ test('crops and masks', async ({ app, screen }) => {
 
 test('tolerant', async ({ app, screen }) => {
   await app.open('/');
-  await expect(screen).toHaveScreenshot('home', { maxDiffPixels: 800, timeout: 1000 });
+  await expect(screen).toHaveScreenshot('home', { maxDiffPixels: 800, timeout: 0 });
   await expect(screen).toHaveScreenshot('home', { maxDiffPixelRatio: 0.001, timeout: 1000 });
   await expect(screen).not.toHaveScreenshot('home', { timeout: 1000 });
 });
@@ -412,9 +417,7 @@ test('threshold', async ({ app, screen }) => {
       const { project } = await runProject({ 'tests/edges.e2e.ts': test }, options);
       try {
         const directory = path.join(project.dir, 'tests', 'edges.e2e.ts-snapshots');
-        const small = new PNG({ width: 10, height: 10 });
-        small.data.fill(255);
-        writeFileSync(path.join(directory, `small${SUFFIX}.png`), PNG.sync.write(small));
+        writeFileSync(path.join(directory, `small${SUFFIX}.png`), Transformer.fromRgbaPixels(new Uint8Array(10 * 10 * 4).fill(255), 10, 10).pngSync());
 
         screen = screenPng(WHITE, [0, 0, 250]);
         const outcome = await runExisting(project, options);
@@ -440,17 +443,20 @@ test('threshold', async ({ app, screen }) => {
   );
 
   it(
-    'reports the mismatch it saw when a later capture runs past the deadline and times out',
+    'reports the mismatch it saw when the deadline cuts off a later capture, and a capture that hung as a timeout',
     async () => {
       let armed = false;
       let observations = 0;
+      let hangsAt = 3;
       let screen = screenPng(WHITE, BLUE);
       const { fake } = screenEngine(() => screen, {
         observe: async () => {
           if (!armed) return;
           observations += 1;
-          if (observations !== 2) return;
-          // The second capture starts inside the 1 s budget and ends past it, as a slow engine's does.
+          if (observations !== hangsAt) {
+            await new Promise((resolve) => setTimeout(resolve, 300));
+            return;
+          }
           await new Promise((resolve) => setTimeout(resolve, 1_200));
           throw engineFailure('OPERATION_TIMEOUT', 'the screenshot outlived its budget');
         },
@@ -463,6 +469,53 @@ test('threshold', async ({ app, screen }) => {
         const attempt = attemptOf(await runExisting(project, options), 'home');
         expect(attempt.error).toMatchObject({ code: 'ASSERTION_FAILED', message: expect.stringContaining(`${BUTTON.width * BUTTON.height} pixels`) });
         expect(attempt.artifacts.map((artifact) => path.posix.basename(artifact.path ?? ''))).toContain('home-diff.png');
+
+        // The second capture starts with most of the budget left and never answers: that is a hang, not the deadline.
+        observations = 0;
+        hangsAt = 2;
+        const hung = attemptOf(await runExisting(project, options), 'home');
+        expect(hung.error).toMatchObject({ code: 'ACTION_FAILED', message: expect.stringContaining('timed out') });
+      } finally {
+        project.cleanup();
+      }
+    },
+    30_000,
+  );
+
+  it(
+    'passes a .not whose screen differed long enough when its last capture runs past the deadline',
+    async () => {
+      let armed = false;
+      let observations = 0;
+      let screen = screenPng(WHITE, BLUE);
+      const { fake } = screenEngine(() => screen, {
+        observe: async () => {
+          if (!armed) return;
+          observations += 1;
+          await new Promise((resolve) => setTimeout(resolve, 300));
+          if (observations < 3) return;
+          await new Promise((resolve) => setTimeout(resolve, 300));
+          throw engineFailure('OPERATION_TIMEOUT', 'the screenshot outlived its budget');
+        },
+      });
+      const options = { appUrl: FAKE_APP_URL, config: fakeConfig(fake) };
+      const { project } = await runProject({ 'tests/home.e2e.ts': SCREEN_TEST }, options);
+      try {
+        writeFileSync(
+          path.join(project.dir, 'tests', 'home.e2e.ts'),
+          `import { test, expect } from 'e2e';
+
+test('home', async ({ app, screen }) => {
+  await app.open('/');
+  await expect(screen).not.toHaveScreenshot('home.png', { timeout: 1000 });
+});
+`,
+        );
+        armed = true;
+        screen = screenPng(WHITE, RED);
+        const attempt = attemptOf(await runExisting(project, options), 'home');
+        expect(attempt.error).toBeUndefined();
+        expect(observations).toBe(3);
       } finally {
         project.cleanup();
       }
@@ -526,6 +579,7 @@ test('frame', async ({ app, gadget }) => {
     ['a name with a path separator', `'../home'`, 'name must be a file name'],
     ['an unknown option', `'home', { fullPage: true }`, '"fullPage"'],
     ['a threshold above 1', `'home', { threshold: 2 }`, 'threshold must be a number from 0 to 1'],
+    ['a negative timeout', `'home', { timeout: -1 }`, 'timeout must be a finite number of milliseconds, 0 or more'],
     ['a mask that is not a locator', `'home', { mask: ['#clock'] }`, 'mask must be an array of locators'],
     ['a mask color that is not #rrggbb', `'home', { maskColor: 'red' }`, 'maskColor must be a color written #rrggbb'],
     ['a name too long for a file name', `'${'あ'.repeat(60)}'`, 'at most 150 bytes'],

@@ -1,9 +1,8 @@
 ---
 title: Coding agents
 description: Give a coding agent the skill, a live app session, and reports it can use to write and debug tests.
-icon: "robot"
-"og:image": "https://e2e.tester.army/docs/images/og/coding-agents.png?v=c6990935d7"
-"twitter:image": "https://e2e.tester.army/docs/images/og/coding-agents.png?v=c6990935d7"
+"og:image": "https://e2e.com/docs/images/og/coding-agents.png?v=c6990935d7"
+"twitter:image": "https://e2e.com/docs/images/og/coding-agents.png?v=c6990935d7"
 ---
 
 A coding agent such as Claude Code, Codex, or Cursor can write, run, and
@@ -31,9 +30,9 @@ bunx e2e init
 | `.agents/skills/e2e/` | Agents that read `.agents/skills` |
 | `.claude/skills/e2e/` | Claude Code. A symlink to `.agents/skills/e2e/` when both are installed. |
 
-The copy holds `SKILL.md` and topic references. After you upgrade e2e, with
-[`e2e upgrade`](/reference/cli#e2e-upgrade) or your package manager, run
-`init` again to update it. Without `init`, `npx skills add tester-army/e2e`
+The copy holds `SKILL.md` and topic references.
+[`e2e upgrade`](/reference/cli#e2e-upgrade) updates it, also after you
+upgrade with your package manager. Without `init`, `npx skills add e2e-inc/e2e`
 installs the skill, and `npx e2e guide [topic]` prints it from the
 installed package. The plugin below installs all three e2e skills for
 every project.
@@ -57,18 +56,18 @@ from its local plugins folder:
 
 <CodeGroup>
 ```bash Claude
-claude plugin marketplace add tester-army/e2e
+claude plugin marketplace add e2e-inc/e2e
 claude plugin install e2e@e2e
 ```
 
 ```bash Codex
-codex plugin marketplace add tester-army/e2e
+codex plugin marketplace add e2e-inc/e2e
 codex plugin add e2e@e2e
 ```
 
 ```bash Cursor
 repo=$(mktemp -d)
-git clone --depth 1 https://github.com/tester-army/e2e "$repo"
+git clone --depth 1 https://github.com/e2e-inc/e2e "$repo"
 mkdir -p ~/.cursor/plugins/local
 rm -rf ~/.cursor/plugins/local/e2e
 cp -R "$repo/plugins/e2e" ~/.cursor/plugins/local/
@@ -77,7 +76,7 @@ cp -R "$repo/plugins/e2e" ~/.cursor/plugins/local/
 
 Start a new session. In Cursor, run **Developer: Reload Window**. On Cursor
 Teams and Enterprise, local plugins need the admin setting **Allow Local
-Plugin Imports**, or an admin imports `tester-army/e2e` as a team
+Plugin Imports**, or an admin imports `e2e-inc/e2e` as a team
 marketplace. The plugin adds the
 `e2e`, `create-verification-skill`, and `migrate-to-e2e` skills, not the
 npm package or the MCP server. Invoke the other two under the plugin's
@@ -100,17 +99,39 @@ codex plugin marketplace upgrade e2e
 
 </Accordion>
 
+<Accordion title="Install in OpenClaw or Hermes Agent">
+
+The three skills are published on [ClawHub](https://clawhub.ai/) under
+`@e2e`. Hermes Agent reads the repository as a tap:
+
+<CodeGroup>
+```bash OpenClaw
+openclaw skills install @e2e/e2e
+openclaw skills install @e2e/create-verification-skill
+openclaw skills install @e2e/migrate-to-e2e
+```
+
+```bash Hermes
+hermes skills tap add e2e-inc/e2e
+hermes skills install e2e-inc/e2e/e2e
+```
+</CodeGroup>
+
+</Accordion>
+
 ## Let the agent use the app
 
-`e2e mcp` gives the agent a live session on your app. It checks each
-locator against the screen before it writes the test, and checks its own UI
+`e2e mcp` gives the agent a live session on your app. It checks its
+locators against the screen before it writes them, and checks its own UI
 changes. `init` registers the server. See [MCP server](/mcp-server) for setup and
 prompts.
 
 ## How an agent writes and runs a test
 
 The skill tells the agent to read the config and an existing test first.
-For known fields and exact values, the agent uses `screen`:
+With `e2e mcp`, it walks the flow in a session and writes each step as it
+takes it. Known fields and exact values get `screen` calls, from
+locators that matched one node:
 
 ```ts title="tests/checkout.e2e.ts"
 import { test, expect, credentials } from 'e2e';
@@ -204,15 +225,15 @@ before it hands over.
 
 <CodeGroup>
 ```bash npm
-npx skills add tester-army/e2e --skill create-verification-skill
+npx skills add e2e-inc/e2e --skill create-verification-skill
 ```
 
 ```bash pnpm
-pnpm dlx skills add tester-army/e2e --skill create-verification-skill
+pnpm dlx skills add e2e-inc/e2e --skill create-verification-skill
 ```
 
 ```bash bun
-bunx skills add tester-army/e2e --skill create-verification-skill
+bunx skills add e2e-inc/e2e --skill create-verification-skill
 ```
 </CodeGroup>
 
@@ -233,21 +254,21 @@ from poteto's pstack, with e2e in place of a hand-rolled harness.
 
 ## Migrate an existing suite
 
-The `migrate-to-e2e` skill moves a Playwright, Cypress, Selenium, Detox,
-or Maestro suite to e2e one slice per session. The old suite keeps
+The `migrate-to-e2e` skill moves a Playwright, Cypress, Selenium, Appium,
+Detox, Maestro, or TesterArmy suite to e2e one slice per session. The old suite keeps
 running beside the new tests, so you can stop after any session.
 
 <CodeGroup>
 ```bash npm
-npx skills add tester-army/e2e --skill migrate-to-e2e
+npx skills add e2e-inc/e2e --skill migrate-to-e2e
 ```
 
 ```bash pnpm
-pnpm dlx skills add tester-army/e2e --skill migrate-to-e2e
+pnpm dlx skills add e2e-inc/e2e --skill migrate-to-e2e
 ```
 
 ```bash bun
-bunx skills add tester-army/e2e --skill migrate-to-e2e
+bunx skills add e2e-inc/e2e --skill migrate-to-e2e
 ```
 </CodeGroup>
 
@@ -257,8 +278,8 @@ records progress for the next session. Optionally, the agent plants a temporary 
 in the app, such as a wrong checkout total, and checks whether both
 suites fail on it. The agent deletes an old test only when you confirm. It first reads the migration guide for your runner:
 [Playwright](/migrate/playwright), [Cypress](/migrate/cypress),
-[Selenium](/migrate/selenium), [Detox](/migrate/detox), or
-[Maestro](/migrate/maestro).
+[Selenium](/migrate/selenium), [Appium](/migrate/appium), [Detox](/migrate/detox),
+[Maestro](/migrate/maestro), or [TesterArmy](/migrate/testerarmy).
 
 ## Next
 

@@ -12,7 +12,7 @@
  * says which URLs a test may open.
  */
 
-import type { Download, Response, Route } from 'playwright-core';
+import type { Download, Route } from 'playwright-core';
 import type { ActionOptions, Expectable, JsonValue, Locator, Screen, TextMatch } from 'e2e';
 import {
   ConfigurationError,
@@ -23,6 +23,7 @@ import {
   obj,
   pollCondition,
   raceAbort,
+  stepTimeout,
   rejectUnknownOptions,
   TestError,
   toTextPattern,
@@ -39,8 +40,8 @@ import {
 import { classifyInputError } from './actions.ts';
 import type { DialogHandler } from './dialogs.ts';
 import { saveDownloadsTo, saveFromBrowser, saveLocally } from './downloads.ts';
-import { isTestErrorCode, message as causeMessage, translatePwError } from './support.ts';
-import { compileEvaluation, pageFunctionSource } from './evaluation.ts';
+import { isTestErrorCode, message as causeMessage, pageScriptFailure, translatePwError } from './support.ts';
+import { compileEvaluation, decodeEvaluation, pageFunctionSource } from './evaluation.ts';
 import { initScriptLabel, testInitScriptSource } from './init-scripts.ts';
 import { MEDIA_KEYS, mediaLabel, mediaProblem, type WebMedia } from './media.ts';
 import { lowercaseNames } from './protected-app.ts';
@@ -55,12 +56,13 @@ import type { PlaywrightSurface } from './surface.ts';
  */
 export type RouteFulfillResponse = {
   status?: number;
+  /** Response headers; `set-cookie` may join several cookies with `\n`, as `route.fetch()` reports them. */
   headers?: Record<string, string>;
   /** Sets the `Content-Type` response header. */
   contentType?: string;
 } & (
   | { json: JsonValue; body?: never; path?: never }
-  | { body: string; json?: never; path?: never }
+  | { body: string | Uint8Array; json?: never; path?: never }
   | { path: string; json?: never; body?: never }
   | { body?: never; json?: never; path?: never }
 );
@@ -71,8 +73,8 @@ export interface RouteContinueOverrides {
   url?: string;
   /** Request method. */
   method?: string;
-  /** Replaces every request header; the configured `headers` for the app's site are added on top. */
-  headers?: Record<string, string>;
+  /** Replaces every request header; `undefined` drops one, and the configured `headers` for the app's site are added on top. */
+  headers?: Record<string, string | undefined>;
   /** Request body. */
   postData?: string;
 }
@@ -85,6 +87,8 @@ export interface WebRoute {
     readonly headers: Readonly<Record<string, string>>;
     readonly postData?: string;
   };
+  /** Reads the upstream response without deciding the route or following redirects. */
+  fetch(): Promise<WebResponse>;
   /** Fulfills the intercepted request once. */
   fulfill(response: RouteFulfillResponse): Promise<void>;
   /** Sends the intercepted request to the network once, skipping every other route. */
@@ -100,8 +104,10 @@ export interface WebResponse {
   readonly url: string;
   /** HTTP status. */
   readonly status: number;
-  /** Response headers, lower-cased names. */
+  /** Response headers, lower-cased names; `route.fetch()` joins several `set-cookie` values with `\n`, `waitForResponse` leaves cookie headers out. */
   readonly headers: Readonly<Record<string, string>>;
+  /** Waits for the body and returns its bytes; rejects with `ACTION_FAILED` when the body could not be read. */
+  body(): Promise<Buffer>;
   /** Waits for the body and parses it as JSON; rejects with `ACTION_FAILED` when the body could not be read. */
   json<T = unknown>(): Promise<T>;
   /** Waits for the body and reads it as text; rejects with `ACTION_FAILED` when the body could not be read. */
@@ -110,27 +116,47 @@ export interface WebResponse {
 
 /**
  * Reads the body once the response is known and keeps the outcome: a body
- * that arrived decodes to text on every call, a body the browser could not
+ * that arrived returns a copy of its bytes on every call, a body the browser could not
  * read rejects every call with `ACTION_FAILED` naming the cause. Swallowing
  * that failure would hand the test an empty string the server never sent,
- * indistinguishable from a real empty body. The browser reports the reason
- * on the request (`net::ERR_CONTENT_LENGTH_MISMATCH` for a connection cut
- * short of the declared length, `net::ERR_ABORTED` for a request the page
- * aborted), and the protocol error behind the read is the fallback, as for a
- * redirect, whose body the browser never keeps.
+ * indistinguishable from a real empty body. `failure` names the reason the
+ * browser reported on a page request (`net::ERR_CONTENT_LENGTH_MISMATCH` for
+ * a connection cut short of the declared length, `net::ERR_ABORTED` for a
+ * request the page aborted), and the error behind the read is the fallback,
+ * as for a redirect, whose body the browser never keeps.
  */
-async function readResponseBody(response: Response): Promise<() => Promise<string>> {
+async function readResponseBody(
+  api: 'waitForResponse' | 'route.fetch',
+  body: () => Promise<Buffer>,
+  failure: () => string | undefined = () => undefined,
+): Promise<() => Promise<Buffer>> {
   try {
-    const text = new TextDecoder().decode(await response.body());
-    return () => Promise.resolve(text);
+    const bytes = await body();
+    return () => Promise.resolve(Buffer.from(bytes));
   } catch (cause) {
-    const reason = response.request().failure()?.errorText ?? causeMessage(cause);
     const error = new TestError(
       'ACTION_FAILED',
-      `waitForResponse: response body could not be read: ${reason}`,
+      `${api}: response body could not be read: ${failure() ?? causeMessage(cause)}`,
     );
     return () => Promise.reject(error);
   }
+}
+
+/** The `WebResponse` over a Playwright response's metadata and a reader for its body bytes. */
+function webResponse(
+  response: { url(): string; status(): number; headers(): Record<string, string> },
+  body: () => Promise<Buffer>,
+): WebResponse {
+  const text = async (): Promise<string> => new TextDecoder().decode(await body());
+  return {
+    url: response.url(),
+    status: response.status(),
+    headers: response.headers(),
+    body,
+    // oxlint-disable-next-line e2e/no-unchecked-json -- public API: the caller names T, unknown by default
+    json: async <T = unknown>() => JSON.parse(await text()) as T,
+    text,
+  };
 }
 
 export interface CookieFields {
@@ -154,6 +180,13 @@ export type Cookie = CookieFields &
     | { url: string; domain?: never; path?: never }
     | { url?: never; domain: string; path?: string }
   );
+
+/** Cookie filters are combined; strings match exactly, RegExp matches the field. */
+export interface CookieFilter {
+  name?: string | RegExp;
+  domain?: string | RegExp;
+  path?: string | RegExp;
+}
 
 export interface BrowserExpectation {
   /** Inverts the matcher. */
@@ -247,6 +280,8 @@ export interface Browser extends Expectable<BrowserExpectation> {
   cookies(): Promise<Cookie[]>;
   /** Sets cookies after URL validation. */
   setCookies(cookies: readonly Cookie[]): Promise<void>;
+  /** Removes matching cookies only; without filters removes every cookie, preserving other storage. */
+  clearCookies(options?: CookieFilter): Promise<void>;
   /** Sets the viewport size. */
   setViewport(size: { width: number; height: number }): Promise<void>;
   /**
@@ -264,6 +299,11 @@ export interface Browser extends Expectable<BrowserExpectation> {
     trigger: () => Promise<void>,
     options?: { timeout?: number },
   ): Promise<{ path: string; absolutePath: string; suggestedFilename: string }>;
+  /** Runs one trigger and waits for the requested number of completed downloads. */
+  waitForDownloads(
+    trigger: () => Promise<void>,
+    options: { count: number; timeout?: number },
+  ): Promise<readonly { path: string; absolutePath: string; suggestedFilename: string }[]>;
   /** Viewport-level keyboard, for whatever has focus. */
   readonly keyboard: {
     /** Sends one key. */
@@ -298,6 +338,96 @@ interface StoredRoute {
   readonly predicate: (url: URL) => boolean;
 }
 
+/** A saved download as `waitForDownload` and `waitForDownloads` return it. */
+type DownloadedFile = { path: string; absolutePath: string; suggestedFilename: string };
+
+/**
+ * Runs `trigger` once and saves the first `count` downloads it starts, in
+ * start order, each attached as a `download` artifact. One budget bounds the
+ * start, completion and save of every file; on failure the unfinished
+ * downloads are canceled and nothing is attached after it.
+ */
+async function collectDownloads(
+  surface: PlaywrightSurface,
+  context: EngineFixtureContext,
+  trigger: () => Promise<void>,
+  count: number,
+  timeout: number | undefined,
+  api: 'browser.waitForDownload' | 'browser.waitForDownloads',
+): Promise<DownloadedFile[]> {
+  const operation = context.operation(stepTimeout(timeout, api));
+  const waitMs = operation.timeoutMs;
+  const deadline = new Deadline(waitMs);
+  const scope = new AbortController();
+  const signal = AbortSignal.any([operation.signal, scope.signal]);
+  const started: Download[] = [];
+  let triggerFailure: { cause: unknown } | undefined;
+  let triggerMs: number | undefined;
+  let finished = false;
+  let stopListening = (): void => {};
+  const timedOut = (): TestError => new TestError(
+    'ACTION_FAILED',
+    triggerMs === undefined
+      ? `${api} exceeded its timeout of ${waitMs}ms`
+      : started.length < count
+        ? `${count === 1 ? 'no download' : `${started.length} of ${count} downloads`} started within ${waitMs}ms; the trigger resolved after ${triggerMs}ms`
+        : `${count === 1 ? 'the download' : `${count} downloads`} did not finish within ${waitMs}ms`,
+  );
+  const requireOpen = (): void => {
+    if (scope.signal.aborted || deadline.expired()) throw timedOut();
+  };
+  try {
+    return await withTimeout(surface.guard({ ...operation, signal }, 'download', async (currentOperation) => {
+      requireOpen();
+      const page = surface.requirePage();
+      const remote = surface.remoteDownloads();
+      if (remote !== undefined) await saveDownloadsTo(page, remote.dir, currentOperation.signal);
+      requireOpen();
+      let allStarted!: () => void;
+      const received = new Promise<void>((resolve) => { allStarted = resolve; });
+      const onDownload = (download: Download): void => {
+        if (scope.signal.aborted || started.length === count) return;
+        started.push(download);
+        if (started.length === count) allStarted();
+      };
+      stopListening = () => { page.off('download', onDownload); };
+      page.on('download', onDownload);
+      const triggerStart = Date.now();
+      try {
+        await trigger();
+      } catch (cause) {
+        triggerFailure = { cause };
+        throw cause;
+      }
+      triggerMs = Date.now() - triggerStart;
+      await raceAbort(received, currentOperation.signal, 'download');
+      const files: DownloadedFile[] = [];
+      for (const download of started) {
+        const suggestedFilename = download.suggestedFilename();
+        const { relative, absolute } = surface.artifactPath('downloads', suggestedFilename, '');
+        if (remote === undefined) await saveLocally(download, absolute, surface.unservedDownloads());
+        else await saveFromBrowser(download, remote, absolute, currentOperation.signal);
+        if (currentOperation.signal.aborted) throw timedOut();
+        context.attachArtifact('download', relative);
+        files.push({ path: relative, absolutePath: absolute, suggestedFilename });
+      }
+      finished = true;
+      return files;
+    }, (cause, label) => {
+      // The trigger is test code, so its errors keep their original classification.
+      if (triggerFailure !== undefined && Object.is(cause, triggerFailure.cause)) throw cause;
+      return translatePwError(cause, label);
+    }, 'test-code'), deadline.remaining(), timedOut);
+  } finally {
+    // The owner closes even when a trigger never settles; late work cannot attach artifacts.
+    scope.abort();
+    stopListening();
+    if (!finished) {
+      for (const download of started) void download.cancel().catch(() => undefined);
+    }
+  }
+}
+
 /** Builds the `browser` fixture for one attempt over the shared surface. */
 export function createBrowserFixture(surface: PlaywrightSurface, context: EngineFixtureContext): Browser {
   const latch = surface.latch;
@@ -326,16 +456,17 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
    * be cut at the action timeout.
    */
   const navigation = (
+    api: string,
     options: { timeout?: number } | undefined,
     run: (operation: OperationContext) => Promise<void>,
   ): Promise<void> => {
-    const operation = context.operation(options?.timeout ?? context.timeouts.test);
+    const operation = context.operation(stepTimeout(options?.timeout, api) ?? context.timeouts.test);
     return surface.guard(operation, 'navigation', run);
   };
 
   /** An assertion-style budget: the given timeout or the assertion timeout, clamped to the test. */
-  const deadlineFor = (timeout: number | undefined): Deadline =>
-    new Deadline(context.operation(timeout ?? context.timeouts.assertion).timeoutMs);
+  const deadlineFor = (timeout: number | undefined, api: string): Deadline =>
+    new Deadline(context.operation(stepTimeout(timeout, api) ?? context.timeouts.assertion).timeoutMs);
 
   /** The page URL, read within the action timeout or, for a matcher poll, within the poll's deadline. */
   const currentUrl = (deadline?: Deadline) =>
@@ -348,7 +479,7 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
   const browser: Omit<Browser, keyof Expectable<BrowserExpectation>> = {
     goto(url, options) {
       const resolved = context.app.resolveUrl(url);
-      return navigation(options, (operation) => surface.navigating(async () => {
+      return navigation('browser.goto', options, (operation) => surface.navigating(async () => {
         const page = await surface.ensurePage();
         await page.goto(resolved, {
           waitUntil: options?.waitUntil ?? 'load',
@@ -357,15 +488,15 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
       }));
     },
     reload: (options) =>
-      navigation(options, (operation) => surface.navigating(async () => {
+      navigation('browser.reload', options, (operation) => surface.navigating(async () => {
         await surface.requirePage().reload({ waitUntil: 'load', timeout: operation.timeoutMs });
       })),
     back: (options) =>
-      navigation(options, (operation) => surface.navigating(async () => {
+      navigation('browser.back', options, (operation) => surface.navigating(async () => {
         await surface.requirePage().goBack({ waitUntil: 'load', timeout: operation.timeoutMs });
       })),
     forward: (options) =>
-      navigation(options, (operation) => surface.navigating(async () => {
+      navigation('browser.forward', options, (operation) => surface.navigating(async () => {
         await surface.requirePage().goForward({ waitUntil: 'load', timeout: operation.timeoutMs });
       })),
     url: () => currentUrl(),
@@ -386,12 +517,18 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
       const evaluate = compileEvaluation(source, arg !== undefined);
       // JSON safety is checked above; Playwright's recursive argument type cannot expand JsonValue.
       const input: unknown = arg;
-      const result = await surface.guard(context.operation(), 'evaluate', () =>
-        surface.requirePage().evaluate(evaluate, input),
-      );
-      if (!result.ok) throw new TestError('EVALUATE_FAILED', result.message);
-      validateJsonValue(result.value, 'evaluate result');
-      return result.value as T;
+      // A handle, not a value: the boundary resolves to a string, which Playwright
+      // keeps out of its in-page serializer when it is taken back from a handle.
+      const report = await surface.guard(context.operation(), 'evaluate', async (operation) => {
+        const page = surface.requirePage();
+        try {
+          const handle = await page.evaluateHandle(evaluate, input);
+          return await handle.jsonValue();
+        } catch (cause) {
+          throw (await pageScriptFailure(page, cause, 'evaluate', operation.timeoutMs)) ?? cause;
+        }
+      });
+      return decodeEvaluation(report) as T;
     },
     async addInitScript(script: unknown, ...rest: unknown[]) {
       const source = await testInitScriptSource(script, rest.length === 0 ? undefined : { arg: rest[0] }, (file) => surface.projectPath(file));
@@ -405,6 +542,12 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
       // is latched on the surface and fails the next step with its real cause.
       const handleRoute = async (route: Route): Promise<void> => {
         let decided = false;
+        const request = route.request();
+        // Noted before the abort, so a navigation it fails reads as aborted by the test.
+        const abort = async (): Promise<void> => {
+          surface.noteRouteAbort(request);
+          await route.abort();
+        };
         const decide = (name: string) => {
           if (decided) {
             throw new TestError('ACTION_FAILED', `route handler already decided; ${name} called twice`);
@@ -419,11 +562,10 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
           try {
             await act();
           } catch (cause) {
-            await route.abort().catch(() => undefined);
+            await abort().catch(() => undefined);
             throw cause;
           }
         };
-        const request = route.request();
         const postData = request.postData();
         const publicRoute: WebRoute = {
           request: {
@@ -431,6 +573,22 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
             method: request.method(),
             headers: request.headers(),
             ...(postData === null ? {} : { postData }),
+          },
+          fetch: async (...args: unknown[]) => {
+            requireNoArguments('route.fetch', args);
+            return surface.guard(context.operation(), 'route.fetch', async currentOperation => {
+              const site = surface.siteHeaders(request.url());
+              const response = await route.fetch({
+                headers: { ...lowercaseNames(request.headers()), ...site },
+                timeout: currentOperation.timeoutMs,
+                maxRedirects: 0,
+              });
+              try {
+                return webResponse(response, await readResponseBody('route.fetch', () => response.body()));
+              } finally {
+                await response.dispose();
+              }
+            });
           },
           fulfill: async (response) => {
             const decision = parseFulfill(response, (file) => surface.projectPath(file));
@@ -459,7 +617,7 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
           },
           abort: async (...args: unknown[]) => {
             requireNoArguments('route.abort', args);
-            await decideWith('abort', () => route.abort());
+            await decideWith('abort', abort);
           },
         };
         try {
@@ -476,7 +634,7 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
               ? cause
               : new TestError('ACTION_FAILED', `route handler failed: ${causeMessage(cause)}`),
           );
-          if (!decided) await route.abort().catch(() => undefined);
+          if (!decided) await abort().catch(() => undefined);
         }
       };
       // Tracked so the attempt end waits for a handler still running and
@@ -501,7 +659,7 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
     },
     waitForResponse(pattern, options) {
       const wirePattern = toTextPattern(pattern);
-      const operation = context.operation(options?.timeout);
+      const operation = context.operation(stepTimeout(options?.timeout, 'browser.waitForResponse'));
       return surface.guard(operation, 'waitForResponse', async (currentOperation) => {
         const page = await surface.ensurePage();
         const response = await page.waitForResponse(
@@ -509,28 +667,21 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
           { timeout: currentOperation.timeoutMs },
         );
         // Started now, while the browser still holds the body, and awaited
-        // only by `text` and `json` on a budget of their own: the timeout
+        // only by the body readers on a budget of their own: the timeout
         // bounds the match, never a body still streaming in behind headers
         // that already arrived.
-        const body = readResponseBody(response);
-        const text = async (): Promise<string> => {
+        const body = readResponseBody('waitForResponse', () => response.body(), () => response.request().failure()?.errorText);
+        const read = async (): Promise<Buffer> => {
           const { signal, timeoutMs } = context.operation();
-          const read = await raceAbort(
+          const bytes = await raceAbort(
             withTimeout(body, timeoutMs, () =>
               new TestError('ACTION_FAILED', `waitForResponse: response body did not finish within ${timeoutMs}ms`)),
             signal,
             'waitForResponse body',
           );
-          return read();
+          return bytes();
         };
-        return {
-          url: response.url(),
-          status: response.status(),
-          headers: response.headers(),
-          // oxlint-disable-next-line e2e/no-unchecked-json -- public API: the caller names T, unknown by default
-          json: async <T = unknown>() => JSON.parse(await text()) as T,
-          text,
-        };
+        return webResponse(response, read);
       });
     },
     cookies: () =>
@@ -581,6 +732,16 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
         );
       });
     },
+    clearCookies(options) {
+      rejectUnknownOptions('browser.clearCookies', options, ['name', 'domain', 'path']);
+      for (const field of ['name', 'domain', 'path'] as const) {
+        const value = options?.[field];
+        if (value !== undefined && typeof value !== 'string' && !(value instanceof RegExp)) {
+          throw new TestError('INVALID_ARGUMENT', `browser.clearCookies ${field} must be a string or RegExp`);
+        }
+      }
+      return surface.guard(context.operation(), 'clearCookies', () => surface.requireContext().clearCookies(options));
+    },
     setViewport: (size) =>
       surface.guard(context.operation(), 'setViewport', async () => {
         await surface.setViewport(size);
@@ -605,46 +766,16 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
       return async () => unsubscribe();
     },
     async waitForDownload(trigger, options) {
-      const operation = context.operation(options?.timeout);
-      let triggerFailure: { cause: unknown } | undefined;
-      let awaiting: { waitMs: number; triggerMs: number } | undefined;
-      return surface.guard(operation, 'download', async (currentOperation) => {
-        const remote = surface.remoteDownloads();
-        if (remote !== undefined) await saveDownloadsTo(surface.requirePage(), remote.dir);
-        const waiter: Promise<Download> = surface.requirePage()
-          .waitForEvent('download', { timeout: currentOperation.timeoutMs });
-        // The trigger may fail before the waiter settles; absorb its later rejection.
-        waiter.catch(() => undefined);
-        const triggerStart = Date.now();
-        try {
-          await trigger();
-        } catch (cause) {
-          triggerFailure = { cause };
-          throw cause;
-        }
-        awaiting = { waitMs: currentOperation.timeoutMs, triggerMs: Date.now() - triggerStart };
-        const download = await waiter;
-        awaiting = undefined;
-        const suggestedFilename = download.suggestedFilename();
-        const { relative, absolute } = surface.artifactPath('downloads', suggestedFilename, '');
-        if (remote === undefined) await saveLocally(download, absolute, surface.unservedDownloads());
-        else await saveFromBrowser(download, remote, absolute, currentOperation.signal);
-        context.attachArtifact('download', relative);
-        return { path: relative, absolutePath: absolute, suggestedFilename };
-      }, (cause, label) => {
-        // The trigger is test code, so its errors keep their original classification.
-        if (triggerFailure !== undefined && Object.is(cause, triggerFailure.cause)) throw cause;
-        const translated = translatePwError(cause, label);
-        // The waiter's clock starts before the trigger runs, so the message names both.
-        if (awaiting !== undefined && translated instanceof EngineError && translated.code === 'OPERATION_TIMEOUT') {
-          return new TestError(
-            'ACTION_FAILED',
-            `no download started within ${awaiting.waitMs}ms; the trigger resolved after ${awaiting.triggerMs}ms`,
-            { cause },
-          );
-        }
-        return translated;
-      }, 'test-code');
+      const [file] = await collectDownloads(surface, context, trigger, 1, options?.timeout, 'browser.waitForDownload');
+      return file!;
+    },
+    async waitForDownloads(trigger, options) {
+      rejectUnknownOptions('browser.waitForDownloads', options, ['count', 'timeout']);
+      const count = options?.count;
+      if (!Number.isSafeInteger(count) || count < 1) {
+        throw new TestError('INVALID_ARGUMENT', 'waitForDownloads: count must be a positive safe integer');
+      }
+      return collectDownloads(surface, context, trigger, count, options.timeout, 'browser.waitForDownloads');
     },
     keyboard: {
       down: (key) =>
@@ -681,19 +812,21 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
     forward: navigationCall,
     url: action,
     title: action,
-    waitForURL: { ...navigationCall, verifies: true, label: (url) => String(url) },
+    waitForURL: { ...navigationCall, verifies: true, label: patternLabel },
     evaluate: action,
     addInitScript: { ...action, label: (script) => initScriptLabel(script) },
-    route: { ...action, label: (pattern) => String(pattern) },
-    unroute: { ...action, label: (pattern) => String(pattern) },
+    route: { ...action, label: patternLabel },
+    unroute: { ...action, label: patternLabel },
     unrouteAll: action,
-    waitForResponse: { ...action, timeout: (_pattern, options) => options?.timeout, label: (pattern) => String(pattern) },
+    waitForResponse: { ...action, timeout: (_pattern, options) => options?.timeout, label: patternLabel },
     cookies: action,
     setCookies: action,
+    clearCookies: action,
     setViewport: action,
     emulateMedia: { ...action, label: (media) => mediaLabel(media) },
     onDialog: action,
-    waitForDownload: { ...action, timeout: (_trigger, options) => options?.timeout },
+    waitForDownload: { ...action, timeout: false },
+    waitForDownloads: { ...action, timeout: false },
     keyboard: { down: { ...action, label: (key) => key }, up: { ...action, label: (key) => key }, press: { ...action, label: (key) => key }, type: { ...action, label: (text) => `${text.length} chars` } },
     mouse: { move: action, wheel: action, down: action, up: action },
   });
@@ -703,8 +836,22 @@ interface ExpectationDeps {
   currentUrl(deadline: Deadline): Promise<string>;
   currentTitle(deadline: Deadline): Promise<string>;
   baseHref(): string;
-  deadlineFor(timeout: number | undefined): Deadline;
+  deadlineFor(timeout: number | undefined, api: string): Deadline;
   readonly context: EngineFixtureContext;
+}
+
+/**
+ * The expected URL as `toHaveURL` compares it: a string resolved against the
+ * base, the way `urlMatches` resolves it, so it reads beside the absolute
+ * observed URL. A string that does not parse, and a RegExp, print as written.
+ */
+function describeExpectedUrl(expected: string | RegExp, baseHref: string): string {
+  if (typeof expected !== 'string') return String(expected);
+  try {
+    return new URL(expected, baseHref).href;
+  } catch {
+    return expected;
+  }
 }
 
 /** One read of a browser matcher poll: whether the condition holds (undefined: not evaluable yet), and what was seen. */
@@ -726,7 +873,7 @@ function createBrowserExpectation(deps: ExpectationDeps, negated = false): Brows
     read: (deadline: Deadline) => Promise<BrowserSample>,
     timeout: number | undefined,
   ): Promise<void> => {
-    const deadline = deps.deadlineFor(timeout);
+    const deadline = deps.deadlineFor(timeout, api);
     // pollCondition calls onTimeout only after a read completed, so a sample is always there.
     let last: BrowserSample | undefined;
     await pollCondition({
@@ -757,11 +904,10 @@ function createBrowserExpectation(deps: ExpectationDeps, negated = false): Brows
       if (ignoreCase !== undefined && typeof ignoreCase !== 'boolean') {
         throw new TestError('INVALID_ARGUMENT', `expect.${negated ? 'not.' : ''}toHaveURL option ignoreCase must be a boolean`);
       }
-      const label = typeof expected === 'string' ? expected : String(expected);
       const target = deps.baseHref();
       return poll(
         'toHaveURL',
-        `URL ${label}${ignoreCase === true ? ' (ignoring case)' : ''}`,
+        `URL ${describeExpectedUrl(expected, target)}${ignoreCase === true ? ' (ignoring case)' : ''}`,
         async (deadline) => {
           const url = await deps.currentUrl(deadline);
           return { matches: urlMatches(url, expected, target, ignoreCase), observed: `URL ${url}` };
@@ -829,6 +975,11 @@ function requireSelector(method: string, selector: unknown): string {
     throw new TestError('INVALID_LOCATOR', `${method}() requires a nonempty selector`);
   }
   return selector;
+}
+
+/** A URL pattern as steps and errors name it: a string quoted, a RegExp as its literal. */
+function patternLabel(pattern: string | RegExp): string {
+  return typeof pattern === 'string' ? JSON.stringify(pattern) : String(pattern);
 }
 
 /**

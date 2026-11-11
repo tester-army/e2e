@@ -11,7 +11,6 @@ import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:
 import path from 'node:path';
 import { USER_AGENT } from '../../internal/client-identity.ts';
 import { packageVersion } from '../../internal/package-version.ts';
-import { readPackage, serializePackage } from './package.ts';
 import { dependencyRange, recordedSiblingRange } from './versions.ts';
 
 export interface ExamplePreset {
@@ -25,11 +24,12 @@ export interface ExamplePreset {
   readonly build: boolean;
 }
 
-/** Every standalone app under `examples/`. `with-limrun` is left out: it reuses the SwiftUI and Compose apps. */
+/** Every standalone app under `examples/`. */
 export const EXAMPLES: readonly ExamplePreset[] = [
   { id: 'with-vite', project: '.', script: 'test:e2e', build: false },
   { id: 'with-next', project: '.', script: 'test:e2e', build: false },
   { id: 'with-astro', project: '.', script: 'test:e2e', build: false },
+  { id: 'with-angular', project: '.', script: 'test:e2e', build: false },
   // The web target starts the dev server itself; the device targets need a build first.
   { id: 'with-expo', project: '.', script: 'test:e2e:web', build: false },
   { id: 'with-swiftui', project: 'e2e', script: 'test:e2e', build: true },
@@ -45,7 +45,7 @@ export function findExample(name: string): ExamplePreset | undefined {
   return EXAMPLES.find((example) => example.id === id);
 }
 
-const REPOSITORY = 'tester-army/e2e';
+const REPOSITORY = 'e2e-inc/e2e';
 /** Entries a directory may hold and still count as empty for an example. */
 const IGNORED_ENTRIES = new Set(['.git', '.DS_Store', 'Thumbs.db']);
 /**
@@ -144,7 +144,7 @@ export async function copyExample(example: ExamplePreset, destination: string, {
       body.destroy();
     }
     if (files === 0) throw new ExampleDownloadError(`${REPOSITORY}@${ref} has no examples/${example.id}`);
-    adaptManifest(path.join(destination, example.project), packageName(destination, example));
+    await adaptManifest(path.join(destination, example.project), packageName(destination, example));
     return { ref, remove };
   } catch (cause) {
     remove();
@@ -176,9 +176,12 @@ function packageName(destination: string, example: ExamplePreset): string | unde
  * Names the copied project after its directory and points `e2e` and the
  * `@e2e-dev/*` packages at the ranges this CLI writes. An example's pins are
  * bumped by hand and can trail the release its tag marks by several minors.
+ * The manifest module, and the schema library it brings, loads here: the CLI
+ * reads this file to define `--example` before any copy.
  */
-function adaptManifest(projectDir: string, name: string | undefined): void {
+async function adaptManifest(projectDir: string, name: string | undefined): Promise<void> {
   if (!existsSync(path.join(projectDir, 'package.json'))) return;
+  const { readPackage, serializePackage } = await import('./package.ts');
   const { manifest, original } = readPackage(projectDir);
   const runner = packageVersion(import.meta.url, '../../../package.json', '0.0.0');
   const pin = (section: Readonly<Record<string, string>> | undefined) => section === undefined ? undefined : Object.fromEntries(

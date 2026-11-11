@@ -6,7 +6,9 @@
  */
 
 import { afterEach, describe, expect, it } from 'vitest';
-import { resolveExpression, type SemanticNode } from '../../src/engine/index.ts';
+import { EngineError, resolveExpression, type SemanticNode } from '../../src/engine/index.ts';
+import { expect as expectFixture } from '../../src/expect/index.ts';
+import { sleep, withTimeout } from '../../src/internal/time.ts';
 import type { Locator } from '../../src/types.ts';
 import { invalid } from '../helpers/invalid.ts';
 import { screenOver } from '../helpers/screen-over.ts';
@@ -115,5 +117,32 @@ describe('locator.waitFor validation', () => {
     await expect(locator.waitFor(invalid(options))).rejects.toMatchObject({ code: 'INVALID_ARGUMENT', message });
     expect(lookups()).toBe(0);
     expect(steps.all()).toEqual([]);
+  });
+});
+
+describe('a slow last read', () => {
+  /** A screen whose every read takes 300 ms, bounded by its operation's budget, and whose banner shows up at 1050 ms. */
+  function slowScreen() {
+    let nodes: readonly SemanticNode[] = [];
+    timers.push(setTimeout(() => (nodes = [banner]), 1_050));
+    const { screen } = screenOver({
+      locate: (expression, operation) =>
+        withTimeout(
+          sleep(300).then(() => resolveExpression(expression, nodes)),
+          operation.timeoutMs,
+          () => new EngineError('OPERATION_TIMEOUT', 'locate timed out', { retryable: false }),
+        ),
+      observe: () => snapshot(nodes),
+      timeoutMs: 1_000,
+    });
+    return screen.getByTestId('banner');
+  }
+
+  it('still finishes past the deadline, so waitFor sees a node that showed up during it', async () => {
+    await expect(slowScreen().waitFor()).resolves.toBeUndefined();
+  });
+
+  it('still finishes past the deadline, so an assertion sees a node that showed up during it', async () => {
+    await expect(expectFixture(slowScreen()).toBeVisible()).resolves.toBeUndefined();
   });
 });

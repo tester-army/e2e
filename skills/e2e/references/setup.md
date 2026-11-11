@@ -13,7 +13,9 @@
 
 ## Requirements
 
-- Node.js 24.8 or newer, or 22.22.3 or newer on Node.js 22.
+- Node.js 24.8 or newer, or 22.22.3 or newer on Node.js 22; or Bun 1.4.3 or
+  newer (`bunx --bun e2e`), with
+  [these limitations](https://e2e.com/docs/reference/cli#bun).
 - ES modules: `.ts` config, tests, helpers, and workspace packages exporting
   `.ts` source load as ESM regardless of the nearest `package.json` `type`
   (CommonJS packages need no change); never `require` or `module.exports`.
@@ -38,14 +40,14 @@ pnpm dlx e2e init  # pnpm
 With `e2e` installed, run the installed version: `npx e2e init` or `pnpm exec
 e2e init`; `npx e2e init my-app` scaffolds into a new directory.
 
-The wizard picks an engine and a model provider (None for tests without AI)
+The wizard picks the engines (web, mobile, or both) and a model provider (None for tests without AI)
 and offers to install this skill, register the MCP server for your coding
 agent, and install dependencies. `--yes` picks the web engine (Playwright) and Vercel AI
 Gateway, installs the skill in `.agents/skills/` (`.claude/skills/e2e`
-symlinks to it), registers MCP in `.mcp.json` and `.cursor/mcp.json`, skips
+symlinks to it), registers MCP in `.mcp.json`, `.cursor/mcp.json`, and `.codex/config.toml`, skips
 installing dependencies. A flag per question overrides one default:
-`--engine`, `--gateway`, `--endpoint`, `--skills`, `--mcp` (comma-separated
-locations, or `none`), `--install`; `npx e2e init --help` lists the values.
+`--engine` (`web,mobile` for both), `--gateway`, `--endpoint`, `--skills`,
+`--mcp` (comma-separated locations, or `none`), `--install`; `npx e2e init --help` lists the values.
 To start a new app from one of the repo's examples instead, run `npx e2e init
 my-app --example with-vite` (or `with-expo`, `with-flutter`, ...): it
 downloads the example into an empty directory with its config and tests, then
@@ -53,8 +55,8 @@ asks only for the skill, MCP, and install.
 
 The wizard needs a terminal: without one, `init` exits with code 2. From an
 agent's shell, run `npx e2e init --yes` when its defaults fit and install the
-dependencies after it, or install by hand (below). Neither registers the MCP
-server for Codex (topic `mcp`).
+dependencies after it, or install by hand (below). `--yes` includes MCP
+registration; a manual install needs a separate entry (topic `mcp`).
 
 Init adds dependencies and a `test:e2e` script to `package.json`, writes
 `e2e.config.ts` and `tests/example.e2e.ts`, updates `.gitignore`, leaves
@@ -161,6 +163,7 @@ or `E2E_USER_ADMIN_PASSWORD` first, or defer to fill time with
 | `reporters` | `['list']` | `list`, `json`, `junit`, `markdown`, or `{ name, onEvent?, onRunFinished? }` objects; `json` excludes `list`, `--reporter` keeps the objects. |
 | `cache` | `'read-write'` | `'read-write'`, `'read-only'`, `'off'`, or `{ mode, store, dir, strict }`; CI demotes only a defaulted mode to `'read-only'`. `strict` (`--strict-cache`) fails a step whose recording no longer replays (`REPLAY_STALE`) instead of handing it to the agent; retries replay too, and the run never writes the cache. |
 | `agents` | `{ default: built-in }` | Tests run with `default`, `e2e run --agent <name>` picks another, entries never inherit from `default`. Options: topic `agent`. |
+| `filters` | `[]` | Test filters `{ name, filter(tests, context) }`, unique names, applied in order with `--changed-since <ref>`. Use `filters: [decisionFilter({ model: gateway.decisionModel('typesafe-ai/jev') })]`, with `decisionFilter` from `@e2e-dev/decision` and `gateway` from `ai` (install `@e2e-dev/decision ai`), to run only the tests a pull request can affect. `filter` gets candidates `{ id, file, titlePath, tags, setupFile? }` and a context `{ projectRoot, changes: { base, root, files }, configFile, signal, log, redact }` with repository-relative `files`, and returns `{ exclude: { [id]: reason }, note? }`; every test it does not name runs. Read files, the environment, or the network inside `filter`, never at config load: workers load the config too. When filters run: topic `running`. |
 | `credentials` | `{}` | Named `{ username, password }`; `password` is a 6+ code point string or a function returning it. |
 | `secrets` | `{}` | Named values the model never sees (API keys, tokens), same value rule. A separate namespace: a credential's password is `credentials.user(name).password` (named `<name>.password`), never `secrets.get()`, so a name may be both. |
 | `output` | `'.e2e'` | Results directory; `--output <dir>` for one run. Inside the project root, not the root, not a tests glob's directory, never the cache dir (`cache.dir` stays `.e2e/cache`). |
@@ -187,7 +190,8 @@ target's `app`:
 | `url` | Base URL for `app.open()` and relative navigation; required on a `web()` target, not supported on a mobile target yet. Missing scheme: `https://`, `http://` for loopback; port `0` on `127.0.0.1` or `[::1]` takes a free port. |
 | `bundleId` | Device targets: the bundle id, package name, or display name (`Settings`) `app.open()` launches. |
 | `appPath` | Device targets: the `.app` or `.apk` under test. A device target needs `bundleId` or `appPath`. |
-| `launchArguments`, `permissions` | Device targets: arguments and permission states (`grant`, `deny`, `reset`) every fresh launch gets. |
+| `launchArguments` | Device targets: arguments every fresh launch gets. |
+| `permissions` | Device targets: states (`grant`, `deny`, `reset`) every fresh launch gets. Web targets: `grant` only, held by every page (`{ 'clipboard-write': 'grant' }` lets headless Chromium write the clipboard). |
 | `command` | The process serving `url`: `{ executable, args, cwd, env, inheritEnv, startupTimeout, shutdownTimeout, log, reuseExisting }`; `{port}` in `args` and `env` expands to `url`'s port. Targets declaring the same command share one process. |
 | `readyUrl` | Readiness probe when it differs from `url`; `{port}` expands too. |
 | `environment` | `'test'`, `'staging'`, `'production'`; inferred from the host, labels the report and cache key. |
@@ -208,7 +212,7 @@ start a script that brings them up and serves the app.
 
 | Option | Meaning |
 | --- | --- |
-| `browser` | `'chromium'` (default), `'firefox'`, `'webkit'`, or a `BrowserProvider` leasing hosted browsers over CDP (`kernel()` from `@e2e-dev/kernel`, `smol()` from `@e2e-dev/smol`, `lightpanda()` from `@e2e-dev/lightpanda`, `testmuBrowsers()` from `@e2e-dev/testmu/web`, or your own), which implies chromium and excludes `connect`. Scope `'worker'` (default): one browser per worker slot from `prepare` to `finish`; `'attempt'`: one per attempt, with `reconnectEndpoint`'s limits (`lightpanda()` and `testmuBrowsers()` are worker scope only). |
+| `browser` | `'chromium'` (default), `'firefox'`, `'webkit'`, or a `BrowserProvider` leasing hosted browsers over CDP (`kernel()` from `@e2e-dev/kernel`, `smol()` from `@e2e-dev/smol`, `lightpanda()` from `@e2e-dev/lightpanda`, `testmuBrowsers()` from `@e2e-dev/testmu/web`, `e2bBrowsers()` from `@e2e-dev/e2b/web`, or your own), which implies chromium and excludes `connect`. Scope `'worker'` (default): one browser per worker slot from `prepare` to `finish`; `'attempt'`: one per attempt, with `reconnectEndpoint`'s limits (`lightpanda()` and `testmuBrowsers()` are worker scope only). |
 | `viewport` | `{ width, height }`, default 1280x720; `null` follows the browser window (hosted live view, headed run). On a headed hosted browser (Kernel) use `null` and size the service's screen; a fixed size gives a smaller, unmaximized window. |
 | `connect` | `{ cdpEndpoint }` attaches to a remote Chromium over CDP; `cdpEndpoint` is required, and both it and `reconnectEndpoint` are resolvers `(signal) => url`, not strings, else `INVALID_CONFIG` at load. With `reconnectEndpoint` it rides one persistent default context, needs a fresh browser from `cdpEndpoint` every attempt, and reconnects only to the original browser and page. |
 | `headers` | Sent to the app's site only (Vercel's `x-vercel-protection-bypass`, ngrok's `ngrok-skip-browser-warning`), `agent.act` included; disables the browser HTTP cache and service workers. |
@@ -309,7 +313,7 @@ For an app started elsewhere, point `app.url` at it, literally or via
 phones through [agent-device](https://github.com/callstack/agent-device);
 needs Xcode with a simulator runtime or the Android SDK with an emulator (a
 phone needs Xcode with Developer Mode and runner signing, or adb with USB
-debugging authorized); run `npx agent-device doctor` once. Name a phone in `device` by the name
+debugging authorized); run `npx e2e doctor` to check it. Name a phone in `device` by the name
 `npx agent-device devices` lists, not its UDID or serial. On an iPhone, device
 settings (permissions, `clearState`, network, location, appearance,
 biometrics, keychain) and the clipboard are simulator-only.
@@ -349,16 +353,17 @@ export default {
   `app.command` (`npx expo start --port 8081`) with `readyUrl:
   'http://localhost:8081/status'` starts it.
 - One worker per device. No `device`: every booted simulator or emulator of
-  the platform, and every connected phone, is the pool, up to `workers` (none booted: agent-device boots
-  one); one `device`: one worker whatever `workers` says; a list (`device:
+  the platform, and every connected phone, is the pool, up to `workers`,
+  minus devices another agent-device session holds (none booted: agent-device boots
+  a shut-down one, newest OS first, then name order; all held: `prepare` fails); one `device`: one worker whatever `workers` says; a list (`device:
   ['iPhone 17', 'iPhone 17 Pro']`): an explicit pool. Devices boot in
   `prepare`, before the run's clock. Two sessions on one device fight over
   it: for parallel MCP sessions or bug-bash explorers, declare one target per
   device, each naming its `device`.
 - `device` can be a `DeviceProvider` leasing hosted devices, one per worker
-  slot: `easSimulators({ buildId })` from `@e2e-dev/eas` takes the project
+  slot: `expoSimulators({ buildId })` from `@e2e-dev/eas` takes the project
   from the app config's `extra.eas.projectId` (`projectId` overrides), reads
-  `EXPO_TOKEN`, else the `eas login` session, needs no Xcode or Android SDK, and with `buildId` EAS installs
+  `EXPO_TOKEN`, else the `eas login` session, needs no Xcode or Android SDK, and with `buildId` Expo installs
   the app (omit `app.appPath`). A run must fit one session: `maxDurationMinutes`,
   absent, is the account's cap (40 on a standard plan). `videoTouches: false`
   on the engine for video there.
@@ -367,21 +372,47 @@ export default {
   matching `agent-device` peers. Android needs `adb` on `PATH` for its tunnel.
   iOS keyboard actions such as `locator.press('Enter')` return
   `UNSUPPORTED_CAPABILITY`; tap an app button when available.
-  See `examples/with-limrun` for the same form and restart tests on both platforms.
+  Limrun's `limrun-inc/testerarmy-e2e-limrun` repository runs the same form
+  and restart tests on both platforms.
 - `testmu({ device, osVersion, app })` from `@e2e-dev/testmu` leases TestMu
   AI (formerly LambdaTest) emulators, simulators, or real devices
   (`deviceType: 'real'`); `device` and `osVersion` match its catalog
   exactly, TestMu AI installs `app` (omit `app.appPath`), and it reads
   `LT_USERNAME` and `LT_ACCESS_KEY`. An attempt's video links TestMu AI's
   recording of the whole session.
-- Only a control that appeared or moved with the previous action waits out
-  `transition` (default 500 ms); agent actions settle `settle` ms (default
-  150) before the next observation, `settle: false` skips it.
+- `browserstack({ device, osVersion, app })` from `@e2e-dev/browserstack`
+  leases BrowserStack App Automate real devices; `device` and `osVersion`
+  match its catalog exactly, BrowserStack installs `app` (a `bs://` id, an
+  `https` URL uploaded once per run, or a local path; omit `app.appPath`),
+  and it reads `BROWSERSTACK_USERNAME` and `BROWSERSTACK_ACCESS_KEY`. Set
+  `appiumVersion` (such as `'3.2.0'`): BrowserStack's default Appium 1.x
+  lacks `mobile:` commands. An attempt that records video links
+  BrowserStack's recording of the whole session.
+- `e2b()` from `@e2e-dev/e2b` runs Android 16 in one E2B sandbox per worker
+  (Android only, x86_64, no Google Play) and installs the `.apk` at
+  `app.appPath` before tests. Set `E2B_API_KEY`; install the `e2b` peer. The
+  runner needs no `adb`.
+- A control that appeared or moved with the previous action waits out
+  `transition` (default 500 ms). Opening or closing the keyboard also uses
+  the remaining budget. Screen swipes in tests wait out the remaining budget
+  before scrolling. Agent actions settle `settle` ms (default 150) before the
+  next observation, `settle: false` skips it.
+- Mobile `fill` and `clear` re-read the field before typing, replay included.
+  Missing fields, changed security state, or incomplete captures return
+  `NODE_STALE` before mutation, then retry after a fresh observation.
+  Non-input targets return `UNSUPPORTED_CAPABILITY`; an iOS `other` that holds
+  a value or only text is typed into, since a custom-drawn field (Compose
+  Multiplatform, Flutter) can read that way.
 - `screen`, `expect`, `app`, `agent` work unchanged; `test` from
   `@e2e-dev/mobile` types the `device` fixture (`installApp`, `openLink`,
   `setPermission`, `setNetwork`, `setAppearance`, `clearKeychain`, `fold`
   for a foldable's hinge (iPhone Duo, Android foldable emulators), `locator`, more). Portable suites declare
   `requires: ['device']`.
+- `device.unstable_raw` gives the session name, device id and name, a
+  `selection` to spread into a call, and an
+  agent-device `client` bound to the test's session, for what `device`
+  lacks. Client calls are not steps: no report, trace, replay, or secret
+  redaction. Unstable: may change or go away in any release.
 - `setNetwork('offline')` and `setAirplaneMode(true)` are Android only: on
   iOS both are `UNSUPPORTED_CAPABILITY`, since a simulator shares the Mac's
   network, and `setNetwork('online')` / `setAirplaneMode(false)` do nothing.
@@ -396,6 +427,10 @@ export default {
 - `selectOption`, `setInputFiles`, `scrollIntoView`, `secondaryTap`, and
   `modifiers` on `tap` or `doubleTap` are `UNSUPPORTED_CAPABILITY` on a
   device.
+- `device.clipboard()` and `device.setClipboard()` are
+  `UNSUPPORTED_CAPABILITY` on an Android build with no clipboard shell
+  command (the Android 16 emulator is one); check a copy by pasting into a
+  field and reading it back.
 - React Native on iOS: checkbox and radio role and state come off the
   accessibility value (`getByRole`, `check()`, `toBeChecked` work); a tab is
   `other` with `selected`, query by test id or label; a plain `View` is a
@@ -413,3 +448,6 @@ export default {
 
 Re-running `init` preserves the e2e MCP server's environment and client settings
 while repairing its launch command. A current registration is left unchanged.
+Codex reads `.codex/config.toml` only in trusted projects; start a new session
+after installing dependencies. To add Codex to an existing setup, run the
+installed CLI with `e2e init --yes --skills none --mcp .codex/config.toml`.

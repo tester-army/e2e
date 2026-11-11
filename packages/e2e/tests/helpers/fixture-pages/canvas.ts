@@ -53,22 +53,57 @@ function canvasMap(options: { readonly reset: boolean }): string {
 ${button}  <script>
     const canvas = document.getElementById('map');
     const context = canvas.getContext('2d');
-    context.fillStyle = '#dddddd';
-    context.fillRect(0, 0, 400, 200);
     const pins = [
       { name: 'red', x: 300, y: 60, color: '#ff0000' },
       { name: 'blue', x: 80, y: 140, color: '#0000ff' },
     ];
-    for (const pin of pins) {
-      context.fillStyle = pin.color;
-      context.beginPath();
-      context.arc(pin.x, pin.y, 14, 0, Math.PI * 2);
-      context.fill();
-    }
     // A tap count drawn on the map: every click repaints it, and nothing in
     // the tree lists it, the way a canvas-rendered widget shows its own state.
     let taps = 0;
+    const paint = () => {
+      context.fillStyle = '#dddddd';
+      context.fillRect(0, 0, 400, 200);
+      for (const pin of pins) {
+        context.fillStyle = pin.color;
+        context.beginPath();
+        context.arc(pin.x, pin.y, 14, 0, Math.PI * 2);
+        context.fill();
+      }
+      if (taps > 0) {
+        context.fillStyle = '#000000';
+        context.fillText('taps: ' + taps, 4, 194);
+      }
+    };
+    paint();
+    // A drawn drag: a pin pressed and released away from itself moves there,
+    // the way a whiteboard moves a shape. The release's own click is the
+    // drag's, not a tap.
+    let held;
+    let dragged = false;
+    const at = (event) => {
+      const box = canvas.getBoundingClientRect();
+      return { x: Math.round(event.clientX - box.left), y: Math.round(event.clientY - box.top) };
+    };
+    canvas.addEventListener('pointerdown', (event) => {
+      const point = at(event);
+      held = pins.find((candidate) => Math.hypot(candidate.x - point.x, candidate.y - point.y) <= 18);
+    });
+    canvas.addEventListener('pointerup', (event) => {
+      const point = at(event);
+      if (held !== undefined && Math.hypot(held.x - point.x, held.y - point.y) > 18) {
+        held.x = point.x;
+        held.y = point.y;
+        paint();
+        document.getElementById('hit').textContent = 'moved ' + held.name + ' to ' + point.x + ',' + point.y;
+        dragged = true;
+      }
+      held = undefined;
+    });
     canvas.addEventListener('click', (event) => {
+      if (dragged) {
+        dragged = false;
+        return;
+      }
       const box = canvas.getBoundingClientRect();
       const x = event.clientX - box.left;
       const y = event.clientY - box.top;
@@ -76,10 +111,7 @@ ${button}  <script>
       document.getElementById('hit').textContent =
         pin ? pin.name : 'miss at ' + Math.round(x) + ',' + Math.round(y);
       taps += 1;
-      context.fillStyle = '#dddddd';
-      context.fillRect(0, 176, 120, 24);
-      context.fillStyle = '#000000';
-      context.fillText('taps: ' + taps, 4, 194);
+      paint();
     });
   </script>
 </body>
@@ -121,6 +153,29 @@ export const CANVAS_PAGES: Record<string, PageRenderer> = {
     document.addEventListener('click', (event) => {
       const box = event.target.getBoundingClientRect();
       document.getElementById('picked').textContent = box.left < 100 ? 'left' : 'right';
+    });
+  </script>
+</body>
+</html>`),
+  // A popover over a full-screen dismiss control, the way iOS presents one:
+  // every point outside the popover is inside the dismiss control, whose
+  // center, (640, 360) in the runner's 1280x720 viewport, is under the
+  // popover's own button.
+  '/popover': constant(`<!doctype html>
+<html>
+<head><title>Popover</title></head>
+<body style="margin:0">
+  <output id="hit" role="status" aria-label="Hit">open</output>
+  <button id="dismiss" aria-label="Dismiss popover" style="position:fixed;inset:0;width:100%;height:100%;z-index:1"></button>
+  <div role="dialog" aria-label="Calendar" style="position:fixed;left:540px;top:260px;width:200px;height:200px;z-index:2">
+    <button id="day" style="width:200px;height:200px">15</button>
+  </div>
+  <script>
+    document.getElementById('dismiss').addEventListener('click', () => {
+      document.getElementById('hit').textContent = 'dismissed';
+    });
+    document.getElementById('day').addEventListener('click', () => {
+      document.getElementById('hit').textContent = 'picked 15';
     });
   </script>
 </body>

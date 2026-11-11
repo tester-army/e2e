@@ -2,8 +2,8 @@
  * A restored session redacts what the session that saved it learned: a
  * provider-resolved secret filled during setup, stored by the app, and
  * echoed back after restore never reaches the failure message, the report,
- * or the failure screen, and the consumer's viewport stays tainted. A static
- * config secret is the control: every session registers those itself.
+ * or the failure screen. A static config secret is the control: every
+ * session registers those itself.
  */
 
 import { existsSync, readFileSync } from 'node:fs';
@@ -35,7 +35,7 @@ describe('session secrecy across save and restore', () => {
     'redacts a %s secret the restored state echoes back, in the failure, the report, and the failure screen',
     async (source) => {
       let echo = '';
-      const observations: { secretVisible: boolean; withheld: string | undefined }[] = [];
+      const observations: { secretVisible: boolean; pixels: boolean; withheld: string | undefined }[] = [];
       const engine = defineEngine({
         name: 'fake',
         version: '1',
@@ -79,7 +79,7 @@ describe('session secrecy across save and restore', () => {
                   name: 'probe',
                   async runStep(context) {
                     const observation = await context.observe({ pixels: true });
-                    observations.push({ secretVisible: observation.text.includes(SENTINEL), withheld: observation.pixelsWithheld });
+                    observations.push({ secretVisible: observation.text.includes(SENTINEL), pixels: observation.pixels !== undefined, withheld: observation.pixelsWithheld });
                     return { status: 'passed', summary: 'observed' };
                   },
                 },
@@ -92,7 +92,7 @@ describe('session secrecy across save and restore', () => {
         expect(result.status).toBe('failed');
         const attempt = result.attempts.at(-1)!;
         expect(attempt.error?.message).toContain('<secret:token>');
-        expect(observations).toEqual([{ secretVisible: false, withheld: 'PIXEL_TAINTED' }]);
+        expect(observations).toEqual([{ secretVisible: false, pixels: true, withheld: undefined }]);
         const screen = attempt.artifacts.find((artifact) => artifact.id === attempt.failure?.screen);
         expect(screen?.path).toBeDefined();
         const screenFile = path.join(project.dir, '.e2e', 'results', screen!.path!);

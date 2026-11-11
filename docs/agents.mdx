@@ -1,9 +1,8 @@
 ---
 title: Agents and personas
 description: Configure several agents in one suite, pin tests to them, and run one flow as each persona.
-icon: "users"
-"og:image": "https://e2e.tester.army/docs/images/og/agents.png?v=94dc88725f"
-"twitter:image": "https://e2e.tester.army/docs/images/og/agents.png?v=94dc88725f"
+"og:image": "https://e2e.com/docs/images/og/agents.png?v=94dc88725f"
+"twitter:image": "https://e2e.com/docs/images/og/agents.png?v=94dc88725f"
 ---
 
 import { Video } from './snippets/video.jsx';
@@ -77,7 +76,7 @@ describe('billing', { agentContext: 'The seeded workspace is called "Acme Trial"
 
 Keep instructions out of `agentContext`: it reaches the judges too.
 
-Under `e2e run`, every prompt also opens its context with the test's title path, such as
+Under `e2e run`, every prompt also opens with the test's title path, such as
 `Test: billing > upgrades the tier`. The judges read it too, so name a
 test for what it covers, not for the verdict you expect.
 
@@ -167,7 +166,7 @@ and context. `buyer` never replays the steps of `admin`, and a changed
 
 An agent is not a signed-in user. For signed-in personas, pair each agent
 with a `session` in a separate describe block. See
-[Signing in](/authentication#several-signed-in-users).
+[Authentication](/authentication#several-signed-in-users).
 
 ## Make the agent yours
 

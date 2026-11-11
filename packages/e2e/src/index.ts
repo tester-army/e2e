@@ -23,6 +23,7 @@ export type {
   ExecutorStep,
   ExecutorTarget,
   ExecutorVerb,
+  PointDragResult,
   PointHit,
   PointTapResult,
   ReplayedPrefix,

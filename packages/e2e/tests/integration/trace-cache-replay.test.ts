@@ -283,7 +283,7 @@ describe('trace cache: --strict-cache fails a step whose key changed under its r
     const { file, entry } = entries[0]!;
     const recordedFor = entry.payload.recordedFor!;
     expect(recordedFor).toMatchObject({ paramsDigest: expect.stringMatching(/^[a-f0-9]{64}$/u), callIndex: 0, agent: 'default' });
-    // The agent read the test's title as context, but the key leaves it out: the test id already names it.
+    // The test's title reaches the prompt, not the context, so the key's context digest stays empty.
     expect(entry.payload.keyedBy?.agentContextDigest).toBe(createHash('sha256').update('').digest('hex'));
     // An entry from before the occurrence fields: a read-write replay completes it.
     const { testId, targetId, instructionDigest } = recordedFor;

@@ -6,6 +6,7 @@
 
 import { stripVTControlCharacters } from 'node:util';
 import picocolors from 'picocolors';
+import type { CacheWrite } from '../cache/context.ts';
 import { sanitizeText, truncateUtf8 } from '../internal/errors.ts';
 import type { ResultStatus } from '../run/records.ts';
 import type { StepModelInfo, StepRecord } from '../run/steps.ts';
@@ -31,6 +32,15 @@ const TITLE_WIDTH = 11;
  */
 export function bounded(text: string): string {
   return truncateUtf8(sanitizeText(text), MAX_FIELD_BYTES).replaceAll('\t', ' ');
+}
+
+/**
+ * A failure for stderr, `CODE: message`: how the CLI prints what
+ * stopped a command before its run, and how the runner prints a run error
+ * when no list reporter shows it.
+ */
+export function failureLine(error: { readonly code: string; readonly message: string }): string {
+  return `${bounded(error.code)}: ${bounded(error.message)}\n`;
 }
 
 /**
@@ -134,6 +144,16 @@ export function statusBucket(status: ResultStatus): 'passed' | 'failed' | 'inter
   return status === 'timed-out' ? 'failed' : status;
 }
 
+/** A result status, or a filter step's outcome, as a line of text says it: `timed out` for `timed-out`. */
+export const STATUS_WORD: Record<ResultStatus, string> = {
+  passed: 'passed',
+  flaky: 'flaky',
+  failed: 'failed',
+  'timed-out': 'timed out',
+  interrupted: 'interrupted',
+  skipped: 'skipped',
+};
+
 /** Counts results by bucket; `total` is the number of items. */
 export function tally(items: readonly { readonly status: ResultStatus }[]): Counters {
   const counters = emptyCounters();
@@ -233,23 +253,34 @@ export function usageText(usage: AiUsage): string | undefined {
 
 /**
  * How the trace cache handled a run's agent steps, by step: replayed whole
- * with no model turn, replayed in part before the model took over, or missed.
+ * with no model turn, replayed in part before the model took over, or missed;
+ * and the steps of passing tests whose recording was not saved.
  * A run with the cache off records no cache detail and tallies nothing.
  */
 export interface CacheTally {
   replayed: number;
   handedOff: number;
   missed: number;
+  notSaved: number;
+}
+
+/** The `step.cache.write` outcomes where the step's recording was not written. */
+const NOT_SAVED: ReadonlySet<CacheWrite> = new Set(['unconfirmed', 'no-change', 'not-written']);
+
+/** The steps whose recording was not saved. */
+export function notSavedCount(steps: readonly StepRecord[]): number {
+  return steps.filter((step) => step.cache?.write !== undefined && NOT_SAVED.has(step.cache.write)).length;
 }
 
 export function emptyCacheTally(): CacheTally {
-  return { replayed: 0, handedOff: 0, missed: 0 };
+  return { replayed: 0, handedOff: 0, missed: 0, notSaved: 0 };
 }
 
 export function addCacheTally(into: CacheTally, counts: CacheTally): void {
   into.replayed += counts.replayed;
   into.handedOff += counts.handedOff;
   into.missed += counts.missed;
+  into.notSaved += counts.notSaved;
 }
 
 /** The trace cache's part in several step lists, by step. */
@@ -276,14 +307,15 @@ export function stepsCacheTally(stepLists: readonly (readonly StepRecord[])[]): 
 }
 
 /**
- * `9 replayed · 2 handed off · 4 missed`, zero counts left out, or undefined
- * when no step went through the trace cache.
+ * `9 replayed · 2 handed off · 4 missed · 1 not saved`, zero counts left
+ * out, or undefined when no step went through the trace cache.
  */
 export function cacheText(pc: Colors, counts: CacheTally): string | undefined {
   const parts = [
     counts.replayed > 0 ? pc.green(`${counts.replayed} replayed`) : undefined,
     counts.handedOff > 0 ? pc.yellow(`${counts.handedOff} handed off`) : undefined,
     counts.missed > 0 ? `${counts.missed} missed` : undefined,
+    counts.notSaved > 0 ? pc.yellow(`${counts.notSaved} not saved`) : undefined,
   ].filter((part) => part !== undefined);
   return parts.length === 0 ? undefined : parts.join(pc.dim(' · '));
 }
@@ -491,4 +523,21 @@ export function fitColumns(text: string, columns: number): string {
  */
 export function repeatSuffix(repeat: number | undefined): string {
   return repeat === undefined || repeat === 0 ? '' : ` (repeat #${repeat})`;
+}
+
+/** A commit as the notices and the markdown page name it: its first seven characters. */
+export function shortCommit(commit: string): string {
+  return commit.slice(0, 7);
+}
+
+/**
+ * What one test filter decided of the tests it was given: `kept 7 of 42
+ * tests, left out 35`, `kept all 42 tests`, or `left out all 42 tests`. The
+ * run's notice and the markdown page say it the same way.
+ */
+export function filterDecision(candidates: number, excluded: number): string {
+  const tests = `${candidates} test${candidates === 1 ? '' : 's'}`;
+  if (excluded === 0) return `kept all ${tests}`;
+  if (excluded === candidates) return `left out all ${tests}`;
+  return `kept ${candidates - excluded} of ${tests}, left out ${excluded}`;
 }

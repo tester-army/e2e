@@ -1,4 +1,6 @@
-import { createAgentDeviceClient, type AgentDeviceClientConfig } from 'agent-device';
+import { createAgentDeviceClient } from 'agent-device';
+import type { DeviceClientConfig } from '@e2e-dev/mobile';
+import { leaseSession } from './session.ts';
 
 /** A separate process gives each daemon its own credentials without changing the runner's environment. */
 export interface DriverRequest {
@@ -11,7 +13,8 @@ export interface DriverRequest {
 }
 
 export interface DriverBinding {
-  client: AgentDeviceClientConfig;
+  /** The lease scope the engine creates its client with. No `session`: the engine rejects a lease that names one. */
+  client: DeviceClientConfig;
   deviceId: string;
   installedApp?: string;
 }
@@ -25,12 +28,13 @@ process.once('message', (request: DriverRequest) => {
 
 async function attach(request: DriverRequest): Promise<DriverBinding> {
   const { stateDir, runId, slot, platform, app, appPath } = request;
-  const allocator = createAgentDeviceClient({ stateDir });
+  const session = leaseSession(stateDir);
+  const allocator = createAgentDeviceClient({ stateDir, session });
   const lease = await allocator.leases.allocate({
     tenant: 'e2e', runId, clientId: `worker-${slot}`, leaseBackend: `${platform}-instance`, leaseProvider: 'limrun', retainOnClose: true,
   });
   if (!lease.retainOnClose) throw new Error('agent-device did not retain the Limrun lease across session close');
-  const client: AgentDeviceClientConfig = {
+  const client: DeviceClientConfig = {
     stateDir, tenant: lease.tenantId, runId: lease.runId, leaseId: lease.leaseId,
     leaseBackend: lease.backend, leaseProvider: 'limrun',
     ...(lease.deviceKey === undefined ? {} : { deviceKey: lease.deviceKey }),
@@ -38,7 +42,7 @@ async function attach(request: DriverRequest): Promise<DriverBinding> {
   };
   const binding: DriverBinding = { client, deviceId: `limrun:${platform}:${lease.leaseId}` };
   if (appPath !== undefined) {
-    const device = createAgentDeviceClient(client);
+    const device = createAgentDeviceClient({ ...client, session });
     const installed = await device.apps.install({ appPath, ...(platform === 'ios' ? { udid: binding.deviceId } : { serial: binding.deviceId }), ...(app === undefined ? {} : { app }), platform });
     const id = installed.appId ?? installed.bundleId ?? installed.package ?? app;
     if (!id) throw new Error('Limrun installed the build but agent-device returned no app identifier');

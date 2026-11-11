@@ -11,32 +11,44 @@
  */
 
 import { isKeyModifier, KEY_MODIFIERS, type KeyModifier } from '../engine/contract.ts';
-import type { LocatorAction, LocatorActionKind, SemanticNode, ViewportPoint } from '../engine/surface.ts';
+import type { LocatorAction, LocatorActionKind, SemanticNode, ViewportPoint, ViewportSize } from '../engine/surface.ts';
 import { asEngineError, TestError } from '../internal/errors.ts';
 import { requireKey } from '../internal/keys.ts';
-import { clampToViewport, requireFinitePoint, viewportShare } from '../internal/geometry.ts';
+import { sleep } from '../internal/time.ts';
+import { clampToViewport, requireFinitePoint, requireViewportSize, viewportShare } from '../internal/geometry.ts';
 import { resolveNavigationUrl } from '../internal/urls.ts';
-import type { ActionHook, ClickOptions, JsonValue, Momentum, ScrollDirection, Secret } from '../types.ts';
-import { PROJECT_TOOL_EVENT_PREFIX, type GrammarActionName } from './action-names.ts';
-import { containerKey, describeAction, type Placement, type RecordableAction } from './actions.ts';
+import type { ActionEvent, ActionHook, BeforeActionHook, ClickOptions, JsonValue, Momentum, ScrollDirection, Secret } from '../types.ts';
+import { PROJECT_TOOL_EVENT_PREFIX, READ_ONLY_GRAMMAR, type GrammarActionName } from './action-names.ts';
+import { actionEvent, containerKey, describeAction, type PlacedPoint, type Placement, type RecordableAction } from './actions.ts';
 import { describePosition } from '../cache/relocate.ts';
+import { appNavigation } from '../cache/route.ts';
 import { isTapActionName, type NodeActionName, type PointActionName, type RecordedAction } from '../cache/trace.ts';
 import { derivedReason } from './derived.ts';
 import { ActionHookError, AgentError, toAgentError } from './error.ts';
-import { RUNTIME_CODES, type ExecutorActions, type ExecutorTarget, type PointHit, type PointTapResult } from './executor.ts';
+import {
+  RUNTIME_CODES,
+  type ExecutorActions,
+  type ExecutorTarget,
+  type PointDragResult,
+  type PointHit,
+  type PointTapResult,
+} from './executor.ts';
 import type { AgentContext } from './invocation.ts';
 import type { ObservationFeed, Resolved } from './observation-feed.ts';
 import { resolveScrollTarget } from './scroll-target.ts';
 import type { OperationQueue } from './operation-queue.ts';
 import { instrumentPhase, recordPolicyEvent } from './phases.ts';
-import { describePointAction, describePointHit, hitTest, POINT_VERBS, type PointProse } from './point-tap.ts';
-import { nodeReading, normalizeReading, readingShape } from './reading.ts';
-import type { AgentObservation, RedactedNode, SemanticAgentObservation } from './observation.ts';
+import { describePointAction, describePointDrag, describePointHit, hitTest, POINT_VERBS, type PointProse } from './point-tap.ts';
+import { nodeReading, normalizeReading, pageLanded, pageMoved, readPage, type PageReading } from './reading.ts';
+import { SETTLE_POLL_MS, type AgentObservation, type RedactedNode, type SemanticAgentObservation } from './observation.ts';
 import { authorizeSecretFill } from './secrets.ts';
-import { SETTLE_AFTER } from './settle-policy.ts';
+import { HELD_STILL_MS, SETTLE_AFTER } from './settle-policy.ts';
 import type { StepAccounting } from './step-accounting.ts';
 import type { StepTraceSession } from './step-cache.ts';
 import { authorizeUploadPaths } from './upload-paths.ts';
+
+/** Actions available during assertions, shared by every dispatcher. */
+const ASSERTION_ACTIONS = new Set<string>(Object.values(READ_ONLY_GRAMMAR).flat());
 
 /**
  * How many times a targeted action re-finds its node after the engine reports
@@ -103,6 +115,8 @@ function requireClickModifiers(value: readonly KeyModifier[], verb: NodeActionNa
 }
 
 export interface ActionDispatcherOptions {
+  /** Whether this step may only inspect the app. */
+  readonly readOnly?: boolean;
   readonly instruction: string;
   readonly params: Readonly<Record<string, JsonValue>> | undefined;
   /** Secrets declared in the step's params, by stable name; the only ones `typeSecret` may fill. */
@@ -111,6 +125,8 @@ export interface ActionDispatcherOptions {
   readonly trace: () => StepTraceSession | undefined;
   /** The test's `onAction` hook, handed each completed action. */
   readonly onAction?: ActionHook | undefined;
+  /** The test's `onBeforeAction` hook, handed each action before it runs. */
+  readonly onBeforeAction?: BeforeActionHook | undefined;
 }
 
 export class ActionDispatcher {
@@ -149,8 +165,10 @@ export class ActionDispatcher {
       scrollUntil: (text, direction, list) => this.scrollUntil(text, direction, list),
       navigate: (url) => this.navigate(url),
       back: () => this.back(),
+      resize: (size) => this.resize(size),
       tapAt: (point) => this.pointVerb('tapAt', point),
       hoverAt: (point) => this.pointVerb('hoverAt', point),
+      dragAt: (from, to) => this.pointDrag(from, to),
       hitTest: (point) => this.hitTest(point),
       typeText: (value, typing) => this.typeText(value, typing?.replace === true),
       pressKey: (key) => this.pressKey(key),
@@ -201,8 +219,7 @@ export class ActionDispatcher {
       const observation = this.feed.requireLatest();
       const clamped = clampToViewport(point, observation.viewport);
       // The control is reported whatever the engine can do with it: the verb
-      // the executor calls next is gated on its own action kind, and only a
-      // point verb needs to ignore a listed control when its node verb is missing.
+      // the executor calls next is gated on its own action kind.
       const hit = hitTest(observation, clamped);
       return Promise.resolve({
         point: clamped,
@@ -220,13 +237,12 @@ export class ActionDispatcher {
   }
 
   /**
-   * Taps or hovers one viewport point, routed onto the tree in queue order
-   * against the newest observation, like a targeted action's resolution. A
-   * listed, enabled control containing the point is acted on by its id, so
-   * policy, stale relocation, and the trace descriptor see an ordinary node
-   * action; a point on nothing listed goes to the engine as a bare point
-   * when it takes one. The point is clamped to the viewport first, so one
-   * placed off the edge lands on the edge rather than failing the engine.
+   * Taps or hovers one viewport point in queue order against the newest
+   * observation. The engine gets the bare point, where the model aimed,
+   * and the trace keeps it inside the node under it. An engine that takes
+   * no bare point gets the listed, enabled control containing it, acted on
+   * by its id. The point is clamped to the viewport first, so one placed
+   * off the edge lands on the edge rather than failing the engine.
    */
   private pointVerb(verb: PointActionName, point: ViewportPoint): Promise<PointTapResult> {
     requireFinitePoint(point, verb);
@@ -235,9 +251,17 @@ export class ActionDispatcher {
       const observation = this.feed.requireLatest();
       const clamped = clampToViewport(point, observation.viewport);
       const hit = hitTest(observation, clamped);
-      // An engine without the node verb gets the bare point even under a listed control.
-      const control = this.verbs.has(nodeVerb) ? hit.control : undefined;
-      const summary = describePointAction({ verb, point: clamped, control, under: hit.under, ...this.prose(observation) });
+      // A tap by id lands on the control's center, not where the model aimed:
+      // only an engine without the bare point gets it.
+      const control = hit.control !== undefined && !this.verbs.has(verb) && this.verbs.has(nodeVerb) ? hit.control : undefined;
+      const summary = describePointAction({
+        verb,
+        point: clamped,
+        control: hit.control,
+        under: hit.under,
+        byId: control !== undefined,
+        ...this.prose(observation),
+      });
       if (control !== undefined) {
         const target = { id: control.ref.id };
         await this.runActionNow(nodeVerb, () => this.targeted(this.feed.resolve(target), (node) => this.performNode(nodeVerb, node)));
@@ -249,19 +273,87 @@ export class ActionDispatcher {
           `the point (${String(clamped.x)}, ${String(clamped.y)}) is on nothing the screen lists and this engine ${nodeVerb}s listed nodes only; ${nodeVerb} a node by id instead`,
         );
       }
-      // The node whose box contained the point is the trace's handle on it;
-      // the tree's root is the page itself and follows no layout shift.
-      const under = hit.under === undefined || (observation.kind === 'semantic' && hit.under.ref.id === observation.tree.ref.id) ? undefined : hit.under;
+      const handle = this.traceHandle(observation, hit.under);
       await this.runActionNow(verb, async () => {
         await this.session.performAt(clamped, { kind: nodeVerb }, this.accounting.actionOperation());
         return {
           name: verb,
           point: clamped,
           viewport: { width: observation.viewport.width, height: observation.viewport.height },
-          ...(under === undefined ? {} : { under }),
+          ...handle,
         };
       });
-      return { point: clamped, summary };
+      return { point: clamped, ...(hit.control === undefined ? {} : { target: { id: hit.control.ref.id } }), summary };
+    });
+  }
+
+  /**
+   * Drags from one viewport point to another in queue order against the
+   * newest observation, the way a point verb taps one. The engine gets the
+   * bare points through its `dragTo` pointer kind, where the model aimed,
+   * and the trace keeps each inside the node under it. An engine that takes
+   * no bare drag gets the two different listed, enabled controls holding
+   * the ends, joined by id like `drag`. Both points are clamped to the
+   * viewport first.
+   */
+  private pointDrag(from: ViewportPoint, to: ViewportPoint): Promise<PointDragResult> {
+    requireFinitePoint(from, 'dragAt');
+    requireFinitePoint(to, 'dragAt');
+    return this.queue.run(async () => {
+      const observation = this.feed.requireLatest();
+      const start = clampToViewport(from, observation.viewport);
+      const end = clampToViewport(to, observation.viewport);
+      const fromHit = hitTest(observation, start);
+      const toHit = hitTest(observation, end);
+      // A drag by id runs between the controls' centers, not where the model
+      // aimed: only an engine without the bare drag gets it, and only between
+      // two controls, since a node dragged onto itself does nothing.
+      const byId =
+        !this.verbs.has('dragAt') &&
+        this.verbs.has('drag') &&
+        fromHit.control !== undefined &&
+        toHit.control !== undefined &&
+        fromHit.control.ref.id !== toHit.control.ref.id;
+      const summary = describePointDrag({
+        from: start,
+        to: end,
+        source: fromHit.control,
+        destination: toHit.control,
+        fromUnder: fromHit.under,
+        toUnder: toHit.under,
+        byId,
+        ...this.prose(observation),
+      });
+      if (byId) {
+        const source = { id: fromHit.control.ref.id };
+        const destination = { id: toHit.control.ref.id };
+        await this.runActionNow('dragTo', () => this.targeted(this.feed.resolve(source), (node) => this.dragOnto(node, destination)));
+        return { from: start, to: end, source, destination, summary };
+      }
+      if (!this.verbs.has('dragAt')) {
+        throw new TestError(
+          'UNSUPPORTED_CAPABILITY',
+          `the drag from (${String(start.x)}, ${String(start.y)}) to (${String(end.x)}, ${String(end.y)}) does not join two different controls the screen lists and this engine drags listed nodes only; drag a node onto another by id instead`,
+        );
+      }
+      const fromHandle = this.traceHandle(observation, fromHit.under);
+      const toHandle = this.traceHandle(observation, toHit.under);
+      await this.runActionNow('dragAt', async () => {
+        await this.session.performAt(start, { kind: 'dragTo', target: end }, this.accounting.actionOperation());
+        return {
+          name: 'dragAt',
+          from: { point: start, ...fromHandle },
+          to: { point: end, ...toHandle },
+          viewport: { width: observation.viewport.width, height: observation.viewport.height },
+        };
+      });
+      return {
+        from: start,
+        to: end,
+        ...(fromHit.control === undefined ? {} : { source: { id: fromHit.control.ref.id } }),
+        ...(toHit.control === undefined ? {} : { destination: { id: toHit.control.ref.id } }),
+        summary,
+      };
     });
   }
 
@@ -271,14 +363,16 @@ export class ActionDispatcher {
       this.accounting.checkpoint();
       if (this.accounting.closed) throw new AgentError('CANCELLED', 'the step has ended');
       if (call.mutates) {
+        this.assertAllowed('tool');
         this.accounting.reserveAction();
+        await this.before();
         this.options.trace()?.recordGap(call.name);
       }
       const name = `${PROJECT_TOOL_EVENT_PREFIX}${call.name}`;
       const value = await instrumentPhase(this.runtime, { api: this.accounting.api, kind: 'engine', phase: 'agent.action', name }, body);
       if (call.mutates) {
         this.armAfter('tool');
-        await this.notify('tool', name, () => `ran ${call.name}`);
+        await this.notify('tool', (fields) => ({ ...fields, action: `${PROJECT_TOOL_EVENT_PREFIX}${call.name}`, summary: `ran ${call.name}` }));
       }
       return value;
     };
@@ -328,11 +422,14 @@ export class ActionDispatcher {
    * replay can tell one "Done" column from another.
    */
   private drag(source: ExecutorTarget, destination: ExecutorTarget): Promise<void> {
-    return this.commitTargeted('dragTo', source, async (node) => {
-      const dropped = this.feed.resolve(destination);
-      await this.session.perform(node.ref, { kind: 'dragTo', target: dropped.node.ref }, this.accounting.actionOperation());
-      return { name: 'drag', node, destination: { node: dropped.node, ...this.placementOf(dropped) } };
-    });
+    return this.commitTargeted('dragTo', source, (node) => this.dragOnto(node, destination));
+  }
+
+  /** The body of a node drag past the source's resolution: the drop target resolved on the same look, then the drag. */
+  private async dragOnto(node: RedactedNode, destination: ExecutorTarget): Promise<RecordableAction> {
+    const dropped = this.feed.resolve(destination);
+    await this.session.perform(node.ref, { kind: 'dragTo', target: dropped.node.ref }, this.accounting.actionOperation());
+    return { name: 'drag', node, destination: { node: dropped.node, ...this.placementOf(dropped) } };
   }
 
   /**
@@ -353,6 +450,16 @@ export class ActionDispatcher {
     return this.runAction('back', async () => {
       await this.session.app.back(this.accounting.operation());
       return { name: 'back' };
+    });
+  }
+
+  /** Sets the viewport to whole CSS pixels within `VIEWPORT_LIMITS`, for a layout at another width. */
+  private async resize(size: ViewportSize): Promise<void> {
+    const { width, height } = requireViewportSize(size);
+    await this.runAction('resize', async () => {
+      await this.session.app.resize({ width, height }, this.accounting.operation());
+      this.runtime.steps.attachViewport({ width, height, scale: 1 });
+      return { name: 'resize', size: { width, height } };
     });
   }
 
@@ -448,7 +555,7 @@ export class ActionDispatcher {
     await this.runAction('scrollUntil', async () => {
       let observation = this.feed.requireLatest();
       let paged: Pick<Extract<RecordableAction, { name: 'scrollUntil' }>, 'node' | 'spans'> = {};
-      let previous: string | undefined;
+      let previous: PageReading | undefined;
       let still = 0;
       let within = list;
       for (let screens = 0; ; screens += 1) {
@@ -468,22 +575,51 @@ export class ActionDispatcher {
           if (isInViewport(found.rect, observation.viewport)) return { name: 'scrollUntil', text, direction, screens, ...paged };
         }
         if (screens >= MAX_SCROLL_UNTIL_SCREENS) throw notFound(`within ${String(MAX_SCROLL_UNTIL_SCREENS)} screens ${direction}`);
-        const shape = observation.kind === 'semantic' ? readingShape(observation) : undefined;
-        still = shape !== undefined && shape === previous ? still + 1 : 0;
+        const reading = observation.kind === 'semantic' ? readPage(observation) : undefined;
+        still = reading !== undefined && previous !== undefined && !pageMoved(previous, reading) ? still + 1 : 0;
         if (still >= SCROLL_UNTIL_STILL_PAGES) throw notFound(`before the screen stopped moving ${direction}, after ${String(screens)} screens`);
         if (still >= SCROLL_UNTIL_WRONG_LIST_PAGES && within !== undefined) {
           within = undefined;
           still = 0;
         }
-        previous = shape;
+        previous = reading;
         const turned = await this.page(direction, within);
         paged = turned.paged;
         within = turned.within;
-        // A settled look: a browser scrolls on a later frame than the wheel
-        // event, and a raw read right after it sees the page as it was.
-        observation = await this.feed.look('held-still');
+        // A page at least a third (two lines at least) of whose lines are new,
+        // and no sparser, has landed and is read once. Anything else is read
+        // until it holds. A screen that still matches the one before the swipe
+        // is not done holding after two polls: a list that appends when it
+        // reaches the end does so after that, and those polls would call the
+        // list ended. It is re-read for the held-still beat.
+        observation = await this.readScrolledPage(previous);
       }
     });
+  }
+
+  /**
+   * The screen after one page of a scroll to text. A landed page, or one that
+   * changed and then held, is returned as the held-still look reads it. A page
+   * that has not moved at all is re-read until it does, or the beat runs out.
+   */
+  private async readScrolledPage(previous: PageReading | undefined): Promise<AgentObservation> {
+    const landed = (seen: AgentObservation): boolean =>
+      previous !== undefined && seen.kind === 'semantic' && pageLanded(previous, readPage(seen));
+    /** The screen still reads as the one from before the swipe, so a late append may still be coming. */
+    const stillThere = (seen: AgentObservation): boolean =>
+      previous !== undefined && seen.kind === 'semantic' && !pageMoved(previous, readPage(seen));
+    let observation = await this.feed.look('held-still', landed);
+    // The beat starts when that look returns. The look can itself spend a
+    // second on a shape that never settles, and that second is not the wait
+    // for a list that appends after the screen has held.
+    const beatEnds = Date.now() + HELD_STILL_MS;
+    while (stillThere(observation) && this.accounting.remainingMs() > SETTLE_POLL_MS) {
+      const pause = Math.min(SETTLE_POLL_MS, beatEnds - Date.now());
+      if (pause <= 0) break;
+      await sleep(pause, this.accounting.signal);
+      observation = await this.feed.look('raw');
+    }
+    return observation;
   }
 
   /**
@@ -520,11 +656,12 @@ export class ActionDispatcher {
       throw new TestError('INVALID_ARGUMENT', 'navigate requires a URL');
     }
     const resolved = resolveNavigationUrl(url, this.runtime.app.base).url;
-    // The raw argument is recorded, not the resolved URL: replay re-resolves
-    // through the same base and scheme rule this call just passed.
+    // The argument is recorded without the app's origin, not the resolved URL:
+    // replay re-resolves it through the same base and scheme rule wherever the app runs then.
+    const recorded = appNavigation(url, this.runtime.app.base?.origin);
     await this.runAction('navigate', async () => {
       await this.session.app.open(resolved, this.accounting.operation());
-      return { name: 'navigate', url };
+      return { name: 'navigate', url: recorded };
     });
   }
 
@@ -533,7 +670,7 @@ export class ActionDispatcher {
    * — an executor can never fill a secret the test did not hand it — and
    * the fill itself runs the full secret authorization policy: configured
    * secret, an enabled editable sink, and a password field for a password.
-   * There is no origin check. Pixel evidence is tainted from here on.
+   * There is no origin check.
    */
   private async typeSecret(target: ExecutorTarget, name: string): Promise<void> {
     const secret = this.options.secrets.get(name);
@@ -545,8 +682,6 @@ export class ActionDispatcher {
     }
     await this.commitTargeted('typeSecret', target, async (node) => {
       const plaintext = await authorizeSecretFill(this.policyHost(), this.runtime, secret, node);
-      // Before the engine call: a fill that types the value and then fails has still put it on screen.
-      this.runtime.exposure.raise('filled');
       await this.session.perform(
         node.ref,
         { kind: 'fill', value: plaintext, sensitive: true },
@@ -568,8 +703,17 @@ export class ActionDispatcher {
     return this.queue.run(() => this.runActionNow(name, body));
   }
 
+  /** Assertions may move the viewport but cannot interact with application state. */
+  private assertAllowed(name: string): void {
+    if (this.options.readOnly === true && !ASSERTION_ACTIONS.has(name)) {
+      throw this.accounting.fatalize(new AgentError('POLICY_DENIED', `agent.assert cannot perform ${name}`));
+    }
+  }
+
   private async runActionNow(name: GrammarActionName, body: () => Promise<RecordableAction>): Promise<void> {
+    this.assertAllowed(name);
     this.accounting.reserveAction();
+    await this.before();
     const redaction = { redact: this.runtime.redact, redactCut: this.runtime.redactCut };
     let action: RecordableAction;
     try {
@@ -585,7 +729,7 @@ export class ActionDispatcher {
     }
     this.armAfter(action.name);
     this.recordTrace(action);
-    await this.notify(action.name, action.name, () => describeAction(action, redaction).summary);
+    await this.notify(action.name, (fields) => actionEvent(action, { ...fields, summary: describeAction(action, redaction).summary }));
   }
 
   /** Writes a committed action to the step's trace cache, when caching is on. */
@@ -618,24 +762,44 @@ export class ActionDispatcher {
    * on, the settle's or the hook's, hard-stops the step instead of reaching
    * the executor as a failed action to retry, or the replay as a divergence.
    */
-  private async notify(kind: RecordedAction['name'], action: string, summary: () => string): Promise<void> {
+  private async notify(kind: RecordedAction['name'], event: (fields: Pick<ActionEvent, 'index' | 'source'>) => ActionEvent): Promise<void> {
     const hook = this.options.onAction;
     if (hook === undefined || this.accounting.closed) return;
-    try {
+    await this.invokeHook('onAction', async () => {
       await this.feed.settleNow(SETTLE_AFTER[kind].look);
+      await hook(
+        event({
+          index: this.accounting.metrics.actionSteps,
+          source: this.accounting.replayingTrace ? 'replay' : 'model',
+        }),
+      );
+    });
+  }
+
+  /** Hands the action about to run to the test's `onBeforeAction` hook. */
+  private async before(): Promise<void> {
+    const hook = this.options.onBeforeAction;
+    if (hook === undefined || this.accounting.closed) return;
+    await this.invokeHook('onBeforeAction', async () => {
       await hook({
         index: this.accounting.metrics.actionSteps,
-        action,
-        summary: summary(),
         source: this.accounting.replayingTrace ? 'replay' : 'model',
       });
+      this.accounting.checkpoint();
+    });
+  }
+
+  /** Observer failures stop the step, never becoming an executor retry or replay hand-off. */
+  private async invokeHook(name: 'onAction' | 'onBeforeAction', body: () => Promise<void>): Promise<void> {
+    try {
+      await body();
     } catch (cause) {
       if (cause === this.accounting.hardStop || this.accounting.signal.aborted) throw cause;
       const error = toAgentError(cause);
       // A nested step's own budget or deadline is not this step's: the
       // runtime vouches only for the stops it recorded itself.
       const code = RUNTIME_CODES.has(error.code) ? 'ACTION_FAILED' : error.code;
-      throw this.accounting.fatalize(new ActionHookError(code, `${this.accounting.api} onAction failed: ${error.message}`, { cause }));
+      throw this.accounting.fatalize(new ActionHookError(code, `${this.accounting.api} ${name} failed: ${error.message}`, { cause }));
     }
   }
 
@@ -712,6 +876,18 @@ export class ActionDispatcher {
       ...(within === undefined ? {} : { within }),
       ...(position === undefined ? {} : { position }),
     };
+  }
+
+  /**
+   * The trace's handle on a bare point: the listed node whose box contained
+   * it, with where that node sat, so its container and place among twins
+   * tell this row's node from the next row's on replay. Nothing on a screen
+   * without a tree, or on the tree's root, which is the page itself and
+   * follows no layout shift.
+   */
+  private traceHandle(observation: AgentObservation, under: RedactedNode | undefined): Omit<PlacedPoint, 'point'> {
+    if (under === undefined || observation.kind !== 'semantic' || under.ref.id === observation.tree.ref.id) return {};
+    return { under, ...this.placementOf({ node: under, observation }) };
   }
 
   /** The seam a policy records its decisions through, onto this step's events. */

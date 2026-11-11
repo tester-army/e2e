@@ -1,0 +1,35 @@
+{
+  "schemaVersion": "doctor-1",
+  "version": "0.22.1",
+  "ok": false,
+  "checks": [
+    { "id": "node", "status": "pass", "message": "Node.js 24.8.0 (^22.22.3 || >=24.8.0)" },
+    {
+      "id": "config",
+      "status": "pass",
+      "path": "/work/app/e2e.config.ts",
+      "targets": [
+        { "name": "web", "platform": "web", "engine": "web" },
+        { "name": "ios", "platform": "ios", "engine": "mobile" }
+      ]
+    },
+    { "id": "browser", "status": "warn", "target": "web", "message": "chromium is not installed; the first run downloads it, or run \"npx @e2e-dev/web install chromium\" now" },
+    { "id": "engine", "status": "skip", "target": "ios", "message": "engine \"mobile\" has no doctor checks" },
+    {
+      "id": "model",
+      "status": "unknown",
+      "agent": "default",
+      "model": { "provider": "gateway", "modelId": "openai/gpt-6-luna-fast" },
+      "message": "the model reads its own credential; --check-model calls it"
+    },
+    {
+      "id": "model",
+      "status": "fail",
+      "agent": "subscription",
+      "model": { "provider": "chatgpt.responses", "modelId": "gpt-6-luna" },
+      "login": "openai",
+      "code": "MODEL_UNAVAILABLE",
+      "message": "no stored openai login: run `npx e2e login openai`"
+    }
+  ]
+}

@@ -16,6 +16,8 @@
     "packages/*/tests/fixtures/**",
     // Vendored conformance data, kept byte for byte.
     "packages/*/tests/conformance/*/**",
+    // Playwright's test assets, kept byte for byte.
+    "apps/testbed/app/playwright/assets/**",
     "packages/*/tests/tmp-projects/**",
     // Standalone user-facing projects with their own installs; nothing here builds them.
     "examples/**",

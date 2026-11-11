@@ -44,3 +44,18 @@ export interface DecisionExecutorOptions {
    */
   readonly vision?: boolean;
 }
+
+/** Options for a test filter that asks a decision model which tests a change can affect. */
+export interface DecisionFilterOptions {
+  /**
+   * An AI SDK decision model that answers `boolean` questions with a
+   * probability, e.g. `gateway.decisionModel('typesafe-ai/jev')`, which
+   * reads `AI_GATEWAY_API_KEY`.
+   */
+  readonly model: Exclude<Experimental_DecisionModel, string>;
+  /**
+   * Provider options sent with every decide call, such as
+   * `{ gateway: { zeroDataRetention: true } }` for Vercel AI Gateway.
+   */
+  readonly providerOptions?: Parameters<typeof experimental_decide>[0]['providerOptions'];
+}

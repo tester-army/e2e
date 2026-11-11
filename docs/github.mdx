@@ -2,9 +2,8 @@
 title: Pull request comments
 sidebarTitle: GitHub PR comments
 description: The @e2e-dev/github reporter posts one comment per run from GitHub Actions and keeps it current.
-icon: "github"
-"og:image": "https://e2e.tester.army/docs/images/og/github.png?v=be9fcc65d9"
-"twitter:image": "https://e2e.tester.army/docs/images/og/github.png?v=be9fcc65d9"
+"og:image": "https://e2e.com/docs/images/og/github.png?v=be9fcc65d9"
+"twitter:image": "https://e2e.com/docs/images/og/github.png?v=be9fcc65d9"
 ---
 
 `@e2e-dev/github` is a reporter that posts the test results as a pull
@@ -115,11 +114,19 @@ Evidence: [screenshot](https://github.com/acme/shop/actions/runs/123#artifacts)
 ...
 </details>
 
-<sub>e2e 0.13.0 · 2m 15s · web · [run artifacts](https://github.com/acme/shop/actions/runs/123#artifacts)</sub>
+<sub>Tested by [e2e](https://e2e.com) 0.13.0 · 2m 15s · web · [run artifacts](https://github.com/acme/shop/actions/runs/123#artifacts)</sub>
 ```
 
 Run-level errors, when there are any, come before the failures. The test
 list has an agent column only when the run used the agent.
+
+A run whose [test filters](/filters) left tests out says so in the
+headline, such as `e2e: 7 passed, 35 left out by filters`, so it never
+reads as the whole suite. Above the test list, a line names the change the filters judged,
+such as `12 files changed since abc1234`, then one line per filter says
+what it kept, and a folded table lists each test it left out with the
+reason. When no filter ran, such as when no file changed, a line says
+why.
 
 The reporter shortens a large report to fit GitHub's comment limit. App text
 that GitHub would turn into a mention, an issue link, or a URL shows as
@@ -145,6 +152,8 @@ covering the whole suite:
 | interrupted | passed | passed |
 | any other result | not run | the first-pass result |
 
+The comment keeps the first pass's filter lines and left-out tests.
+
 The comment stays red while the rerun left out something it owed: a failed
 test, a test that `--max-failures` or `--max-duration` stopped before it ran, or a failed
 `beforeAll` or `afterAll` whose tests another filter kept out. It shows ⏹️
@@ -164,6 +173,14 @@ reporters: ['list', github({ key: process.env.MATRIX_BROWSER })],
 Set `MATRIX_BROWSER: ${{ matrix.browser }}` in the step's `env`. The key
 shows in the headline, such as `e2e chromium: 77 passed`. Keep it stable
 across runs so a rerun updates the existing comment.
+
+## Explorations
+
+An [`e2e explore`](/explore) run posts a comment of its own, so a job can run
+the tests and then explore. Give the exploration its own `--output`, such as
+`npx e2e explore --output .e2e-explore`, and upload that directory too.
+Otherwise it replaces the test run's results, and the evidence links in the
+test run's comment break.
 
 ## When nothing is posted
 

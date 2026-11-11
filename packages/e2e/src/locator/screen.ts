@@ -8,6 +8,7 @@ import { locatorBrand } from '../internal/brands.ts';
 import { isSecret } from '../secrets.ts';
 import { TestError } from '../internal/errors.ts';
 import { requireFinitePoint } from '../internal/geometry.ts';
+import { isCheckable, isValueControl } from '../internal/roles.ts';
 import { isPlainObject, rejectUnknownOptions } from '../internal/options.ts';
 import { realmSlot } from '../internal/realm-slot.ts';
 import { obj } from '../internal/objects.ts';
@@ -43,7 +44,7 @@ import {
   testIdQuery,
   textQuery,
 } from './expression.ts';
-import { cutOffAtDeadline, type Deadline, isOperationTimeout, POLL_INTERVAL_MS, pollCondition } from '../internal/time.ts';
+import { type Deadline, isOperationTimeout, POLL_INTERVAL_MS, pollReads } from '../internal/time.ts';
 import { SampleHistory } from '../expect/samples.ts';
 import type { ScreenshotContext } from '../run/screenshots.ts';
 
@@ -283,14 +284,14 @@ class ScreenImpl implements Screen {
           details: locatorDetails(internals.expression, Date.now() - startedMs),
           ...(cause === undefined ? {} : { cause }),
         });
+      const reads = engine.reads(deadline);
       let sampled = false;
       for (;;) {
-        const startedWithMs = deadline.remaining();
         let node: SemanticNode | null;
         try {
-          ({ node } = await engine.tryRead(internals.expression, deadline));
+          ({ node } = await engine.tryRead(internals.expression, reads));
         } catch (cause) {
-          if (sampled && cutOffAtDeadline(cause, startedWithMs)) throw notVisible(cause);
+          if (sampled && reads.cutOff(cause)) throw notVisible(cause);
           throw cause;
         }
         sampled = true;
@@ -328,7 +329,7 @@ class ScreenImpl implements Screen {
     }
     return await this.context.steps.run('screen', api, 'whole screen', async () => {
       const { engine } = this.context;
-      return this.context.renderTree(await engine.session.observe(engine.operation(options?.timeout)));
+      return this.context.renderTree(await engine.session.observe(engine.operationWithin(engine.deadline(options?.timeout))));
     });
   }
 
@@ -524,8 +525,8 @@ class LocatorImpl extends ScreenImpl implements Locator {
 
   setInputFiles(paths: string | readonly string[], options?: ActionOptions): Promise<void> {
     const list = typeof paths === 'string' ? [paths] : [...paths];
-    if (list.length === 0 || list.some((entry) => typeof entry !== 'string' || entry.trim() === '')) {
-      throw new TestError('INVALID_ARGUMENT', 'setInputFiles requires one or more non-empty paths');
+    if (list.some((entry) => typeof entry !== 'string' || entry.trim() === '')) {
+      throw new TestError('INVALID_ARGUMENT', 'setInputFiles paths must be non-empty strings');
     }
     const base = this.context.projectRoot;
     const resolved = list.map((entry) => (base === undefined ? entry : nodePath.resolve(base, entry)));
@@ -569,7 +570,9 @@ class LocatorImpl extends ScreenImpl implements Locator {
 
   async inputValue(): Promise<string> {
     const node = await this.readGuarded();
-    return node.value ?? '';
+    if (node.value !== undefined) return node.value;
+    if (isValueControl(node)) return '';
+    throw new TestError('ACTION_FAILED', `Node is not an <input>, <textarea> or <select> element: ${this.label}`);
   }
 
   async getAttribute(name: string): Promise<string | null> {
@@ -596,6 +599,7 @@ class LocatorImpl extends ScreenImpl implements Locator {
 
   async isChecked(): Promise<boolean> {
     const node = await this.readGuarded(false);
+    if (!isCheckable(node)) throw new TestError('ACTION_FAILED', `Not a checkbox or radio button: ${this.label}`);
     return node.states?.checked === true;
   }
 
@@ -635,12 +639,13 @@ class LocatorImpl extends ScreenImpl implements Locator {
       const startedMs = Date.now();
       const samples = new SampleHistory('waitFor', (text) => engine.redact(text));
       await samples.record(engine, () =>
-        pollCondition({
+        pollReads({
           deadline,
+          reads: engine.reads(deadline),
           signal: engine.signal,
           negated: false,
-          evaluate: async () => {
-            const { node } = await engine.tryRead(this.expression, deadline, ABSENCE_STATES.has(state) ? 'empty' : 'wait');
+          evaluate: async (reads) => {
+            const { node } = await engine.tryRead(this.expression, reads, ABSENCE_STATES.has(state) ? 'empty' : 'wait');
             samples.add(node === null ? 'absent' : isNodeVisible(node) ? 'visible' : 'hidden');
             return inWaitForState(node, state);
           },
@@ -654,15 +659,19 @@ class LocatorImpl extends ScreenImpl implements Locator {
     }, { verifies: true });
   }
 
-  filter(options: { hasText?: TextMatch; has?: Locator }): Locator {
-    rejectUnknownOptions('filter', options, ['hasText', 'has'], 'INVALID_LOCATOR');
-    const { hasText, has } = options ?? {};
+  filter(options: { hasText?: TextMatch; hasNotText?: TextMatch; has?: Locator; hasNot?: Locator }): Locator {
+    rejectUnknownOptions('filter', options, ['hasText', 'hasNotText', 'has', 'hasNot'], 'INVALID_LOCATOR');
+    const { hasText, hasNotText, has, hasNot } = options ?? {};
     const hasExpression = has === undefined ? undefined : this.ownLocator(has, 'filter({ has })').expression;
+    const hasNotExpression =
+      hasNot === undefined ? undefined : this.ownLocator(hasNot, 'filter({ hasNot })').expression;
     return new LocatorImpl(
       this.context,
       filterExpression(this.expression, {
         ...(hasText !== undefined ? { hasText } : {}),
+        ...(hasNotText !== undefined ? { hasNotText } : {}),
         ...(hasExpression !== undefined ? { has: hasExpression } : {}),
+        ...(hasNotExpression !== undefined ? { hasNot: hasNotExpression } : {}),
       }),
     );
   }

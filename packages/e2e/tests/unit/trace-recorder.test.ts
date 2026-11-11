@@ -3,7 +3,8 @@
 import { describe, expect, it } from 'vitest';
 import { describeTarget } from '../../src/agent/actions.ts';
 import { TraceRecorder } from '../../src/cache/recorder.ts';
-import { buildTraceEntry, MAX_TRACE_INPUT_CHARS, readTraceEntry } from '../../src/cache/trace.ts';
+import { buildTraceEntry, MAX_TRACE_INPUT_CHARS } from '../../src/cache/trace.ts';
+import { readTraceEntry } from '../../src/cache/trace-read.ts';
 import { createRedactor, SecretLedger } from '../../src/internal/redact.ts';
 import { redacted } from '../helpers/redacted.ts';
 
@@ -223,6 +224,7 @@ describe('TraceRecorder', () => {
     recorder.record({ name: 'drag', node: upgradeButton, destination: { node: doneColumn, within: 'Board' } });
     recorder.record({ name: 'upload', node: upgradeButton, paths: ['fixtures/a.txt', 'fixtures/b.txt'] });
     recorder.record({ name: 'back' });
+    recorder.record({ name: 'resize', size: { width: 390, height: 844 } });
     recorder.record({ name: 'hoverAt', point: { x: 10, y: 20 }, viewport: { width: 1280, height: 720 } });
     const trace = recorder.finalize({ ...conclusion, startPath: '/board' })!;
     expect(trace.truncated).toBeUndefined();
@@ -236,20 +238,23 @@ describe('TraceRecorder', () => {
       'drag button "Upgrade" to region "Done column" in "Board"',
       'upload "fixtures/a.txt", "fixtures/b.txt" to button "Upgrade"',
       'navigate back',
+      'resize the viewport to 390x844',
       'hover over the point (10, 20)',
     ]);
     expect(trace.actions[5]).toMatchObject({ name: 'check', checked: false });
     expect(trace.actions[6]).toMatchObject({ name: 'drag', destination: { role: 'region', name: 'Done column', within: 'Board' } });
     expect(trace.actions[7]).toMatchObject({ name: 'upload', paths: ['fixtures/a.txt', 'fixtures/b.txt'] });
+    expect(trace.actions[9]).toEqual({ name: 'resize', summary: 'resize the viewport to 390x844', size: { width: 390, height: 844 } });
     const entry = readTraceEntry(JSON.parse(JSON.stringify(buildTraceEntry(trace))));
     expect(entry?.payload.actions).toEqual(trace.actions);
   });
 
-  it('rejects a stored check, upload, or drag that lost a field', () => {
+  it('rejects a stored check, upload, drag, or resize that lost a field', () => {
     const recorder = makeRecorder();
     recorder.record({ name: 'check', node: upgradeButton, checked: true });
     recorder.record({ name: 'upload', node: upgradeButton, paths: ['fixtures/a.txt'] });
     recorder.record({ name: 'drag', node: upgradeButton, destination: { node: upgradeButton } });
+    recorder.record({ name: 'resize', size: { width: 390, height: 844 } });
     const entry = JSON.parse(JSON.stringify(buildTraceEntry(recorder.finalize(conclusion)!)));
     const broken = (index: number, patch: (action: Record<string, unknown>) => void) => {
       const copy = JSON.parse(JSON.stringify(entry));
@@ -260,6 +265,9 @@ describe('TraceRecorder', () => {
     expect(broken(1, (action) => { action['paths'] = []; })).toBeUndefined();
     expect(broken(1, (action) => { action['paths'] = ['']; })).toBeUndefined();
     expect(broken(2, (action) => { delete action['destination']; })).toBeUndefined();
+    expect(broken(3, (action) => { delete action['size']; })).toBeUndefined();
+    expect(broken(3, (action) => { action['size'] = { width: 390.5, height: 844 }; })).toBeUndefined();
+    expect(readTraceEntry(JSON.parse(JSON.stringify(entry)))?.payload.actions[3]).toMatchObject({ name: 'resize', size: { width: 390, height: 844 } });
     expect(broken(0, (action) => { action['name'] = 'fly'; })).toBeUndefined();
   });
 });
@@ -328,5 +336,69 @@ describe('TraceRecorder: bare-point taps', () => {
     expect(broken((action) => { action['viewport'] = { width: 0, height: 720 }; })).toBeUndefined();
     expect(broken((action) => { action['within'] = { target: { role: 'img' }, fx: 1.5, fy: 0 }; })).toBeUndefined();
     expect(broken((action) => { action['point'] = { x: 'left', y: 60 }; })).toBeUndefined();
+  });
+});
+
+describe('TraceRecorder: bare-point drags', () => {
+  const viewport = { width: 1280, height: 720 };
+  const board = redacted({ ref: { id: 'b1', revision: 'r1' }, role: 'img', name: 'Board', rect: { x: 100, y: 200, width: 400, height: 200 } });
+
+  it('records both points with the viewport, and where each sat inside the node that contained it', () => {
+    const recorder = makeRecorder();
+    recorder.record({ name: 'dragAt', from: { point: { x: 200, y: 250 }, under: board }, to: { point: { x: 400, y: 350 }, under: board }, viewport });
+    const trace = recorder.finalize({ ...conclusion, startPath: '/canvas' });
+    expect(trace?.actions[0]).toEqual({
+      name: 'dragAt',
+      summary: 'drag from the point (200, 250) on img "Board" to the point (400, 350) on img "Board"',
+      from: { point: { x: 200, y: 250 }, within: { target: { role: 'img', name: 'Board' }, fx: 0.25, fy: 0.25 } },
+      to: { point: { x: 400, y: 350 }, within: { target: { role: 'img', name: 'Board' }, fx: 0.75, fy: 0.75 } },
+      viewport,
+    });
+    expect(trace?.truncated).toBeUndefined();
+  });
+
+  it('keeps the container and place among twins of the node at each end', () => {
+    const recorder = makeRecorder();
+    recorder.record({
+      name: 'dragAt',
+      from: { point: { x: 200, y: 250 }, under: board, within: 'Sprint 1', position: { index: 0, of: 2 } },
+      to: { point: { x: 400, y: 350 }, under: board, within: 'Sprint 2' },
+      viewport,
+    });
+    const action = recorder.finalize({ ...conclusion, startPath: '/canvas' })?.actions[0];
+    expect(action).toMatchObject({
+      from: { within: { target: { role: 'img', name: 'Board', within: 'Sprint 1', position: { index: 0, of: 2 } } } },
+      to: { within: { target: { role: 'img', name: 'Board', within: 'Sprint 2' } } },
+    });
+  });
+
+  it('records an end on nothing listed by the viewport alone, and reads the drag back', () => {
+    const recorder = makeRecorder();
+    recorder.record({ name: 'dragAt', from: { point: { x: 200, y: 250 }, under: board }, to: { point: { x: 700, y: 600 } }, viewport });
+    const trace = recorder.finalize({ ...conclusion, startPath: '/canvas' })!;
+    expect(trace.actions[0]).toEqual({
+      name: 'dragAt',
+      summary: 'drag from the point (200, 250) on img "Board" to the point (700, 600)',
+      from: { point: { x: 200, y: 250 }, within: { target: { role: 'img', name: 'Board' }, fx: 0.25, fy: 0.25 } },
+      to: { point: { x: 700, y: 600 } },
+      viewport,
+    });
+    const entry = readTraceEntry(JSON.parse(JSON.stringify(buildTraceEntry(trace))));
+    expect(entry?.payload.actions[0]).toEqual(trace.actions[0]);
+  });
+
+  it('rejects a stored drag whose point, viewport, or fraction is malformed', () => {
+    const recorder = makeRecorder();
+    recorder.record({ name: 'dragAt', from: { point: { x: 200, y: 250 } }, to: { point: { x: 700, y: 600 } }, viewport });
+    const entry = JSON.parse(JSON.stringify(buildTraceEntry(recorder.finalize({ ...conclusion, startPath: '/canvas' })!)));
+    const broken = (patch: (action: Record<string, unknown>) => void) => {
+      const copy = JSON.parse(JSON.stringify(entry));
+      patch(copy.payload.actions[0]);
+      return readTraceEntry(copy);
+    };
+    expect(broken((action) => { delete action['to']; })).toBeUndefined();
+    expect(broken((action) => { action['viewport'] = { width: 1280, height: -1 }; })).toBeUndefined();
+    expect(broken((action) => { action['from'] = { x: 200, y: 250 }; })).toBeUndefined();
+    expect(broken((action) => { action['to'] = { point: { x: 700, y: 600 }, within: { target: { role: 'img' }, fx: 0, fy: 2 } }; })).toBeUndefined();
   });
 });

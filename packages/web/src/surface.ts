@@ -9,8 +9,9 @@
 
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
-import type { Browser, BrowserContext, ElementHandle, FrameLocator, Locator, Page, Route } from 'playwright-core';
+import type { Browser, BrowserContext, ElementHandle, Frame, FrameLocator, Locator, Page, Request, Route } from 'playwright-core';
 import {
+  Deadline,
   EngineError,
   obj,
   raceAbort,
@@ -19,6 +20,8 @@ import {
   type EngineAppInfo,
   type EngineAttemptContext,
   type EngineCleanupContext,
+  type EngineDoctorCheck,
+  type EngineDoctorInfo,
   type EngineInitInfo,
   type EngineObserveOptions,
   type EnginePrepareInfo,
@@ -46,11 +49,13 @@ import { LeasedBrowsers, type BrowserProvider, type LeaseDownloads } from './pro
 import { installAppLog } from './app-log.ts';
 import { TraceFeed } from './trace-feed.ts';
 import { DialogRouter } from './dialogs.ts';
-import { ensureBrowsersInstalled } from './install.ts';
+import { browserCheck, ensureBrowsersInstalled } from './install.ts';
 import { applyPostSteps, frameSelectors, projectExpression } from './locators.ts';
-import { contentBox, frameContentInset, placeRectInFrame, ROOT_NODE_ID, toSemanticNode } from './observation.ts';
+import { contentBox, frameContentInset, placeBoxInFrame, ROOT_NODE_ID, toSemanticNode } from './observation.ts';
 import { captureObservation } from './observation-capture.ts';
 import { maskOptions, secureFieldMasks } from './observe.ts';
+import { SHOWN_SELECTOR } from './shown-selector.ts';
+import { withHiddenCaret } from './screenshot-caret.ts';
 import { connectionAbort, withOperationDeadline, type OperationBound } from './operation-budget.ts';
 import { CLOSED_SHADOW_ROOTS_INIT_SCRIPT, CLOSED_SHADOW_ROOTS_KEY } from './closed-shadow.ts';
 import { ConfiguredInitScripts, type WebInitScript } from './init-scripts.ts';
@@ -64,10 +69,14 @@ import {
   DEFAULT_VIEWPORT,
   ErrorLatch,
   invalidState,
+  isClassified,
+  isNavigationRace,
+  isPwTimeout,
   message,
   navigationStaleOr,
   performViewportSwipe,
   sanitizeFilename,
+  pageScriptFailure,
   staleOr,
   translatePwError,
 } from './support.ts';
@@ -295,6 +304,8 @@ export class PlaywrightSurface {
   private artifactsDir = '';
   /** Navigations the engine has in flight, which the app log leaves to the step that started them. */
   private ownNavigations = 0;
+  /** One entry per navigation in flight, set to the URL of a document request a test route aborted during it. */
+  private readonly navigationAborts = new Set<{ url?: string }>();
   /** What the attempt tells its trace beside the app log; absent between attempts. */
   private trace: TraceFeed | undefined;
   private artifactCounter = 0;
@@ -337,6 +348,17 @@ export class PlaywrightSurface {
     if (this.leases !== undefined) return this.leases.prepare(info);
     if (this.connect !== undefined) return;
     await ensureBrowsersInstalled([this.browserName], { env: info.env, signal: info.signal, log: info.log, headed: info.headed });
+  }
+
+  /**
+   * The checks of `e2e doctor`: the init scripts `prepare` reads, and the
+   * browser, which only a local launch needs on this machine.
+   */
+  async doctor(info: EngineDoctorInfo): Promise<readonly EngineDoctorCheck[]> {
+    const scripts = await this.configuredInitScripts.doctor(info.projectRoot);
+    if (this.leases !== undefined) return [...scripts, { id: 'browser', status: 'skip', message: `browsers come from the "${this.leases.name}" provider` }];
+    if (this.connect !== undefined) return [...scripts, { id: 'browser', status: 'skip', message: 'the browser is attached over CDP' }];
+    return [...scripts, ...(await browserCheck(this.browserName, info.env, info.headed))];
   }
 
   /** Releases the browsers `prepare` leased; a local launch or a `connect` has nothing to release. */
@@ -469,6 +491,8 @@ export class PlaywrightSurface {
     this.trace = new TraceFeed(context, () => this.openPage(), () => this.session?.refs, { testIdAttribute: this.testIdAttribute, site: this.app.site });
     const routes: StoredRoute[] = [];
     const initScripts = this.configuredInitScripts.forAttempt();
+    // `validateApp` admitted only grants.
+    const granted = Object.keys(this.app.permissions ?? {});
     this.latch = new ErrorLatch();
     const dialogs = new DialogRouter(this.latch);
     this.routes = routes;
@@ -502,6 +526,7 @@ export class PlaywrightSurface {
           testPage: () => this.openPage(),
         });
         await installSiteHeaders(target, this.app.site, this.headers);
+        if (granted.length > 0) await target.grantPermissions(granted);
         for (const stored of routes) await target.route(stored.predicate, stored.handler);
       },
       ...(persistent === undefined ? {} : { persistent }),
@@ -683,6 +708,9 @@ export class PlaywrightSurface {
         ? await withOperationDeadline(operation, label, (remaining) => fn({ ...operation, ...remaining() }), bound)
         : await this.session.run(operation, label, fn, bound);
     } catch (cause) {
+      // A handler error latched while the operation ran is its cause: a route
+      // that refused its own arguments aborts the request the step waited on.
+      this.latch.throwPending();
       throw translate(cause, label);
     }
   }
@@ -707,16 +735,43 @@ export class PlaywrightSurface {
     ));
   }
 
-  /** Runs one navigation the engine itself makes, so the app log leaves it to the step that asked for it. */
+  /** Sets the viewport for the agent's `resize` verb, as `browser.setViewport` does, and shows the screen after it. */
+  resize(size: ViewportSize, operation: OperationContext): Promise<void> {
+    return this.acted(operation, this.guard(operation, 'resize', () => this.setViewport(size)));
+  }
+
+  /**
+   * Runs one navigation the engine itself makes, so the app log leaves it to
+   * the step that asked for it. A navigation that fails after a test route
+   * aborted its document request failed because the test aborted it: an
+   * action failure, not an engine fault.
+   */
   async navigating<T>(work: () => Promise<T>): Promise<T> {
     this.ownNavigations += 1;
+    const watch: { url?: string } = {};
+    this.navigationAborts.add(watch);
     try {
       const result = await work();
       this.trace?.tellEnvironment();
       return result;
+    } catch (cause) {
+      if (watch.url === undefined || isClassified(cause) || isPwTimeout(cause)) throw cause;
+      throw new TestError('ACTION_FAILED', `navigation failed: a route aborted the request for ${watch.url}: ${message(cause)}`, { cause });
     } finally {
+      this.navigationAborts.delete(watch);
       this.ownNavigations -= 1;
     }
+  }
+
+  /**
+   * Records a request a test route is about to abort, when it loads the
+   * document of the attempt's page. Never throws: the abort must follow.
+   */
+  noteRouteAbort(request: Request): void {
+    if (this.navigationAborts.size === 0 || !request.isNavigationRequest()) return;
+    const main = this.openPage()?.mainFrame();
+    if (main === undefined || frameOf(request) !== main) return;
+    for (const watch of this.navigationAborts) watch.url ??= request.url();
   }
 
   /** Resolves with what an action resolved with once the trace has the screen it left (`TraceFeed.screenAfterAction`); an action that failed leaves none. */
@@ -756,96 +811,114 @@ export class PlaywrightSurface {
       operation,
       'locate',
       async (currentOperation) => {
-        const session = this.requireSession();
-        const token = session.token();
-        const refs = session.refs;
-        const page = this.requirePage();
-        const frame = await this.frameBox(expression);
-        const projected = projectExpression(page, expression, this.testIdAttribute);
-        const { displayValue, name, steps } = projected;
-        // Every match is read by the `e2e-read` selector engine in the task that finds it, so a
-        // page that replaces it a frame later cannot detach it before the read. A
-        // predicate-filtered match is one element among many candidates (every input with a
-        // value, every control the label engine kept). Re-resolving it by position at action
-        // time would act on a neighbor whenever the page inserted or removed an element in
-        // between, so such matches are pinned to the handles of the elements the query returned,
-        // and their reads are taken back from those very handles: what was read and what is
-        // acted on are one set of elements by construction.
-        const read = readSelector({ testIdAttribute: this.testIdAttribute, secureFieldSelector: SECURE_FIELD_SELECTOR });
-        const reading = projected.locator.locator(read.selector);
-        const handles =
-          displayValue !== null || name !== null
-            ? ((await reading.elementHandles()) as ElementHandle<Element>[])
-            : null;
-        /** Disposes every handle this locate took, on the paths that hand none of them out. */
-        const releaseHandles = (): void => {
-          for (const handle of handles ?? []) void handle.dispose().catch(() => undefined);
-        };
-        const first = handles?.[0];
-        const taken =
-          handles === null
-            ? await reading.evaluateAll(takeReadsFunction, { token: read.token })
-            : first === undefined
-              ? []
-              : await first.evaluate(takeReadsFunction, { token: read.token, elements: handles });
-        const reads = taken.filter((raw) => raw !== null);
-        if (reads.length !== taken.length) {
-          releaseHandles();
-          throw new TestError(
-            'INVALID_LOCATOR',
-            'a selector that captures with * (*css=article >> text=Hello) is not supported: use filter({ has }) instead',
-          );
+        try {
+          return await this.locateNow(expression, currentOperation);
+        } catch (cause) {
+          throw (await pageScriptFailure(this.frameScope(expression), cause, 'locate', currentOperation.timeoutMs)) ?? cause;
         }
-        const candidates = reads.flatMap((raw, index) => (projected.visible && raw.states.hidden ? [] : [{ raw, index }]));
-        // An exact label query matches any of the control's labels as the engine's reader names
-        // them, so text a label marks aria-hidden (a required-field marker) never hides a field,
-        // and an aria-label override or a second label does not either.
-        const predicate =
-          displayValue !== null
-            ? (raw: RawNodeData) => matchesText(raw.value ?? '', displayValue)
-            : name !== null
-              ? (raw: RawNodeData) =>
-                  raw.labels !== null && raw.labels.some((label) => matchesText(label, name))
-              : null;
-        const matches =
-          predicate === null
-            ? candidates
-            : await applyPostSteps(
-                candidates.filter(({ raw }) => predicate(raw)),
-                steps,
-                // A filter after a position runs on that one element alone.
-                async ({ index }, options) =>
-                  (await projected.locator.nth(index).filter(options).count()) > 0,
-              );
-        if (currentOperation.signal.aborted) {
-          releaseHandles();
-          throw cancelled('locate cancelled');
-        }
-        try { session.check(token); } catch (cause) {
-          releaseHandles();
-          throw cause;
-        }
-        if (handles !== null) {
-          // Only the matches keep their handles; the rest would otherwise live until the page goes.
-          const kept = new Set(matches.map(({ index }) => index));
-          for (const [index, handle] of handles.entries()) {
-            if (!kept.has(index)) void handle.dispose().catch(() => undefined);
-          }
-        }
-        return matches.map(({ raw, index }) => {
-          const pinned = handles?.[index];
-          // A single match keeps the strict locator, so a ref that turns
-          // ambiguous between locate and perform is stale instead of acting
-          // on whichever element is first.
-          const locator = reads.length === 1 ? projected.locator : projected.locator.nth(index);
-          const id = refs.storeLocated(
-            pinned === undefined ? { kind: 'locator', locator } : { kind: 'element', element: pinned },
-          );
-          return inFrame(toSemanticNode({ id, revision: '' }, raw), frame);
-        });
       },
       staleOr,
     );
+  }
+
+  /** The body of `locate`, inside its guard. */
+  private async locateNow(expression: LocatorExpression, currentOperation: OperationContext): Promise<readonly SemanticNode[]> {
+    const session = this.requireSession();
+    const token = session.token();
+    const refs = session.refs;
+    const page = this.requirePage();
+    const frame = await this.frameOf(expression);
+    const projected = projectExpression(page, expression, { testIdAttribute: this.testIdAttribute, frameHidden: frame.hidden });
+    const { displayValue, name, steps } = projected;
+    // Every match is read by the `e2e-read` selector engine in the task that finds it, so a
+    // page that replaces it a frame later cannot detach it before the read. A
+    // predicate-filtered match is one element among many candidates (every input with a
+    // value, every control the label engine kept). Re-resolving it by position at action
+    // time would act on a neighbor whenever the page inserted or removed an element in
+    // between, so such matches are pinned to the handles of the elements the query returned,
+    // and their reads are taken back from those very handles: what was read and what is
+    // acted on are one set of elements by construction.
+    const read = readSelector({ testIdAttribute: this.testIdAttribute, secureFieldSelector: SECURE_FIELD_SELECTOR });
+    const reading = projected.locator.locator(read.selector);
+    const handles =
+      displayValue !== null || name !== null
+        ? ((await reading.elementHandles()) as ElementHandle<Element>[])
+        : null;
+    /** Disposes every handle this locate took, on the paths that hand none of them out. */
+    const releaseHandles = (): void => {
+      for (const handle of handles ?? []) void handle.dispose().catch(() => undefined);
+    };
+    const first = handles?.[0];
+    const taken =
+      handles === null
+        ? await reading.evaluateAll(takeReadsFunction, { token: read.token })
+        : first === undefined
+          ? []
+          : await first.evaluate(takeReadsFunction, { token: read.token, elements: handles });
+    const reads = taken
+      .filter((raw) => raw !== null)
+      .map((raw) => (frame.hidden ? { ...raw, states: { ...raw.states, hidden: true } } : raw));
+    if (reads.length !== taken.length) {
+      releaseHandles();
+      throw new TestError(
+        'INVALID_LOCATOR',
+        'a selector that captures with * (*css=article >> text=Hello) is not supported: use filter({ has }) instead',
+      );
+    }
+    const candidates = reads.flatMap((raw, index) => (projected.visible && raw.states.hidden ? [] : [{ raw, index }]));
+    // An exact label query matches any of the control's labels as the engine's reader names
+    // them, so text a label marks aria-hidden (a required-field marker) never hides a field,
+    // and an aria-label override or a second label does not either.
+    const predicate =
+      displayValue !== null
+        ? (raw: RawNodeData) => matchesText(raw.value ?? '', displayValue)
+        : name !== null
+          ? (raw: RawNodeData) =>
+              raw.labels !== null && raw.labels.some((label) => matchesText(label, name))
+          : null;
+    const matches =
+      predicate === null
+        ? candidates
+        : await applyPostSteps(
+            candidates.filter(({ raw }) => predicate(raw)),
+            steps,
+            // A filter after a position runs on that one element alone.
+            async ({ index }, options) =>
+              (await projected.locator.nth(index).filter(options).count()) > 0,
+          );
+    if (currentOperation.signal.aborted) {
+      releaseHandles();
+      throw cancelled('locate cancelled');
+    }
+    try { session.check(token); } catch (cause) {
+      releaseHandles();
+      throw cause;
+    }
+    if (handles !== null) {
+      // Only the matches keep their handles; the rest would otherwise live until the page goes.
+      const kept = new Set(matches.map(({ index }) => index));
+      for (const [index, handle] of handles.entries()) {
+        if (!kept.has(index)) void handle.dispose().catch(() => undefined);
+      }
+    }
+    return matches.map(({ raw, index }) => {
+      const pinned = handles?.[index];
+      // A single match keeps the strict locator, so a ref that turns
+      // ambiguous between locate and perform is stale instead of acting
+      // on whichever element is first.
+      const locator = reads.length === 1 ? projected.locator : projected.locator.nth(index);
+      const id = refs.storeLocated(
+        pinned === undefined ? { kind: 'locator', locator } : { kind: 'element', element: pinned },
+      );
+      return inFrame(toSemanticNode({ id, revision: '' }, raw), frame.box);
+    });
+  }
+
+  /** The page or frame an expression's frame selectors lead to, unresolved. */
+  private frameScope(expression: LocatorExpression): Page | FrameLocator {
+    let scope: Page | FrameLocator = this.requirePage();
+    for (const selector of frameSelectors(expression)) scope = scope.frameLocator(selector);
+    return scope;
   }
 
   /**
@@ -864,9 +937,11 @@ export class PlaywrightSurface {
           this.requireSession().requireObservation();
           return performViewportSwipe(page, action.direction, action.momentum ?? 'none');
         }
-        return dispatchLocatorAction(this.requireSession().refs.lookup(ref), action, currentOperation, (other) =>
-          this.requireSession().refs.lookup(other),
-        );
+        const { refs } = this.requireSession();
+        return refs.lookup(ref).then((target) => {
+          currentOperation.signal.throwIfAborted();
+          return dispatchLocatorAction(target, action, currentOperation, (other) => refs.lookup(other));
+        });
       },
       (cause) => classifyActionError(cause, action),
     ));
@@ -931,10 +1006,10 @@ export class PlaywrightSurface {
       page.frames().map((frame) =>
         frame
           .evaluate((key) => {
-            const recorded: unknown = Reflect.get(globalThis, Symbol.for(key));
+            const recorded: WeakMap<Element, ShadowRoot> | undefined = Reflect.get(globalThis, Symbol.for(key));
             let active = document.activeElement;
             while (active !== null) {
-              const root: ShadowRoot | undefined | null = active.shadowRoot ?? (recorded instanceof WeakMap ? recorded.get(active) : undefined);
+              const root = active.shadowRoot ?? recorded?.get(active);
               const leaf = root?.activeElement;
               if (leaf === undefined || leaf === null) break;
               active = leaf;
@@ -968,16 +1043,21 @@ export class PlaywrightSurface {
    * the same chain; a frame-scoped `count` is 0 until that frame's document
    * has loaded, which is what makes `FRAME_NOT_FOUND` worth retrying. Returns
    * the innermost frame's content box in the top-level viewport, where its
-   * document's viewport starts: undefined for an expression in the main
-   * document, null for a frame with no box.
+   * document's viewport starts (undefined for an expression in the main
+   * document, null for a frame with no box), and
+   * whether a frame along the chain is hidden: a frame element's own `hidden`
+   * state, read in the document around it, so a cross-origin frame reads too.
+   * Every node in a hidden frame is hidden, and so are the frames under it.
    */
-  private async frameBox(expression: LocatorExpression): Promise<Rect | null | undefined> {
+  private async frameOf(expression: LocatorExpression): Promise<{ box: Rect | null | undefined; hidden: boolean }> {
     let scope: Page | FrameLocator = this.requirePage();
     let element: Locator | undefined;
+    let hidden = false;
     for (const selector of frameSelectors(expression)) {
       let count: number;
       try {
         count = await scope.locator(selector).count();
+        if (count === 1 && !hidden) hidden = (await scope.locator(selector).locator(SHOWN_SELECTOR).count()) === 0;
       } catch (cause) {
         throw translatePwError(cause, 'frame resolution');
       }
@@ -994,10 +1074,10 @@ export class PlaywrightSurface {
       element = scope.locator(selector);
       scope = scope.frameLocator(selector);
     }
-    if (element === undefined) return undefined;
+    if (element === undefined) return { box: undefined, hidden };
     try {
       const border = await element.boundingBox();
-      return border === null ? null : contentBox(border, await element.evaluate(frameContentInset));
+      return { box: border === null ? null : contentBox(border, await element.evaluate(frameContentInset)), hidden };
     } catch (cause) {
       throw translatePwError(cause, 'frame resolution');
     }
@@ -1020,17 +1100,46 @@ export class PlaywrightSurface {
     return { relative, absolute };
   }
 
-  /** Redacted at the source: secure fields in every frame are masked, as in observation pixels. */
+  /** Redacted at the source: secure fields in every frame are masked, and the caret is hidden without editing styles, as in observation pixels. */
   screenshot(label: string | undefined, operation: OperationContext): Promise<string> {
     return this.guard(operation, 'screenshot', async (currentOperation) => {
-      const page = this.requirePage();
       const { relative, absolute } = this.artifactPath('screenshots', label, '.png');
-      await page.screenshot({
-        path: absolute,
-        timeout: currentOperation.timeoutMs,
-        ...maskOptions(secureFieldMasks(page)),
-      });
-      return relative;
+      const deadline = new Deadline(currentOperation.timeoutMs);
+      // The masks are resolved in the document showing when the capture
+      // starts. A capture that fails while the page replaces that document
+      // is taken of the replacing one, masked by the same rule, within the
+      // step's own deadline.
+      for (;;) {
+        const page = this.requirePage();
+        const documents = watchDocuments(page);
+        try {
+          const masks = await secureFieldMasks(page);
+          await withHiddenCaret(page, () => page.screenshot({
+            path: absolute,
+            timeout: Math.max(1, deadline.remaining()),
+            caret: 'initial',
+            ...maskOptions(masks),
+          }));
+          return relative;
+        } catch (cause) {
+          // The capture can reject before `framenavigated` is delivered. The
+          // event is already in flight when the context was destroyed, so a
+          // short wait tells a real navigation from an error that only looks
+          // like one.
+          if (!documents.replaced() && isNavigationRace(cause) && !isPwTimeout(cause) && !currentOperation.signal.aborted) {
+            await documents.whenReplaced(Math.min(NAVIGATION_EVENT_GRACE_MS, deadline.remaining()));
+          }
+          if (!documents.replaced() || isPwTimeout(cause) || currentOperation.signal.aborted) throw cause;
+          if (deadline.expired()) {
+            throw new EngineError('OPERATION_TIMEOUT', `screenshot timed out: the page replaced its document during every capture for ${currentOperation.timeoutMs}ms`, {
+              retryable: false,
+              cause,
+            });
+          }
+        } finally {
+          documents.stop();
+        }
+      }
     });
   }
 
@@ -1078,8 +1187,9 @@ export class PlaywrightSurface {
 
   /**
    * Captures one atomic semantic observation. Secure fields are masked in the
-   * page before the tree leaves the engine, and every node keeps a live
-   * element handle valid until the next observation replaces the generation.
+   * page before the tree leaves the engine, and every node stays reachable
+   * through its document's element list until the next observation replaces
+   * the generation; an action makes the node's handle on first use.
    *
    * With `options.pixels`, masked viewport pixels are captured alongside the
    * tree rather than after it, so the image and the node geometry describe the
@@ -1097,12 +1207,21 @@ export class PlaywrightSurface {
     );
   }
 
-  /** Captures privately, then publishes only into the page and ref generation that requested it. */
-  private async captureObservation(
+  /** Captures privately in the session's turn, then publishes only into the page and ref generation that requested it. */
+  private captureObservation(
     operation: OperationContext,
     options: EngineObserveOptions | undefined,
   ): Promise<EngineSnapshot> {
     const session = this.requireSession();
+    return session.observeInTurn(operation, (turn) => this.captureInTurn(session, turn, options));
+  }
+
+  /** One observation that holds the session's turn. */
+  private async captureInTurn(
+    session: AttemptSession,
+    operation: OperationContext,
+    options: EngineObserveOptions | undefined,
+  ): Promise<EngineSnapshot> {
     const token = session.token();
     const refs = session.refs;
     const page = this.requirePage();
@@ -1127,6 +1246,58 @@ export class PlaywrightSurface {
   }
 }
 
+/**
+ * How long a screenshot waits for the navigation event after Playwright has
+ * already reported the document's context destroyed. The event is the commit
+ * that destroyed the context, queued behind the capture's rejection.
+ */
+const NAVIGATION_EVENT_GRACE_MS = 250;
+
+/** Watches `page` until `stop` for a frame that commits a new document or detaches, either of which replaces a document a capture is reading. */
+function watchDocuments(page: Page): {
+  readonly replaced: () => boolean;
+  readonly stop: () => void;
+  /** Resolves when a document has been replaced, or after `timeoutMs` if none was. */
+  readonly whenReplaced: (timeoutMs: number) => Promise<void>;
+} {
+  let replaced = false;
+  let notify: (() => void) | undefined;
+  const mark = (): void => {
+    replaced = true;
+    notify?.();
+  };
+  page.on('framenavigated', mark);
+  page.on('framedetached', mark);
+  return {
+    replaced: () => replaced,
+    whenReplaced: (timeoutMs) => {
+      if (replaced || timeoutMs <= 0) return Promise.resolve();
+      return new Promise((resolve) => {
+        const timer = setTimeout(done, timeoutMs);
+        notify = done;
+        function done(): void {
+          clearTimeout(timer);
+          notify = undefined;
+          resolve();
+        }
+      });
+    },
+    stop: () => {
+      page.off('framenavigated', mark);
+      page.off('framedetached', mark);
+    },
+  };
+}
+
+/** The frame a request belongs to; undefined for a popup's first navigation, which Playwright issues before the popup's frame exists. */
+function frameOf(request: Request): Frame | undefined {
+  try {
+    return request.frame();
+  } catch {
+    return undefined;
+  }
+}
+
 type Rect = NonNullable<SemanticNode['rect']>;
 
 /**
@@ -1136,7 +1307,6 @@ type Rect = NonNullable<SemanticNode['rect']>;
  */
 function inFrame(node: SemanticNode, frame: Rect | null | undefined): SemanticNode {
   if (frame === undefined || node.rect === undefined) return node;
-  const { rect, ...rest } = node;
-  const placed = frame === null ? undefined : placeRectInFrame(rect, frame);
-  return placed === undefined ? rest : { ...rest, rect: placed };
+  const { rect, origin, ...rest } = node;
+  return frame === null ? rest : { ...rest, ...placeBoxInFrame(rect, origin, frame) };
 }

@@ -113,9 +113,22 @@ describe('describePointAction', () => {
       point: { x: 50, y: 30 },
       control: screen.nodes.get('n2'),
       under: screen.nodes.get('n2'),
+      byId: true,
       observation: screen,
     });
     expect(text).toBe('Tapped #n2 button "Save", the control at (50, 30).');
+  });
+
+  it('names the control a bare point landed inside', () => {
+    const text = describePointAction({
+      verb: 'tapAt',
+      point: { x: 50, y: 30 },
+      control: screen.nodes.get('n2'),
+      under: screen.nodes.get('n2'),
+      byId: false,
+      observation: screen,
+    });
+    expect(text).toBe('Tapped the point (50, 30) inside #n2 button "Save".');
   });
 
   it('says a bare point landed on nothing listed, with what sits under it', () => {
@@ -124,6 +137,7 @@ describe('describePointAction', () => {
       point: { x: 640, y: 120 },
       control: undefined,
       under: screen.nodes.get('n5'),
+      byId: false,
       observation: screen,
     });
     expect(text).toBe('Tapped the point (640, 120); no listed control is there (under it: #n5 paragraph text="Body copy").');

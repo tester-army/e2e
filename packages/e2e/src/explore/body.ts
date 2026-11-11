@@ -208,7 +208,7 @@ const CONTINUE_STEP: PlanDecision = {
   kind: 'step',
   title: 'Continue exploring',
   instruction:
-    'Continue the exploration: from the goal in the project context and the previously completed steps, pick the flow or screen the goal names that no step has covered yet, exercise it end to end with realistic inputs, and report any defect you see on the way.',
+    'Continue the exploration: from the goal on the Test: line and the previously completed steps, pick the flow or screen the goal names that no step has covered yet, exercise it end to end with realistic inputs, and report any defect you see on the way.',
 };
 
 /** Turns the record into the run's verdict. */

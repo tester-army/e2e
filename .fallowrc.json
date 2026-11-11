@@ -20,8 +20,13 @@
     "packages/web/tests/types/keyboard.ts",
     "packages/web/tests/types/media.ts",
     "packages/web/tests/types/routes.ts",
+    "packages/web/tests/types/clear-cookies.ts",
+    "packages/web/tests/types/downloads.ts",
+    "packages/web/tests/types/app.ts",
     "packages/mobile/tests/types/options.ts",
     "packages/decision/tests/types/options.ts",
+    "packages/acp/tests/fixtures/scripted-agent.ts",
+    "packages/acp/tests/live/*.ts",
     "packages/e2e/tests/live/*.ts",
     "packages/e2e/src/config/register.ts"
   ],
@@ -30,6 +35,7 @@
     "examples/**",
     "**/next-env.d.ts",
     "**/.e2e/**",
+    "apps/testbed/app/playwright/assets/**",
     "packages/e2e/tests/tmp-projects/**"
   ],
   "ignoreDependencies": [
@@ -40,6 +46,13 @@
     "@expo/repack-app",
     "@oxc-project/runtime",
     "@agent-device/testmu"
+  ],
+  "ignoreBinaries": ["eas"],
+  "ignoreExports": [
+    {
+      "file": "packages/e2e/src/types.ts",
+      "exports": ["StandardSchemaV1"]
+    }
   ],
   "rules": {
     "unused-class-member": "warn",

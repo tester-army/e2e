@@ -14,20 +14,46 @@ import {
 import { missingKey } from './api-key.ts';
 import { recorded } from './budget.ts';
 import type { DecisionRequest } from './questions.ts';
-import type { DecisionExecutorOptions } from './types.ts';
+import type { DecisionExecutorOptions, DecisionFilterOptions } from './types.ts';
 /** Transport retries per decide call. */
 const MAX_RETRIES = 3;
+type DecideResult = Awaited<ReturnType<typeof ai.experimental_decide>>;
 /**
- * The SDK's decide call, or INVALID_CONFIG when the installed `ai` predates
- * it. Read off the namespace so an older `ai` still loads this module and
- * the user gets the version to install instead of a link error.
+ * The SDK's decide call, or INVALID_CONFIG naming `caller` when the
+ * installed `ai` predates it. Read off the namespace so an older `ai` still
+ * loads this module and the user gets the version to install instead of a
+ * link error.
  */
-export function requireDecide(): typeof ai.experimental_decide {
+export function requireDecide(caller: string): typeof ai.experimental_decide {
   const found = (ai as Partial<typeof ai>).experimental_decide;
   if (typeof found !== 'function') {
-    throw new ConfigurationError('INVALID_CONFIG', 'decisionExecutor() needs ai 7.0.134 or later; update the ai package');
+    throw new ConfigurationError('INVALID_CONFIG', `${caller}() needs ai 7.0.134 or later; update the ai package`);
   }
   return found;
+}
+/** One call's boolean answers and what it spent. */
+export interface BooleanAnswers {
+  /** Each answer's probability of true, by question id; undefined where the model gave none. */
+  readonly probabilities: Readonly<Record<string, number | undefined>>;
+  readonly usage: DecideResult['usage'];
+  readonly providerMetadata: DecideResult['providerMetadata'];
+}
+/** Asks `questions`, instructions by id, as boolean questions in one decide call against `state`, for the test filter. */
+export async function decideBooleans(
+  { model, providerOptions }: DecisionFilterOptions,
+  state: Experimental_DecisionState,
+  questions: Readonly<Record<string, string>>,
+  abortSignal: AbortSignal,
+): Promise<BooleanAnswers> {
+  const { answers, usage, providerMetadata } = await requireDecide('decisionFilter')({
+    model,
+    state,
+    questions: Object.fromEntries(Object.entries(questions).map(([id, instructions]) => [id, { type: 'boolean' as const, instructions }])),
+    ...(providerOptions === undefined ? {} : { providerOptions }),
+    maxRetries: MAX_RETRIES,
+    abortSignal,
+  });
+  return { probabilities: Object.fromEntries(Object.keys(questions).map((id) => [id, answers[id]?.probability])), usage, providerMetadata };
 }
 /**
  * One gated answer: the chosen option, its probability, and the provider
@@ -70,7 +96,7 @@ export async function decide(
   let providerMetadata: Record<string, Record<string, unknown>> | undefined;
   try {
     ({ answers, providerMetadata } = await recorded(ctx, model, async () => {
-      const result = await requireDecide()({
+      const result = await requireDecide('decisionExecutor')({
         model,
         state,
         questions: request.questions,

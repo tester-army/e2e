@@ -11,6 +11,9 @@ import {
   secrets,
   unique,
   test,
+  type ActionDetails,
+  type ActionEvent,
+  type ActionName,
   type Agent,
   type App,
   type ArtifactStore,
@@ -21,6 +24,7 @@ import {
   type KeyModifier,
   type Locator,
   type ModelInstance,
+  type PointDragResult,
   type PointHit,
   type PointTapResult,
   type PollExpectation,
@@ -35,9 +39,13 @@ import {
   type Secret,
   type StepExecutor,
   type StepExecutorContext,
+  type StepVerdict,
   type StepTurn,
   type StoredArtifactLink,
   type Target,
+  type TestFilter,
+  type TestFilterCandidate,
+  type TestFilterContext,
   type Unique,
   type CacheStore,
   type ExecutorObservation,
@@ -50,8 +58,19 @@ import {
   describe,
 } from '../../src/index.ts';
 import type { Engine, EngineAttemptContext, EngineCleanupContext, EngineDisposeContext, EngineHandle, EngineObserveOptions, EngineSnapshot } from '../../src/engine/index.ts';
-import { createToolLoopExecutor, defineTool } from '../../src/agent/public.ts';
+import {
+  BASE_RULES,
+  createGrammarTools,
+  createToolLoopExecutor,
+  createVerdictTool,
+  defineTool,
+  isRuntimeHardStop,
+  VERDICT_RULES,
+  type ScreenOutput,
+} from '../../src/agent/public.ts';
+import { connectEngine, socketTransport, type EngineManifest } from '../../src/engine/index.ts';
 import type { Report } from '../../src/index.ts';
+import type { ToolSet } from 'ai';
 import type { LanguageModelV2, LanguageModelV3, LanguageModelV4 } from '@ai-sdk/provider';
 import { chatgpt } from '../../src/oauth/chatgpt.ts';
 import { copilot } from '../../src/oauth/copilot.ts';
@@ -69,6 +88,8 @@ import { list as listFromE2E } from '../../src/index.ts';
 import { run as runFromE2E } from '../../src/index.ts';
 // @ts-expect-error openHost is e2e/runner: importing e2e does not load the runner
 import { openHost as openHostFromE2E } from '../../src/index.ts';
+// @ts-expect-error exploration belongs to e2e/runner, not the test SDK
+import { explore as exploreFromE2E } from '../../src/index.ts';
 // @ts-expect-error host types belong to e2e/runner, not the test SDK
 import type { E2EHost as E2EHostFromE2E } from '../../src/index.ts';
 // @ts-expect-error the unpublished top-level openSession was replaced by openHost
@@ -77,6 +98,9 @@ import {
   ConfigurationError,
   type E2EHost,
   type E2ESession,
+  explore,
+  type ExploreOptions,
+  type ExploreResult,
   isE2EError,
   list,
   type ListedPair,
@@ -99,6 +123,7 @@ BLOCKABLE_CODES;
 listFromE2E;
 runFromE2E;
 openHostFromE2E;
+exploreFromE2E;
 removedOpenSession;
 declare const rootHost: E2EHostFromE2E;
 rootHost;
@@ -114,6 +139,16 @@ declare const asyncExpectation: AsyncExpectation;
 declare const screen: Screen;
 declare const engine: EngineHandle;
 declare const targets: readonly Target[];
+
+void (async () => {
+  await appFixture.startRecording({ name: 'dialog' });
+  const [video] = await appFixture.stopRecording();
+  // A recording returns at least one video, so the first needs no undefined check.
+  if ('path' in video) video.path satisfies string;
+  else video.url satisfies string;
+  // @ts-expect-error a video is a file or a link; narrow before reading the path
+  void video.path;
+})();
 
 void (screen.tree() satisfies Promise<string>);
 void (screen.debug({ timeout: 1000 }) satisfies Promise<void>);
@@ -307,6 +342,45 @@ if (runEvent.type === 'step') {
 ({ onRunFinished: async () => undefined }) satisfies Reporter;
 // @ts-expect-error reporter ids are a closed union
 ({ targets, reporters: ['xunit'] }) satisfies E2EConfig;
+
+// A test filter is a named object under filters; it answers with the tests to leave out, each with a reason.
+const areas = {
+  name: 'areas',
+  filter: (tests) => ({
+    exclude: Object.fromEntries(tests.filter((candidate) => !candidate.tags.includes('auth')).map((candidate) => [candidate.id, 'the diff reaches none of its tags'])),
+  }),
+} satisfies TestFilter;
+const jev = {
+  name: 'jev',
+  async filter(tests, { projectRoot, changes, signal, log, redact }) {
+    log(`asking about ${tests.length} tests in ${projectRoot}, ${changes.root} against ${changes.base}`);
+    signal satisfies AbortSignal;
+    const exclude: Record<string, string> = {};
+    for (const candidate of tests) exclude[candidate.id] = redact(`${candidate.file}: ${candidate.titlePath.join(' > ')}`);
+    return { exclude, note: 'one call' };
+  },
+} satisfies TestFilter;
+({ targets, filters: [areas, jev] }) satisfies E2EConfig;
+// @ts-expect-error filters is a list, not a record of entries
+({ targets, filters: { affected: areas } }) satisfies E2EConfig;
+// @ts-expect-error a filter is an object with a name, not a bare function
+({ targets, filters: [() => ({ exclude: {} })] }) satisfies E2EConfig;
+// @ts-expect-error a filter has a name
+({ targets, filters: [{ filter: () => ({ exclude: {} }) }] }) satisfies E2EConfig;
+// @ts-expect-error a filter leaves tests out by id with a reason; it never lists the ones to keep
+({ name: 'jev', filter: () => ({ keep: [] }) }) satisfies TestFilter;
+declare const filterCandidate: TestFilterCandidate;
+// @ts-expect-error a candidate names a test, never its body
+filterCandidate.fn;
+// @ts-expect-error a candidate is read-only
+filterCandidate.tags.push('smoke');
+filterCandidate.setupFile satisfies string | undefined;
+declare const filterContext: TestFilterContext;
+// @ts-expect-error the change is read-only
+filterContext.changes.files.push('src/a.ts');
+filterContext.configFile satisfies string | undefined;
+// @ts-expect-error a filter takes its tests read-only: the runner freezes them
+({ name: 'sorts', filter: (tests: TestFilterCandidate[]) => ({ exclude: {}, note: `${tests.push(filterCandidate)}` }) }) satisfies TestFilter;
 // Every name a public signature uses is importable, so a reporter or an executor can annotate what it reads.
 declare const finishedRun: FinishedRun;
 finishedRun.status satisfies RunStatus;
@@ -318,9 +392,11 @@ finishedRun.lastRun satisfies FinishedRun['report'] | undefined;
 5 satisfies RunExitCode;
 declare const executorContext: StepExecutorContext;
 executorContext.target.verbs satisfies ReadonlySet<ExecutorVerb>;
+executorContext.attempt.titlePath satisfies readonly string[];
 'tapAt' satisfies ExecutorVerb;
 'hover' satisfies ExecutorVerb;
 'drag' satisfies ExecutorVerb;
+'dragAt' satisfies ExecutorVerb;
 'upload' satisfies ExecutorVerb;
 'back' satisfies ExecutorVerb;
 // @ts-expect-error a verb is one of the action grammar's names
@@ -365,6 +441,15 @@ void asyncExpectation.toBeChecked({ indeterminate: true });
 void asyncExpectation.toHaveValue('a', { ignoreCase: true });
 // @ts-expect-error presence has no case to ignore
 void asyncExpectation.toHaveAttribute('data-kind', { ignoreCase: true });
+
+void (screen.getByRole('row').filter({ hasNotText: 'Paid' }) satisfies Locator);
+void (screen.getByRole('row').filter({ hasText: 'Invoice', hasNotText: /Paid/i }) satisfies Locator);
+// @ts-expect-error negative text filters require text or a RegExp
+void screen.getByRole('row').filter({ hasNotText: 42 });
+void (screen.getByRole('row').filter({ hasNot: screen.getByRole('status') }) satisfies Locator);
+void (screen.getByRole('row').filter({ hasText: 'Invoice', hasNot: screen.getByText('Paid') }) satisfies Locator);
+// @ts-expect-error hasNot takes a locator, not text
+void screen.getByRole('row').filter({ hasNot: 'Paid' });
 
 // expect.poll carries every value matcher and no other, each resolving to void.
 declare const pollMatcherNames: Exclude<keyof PollExpectation<string>, 'not'>;
@@ -447,6 +532,14 @@ expect.soft.any(Number);
 test.skip(true, 'not today');
 test.skip('not today');
 test.skip('later', async () => {});
+// fail takes the same three shapes and returns nothing inside a body; describe and setup take no fail option.
+test.fail(true, 'known gap');
+test.fail('known gap');
+test.fail('gap', async () => {}) satisfies ReturnType<typeof test>;
+void (test.fail(false) satisfies void);
+test('gap', { fail: 'known gap' }, async () => {});
+// @ts-expect-error a group cannot expect failure; mark each test
+test.describe('gaps', { fail: true }, () => {});
 void screen.getByLabel('Plan').selectOption({ value: 'pro' });
 // @ts-expect-error one of label, value, or index, never two
 void screen.getByLabel('Plan').selectOption({ value: 'pro', index: 1 });
@@ -457,6 +550,9 @@ screen.getByRole('button', { hidden: true });
 declare const point: import('../../src/types.ts').Point;
 void (executorContext.actions.tapAt(point) satisfies Promise<PointTapResult>);
 void (executorContext.actions.hitTest(point) satisfies Promise<PointHit>);
+void (executorContext.actions.dragAt(point, point) satisfies Promise<PointDragResult>);
+// @ts-expect-error a point drag names both ends
+void executorContext.actions.dragAt(point);
 void screen.tapAt(point, { timeout: 1_000 });
 void (screen.doubleTapAt(point, { timeout: 1_000 }) satisfies Promise<void>);
 // @ts-expect-error a point has both coordinates.
@@ -491,6 +587,39 @@ void appOrigin;
 appFixture.baseUrl = 'http://127.0.0.1:3000/';
 
 const actResult = await agent.act('open billing', { params: { plan: 'pro' }, timeout: 10_000 });
+await agent.act('open billing', { onBeforeAction: async event => {
+  event.index satisfies number;
+  event.source satisfies 'model' | 'replay';
+  // @ts-expect-error before dispatch has no committed summary
+  event.summary;
+  // @ts-expect-error no engine target or geometry is exposed
+  event.target;
+} });
+await agent.act('tap and drag the pin', { onAction: event => {
+  // @ts-expect-error details exist only once `action` is narrowed
+  event.point;
+  if (event.action === 'tapAt' || event.action === 'hoverAt') event.point satisfies { readonly x: number; readonly y: number };
+  if (event.action === 'dragAt') {
+    event.from satisfies { readonly x: number; readonly y: number };
+    event.to satisfies { readonly x: number; readonly y: number };
+    // @ts-expect-error hook coordinates are read-only
+    event.from.x = 1;
+  }
+  if (event.action === 'tap') {
+    // @ts-expect-error node-ID actions carry no coordinates
+    event.point;
+  }
+  if (event.action.startsWith('tool:')) event.summary satisfies string;
+  // @ts-expect-error action names are the committed actions'
+  if (event.action === 'tap_at') return;
+} });
+({ point: { x: 1, y: 2 } }) satisfies ActionDetails['tapAt'];
+'tapAt' satisfies ActionName;
+'tool:seed' satisfies ActionEvent['action'];
+// @ts-expect-error the observer is a function
+await agent.act('open billing', { onBeforeAction: true });
+// @ts-expect-error assertions have no before-action observer
+await agent.assert('ready', { onBeforeAction: () => undefined });
 actResult.summary satisfies string;
 actResult.modelCalls satisfies number;
 // @ts-expect-error act returns no data; extract does
@@ -508,6 +637,8 @@ await agent.assert('the form is not covered', { vision: 'only' });
 // @ts-expect-error a judgment's vision is a closed set: true, false, or 'only'
 await agent.assert('the chart trends upward', { vision: 'always' });
 await agent.waitFor('the page settles', { interval: 500, maxModelCalls: 3 });
+await agent.assert('the table lists {name}', { params: { name: unique('acme'), owner: credentials.user('admin').password } });
+await agent.waitFor('the table lists {name}', { params: { name: unique('acme') } });
 // @ts-expect-error the wait interval is `interval`, in milliseconds
 await agent.waitFor('the page settles', { intervalMs: 500 });
 // @ts-expect-error extract has a fixed budget: one extraction plus one repair round
@@ -599,6 +730,23 @@ declare const brain: StepExecutor;
 ({ targets, agents: { default: brain } }) satisfies E2EConfig;
 // @ts-expect-error maxTurns left createToolLoopExecutor: the agent's maxModelCalls bounds its turns
 createToolLoopExecutor({ name: 'brain', tools: () => ({}), buildPrompt: () => 'go', maxTurns: 3 });
+// A custom loop keeps the built-in actions: the grammar tools take the loop's guard, and their rules are text.
+createToolLoopExecutor({ name: 'brain', system: BASE_RULES, buildPrompt: () => 'go', tools: (ctx, { guard }) => createGrammarTools(ctx, { guard }) });
+// @ts-expect-error the screen presenter stays internal: a caller's first observe shows the whole screen
+createGrammarTools(executorContext, { screen: undefined });
+// @ts-expect-error failure causes stay internal: e2e mcp counts them, a caller reads the result text
+createGrammarTools(executorContext, { onActionFailed: () => undefined });
+// An executor outside the AI SDK loop keeps the built-in verdict: complete_step as a tool, its rules as text, and the verdict it collected.
+const conclusion = createVerdictTool();
+({ complete_step: conclusion.tool }) satisfies ToolSet;
+conclusion.verdict() satisfies StepVerdict | undefined;
+VERDICT_RULES satisfies string;
+// A runtime hard stop narrows to the AgentError the step rethrows untouched.
+declare const thrown: unknown;
+if (isRuntimeHardStop(thrown)) thrown.code satisfies string;
+// A grammar tool's result is a rendered screen: text, or text with its screenshot.
+declare const rendered: ScreenOutput;
+if (typeof rendered !== 'string') rendered.pixels.mediaType satisfies string;
 // @ts-expect-error limits left the config: maxInputTokens is per agent, the rest are fixed by the runner
 ({ targets, limits: { maxModelTokensPerCall: 1_000 } }) satisfies E2EConfig;
 
@@ -615,6 +763,24 @@ report.run.explore satisfies { goal: string; findings: readonly { severity: 1 | 
 report.run.carried satisfies
   | { results: Report['run']['results']; serialGroups: Report['run']['serialGroups']; errors: Report['run']['errors'] }
   | undefined;
+
+// A run test filters narrowed records each filter by name, and every row one left out names it.
+report.run.filters satisfies readonly { name: string; candidates: number; excluded: number; note?: string | undefined }[] | undefined;
+report.run.results[0]!.skip?.filter satisfies string | undefined;
+report.run.results[0]!.expectedFailure?.reason satisfies string | undefined;
+report.run.results[0]!.attempts[0]!.expectedFailure?.error?.code satisfies string | undefined;
+report.run.filters?.[0]?.outcome satisfies 'failed' | 'timed-out' | undefined;
+// @ts-expect-error only a filtered skip names the test filter that left the test out
+({ cause: 'explicit', reason: 'not on CI', filter: 'jev' }) satisfies NonNullable<Report['run']['results'][number]['skip']>;
+// The change the filters judged is counts only, never a file list: base and files together once git measured it, else why no filter ran.
+report.run.changes satisfies
+  | { base: string; files: number; skipped?: string | undefined }
+  | { skipped: string; base?: undefined; files?: undefined }
+  | undefined;
+// @ts-expect-error a change git never measured has no file count
+({ files: 0, skipped: '--last-failed' }) satisfies NonNullable<Report['run']['changes']>;
+// A filter deciding what runs is a setup step named by the filter's name.
+if (runEvent.type === 'setup' && runEvent.step.kind === 'filter') runEvent.step.name satisfies string;
 
 // An explore run's events narrow to the exploration's progress.
 if (runEvent.type === 'explore') {
@@ -692,6 +858,9 @@ void run({
   onEvent: (event) => { event satisfies RunEvent; },
 } satisfies RunOptions);
 void run({ config: 'e2e.config.ts' });
+void run({ changedSince: 'origin/main' } satisfies RunOptions);
+// @ts-expect-error changedSince is a git ref
+void run({ changedSince: true });
 void (runResult.exitCode satisfies RunExitCode);
 void (runResult.status satisfies RunStatus);
 void (runResult.report satisfies Report);
@@ -717,11 +886,40 @@ runResult.config;
 // @ts-expect-error progress callbacks consume RunEvent, not arbitrary strings
 void run({ onEvent: (_event: string) => {} });
 
+// Exploration takes the goal and its budgets beside the project, progress, and cancellation; output settings live in config.
+declare const exploreResult: ExploreResult;
+void (explore() satisfies Promise<ExploreResult>);
+void explore({
+  cwd: '.', config: { targets }, goal: 'Explore the login flow and report any bugs', target: 'web', agent: 'default',
+  session: 'signed-in', maxSteps: 8, timeoutMs: 600_000,
+  interruptSignal: new AbortController().signal,
+  onEvent: (event) => { event satisfies RunEvent; },
+} satisfies ExploreOptions);
+void explore({ config: 'e2e.config.ts' });
+void (exploreResult satisfies RunResult);
+void (exploreResult.explore.ended satisfies 'finished' | 'step-limit' | 'time' | 'stuck' | 'aborted');
+void (exploreResult.explore.findings[0]?.severity satisfies 1 | 2 | 3 | 4 | 5 | undefined);
+void (exploreResult.explore.steps[0]?.status satisfies 'passed' | 'failed' | 'blocked' | 'exhausted' | undefined);
+// @ts-expect-error runtime configuration uses config, not the internal rawConfig name
+void explore({ rawConfig: { targets } });
+// @ts-expect-error configPath is the internal name; config takes the path
+void explore({ configPath: 'e2e.config.ts' });
+// @ts-expect-error the public explorer renders nothing: reporters are a CLI option
+void explore({ reporters: ['list'] });
+// @ts-expect-error headed, video, and trace are CLI options; recording settings belong in the config
+void explore({ headed: true });
+// @ts-expect-error notices are the CLI's stderr lines; progress is onEvent
+void explore({ notice: () => {} });
+// @ts-expect-error the second signal is the CLI's force-kill ladder, not a caller option
+void explore({ forceSignal: new AbortController().signal });
+// @ts-expect-error outcomes do not expose live resolved configuration
+exploreResult.config;
+
 // `e2e/runner` lists a selection in process. `config` is a path or a config value; `grep` is RegExp[].
 void list({
   cwd: '.', config: 'e2e.config.ts', files: ['tests/a.e2e.ts'], tags: ['smoke'], tagMode: 'all', excludeTags: ['slow'],
   grep: [/^plain$/], grepInvert: [/other/], lastFailed: false, shard: { index: 1, total: 2 }, passWithNoTests: true,
-  output: 'out', env: {}, targets: ['web'],
+  output: 'out', env: {}, targets: ['web'], changedSince: 'origin/main',
 } satisfies ListOptions);
 void list({ config: { targets } });
 void isE2EError(new ConfigurationError('NO_TESTS', 'none'));
@@ -730,6 +928,9 @@ void list({ grep: ['plain'] });
 // @ts-expect-error disposition is run, skip, or filtered
 const disposition: ListedPair['disposition'] = 'pending';
 void disposition;
+// A pair a test filter left out names it.
+declare const listedPair: ListedPair;
+listedPair.filter satisfies string | undefined;
 
 // `e2e/runner` hosts worker resources and opens a named, test-lifetime session with typed fixtures.
 type HostedFixtures = { device: { tap(): void } };
@@ -811,6 +1012,23 @@ session.tracePath = '/tmp/trace.md';
 // @ts-expect-error closing returns a read-only list of failures
 (await session.close()).push({} as SerializedError);
 
+/** Serial verdict provenance is optional on reports written by older runners. */
+type SerialReportAttempt = Report['run']['serialGroups'][number]['attempts'][number];
+declare const serialReportAttempt: SerialReportAttempt;
+const cutSerialRetry: boolean | undefined = serialReportAttempt.cutRetry;
+void cutSerialRetry;
+// @ts-expect-error the runner's cut-retry decision is a boolean, never a status string
+serialReportAttempt.cutRetry = 'interrupted';
+
 void (screen.getByRole('tab').or(screen.getByText('Discover')) satisfies Locator);
 // @ts-expect-error an alternative must be a Locator
 void screen.getByRole('tab').or('tab');
+// The engine protocol: a connected server is an engine handle like any other.
+const protocolManifest = { name: 'kiosk', version: '1.0.0', spiVersion: 1, methods: ['engine/observe'] } satisfies EngineManifest;
+void (connectEngine({ manifest: protocolManifest, transport: socketTransport({ host: '127.0.0.1', port: 7000 }) }) satisfies EngineHandle);
+// @ts-expect-error a manifest names only protocol methods
+void ({ ...protocolManifest, methods: ['engine/teleport'] } satisfies EngineManifest);
+// @ts-expect-error initialization options cross the wire, so they are JSON
+void connectEngine({ manifest: protocolManifest, transport: socketTransport({ host: '127.0.0.1', port: 7000 }), initializationOptions: { onReady: () => {} } });
+
+await agent.assert('all settings are reachable', { explore: true, maxSteps: 10, maxModelCalls: 6, vision: 'only' });

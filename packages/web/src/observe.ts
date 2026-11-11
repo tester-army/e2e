@@ -4,7 +4,9 @@ import type { Locator, Page } from 'playwright-core';
 import type { ObservationPixels, OperationContext, ViewportSize } from 'e2e/engine';
 import { CaptureScope } from './capture-scope.ts';
 import { CLOSED_SHADOW_SELECTOR_ENGINE } from './closed-shadow.ts';
+import { readableFrames } from './frame-document.ts';
 import { SECURE_FIELD_SELECTOR } from './read-node.ts';
+import { withHiddenCaret } from './screenshot-caret.ts';
 
 /**
  * Budget for one masked screenshot, still capped by the operation timeout. A
@@ -24,11 +26,11 @@ const MASK_COLOR = '#000000';
  * frames an observation walked makes the masked set a superset of the observed
  * secure set - the direction that is safe. Shared by the observation pixels
  * and the artifact screenshot so both are redacted at the source by the same
- * rule.
+ * rule. A frame with no readable document shows nothing to mask, and probing
+ * it would wait for its navigation to commit.
  */
-export function secureFieldMasks(page: Page): Locator[] {
-  return page
-    .frames()
+export async function secureFieldMasks(page: Page): Promise<Locator[]> {
+  return (await readableFrames(page.frames()))
     .flatMap((frame) => [
       frame.locator(SECURE_FIELD_SELECTOR),
       frame.locator(`${CLOSED_SHADOW_SELECTOR_ENGINE}=${SECURE_FIELD_SELECTOR}`),
@@ -67,18 +69,19 @@ export async function capturePixels(
   const deadline = Date.now() + operation.timeoutMs;
   const scope = new CaptureScope(deadline, operation.signal);
   return scope.run(async () => {
-    const masks = secureFieldMasks(page);
+    const masks = await scope.read(() => secureFieldMasks(page));
     // A frame that detaches mid-sweep contributes nothing to the count, which can
     // only push the observation toward withholding the image.
     const counts = await scope.read(() => Promise.allSettled(masks.map((mask) => mask.count())));
-    const image = await scope.read(() => page.screenshot({
+    // The adopted stylesheet hides the caret where Playwright's own option would write an inline style a hydrating framework flags.
+    const image = await scope.read(() => withHiddenCaret(page, () => page.screenshot({
       type: 'png',
       scale: 'css',
       animations: 'disabled',
-      caret: 'hide',
+      caret: 'initial',
       timeout: Math.max(1, Math.min(deadline - Date.now(), PIXEL_CAPTURE_TIMEOUT_MS)),
       ...maskOptions(masks),
-    }));
+    })));
     const data = new Uint8Array(image);
     // The bytes are the authority on their own size. `scale: 'css'` is asked for
     // precisely so one image pixel is one CSS pixel, but the ratio is measured

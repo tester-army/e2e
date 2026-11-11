@@ -1,9 +1,8 @@
 ---
 title: How agent steps work
 description: What the model sees, what it may do, how a step ends, and what it costs.
-icon: "list-check"
-"og:image": "https://e2e.tester.army/docs/images/og/agent-steps.png?v=321767dc3b"
-"twitter:image": "https://e2e.tester.army/docs/images/og/agent-steps.png?v=321767dc3b"
+"og:image": "https://e2e.com/docs/images/og/agent-steps.png?v=321767dc3b"
+"twitter:image": "https://e2e.com/docs/images/og/agent-steps.png?v=321767dc3b"
 ---
 
 An agent step is one `agent.act`, `agent.assert`, `agent.waitFor`, or
@@ -30,14 +29,15 @@ snapshot when most of it changed. Node ids stay the same while their
 elements exist. A failed action also returns the current screen, so the
 model can choose its next action.
 
-Judgments from `assert`, `waitFor`, and `extract` see the instruction,
-the current screen, and the agent's `context`, never completed steps or the
+Default judgments from `assert`, `waitFor`, and `extract` see the instruction,
+the current screen and its location, and the agent's `context`, never completed steps or the
 acting agent's summaries. They can use a separate [judge model](/models#a-judge-of-its-own).
+Built-in exploring assertions use `agents.<name>.model`, even when `judge` is set.
 
 `vision: true` adds a masked screenshot, and `vision: 'only'` judges the
 screenshot alone. See the [agent reference](/reference/agent#vision) for
-the modes. After a secret fill, no screenshot reaches the model
-([why](/reference/security#screenshots-after-a-secret-fill)).
+the modes. Screenshots mask secure fields only
+([after a secret fill](/reference/security#screenshots-after-a-secret-fill)).
 
 ## What the model may do
 
@@ -60,6 +60,13 @@ The loop detects repeated calls and cycles. After three failed actions in a
 row, it tells the model to change its approach. After five, it asks for a
 verdict. It also asks for a verdict when the budget or the deadline is
 near.
+
+## Assertion exploration
+
+With `explore: true`, `agent.assert` can scroll and combine evidence from several
+viewports using read-only tools. The viewport remains where exploration ends.
+Use it for content elsewhere on the current screen, and `waitFor` for changes over time. See
+[assertion exploration](/reference/agent#agent-assert) for tools, budgets, and verdicts.
 
 ## How a step ends
 
@@ -89,10 +96,10 @@ verdict can carry.
 Each call has a model-call budget and a default timeout. See
 [budgets](/reference/agent#budgets).
 
-- `assert` and `extract` make one judgment, plus one repair call if the
+- `assert` without exploration and `extract` make one judgment, plus one repair call if the
   answer is malformed. When the data is not on screen, `extract` fails with
   `ASSERTION_INCONCLUSIVE` and returns no placeholder.
-- `waitFor` makes no model call while the screen stays the same.
+- `waitFor` makes no model call while the screen and its location stay the same.
 - A screenshot adds input tokens to every call that carries it. `act` asks
   for one only when the text snapshot is not enough.
 - The [replay cache](/cache) reruns passing `act` steps with no model calls.

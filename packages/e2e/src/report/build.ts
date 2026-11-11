@@ -11,10 +11,11 @@ import type { ErrorCategory, ErrorDetails, ErrorPhase, HookScope, SerializedErro
 import { resultId, timestamp } from '../internal/ids.ts';
 import { obj } from '../internal/objects.ts';
 import { packageVersion } from '../internal/package-version.ts';
+import { onBun } from '../internal/runtime.ts';
 import { projectRelativePath } from '../internal/source.ts';
 import type { VcsInfo } from '../internal/vcs.ts';
 import type { SkipInfo } from '../collect/select.ts';
-import { someSkippedAfterFailure } from '../run/records.ts';
+import { expectedFailureOf, memberRan, someSkippedAfterFailure } from '../run/records.ts';
 import type {
   ArtifactRecord,
   AttemptRecord,
@@ -88,6 +89,53 @@ export interface BuildReportOptions {
   explore?: ReportExplore | undefined;
   /** The commit the code under test came from; absent outside git and CI. */
   vcs?: VcsInfo | undefined;
+  /** The change the test filters judged, or why none ran; absent when the run has no filters to apply. */
+  changes?: ReportChanges | undefined;
+  /** The test filters the run applied, in order; written only when there is one. */
+  filters?: readonly ReportFilter[] | undefined;
+}
+
+/**
+ * The change a run's test filters judged, by counts only, or why no filter
+ * ran: `base` and `files` once git measured the change, `skipped` alone
+ * when no filter ran before git was asked.
+ */
+export type ReportChanges =
+  | {
+      /** The merge base the change is measured from. */
+      base: string;
+      /** How many files changed since `base`; 0 when there is no change. */
+      files: number;
+      /** Why no filter ran, such as `no files changed since abc1234`; omitted when they ran. */
+      skipped?: string | undefined;
+    }
+  | {
+      /** Why no filter ran before git was asked: `--last-failed` or `no tests to judge`. */
+      skipped: string;
+      base?: undefined;
+      files?: undefined;
+    };
+
+/** Why a filter left nothing out without answering: it threw or answered with something other than `{ exclude, note? }`, or ran past 5 minutes. */
+export type FilterOutcome = 'failed' | 'timed-out';
+
+/** One test filter the run applied, in order. */
+export interface ReportFilter {
+  /** The filter's `name`. */
+  name: string;
+  /** How many tests it was given. */
+  candidates: number;
+  /** How many tests the run left out on its word; a test it named still runs with its serial group. */
+  excluded: number;
+  /** The filter's note, redacted and cut to one line of 1024 characters; for a filter that failed or timed out, the warning saying why. */
+  note?: string | undefined;
+  /**
+   * Set when the filter left nothing out because the call did not answer:
+   * `failed` when it threw or answered with something other than
+   * `{ exclude, note? }`, `timed-out` when it ran past 5 minutes and the run
+   * stopped waiting. Absent when it answered.
+   */
+  outcome?: FilterOutcome | undefined;
 }
 
 /** One finding `e2e explore` recorded through its `report_finding` tool. */
@@ -176,7 +224,8 @@ export interface ReportStep {
   observationTruncated?: boolean | undefined;
   explanation?: string | undefined;
   visionInput?: boolean | undefined;
-  visionDegraded?: VisionDegradation | undefined;
+  /** `PIXEL_TAINTED` only on a result an earlier version wrote, such as one `--last-failed` carries. */
+  visionDegraded?: VisionDegradation | 'PIXEL_TAINTED' | undefined;
   visionOnly?: boolean | undefined;
   viewport?: { width: number; height: number; scale: number } | undefined;
   metrics?: StepMetrics | undefined;
@@ -217,6 +266,13 @@ export interface ReportAttempt extends ReportAttemptBase {
   failure?: FailureEvidence | undefined;
   /** Why the body skipped itself; present when `status` is `skipped`, and on an attempt that failed after skipping. */
   skip?: SkipInfo | undefined;
+  /**
+   * Present when the attempt was marked `test.fail`: the reason, and the
+   * failure that made a `passed` attempt pass. A marked attempt that passed
+   * is `failed` with `UNEXPECTED_PASS`; one that failed with an error the
+   * mark does not cover keeps that error and has no `error` here.
+   */
+  expectedFailure?: { reason: string; error?: ReportError } | undefined;
 }
 
 export interface ReportSerialMember {
@@ -237,6 +293,12 @@ export interface ReportSerialMember {
 }
 
 export interface ReportSerialAttempt extends ReportAttemptBase {
+  status: SerialAttemptRecord['status'];
+  /**
+   * The retry was interrupted, or it never reached its members, so this
+   * attempt's member records are not the verdict. Absent in older reports.
+   */
+  cutRetry?: boolean;
   members: readonly ReportSerialMember[];
 }
 
@@ -287,12 +349,17 @@ export interface ReportResult {
    * than the positionals named, a tag filter, a platform it does not declare)
    * is still here as `skipped` for the record, but it is report-only: the
    * summary's `selected` does not count it, and the page and JUnit renderers
-   * leave it out, as the terminal does.
+   * leave it out, as the terminal does. A result a test filter left out
+   * (`skip.filter` set) is unselected too, yet JUnit lists it as a skipped
+   * case, the terminal counts it in its `Left out` row, and the page counts
+   * it in its headline and lists it under the filters fold.
    */
   selected: boolean;
   serialGroupId?: string | undefined;
   status: ResultRecord['status'];
   skip?: SkipInfo | undefined;
+  /** Why the test was expected to fail, when its last attempt was marked `test.fail`; the attempt holds the failure. */
+  expectedFailure?: { reason: string } | undefined;
   attempts: readonly ReportAttempt[];
 }
 
@@ -398,6 +465,10 @@ export interface Report1Document {
      * did not pass. Not part of this run's status, exit code, or summary.
      */
     carried?: ReportCarried | undefined;
+    /** The change the test filters judged, or why none ran; absent when the run has no filters to apply. */
+    changes?: ReportChanges | undefined;
+    /** The test filters the run applied, in order; absent when none ran. */
+    filters?: readonly ReportFilter[] | undefined;
     /** Present on an `e2e explore` run only. */
     explore?: ReportExplore | undefined;
   };
@@ -471,6 +542,14 @@ function serializeAttempt(attempt: AttemptRecord): ReportAttempt {
     ...serializeAttemptBase(attempt),
     ...(attempt.failure === undefined ? {} : { failure: attempt.failure }),
     ...(attempt.skip === undefined ? {} : { skip: attempt.skip }),
+    ...(attempt.expectedFailure === undefined
+      ? {}
+      : {
+          expectedFailure: {
+            reason: attempt.expectedFailure.reason,
+            ...(attempt.expectedFailure.error === undefined ? {} : { error: serializeErrorRecord(attempt.expectedFailure.error) }),
+          },
+        }),
     steps: attempt.steps.map(serializeStep),
     ...(attempt.appLog === undefined ? {} : { appLog: attempt.appLog }),
   };
@@ -495,7 +574,12 @@ function serializeSerialMember(member: SerialMemberRecord): ReportSerialMember {
 }
 
 function serializeSerialAttempt(attempt: SerialAttemptRecord): ReportSerialAttempt {
-  return { ...serializeAttemptBase(attempt), members: attempt.members.map(serializeSerialMember) };
+  return {
+    ...serializeAttemptBase(attempt),
+    status: attempt.status,
+    cutRetry: attempt.cutRetry,
+    members: attempt.members.map(serializeSerialMember),
+  };
 }
 
 function serializeSerialGroup(group: SerialGroupRecord): ReportSerialGroup {
@@ -535,8 +619,15 @@ function serializeResult(config: ResolvedConfig | undefined, result: ResultRecor
     serialGroupId: result.serialGroupId,
     status: result.status,
     skip: result.status === 'skipped' ? result.skip : undefined,
+    ...expectedFailureField(result),
     attempts: result.serialGroupId !== undefined ? [] : result.attempts.map(serializeAttempt),
   };
+}
+
+/** The result's `expectedFailure` field, from its last attempt's mark. */
+function expectedFailureField(result: ResultRecord): Pick<ReportResult, 'expectedFailure'> {
+  const mark = expectedFailureOf(result);
+  return mark === undefined ? {} : { expectedFailure: { reason: mark.reason } };
 }
 
 function serializeTarget(
@@ -558,8 +649,17 @@ function serializeTarget(
   };
 }
 
-/** Computes report-1 summary counts from results; the status counts are over the selected ones. */
-function computeSummary(results: readonly ResultRecord[]): ReportSummary {
+/**
+ * Computes report-1 summary counts from results; the status counts are over
+ * the selected ones. A result executed when it made an attempt; a serial
+ * member's attempts are its records in its group's attempts.
+ */
+function computeSummary(results: readonly ResultRecord[], serialGroups: readonly SerialGroupRecord[]): ReportSummary {
+  const ranMembers = new Set(
+    serialGroups.flatMap((group) =>
+      group.attempts.flatMap((attempt) => attempt.members.filter(memberRan).map((member) => `${group.id}\u0000${member.testId}`)),
+    ),
+  );
   let selected = 0;
   let executed = 0;
   let passed = 0;
@@ -568,7 +668,7 @@ function computeSummary(results: readonly ResultRecord[]): ReportSummary {
   let flaky = 0;
   let skipped = 0;
   for (const result of results) {
-    if (result.attempts.length > 0 || (result.serialGroupId !== undefined && result.status !== 'skipped')) {
+    if (result.attempts.length > 0 || (result.serialGroupId !== undefined && ranMembers.has(`${result.serialGroupId}\u0000${result.test.id}`))) {
       executed += 1;
     }
     if (!result.selected) continue;
@@ -739,7 +839,7 @@ export function buildReport(options: BuildReportOptions): Report1Document {
     .toSorted((a, b) => compareSerialGroups(a, b, targetIndex))
     .map(serializeSerialGroup);
 
-  const summary = computeSummary(options.results);
+  const summary = computeSummary(options.results, options.serialGroups);
 
   return {
     schemaVersion: 'report-1',
@@ -764,7 +864,7 @@ export function buildReport(options: BuildReportOptions): Report1Document {
         trustNoticeShown: false,
         os: `${os.platform()} ${os.release()}`,
         arch: os.arch(),
-        runtime: `node ${process.version}`,
+        runtime: onBun ? `bun v${process.versions['bun']}` : `node ${process.version}`,
       },
       ...(options.vcs === undefined ? {} : { vcs: options.vcs }),
       targets,
@@ -778,17 +878,24 @@ export function buildReport(options: BuildReportOptions): Report1Document {
         serialGroups: options.serialGroups,
         discovered: summary.discovered,
       }),
+      ...(options.changes === undefined ? {} : { changes: options.changes }),
+      ...(options.filters === undefined || options.filters.length === 0 ? {} : { filters: options.filters }),
       ...(options.explore === undefined ? {} : { explore: options.explore }),
     },
   };
 }
 
+/** Report order of two tests: by file, then by declaration within it. */
+export function compareTests(
+  a: { readonly file: string; readonly declarationIndex: number },
+  b: { readonly file: string; readonly declarationIndex: number },
+): number {
+  if (a.file !== b.file) return a.file < b.file ? -1 : 1;
+  return a.declarationIndex - b.declarationIndex;
+}
+
 function compareResults(a: ResultRecord, b: ResultRecord): number {
-  if (a.test.file !== b.test.file) return a.test.file < b.test.file ? -1 : 1;
-  if (a.test.declarationIndex !== b.test.declarationIndex) {
-    return a.test.declarationIndex - b.test.declarationIndex;
-  }
-  return a.target.index - b.target.index;
+  return compareTests(a.test, b.test) || a.target.index - b.target.index;
 }
 
 /** Report order is completion-time independent. */

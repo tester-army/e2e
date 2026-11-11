@@ -49,6 +49,11 @@ function oxc(): { transform: typeof OxcTransform; parser: typeof OxcParser } {
   return compiler;
 }
 
+/** oxc's parser, loaded on first use as the compiler is; `e2e mcp`'s `run_code` reads its statements with it. */
+export function oxcParser(): typeof OxcParser {
+  return oxc().parser;
+}
+
 /** The first ECMAScript edition that defines class fields rather than assigning them. */
 const DEFINED_FIELDS_SINCE = 2022;
 

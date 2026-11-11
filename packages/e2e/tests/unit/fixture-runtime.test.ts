@@ -28,7 +28,7 @@ function runtime(engine: EngineHandle, overrides: Partial<E2EConfig> = {}, app?:
   const { fixtures } = createFixtures({
     config, target: config.targets[0]!, session: createEngineSession({ engine, targetName: 'fake' }),
     steps, budget: new AttemptBudget(signal, new Deadline(10_000)), runId: 'run', attemptId: 'attempt',
-    attempt: { testId: 'test', attemptId: 'attempt', index: 0, signal, memory: new Map() },
+    attempt: { testId: 'test', attemptId: 'attempt', titlePath: [], index: 0, signal, memory: new Map() },
     artifacts: { dir: '/tmp', register: registerArtifact, link: () => 'artifact' }, priorSteps: () => steps.completed(),
     agentContext: undefined, saveSession: undefined,
     models: new WorkerModels(() => {}),
@@ -97,7 +97,7 @@ describe('explicit screenshot secrecy', () => {
   it.each([
     ['1234', 'four characters'],
     ['🔐🔐🔐', 'three emoji, six UTF-16 units'],
-  ])('refuses a provider value under 6 code points (%s, %s) at fill time with the unavailable code, pixels untainted', async (value) => {
+  ])('refuses a provider value under 6 code points (%s, %s) at fill time with the unavailable code', async (value) => {
     const screenshot = vi.fn(async () => 'screenshots/evidence.png');
     const { fixtures, config } = runtime(defineEngine({
       name: 'fake', version: '1', spiVersion: 1, artifacts: { screenshot },
@@ -299,15 +299,17 @@ describe('explicit fixture operations', () => {
         gadget: (context) => context.fixture('gadget', {
           async lost(): Promise<void> { throw new EngineError('INVALID_STATE', 'appstate requires an active session', { retryable: false }); },
           async slow(): Promise<void> { throw new EngineError('OPERATION_TIMEOUT', 'appstate timed out', { retryable: false }); },
+          async wait(_pattern: string): Promise<void> { throw new EngineError('OPERATION_TIMEOUT', 'wait timed out', { retryable: false }); },
           async denied(): Promise<void> { throw new TestError('POLICY_DENIED', 'no'); },
           async plain(): Promise<void> { throw new Error('plain failure'); },
-        }, { lost: { kind: 'resource' }, slow: { kind: 'resource' }, denied: { kind: 'resource' }, plain: { kind: 'resource' } }),
+        }, { lost: { kind: 'resource' }, slow: { kind: 'resource' }, wait: { kind: 'resource', label: (pattern) => JSON.stringify(pattern) }, denied: { kind: 'resource' }, plain: { kind: 'resource' } }),
       },
     });
     const { fixtures } = runtime(engine);
-    const gadget = (fixtures as unknown as { gadget: Record<'lost' | 'slow' | 'denied' | 'plain', () => Promise<void>> }).gadget;
+    const gadget = (fixtures as unknown as { gadget: Record<'lost' | 'slow' | 'denied' | 'plain', () => Promise<void>> & { wait(pattern: string): Promise<void> } }).gadget;
     await expect(gadget.lost()).rejects.toMatchObject({ code: 'APP_NOT_OPEN', category: 'test', message: 'appstate requires an active session' });
     await expect(gadget.slow()).rejects.toMatchObject({ code: 'ACTION_FAILED', message: 'operation timed out in gadget.slow' });
+    await expect(gadget.wait('foo.css')).rejects.toMatchObject({ code: 'ACTION_FAILED', message: 'operation timed out in gadget.wait "foo.css"' });
     await expect(gadget.denied()).rejects.toMatchObject({ code: 'POLICY_DENIED' });
     await expect(gadget.plain()).rejects.toThrow('plain failure');
   });
@@ -602,6 +604,19 @@ describe('app steering hooks', () => {
     expect(steps.all().map((step) => step.api)).toEqual(['app.restart', 'app.clearState']);
   });
 
+  it('baseUrl has no trailing slash, so a template joins a path onto it; app.open still resolves against the base path', async () => {
+    const origin = steerable({ url: 'http://127.0.0.1:4599' });
+    expect(runtime(origin.engine, {}, origin.app).fixtures.app.baseUrl).toBe('http://127.0.0.1:4599');
+    const nested = steerable({ url: 'http://127.0.0.1:4599/app/' });
+    const { fixtures } = runtime(nested.engine, {}, nested.app);
+    expect(fixtures.app.baseUrl).toBe('http://127.0.0.1:4599/app');
+    expect(`${fixtures.app.baseUrl}/api/hooks`).toBe('http://127.0.0.1:4599/app/api/hooks');
+    await fixtures.app.open();
+    await fixtures.app.open('settings');
+    expect(nested.calls).toEqual(['open http://127.0.0.1:4599/app/', 'open http://127.0.0.1:4599/app/settings']);
+    expect(runtime(empty()).fixtures.app.baseUrl).toBeUndefined();
+  });
+
   it('reopen nothing on a surface without an address', async () => {
     const { engine, calls, app } = steerable({});
     const { fixtures } = runtime(engine, {}, app);
@@ -709,25 +724,22 @@ describe('coordinate input', () => {
     expect(steps.all().at(-1)).toMatchObject({
       kind: 'screen', api: 'screen.doubleTapAt', label: '(12.5, 40)', status: 'passed',
     });
-    await expect(fixtures.screen.doubleTapAt({ x: NaN, y: 40 })).rejects.toMatchObject({ code: 'INVALID_ARGUMENT' });
-    await expect(fixtures.screen.doubleTapAt({ x: -1, y: 40 })).rejects.toMatchObject({ code: 'INVALID_ARGUMENT' });
-    await expect(fixtures.screen.doubleTapAt({ x: 12.5, y: 40 }, { force: true } as never))
-      .rejects.toMatchObject({ code: 'INVALID_ARGUMENT' });
-    expect(performedAt).toHaveLength(1);
   });
 
   it('rejects a point off the plane and an unknown option before any engine call', async () => {
     const { engine, performedAt } = pointer();
     const { fixtures } = runtime(engine);
-    for (const point of [{ x: Number.NaN, y: 1 }, { x: Number.POSITIVE_INFINITY, y: 1 }, { x: 1 }, { x: '1', y: 2 }, undefined]) {
-      await expect(fixtures.screen.tapAt(point as never)).rejects.toMatchObject({
-        code: 'INVALID_ARGUMENT', message: 'tapAt requires a point { x, y } of finite numbers',
+    for (const method of ['tapAt', 'doubleTapAt'] as const) {
+      for (const point of [{ x: Number.NaN, y: 1 }, { x: Number.POSITIVE_INFINITY, y: 1 }, { x: 1 }, { x: '1', y: 2 }, undefined]) {
+        await expect(fixtures.screen[method](point as never)).rejects.toMatchObject({
+          code: 'INVALID_ARGUMENT', message: `${method} requires a point { x, y } of finite numbers`,
+        });
+      }
+      await expect(fixtures.screen[method]({ x: -1, y: 0 })).rejects.toMatchObject({
+        code: 'INVALID_ARGUMENT', message: `${method} requires a point { x, y } of non-negative numbers`,
       });
+      await expect(fixtures.screen[method]({ x: 1, y: 1 }, { force: true } as never)).rejects.toMatchObject({ code: 'INVALID_ARGUMENT' });
     }
-    await expect(fixtures.screen.tapAt({ x: -1, y: 0 })).rejects.toMatchObject({
-      code: 'INVALID_ARGUMENT', message: 'tapAt requires a point { x, y } of non-negative numbers',
-    });
-    await expect(fixtures.screen.tapAt({ x: 1, y: 1 }, { force: true } as never)).rejects.toMatchObject({ code: 'INVALID_ARGUMENT' });
     expect(() => fixtures.screen.getByLabel('Pad').tap({ position: { x: -1, y: 0 } })).toThrow(
       expect.objectContaining({ code: 'INVALID_ARGUMENT', message: 'tap position requires a point { x, y } of non-negative numbers' }),
     );

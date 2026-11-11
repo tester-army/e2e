@@ -54,6 +54,8 @@ export interface RawNodeData {
   testId: string | null;
   /** The element's box in its document's viewport; null when it lays out no box (`display: none`). */
   rect: { x: number; y: number; width: number; height: number } | null;
+  /** The element's padding-box corner in the same viewport, when a border puts it past `rect`'s; null otherwise. */
+  origin: { x: number; y: number } | null;
 }
 
 /** One observed node plus its position in the flattened depth-first tree. */

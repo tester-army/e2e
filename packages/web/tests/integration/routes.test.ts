@@ -13,8 +13,9 @@ import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import type { Page } from 'playwright-core';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { EventEmitter } from 'node:events';
+import type { Download, Page } from 'playwright-core';
 import { TestError, type EngineFixtureContext } from 'e2e/engine';
 import { PlaywrightSurface } from '../../src/surface.ts';
 import { createBrowserFixture, type Browser, type WebRoute } from '../../src/browser.ts';
@@ -27,14 +28,36 @@ interface Echo {
   readonly body: string;
 }
 
+/** Every byte value once, which no text decoding keeps intact. */
+const ALL_BYTES = Uint8Array.from({ length: 256 }, (_, index) => index);
+
 /**
- * `/echo` answers with what it received; `/api/*` answers `network:<path>`.
- * Every request is counted by path.
+ * `/echo` answers with what it received; `/api/*` answers `network:<path>`;
+ * `/binary` answers `ALL_BYTES`. Every request is counted by path.
  */
 function startCountingServer(hits: Map<string, number>): Promise<{ server: Server; port: number }> {
   const server = createServer((request, response) => {
     const pathname = new URL(request.url ?? '/', 'http://host').pathname;
     hits.set(pathname, (hits.get(pathname) ?? 0) + 1);
+    if (pathname === '/redirect') {
+      response.writeHead(302, { location: '/echo' });
+      response.end();
+      return;
+    }
+    if (pathname === '/binary') {
+      response.writeHead(200, { 'content-type': 'application/octet-stream' });
+      response.end(ALL_BYTES);
+      return;
+    }
+    if (pathname === '/stream-download') {
+      response.writeHead(200, {
+        'content-type': 'application/octet-stream',
+        'content-disposition': 'attachment; filename="stream.bin"',
+        'content-length': '4096',
+      });
+      response.write(Buffer.alloc(1024, 'x'));
+      return;
+    }
     if (pathname === '/echo') {
       let body = '';
       request.on('data', (chunk: Buffer) => { body += chunk.toString(); });
@@ -62,6 +85,7 @@ describe('browser.route decisions', () => {
   const projectRoot = mkdtempSync(path.join(tmpdir(), 'e2e-routes-'));
   const signal = new AbortController().signal;
   const hits = new Map<string, number>();
+  const attached: string[] = [];
   let server: Server;
   let origin: string;
   let otherSite: string;
@@ -90,14 +114,17 @@ describe('browser.route decisions', () => {
 
   beforeEach(async () => {
     hits.clear();
+    attached.length = 0;
     await surface.startAttempt({ attemptId: 'routes', artifactsDir: projectRoot, signal, resolveSecret: noSecrets, ...ignoreTrace });
     page = await surface.ensurePage();
     await page.goto(`${origin}/`);
     browser = createBrowserFixture(surface, {
       app: { site: '127.0.0.1', resolveUrl },
       operation: (timeoutMs = 5_000) => ({ signal, timeoutMs, runId: 'routes', attemptId: 'routes', origin: 'test' }),
+      timeouts: { test: 5_000, assertion: 5_000 },
       expectable: (target: object) => target,
       fixture: (_name: string, target: object) => target,
+      attachArtifact: (_kind: string, relative: string) => attached.push(relative),
     } as unknown as EngineFixtureContext);
   });
 
@@ -122,6 +149,10 @@ describe('browser.route decisions', () => {
       return { contentType: reply.headers.get('content-type'), body: await reply.text() };
     }, url);
 
+  /** Fetches `url` from the page and returns its body bytes. */
+  const fetchBytes = async (url: string): Promise<number[]> =>
+    page.evaluate((target) => fetch(target).then(async (reply) => [...new Uint8Array(await reply.arrayBuffer())]), url);
+
   /** Fetches `url` from the page and parses what `/echo` received. */
   const fetchEcho = async (url: string, init?: { method: string; body: string }): Promise<Echo> =>
     JSON.parse(
@@ -134,6 +165,180 @@ describe('browser.route decisions', () => {
 
   /** Waits for the latched route failure the next step reports. */
   const nextStepFailure = (): Promise<unknown> => browser.url().then(() => undefined, (error: unknown) => error);
+
+  it('fetches upstream once, keeps site headers, then fulfills an amended response', async () => {
+    await browser.route('**/echo', async route => {
+      const upstream = await route.fetch();
+      expect(upstream.status).toBe(200);
+      expect(upstream.url).toBe(`${origin}/echo`);
+      expect(upstream.headers['content-type']).toContain('application/json');
+      const echo = await upstream.json<Echo>();
+      expect(echo.headers['x-gate']).toBe('open-sesame');
+      expect(JSON.parse(await upstream.text())).toEqual(echo);
+      await route.fulfill({ json: { ...echo, amended: true } });
+    });
+    expect(await page.evaluate(async url => (await fetch(url)).json(), `${origin}/echo`)).toMatchObject({ amended: true });
+    expect(hits.get('/echo')).toBe(1);
+  });
+
+  it('keeps upstream metadata when the native API response body is unavailable', async () => {
+    const context = page.context();
+    const register = context.route.bind(context);
+    const spy = vi.spyOn(context, 'route').mockImplementation((url, handler, options) => register(url, async (route, request) => {
+      const fetch = route.fetch.bind(route);
+      route.fetch = async (...args) => {
+        const response = await fetch(...args);
+        await response.dispose();
+        return response;
+      };
+      await handler(route, request);
+    }, options));
+    try {
+      await browser.route('**/echo', async route => {
+        const upstream = await route.fetch();
+        expect(upstream.status).toBe(200);
+        expect(upstream.url).toBe(`${origin}/echo`);
+        expect(upstream.headers['content-type']).toContain('application/json');
+        await expect(upstream.text()).rejects.toMatchObject({ code: 'ACTION_FAILED', message: expect.stringContaining('route.fetch') });
+        await expect(upstream.json()).rejects.toMatchObject({ code: 'ACTION_FAILED' });
+        await route.fulfill({ body: 'safe fallback' });
+      });
+      expect(await fetchText(`${origin}/echo`)).toBe('safe fallback');
+      expect(hits.get('/echo')).toBe(1);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('returns an upstream redirect without following it', async () => {
+    await browser.route('**/redirect', async route => {
+      const upstream = await route.fetch();
+      expect(upstream.status).toBe(302);
+      expect(upstream.headers['location']).toBe('/echo');
+      await route.fulfill({ body: 'inspected redirect' });
+    });
+    expect(await fetchText(`${origin}/redirect`)).toBe('inspected redirect');
+    expect(hits.get('/redirect')).toBe(1);
+    expect(hits.get('/echo')).toBeUndefined();
+  });
+
+  it('hands timeout 0 to the operation as a budget only the test deadline caps, and refuses a negative one', async () => {
+    const asked: (number | undefined)[] = [];
+    const recording = createBrowserFixture(surface, {
+      app: { site: '127.0.0.1', resolveUrl },
+      operation: (timeoutMs?: number) => {
+        asked.push(timeoutMs);
+        return { signal, timeoutMs: Math.min(timeoutMs ?? 5_000, 5_000), runId: 'routes', attemptId: 'routes', origin: 'test' };
+      },
+      timeouts: { test: 5_000, action: 5_000, assertion: 5_000 },
+      expectable: (target: object) => target,
+      fixture: (_name: string, target: object) => target,
+      attachArtifact: () => undefined,
+    } as unknown as EngineFixtureContext);
+    await recording.goto(`${origin}/`, { timeout: 0 });
+    await recording.waitForURL(`${origin}/`, { timeout: 0 });
+    expect(asked.slice(0, 2)).toEqual([Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY]);
+    for (const call of [
+      async () => recording.goto(`${origin}/`, { timeout: -1 }),
+      async () => recording.waitForURL(`${origin}/`, { timeout: Number.NaN }),
+      async () => recording.waitForDownload(async () => undefined, { timeout: Number.POSITIVE_INFINITY }),
+    ]) {
+      await expect(call()).rejects.toMatchObject({ code: 'INVALID_ARGUMENT' });
+    }
+  });
+
+  it('rejects an invalid download count before running the trigger', async () => {
+    let calls = 0;
+    await expect(browser.waitForDownloads(async () => { calls += 1; }, { count: 0 })).rejects.toMatchObject({ code: 'INVALID_ARGUMENT' });
+    expect(calls).toBe(0);
+  });
+
+  it('removes a multi-download listener after an incomplete trigger times out', async () => {
+    const listeners = (page as unknown as EventEmitter).listenerCount('download');
+    await expect(browser.waitForDownloads(async () => undefined, { count: 2, timeout: 30 })).rejects.toMatchObject({
+      code: 'ACTION_FAILED', message: expect.stringContaining('0 of 2 downloads'),
+    });
+    expect((page as unknown as EventEmitter).listenerCount('download')).toBe(listeners);
+  });
+
+  it.each(['waitForDownload', 'waitForDownloads'] as const)('%s bounds saving a download whose HTTP body never finishes', async (method) => {
+    await page.evaluate(() => {
+      const link = document.createElement('a');
+      link.href = '/stream-download';
+      link.textContent = 'Stream';
+      document.body.append(link);
+    });
+    const baseline = (page as unknown as EventEmitter).listenerCount('download');
+    let download: Download | undefined;
+    page.once('download', (value) => { download = value; });
+    const trigger = () => page.evaluate(() => document.querySelector<HTMLAnchorElement>('a')!.click());
+    const work = method === 'waitForDownload'
+      ? browser.waitForDownload(trigger, { timeout: 500 })
+      : browser.waitForDownloads(trigger, { count: 1, timeout: 500 });
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const result = await Promise.race([
+        work.then(() => 'completed', (cause: unknown) => cause),
+        new Promise((resolve) => { timer = setTimeout(() => resolve('still pending'), 1500); }),
+      ]);
+      expect(download).toBeDefined();
+      expect(result).toMatchObject({ code: 'ACTION_FAILED', message: expect.stringContaining('did not finish') });
+      expect((page as unknown as EventEmitter).listenerCount('download')).toBe(baseline);
+    } finally {
+      clearTimeout(timer);
+      server.closeAllConnections();
+      await download?.cancel();
+      await work.catch(() => undefined);
+    }
+  });
+
+  it.each(['waitForDownload', 'waitForDownloads'] as const)('%s closes started downloads while its trigger is still pending', async (method) => {
+    await page.evaluate(() => {
+      const link = document.createElement('a');
+      link.href = '/stream-download';
+      link.textContent = 'Pending';
+      document.body.append(link);
+    });
+    const listeners = (page as unknown as EventEmitter).listenerCount('download');
+    let download: Download | undefined;
+    page.once('download', (value) => { download = value; });
+    let release!: () => void;
+    const pending = new Promise<void>((resolve) => { release = resolve; });
+    const trigger = async (): Promise<void> => {
+      await page.evaluate(() => document.querySelector<HTMLAnchorElement>('a')!.click());
+      await pending;
+    };
+    const work = method === 'waitForDownload'
+      ? browser.waitForDownload(trigger, { timeout: 500 })
+      : browser.waitForDownloads(trigger, { count: 1, timeout: 500 });
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const result = await Promise.race([
+        work.then(() => 'completed', (cause: unknown) => cause),
+        new Promise((resolve) => { timer = setTimeout(() => resolve('still pending'), 1500); }),
+      ]);
+      expect(result).toMatchObject({ code: 'ACTION_FAILED' });
+      expect(download).toBeDefined();
+      expect((page as unknown as EventEmitter).listenerCount('download')).toBe(listeners);
+      expect(await download!.failure()).toMatch(/cancel/);
+      release();
+      await work.catch(() => undefined);
+      expect(attached).toEqual([]);
+    } finally {
+      clearTimeout(timer);
+      release();
+      server.closeAllConnections();
+      await download?.cancel();
+      await work.catch(() => undefined);
+    }
+  });
+
+  it('keeps a trigger error and removes the multi-download listener immediately', async () => {
+    const listeners = (page as unknown as EventEmitter).listenerCount('download');
+    const failure = new TestError('ASSERTION_FAILED', 'trigger assertion');
+    await expect(browser.waitForDownloads(async () => { throw failure; }, { count: 2, timeout: 30 })).rejects.toBe(failure);
+    expect((page as unknown as EventEmitter).listenerCount('download')).toBe(listeners);
+  });
 
   it('clears every test route, keeps configured site headers, and can register again', async () => {
     await browser.route('**/api/**', route => route.fulfill({ body: 'mock-api' }));
@@ -209,6 +414,22 @@ describe('browser.route decisions', () => {
     expect(echo.headers['x-gate']).toBe('open-sesame');
   });
 
+  it.each([
+    ['the request', '/echo'],
+    ['a redirect', '/redirect'],
+  ])('continue drops a header set to undefined on %s', async (_name, target) => {
+    await browser.route(`**${target}`, (route) =>
+      route.continue({ headers: { ...route.request.headers, 'x-drop': undefined, 'x-keep': 'yes' } }));
+    const echo = JSON.parse(await page.evaluate(
+      (url) => fetch(url, { headers: { 'x-drop': 'a' } }).then((reply) => reply.text()),
+      `${origin}${target}`,
+    )) as Echo;
+    expect(echo.path).toBe('/echo');
+    expect(echo.headers['x-drop']).toBeUndefined();
+    expect(echo.headers['x-keep']).toBe('yes');
+    expect(echo.headers['x-gate']).toBe('open-sesame');
+  });
+
   it('continue sends a rewritten url, method, and body without touching the original', async () => {
     await browser.route('**/api/quote', (route) =>
       route.continue({ url: '/echo', method: 'PUT', postData: 'payload' }));
@@ -245,6 +466,29 @@ describe('browser.route decisions', () => {
     expect(hits.get('/api/quote')).toBeUndefined();
   });
 
+  it.each([
+    ['a Buffer', Buffer.from(ALL_BYTES)],
+    ['a Uint8Array view', new Uint8Array([0xff, ...ALL_BYTES, 0xff]).subarray(1, 257)],
+  ])('fulfills %s body byte for byte', async (_name, body) => {
+    await browser.route('**/api/quote', (route) => route.fulfill({ body }));
+    expect(await fetchBytes(`${origin}/api/quote`)).toEqual([...ALL_BYTES]);
+  });
+
+  it('fetches upstream bytes and fulfills them unchanged', async () => {
+    await browser.route('**/binary', async (route) => {
+      const upstream = await route.fetch();
+      await route.fulfill({ headers: upstream.headers, body: await upstream.body() });
+    });
+    expect(await fetchBytes(`${origin}/binary`)).toEqual([...ALL_BYTES]);
+  });
+
+  it('fulfills a newline-joined set-cookie as one cookie per line', async () => {
+    await browser.route('**/api/quote', (route) =>
+      route.fulfill({ headers: { 'Set-Cookie': 'a=b\nc=d; Path=/' }, body: '' }));
+    await fetchText(`${origin}/api/quote`);
+    expect((await browser.cookies()).map(({ name, value }) => `${name}=${value}`).toSorted()).toEqual(['a=b', 'c=d']);
+  });
+
   it('fulfills under the given contentType or a content-type header', async () => {
     await browser.route('**/api/quote', (route) => route.fulfill({ json: { cents: 1 }, contentType: 'application/vnd.quote+json' }));
     expect(await fetchReply(`${origin}/api/quote`)).toEqual({ contentType: 'application/vnd.quote+json', body: '{"cents":1}' });
@@ -269,6 +513,14 @@ describe('browser.route decisions', () => {
       'route.continue has an invalid header name: "x a"'],
     ['a line break in a fulfill header value', (route: WebRoute) => route.fulfill({ headers: { 'x-a': 'b\r\nset-cookie: c=d' } }),
       'route.fulfill header "x-a" must not contain a control character'],
+    ['a carriage return in a set-cookie line', (route: WebRoute) => route.fulfill({ headers: { 'set-cookie': 'a=b\r\nx-a: c' } }),
+      'route.fulfill header "set-cookie" must not contain a control character'],
+    ['an undefined fulfill header', (route: WebRoute) => untyped(route.fulfill, { headers: { 'x-a': undefined } }),
+      'route.fulfill header "x-a" must be a string, got undefined'],
+    ['a line break in a continue header value', (route: WebRoute) => route.continue({ headers: { 'set-cookie': 'a=b\nc=d' } }),
+      'route.continue header "set-cookie" must not contain a control character'],
+    ['a fulfill body that is neither text nor bytes', (route: WebRoute) => untyped(route.fulfill, { body: 42 }),
+      'route.fulfill body must be a string, Buffer, or Uint8Array'],
     ['an abort error code', (route: WebRoute) => untyped(route.abort, 'failed'),
       'route.abort() takes no arguments'],
   ])('rejects %s before deciding, and aborts the request', async (_name, decide, message) => {
@@ -298,6 +550,23 @@ describe('browser.route decisions', () => {
       code: 'ACTION_FAILED',
       message: 'route handler already decided; fulfill called twice',
     });
+  });
+
+  it('fails a navigation its route aborted as an action failure, not an engine fault', async () => {
+    await browser.route('**/aborted', (route) => route.abort());
+    await expect(browser.goto(`${origin}/aborted`)).rejects.toMatchObject({
+      code: 'ACTION_FAILED',
+      message: expect.stringContaining(`navigation failed: a route aborted the request for ${origin}/aborted`),
+    });
+  });
+
+  it('fails a navigation with the route error that aborted it', async () => {
+    await browser.route('**/refused', (route) => route.fulfill({ headers: { 'bad name': 'x' } }));
+    await expect(browser.goto(`${origin}/refused`)).rejects.toMatchObject({
+      code: 'INVALID_ARGUMENT',
+      message: expect.stringContaining('invalid header name: "bad name"'),
+    });
+    await expect(browser.url()).resolves.toBe(`${origin}/`);
   });
 
   it('takes the decision the moment fulfill is called, awaited or not', async () => {

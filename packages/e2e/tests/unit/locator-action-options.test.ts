@@ -2,7 +2,8 @@
  * Every locator action refuses an option key it does not take. A JavaScript
  * test ported from Playwright can pass `{ trial: true }` or `{ force: true }`;
  * ignoring the key would commit the action the test meant to only rehearse,
- * so the call fails before a node is resolved or a step recorded.
+ * so the call fails before a node is resolved or a step recorded. The same
+ * file covers each action's own argument checks.
  */
 
 import { describe, expect, it, vi } from 'vitest';
@@ -178,4 +179,25 @@ describe('locator action options', () => {
     });
     expect(performed).toEqual([]);
   });
+
+  it('setInputFiles hands an empty list to the engine, which clears the input', async () => {
+    const { screen, steps, actions } = boxScreen();
+    await screen.getByLabel('Agree').setInputFiles([]);
+    expect(actions).toEqual([{ kind: 'setInputFiles', paths: [] }]);
+    expect(steps.all()).toEqual([expect.objectContaining({ api: 'locator.setInputFiles', status: 'passed' })]);
+  });
+
+  it.each([[''], ['  '], [['fixtures/a.txt', '']], [invalid<readonly string[]>(['fixtures/a.txt', 1])]])(
+    'setInputFiles refuses %j before any lookup or action',
+    async (paths) => {
+      const { screen, steps, performed, locate } = boxScreen();
+      await expect(Promise.resolve().then(() => screen.getByLabel('Agree').setInputFiles(paths))).rejects.toMatchObject({
+        code: 'INVALID_ARGUMENT',
+        message: 'setInputFiles paths must be non-empty strings',
+      });
+      expect(locate).not.toHaveBeenCalled();
+      expect(performed).toEqual([]);
+      expect(steps.all()).toEqual([]);
+    },
+  );
 });

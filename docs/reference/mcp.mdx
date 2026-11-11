@@ -1,13 +1,12 @@
 ---
 title: MCP server (e2e mcp)
 description: Let a coding agent inspect and interact with your app over MCP.
-icon: "plug"
-"og:image": "https://e2e.tester.army/docs/images/og/reference/mcp.png?v=3d3880edad"
-"twitter:image": "https://e2e.tester.army/docs/images/og/reference/mcp.png?v=3d3880edad"
+"og:image": "https://e2e.com/docs/images/og/reference/mcp.png?v=3d3880edad"
+"twitter:image": "https://e2e.com/docs/images/og/reference/mcp.png?v=3d3880edad"
 ---
 
 `e2e mcp` lets coding agents such as Claude Code and Cursor inspect your app,
-try locators, and take masked screenshots before writing tests. It runs over
+try locators, run test lines, and take masked screenshots while they write tests. It runs over
 stdio and uses the project's configured engine. For setup and what to ask
 the agent, see the [MCP server guide](/mcp-server).
 
@@ -19,8 +18,9 @@ the agent, see the [MCP server guide](/mcp-server).
 }
 ```
 
-Four MCP tools manage the session and call its available app tools. The app
-tool catalog reloads from the config whenever a session opens.
+Four MCP tools manage the session and call its available app tools, and
+`run_tests` runs the suite as `e2e run` does. The app tool catalog reloads
+from the config whenever a session opens.
 
 ## Reference
 
@@ -45,12 +45,14 @@ bunx e2e mcp [--config <path>] [--target <name>] [--headed] [--max-sessions <n>]
 | [`--config <path>`](#config) | discovered like `e2e run` |
 | [`--target <name>`](#target) | the only target |
 | [`--headed`](#headed) | headless |
-| [`--max-sessions <n>`](#max-sessions) | `4` |
+| [`--max-sessions <n>`](#max-sessions) | `4`, `1` on Bun |
 
 #### `--config`
 
 The config every session loads unless `open_session` names one. Each
-session loads it afresh ([Several sessions](#several-sessions)).
+session loads it afresh ([Several sessions](#several-sessions)) with the
+server's environment: `process.env` in the config reads the variables the
+MCP client started `e2e mcp` with, not the agent's shell.
 
 #### `--target`
 
@@ -68,8 +70,8 @@ session whose `open_session` does not set `headed`.
 
 #### `--max-sessions`
 
-How many sessions may be open at once, 1 through 16. See
-[Several sessions](#several-sessions).
+How many sessions may be open at once, 1 through 16. On
+[Bun](/reference/cli#bun), one. See [Several sessions](#several-sessions).
 
 ```bash
 e2e mcp --max-sessions 8 # default: 4
@@ -83,6 +85,7 @@ e2e mcp --max-sessions 8 # default: 4
 | [`tools`](#tools-2) | Lists the catalog or one tool |
 | [`call`](#call) | Runs one catalog tool |
 | [`close_session`](#close_session) | Ends the session and its engine |
+| [`run_tests`](#run_tests) | Runs tests as `e2e run` does |
 
 `session` may be left out while exactly one session is open. See
 [Several sessions](#several-sessions).
@@ -95,6 +98,17 @@ device the [pinned app](/mobile#point-at-your-app), launched fresh. It installs
 no build, so a local device target needs `app.bundleId`. Returns the session
 id, the catalog, and the first observation.
 
+The summary names the app's URL, with the port a free-port `url` was
+assigned, and the app command: its executable, readiness URL, `env` and
+`inheritEnv` names, and log file. It prints no `args`, no `env` values, and
+no URL userinfo or query. e2e starts no other app process, so a database the
+app uses runs outside it.
+
+```text wrap
+App: http://127.0.0.1:57162/ (port 57162, assigned for the declared port 0).
+Process: app.command "node" (ready at http://127.0.0.1:57162/; env PORT, DATABASE_URL; log .e2e/app.log). e2e starts no other app process for this session; a database or other service the app uses runs outside e2e.
+```
+
 ```txt
 open_session {target: "web", headed: true}
 ```
@@ -102,8 +116,11 @@ open_session {target: "web", headed: true}
 | Input | Type | Required | Does |
 | --- | --- | --- | --- |
 | `target` | string | no | The target to open. Otherwise `--target`, else the only target. |
-| `config` | string (path) | no | The config for this session. Otherwise `--config`, else discovered like `e2e run`. |
+| `config` | string (path) | no | The config for this session, absolute or relative to the server's working directory (`cwd` in the client's MCP config). Otherwise `--config`, else discovered like `e2e run`. |
 | `headed` | boolean | no | `true` shows this session's browser or simulator, `false` hides it. Without it the session follows `--headed`. |
+| `test` | string | no | One test to run first, named like an `e2e run` positional. The session stops where the test stopped. See [Running a test](#running-a-test). |
+| `engine` | string or object | no | The session's engine in a directory with no config file, as a package name or `{package, export, options}`. See [Without a config](#without-a-config). |
+| `app` | object | no | The app under test for an `engine` session, as `url`, `bundleId`, or `appPath`. |
 
 #### `tools`
 
@@ -157,6 +174,58 @@ close_session {session: "<id>"}
 | --- | --- | --- | --- |
 | `session` | string | while several are open | The session id. |
 
+#### `run_tests`
+
+Runs `e2e run` in its own process and returns the command, the exit code and
+its meaning, and what the run printed: with the default `list` reporter, each
+test, the failure blocks, and the summary. It needs no session and leaves open sessions alone. See
+[Run tests next to a session](/mcp-server#run-tests-next-to-a-session) for a
+run beside one.
+
+```txt
+run_tests {files: ["tests/checkout.e2e.ts:12"]}
+```
+
+```text wrap
+e2e run tests/checkout.e2e.ts:12
+exit 1: a test failed or timed out
+
+ RUN  e2e v0.22.0 /work/shop
+ ...
+```
+
+| Input | Type | Required | Does |
+| --- | --- | --- | --- |
+| `files` | string[] | no | `e2e run` positionals: files, directories, globs, or `file:line`. Without it, every test the config discovers. A file can't start with `-`. |
+| `config` | string (path) | no | `--config`. Otherwise the server's `--config`. |
+| `target` | string[] | no | `--target`, at least one. Otherwise the server's `--target`, else every target. |
+| `grep`, `grepInvert` | string | no | `--grep`, `--grep-invert`. |
+| `tag`, `excludeTag` | string[] | no | `--tag`, `--exclude-tag`. |
+| `lastFailed` | boolean | no | `--last-failed`. |
+| `changedSince` | string | no | `--changed-since`. |
+| `headed` | boolean | no | `--headed`. Otherwise the server's `--headed`. |
+| `workers`, `retries`, `repeatEach`, `maxFailures`, `actionTimeout` | integer | no | `--workers`, `--retries`, `--repeat-each`, `--max-failures`, `--action-timeout`. |
+| `noCache` | boolean | no | `--no-cache`. |
+| `updateSnapshots` | boolean | no | `--update-snapshots`. |
+
+- Exit 0 and 1 are results. Any other exit code is an error result
+  (`isError: true`).
+- Output past 60,000 characters keeps its end, where the failures and the
+  summary are. Every result is in `<output>/report.json` (default `.e2e`)
+  once the run reaches its tests; see [Output](/reference/cli#output).
+- With a progress token, each non-empty stdout line is a progress
+  notification, cut at 1,000 characters.
+- Cancelling the call interrupts the run as Ctrl-C would, pressed again every
+  15 seconds, and kills it 15 seconds after the third. The next `run_tests`
+  waits for it to exit.
+- When the server shuts down it refuses new runs and interrupts the one in
+  flight. A run whose server dies interrupts itself the same way.
+
+| Throws | When |
+| --- | --- |
+| `RUNNER_BUSY` | A run is already in progress. |
+| `CANCELLED` | The call was cancelled before the run started, or the server is shutting down. |
+
 ### The catalog
 
 What `call` can run depends on the session's target.
@@ -167,8 +236,9 @@ What `call` can run depends on the session's target.
 | [Actions](#actions) | Act on an observed node |
 | [`dismiss_keyboard`](#dismiss_keyboard) | Hides the on-screen keyboard |
 | [`locate`](#locate) | Tries a semantic locator |
+| [`run_code`](#run_code) | Runs test statements |
 | [`test_lines`](#test_lines) | Returns the session's test lines |
-| [`screenshot`](#screenshot) | Returns the masked viewport |
+| [`screenshot`](#screenshot) | Returns the masked viewport, optionally saved to a file |
 | [Point tools](#point-tools) | Act at a screenshot point |
 | [`start_recording`, `stop_recording`](#recording) | Records a video of the app |
 | [Project tools](#project-tools) | Your `defineTool` tools |
@@ -189,20 +259,24 @@ current path and revision. Takes no arguments.
 
 `tap`, `double_tap`, `long_press`, `right_click`, `hover`, `type`, `press`,
 `select`, `check`, `scroll`, `scroll_to`, `drag`, `upload`, `navigate`,
-`back`, `type_secret`. Each returns the action's summary, the
-[test line](#test_lines) that repeats it, and what changed on screen.
+`back`, `resize_viewport`, `type_secret`. Each returns the action's summary, the
+[test line](#test_lines) that repeats it or why there is none, and what
+changed on screen.
 
 | Input | Does |
 | --- | --- |
 | A node id | From the newest observation. |
-| The value, key, `checked` state, direction, drop target, project-relative `files`, URL, or secret name | What the verb needs. |
+| The value, key, `checked` state, direction, drop target, project-relative or `sample:` `files`, URL, `width` and `height`, or secret name | What the verb needs. |
 | `modifiers` (optional) | On `tap`, `double_tap`, and `right_click`, when the engine declares `tapModifiers`: a list of `Shift`, `Control`, `Alt`, `Meta`, `ControlOrMeta`, held for the click. |
 
 - A verb the engine does not declare is not in the catalog.
 - `upload` refuses a path outside the project, a hidden file, or a file
-  under a hidden directory with `POLICY_DENIED`.
+  under a hidden directory with `POLICY_DENIED`. A `sample:` file has no
+  test line: save a file in the project for one.
 - `type_secret` is listed when the config declares `credentials` or
-  `secrets` and the engine declares the `fill` action. The plaintext never reaches the agent.
+  `secrets` and the engine declares the `fill` action. The plaintext never
+  reaches the agent as text; see
+  [screenshots after a secret fill](/reference/security#screenshots-after-a-secret-fill).
 
 #### `dismiss_keyboard`
 
@@ -227,10 +301,67 @@ Returns how many nodes match a semantic locator, which ones, and the
 - What it shows of a node passes the secret ledger, as `observe` does: a
   filled secret reads `<secret:name>`.
 
+#### `run_code`
+
+Runs test statements on the live session and returns each one's pass or
+failure, a read's value, and what changed on screen. Run a line here before
+you write it into a test.
+
+```txt
+call {tool: "run_code", args: {code: "await screen.getByLabel('Email').fill('ada@example.com');\nawait expect(screen.getByRole('status')).toHaveText('Saved');"}}
+```
+
+| Input | Does |
+| --- | --- |
+| `code` | One or more statements as a test body writes them, separated by `;` or new lines. |
+| `timeout` | Optional. How long each statement may wait, in ms, 1 through 120000. Default `5000`. |
+
+- Statements run in order on the session's `screen` and `app` fixtures, with
+  a test's waits, exactly-one rule, and matchers.
+- The first failure stops the call. The rest don't run, the app stays where
+  the passing statements left it, and the result is an error result with the
+  code and message a test would get.
+- The statements that pass, except reads, join the
+  [`test_lines`](#test_lines) draft as written, in the order they ran.
+- Each statement waits at most `timeout`, its own `timeout` option included.
+  The config's [`actionTimeout`](/reference/config#actiontimeout) and
+  [`assertionTimeout`](/reference/config#assertiontimeout) apply when
+  shorter. The cap also covers `app.open`, `app.restart`, and
+  `app.clearState`, so raise it for a slow first load or a device relaunch.
+- `timeout` doesn't stop a regular expression mid-match. One that
+  backtracks, such as `/^(\w+\s?)*$/` on a long line, blocks the server
+  until it finishes.
+- Reads and matchers see `<secret:name>` where a secret value is.
+- A secret `fill` passes the checks `type_secret` runs, on the field it lands
+  on: a configured secret, an enabled editable field, and a password field
+  for a password.
+
+The code is parsed, never run as JavaScript. The grammar takes:
+
+| Part | Accepted |
+| --- | --- |
+| Statement | An optional `await`, then a chain on `screen` or `app` that ends in an action or a read, or `expect(locator)` with an optional `.not` and one matcher |
+| Locator | `screen.getByRole`, `getByLabel`, `getByText`, `getByPlaceholder`, `getByTestId`, or `getByDisplayValue`, narrowed with `filter`, `or`, `first`, `last`, `nth`, and more `getBy*` |
+| Argument | A string, number, boolean, `null`, regular expression, template without `${}`, array, object, locator, or `credentials.user(name).username` |
+| Secret | `credentials.user(name).password` or `secrets.get(name)`, as `fill`'s value only |
+
+Left out: fixtures an engine contributes (`browser`, `device`),
+`expect(screen)`, `toHaveScreenshot`, `app.screenshot`, `screen.debug`,
+`all`, `setInputFiles`, and the value matchers (`toBe`, `toEqual`).
+
+| Throws | When |
+| --- | --- |
+| `INVALID_ARGUMENT` | Code that doesn't parse or is outside the grammar, such as another name, a call it lacks, an assignment, or a function. The message quotes it with its line and column, and no statement runs. |
+| `INVALID_ARGUMENT` | A matcher that expects `<secret:name>`, since a test compares the real value. No statement runs. |
+| `POLICY_DENIED` | A secret `fill` into a field that fails the `type_secret` checks. Nothing is typed. |
+| `POLICY_DENIED` | A read of a password field. |
+| `POLICY_DENIED` | When the config declares a secret or credential, a locator found by part of a text: a regular expression, an `exact` other than `true`, or `hasText`. Find it by its exact text. No statement runs. |
+
 #### `test_lines`
 
-Returns every test line the session's actions printed, in order, as a draft
-test body. Takes no arguments.
+Returns every test line the session's actions printed, and every statement
+[`run_code`](#run_code) passed, in order, as a draft test body. Takes no
+arguments.
 
 Each action's result carries its line after the summary:
 
@@ -258,7 +389,7 @@ Test line: await screen.getByRole("button", "Sign in").tap();
 
 | Action | Line |
 | --- | --- |
-| Opening the session | `app.open()` |
+| Opening the session, without [`test`](#running-a-test) | `app.open()` |
 | `tap`, `double_tap`, `long_press`, `right_click`, `hover` | `tap()`, `doubleTap()`, `longPress()`, `secondaryTap()`, `hover()`, with any `modifiers` |
 | `type` into a node | `fill(value)`; a credential's username as `credentials.user(name).username` |
 | `type_secret` | `fill(credentials.user(name).password)` or `fill(secrets.get(name))`, never the value |
@@ -269,32 +400,44 @@ Test line: await screen.getByRole("button", "Sign in").tap();
 | `navigate`, `back` | `app.open(url)`, with a URL on the app's origin as its path; `app.back()` |
 
 No line: `type` or `press` with no target, `press` with `times` over 1,
-`scroll`, `scroll_to` a text, `dismiss_keyboard`, and a `type` the node took
-through the keyboard. The [point tools](#point-tools) print nothing.
+`scroll`, `scroll_to` a text, `dismiss_keyboard`, `resize_viewport` (set the
+size with the engine fixture, `browser.setViewport` on web), and a `type` the
+node took through the keyboard. The [point tools](#point-tools) print nothing.
 
 #### `screenshot`
 
-The masked viewport as an image. Takes no arguments.
+The masked viewport as an image.
+
+| Argument | Type | Description |
+| --- | --- | --- |
+| `path` | `string` | Optional. Also saves the screenshot as a PNG file, resolved against the project root, and returns its absolute path. A path outside the project, a hidden file, or one under a hidden directory is `POLICY_DENIED`. |
+
+```json
+{ "tool": "screenshot", "args": { "path": "screenshots/checkout.png" } }
+```
 
 - From then on every action result carries a fresh screenshot.
-- After a secret fill it answers `PIXEL_TAINTED`. See [Sessions](#sessions).
+- It masks secure fields only, after a secret fill too.
+- The file is a second, full-resolution capture, masked as `app.screenshot`
+  masks it. The attached image may be scaled down.
 
 #### Point tools
 
-Each takes `x` and `y` in the latest screenshot's pixels.
+Each takes `x` and `y` in the latest screenshot's pixels. `drag_at` takes its
+drop point as `to_x` and `to_y`.
 
 | Tool | Inputs | Does | Listed when the engine declares |
 | --- | --- | --- | --- |
-| `tap_at` | `x`, `y` | Taps a listed control under the point by id, otherwise the bare point through the engine's `performAt`. Without `performAt` the point must land on a listed control. | `tap` or `performAt` |
-| `hover_at` | `x`, `y` | Hovers the same way: a listed control under it by id, otherwise the bare point through `performAt`'s `hover` kind. | the `hover` action or pointer kind |
+| `tap_at` | `x`, `y` | Taps the bare point through the engine's `performAt`. Without `performAt` the point must land on a listed control, which is tapped by id. | `tap` or `performAt` |
+| `hover_at` | `x`, `y` | Hovers the same way: the bare point through `performAt`'s `hover` kind, otherwise a listed control under it by id. | the `hover` action or pointer kind |
+| `drag_at` | `x`, `y`, `to_x`, `to_y` | Drags from the first point to the second through `performAt`'s `dragTo` kind. Without that kind the points must land on two different listed controls, which are dragged by id, or the call fails with `UNSUPPORTED_CAPABILITY`. | the `dragTo` action or pointer kind |
 | `type_at` | `x`, `y`, `value`; `replace` on an engine with a keyboard | Fills a listed input under the point by id. With a keyboard, anything else is tapped to focus it and typed into, at the caret unless `replace` is set. Without one, a point on nothing listed fails. | `type` or a keyboard |
 | `press_at` | `x`, `y`, `key` | Sends the key to a listed control under the point by id. With a keyboard, anything else is tapped to focus it and the key goes through the keyboard. | `press` or a keyboard |
 | `select_at` | `x`, `y`, `value` (the option's visible label) | Picks the option in the listed select-like control under the point. Nothing listed there fails. | `select` |
 
 <Note>
 Before the session's first `screenshot`, each point tool answers with the
-line that says to take one, at no cost. Like `screenshot`, they answer
-`PIXEL_TAINTED` after a secret fill.
+line that says to take one, at no cost.
 </Note>
 
 #### Recording
@@ -329,10 +472,9 @@ call {tool: "stop_recording"}
   still running, and the close result lists its files.
 
 <Warning>
-Recordings are not masked and are not withheld after a secret was filled:
-they are files for a person to watch, and no tool returns their pixels. A
-secret typed into a plain input while recording is readable in the video,
-and a recording stopped after a secret was filled says so.
+Recordings are not masked: they are files for a person to watch, and no
+tool returns their pixels. A secret typed into a plain input while
+recording is readable in the video.
 </Warning>
 
 #### Project tools
@@ -349,7 +491,9 @@ own names, scoped to the target's platform. A mobile project that passes
 ## Setup
 
 The server ships with `e2e`. `e2e init` offers to register it in
-`.mcp.json` (Claude Code) and `.cursor/mcp.json` (Cursor). By hand:
+`.mcp.json` (Claude Code), `.cursor/mcp.json` (Cursor), and
+`.codex/config.toml` (Codex). Install dependencies and start the MCP client
+in the project directory so `npx` (`bunx` in a Bun project) uses the installed e2e version. By hand:
 
 <CodeGroup>
 ```bash npm
@@ -366,7 +510,8 @@ claude mcp add --scope project e2e -- bunx e2e mcp
 </CodeGroup>
 
 For clients that use a `mcpServers` config, add the entry shown above.
-Codex reads the project's `.codex/config.toml` once the project is trusted:
+Codex reads the project's `.codex/config.toml` once the project is trusted.
+Start a new session after registering it:
 
 ```toml title=".codex/config.toml"
 [mcp_servers.e2e]
@@ -376,30 +521,100 @@ args = ["e2e", "mcp"]
 
 The server is also listed in the
 [MCP Registry](https://registry.modelcontextprotocol.io) as
-`io.github.tester-army/e2e`. A client that installs it from there runs the
+`io.github.e2e-inc/e2e`. A client that installs it from there runs the
 listed release with `npx` and must start it in the project directory. The
 project still needs e2e and its engine installed, since the config imports
 them. A listed release on another version than the project's e2e can reject
 config keys it does not know; the registration above always matches.
 
 The server needs no model: a project without the optional `ai` package
-opens sessions and drives the app with the deterministic tools.
+opens sessions and drives the app with the deterministic tools. A test a
+session [runs](#running-a-test) calls the configured model for an agent step
+the replay cache cannot serve.
 
 Start the server in the project directory. Config discovery works like
 `e2e run`. For another config, see [`--config`](#config) and
 [`open_session`](#open_session).
+
+## Without a config
+
+In a directory with no config file, `open_session` needs an `engine`. The
+session has one target on that engine. Every other setting is at its
+default, so the session has no credentials, secrets, or project tools.
+
+```txt
+open_session {engine: "@e2e-dev/web", app: {url: "http://localhost:3000"}}
+open_session {engine: {package: "@e2e-dev/mobile", options: {platform: "ios"}}, app: {bundleId: "com.example.app"}}
+```
+
+A package name is enough for an engine that needs no options. To pass
+options, or to name an export, write `engine` as an object:
+
+| Field | Type | Does |
+| --- | --- | --- |
+| `package` | string | The package to load. It can carry a subpath, such as `@e2e-dev/testmu/web`. |
+| `export` | string | The export to call. Default: the default export. |
+| `options` | object | The options the factory takes, as in an `e2e.config.ts`. |
+
+- **A package name alone** calls the package's default export with no
+  options. `@e2e-dev/web` and `@e2e-dev/mobile` export their factory this
+  way. [Your own engine](/writing-an-engine#open-it-by-name) can do the same.
+- **An option can be another factory call.** The server reads an option
+  value as a call when it has `package` and no key other than `export` and
+  `options`. It makes that call first and passes the result as the option.
+  Use it to give an engine a device or browser provider:
+
+  ```txt
+  open_session {
+    engine: {package: "@e2e-dev/mobile", options: {
+      platform: "ios",
+      device: {package: "@e2e-dev/limrun", export: "limrun", options: {region: "eu"}}
+    }},
+    app: {bundleId: "com.example.app"}
+  }
+  ```
+
+  The call above builds
+  `mobile({ platform: 'ios', device: limrun({ region: 'eu' }) })`. The
+  provider reads its API key from the server's environment.
+- **Lookup.** The server looks for each package in the project, then beside
+  the running `e2e`, then in `~/.e2e/engines`. When it is in none of them,
+  the error names the command that installs it for every project:
+  `npm install --prefix ~/.e2e/engines @e2e-dev/web`.
+- **`app`** takes `url`, `bundleId`, and `appPath`, as a target's
+  [`app`](/reference/config#the-app-under-test) does. `@e2e-dev/web` needs
+  `url`. `@e2e-dev/mobile` needs `bundleId` or `appPath`.
+- **Files.** The project root is the server's working directory, and the
+  session writes `.e2e/` there.
+- **Tests.** `run_tests` and `open_session {test}` need a config. To keep
+  the session's test lines as a test, write a config with
+  [`e2e init`](/reference/cli#e2e-init).
+- **Several sessions.** Sessions opened with `engine` run side by side. A
+  session on a config doesn't open beside them and fails with
+  `CONFIG_IN_USE`.
+
+| Throws | When |
+| --- | --- |
+| `CONFIG_NOT_FOUND` | `open_session` without `engine`, and the directory has no config. |
+| `ENGINE_NOT_INSTALLED` | A package that `engine` names is in none of the three lookup places. |
+| `INVALID_ARGUMENT` | `package` is not a package name, `export` is not an export name, `engine` comes with `target`, `config`, or `test`, or the directory has a config. Also `app` without `engine`. |
+| `INVALID_CONFIG` | The named export is not a function, a factory refused its `options`, the engine's factory returned no engine, or the engine refused `app`. For an export that is not a function, the message lists the package's functions. |
 
 ## Output
 
 - Operator output goes to stderr, prefixed `e2e mcp:`. Stdout carries only
   the protocol.
 - What your code writes through `console`, `process.stdout`, or
-  `process.stderr` (the config's top-level code, project tools) goes to
-  stderr with secret values redacted.
+  `process.stderr` (the config's top-level code, project tools, a test a
+  session runs) goes to stderr with secret values redacted.
 - Output printed while a config loads appears once it has loaded. If the
   load fails, that output is withheld, since the config's secrets are
   unknown.
-- An error nobody caught is logged redacted and shuts the server down.
+- A promise a session's test leaves rejected fails that test, as in a run.
+  One that rejects after the test's body ended is an `UNHANDLED_REJECTION`
+  line in `close_session`'s result, and a warning on stderr once the session
+  has closed. Any other error nobody caught, a rejection before any session
+  has run a test included, is logged redacted and shuts the server down.
 
 <Note>
 A child process that inherits the server's stdio writes past this.
@@ -419,26 +634,84 @@ A session closes:
 - on SIGINT or SIGTERM.
 
 The client disconnects when it closes the server's stdin or dies. Then every
-session closes, the app commands the sessions started stop, and the server
-exits.
+session closes, the app commands the sessions started stop, a `run_tests`
+run is interrupted, and the server exits.
 
 Sessions enforce what tests enforce:
 
 - Node ids are valid only against the newest observation.
-- A secret fills only through `type_secret`. Once one has been filled,
-  [`screenshot`](#screenshot) and the [point tools](#point-tools) stay in the
-  catalog but answer `PIXEL_TAINTED` for the rest of the session.
+- A secret fills only through `type_secret` or a [`run_code`](#run_code)
+  `fill`, under the same checks.
 - Once the config has loaded, its secret values are redacted from every text
   a tool returns, a node `locate` found, an action's result, an
   `open_session` or `close_session` failure, a cleanup line, and the server's
   own log lines.
-- Nothing a session does is recorded as a test result or into the replay
-  cache. Its artifacts land under
+- Nothing a session does is recorded as a test result. Only a test the
+  session runs reads or writes the replay cache
+  ([Running a test](#running-a-test)). Its artifacts land under
   `<output>/results/mcp/<target>-<attemptId>/`, its videos under
   `<output>/videos/`. A later `e2e run` clears `<output>/results`; the videos
   stay.
 - A queued call cancelled by the client does not execute when its turn
   arrives.
+
+## Running a test
+
+`open_session {test}` runs one test of the project on the session's attempt,
+then hands the session over on the screen where the test stopped. A coding
+agent fixes a failing test from there without clicking through the flow
+again.
+
+```txt
+open_session {test: "tests/checkout.e2e.ts:12"}
+```
+
+- **Selection.** `test` takes what `e2e run` takes as a positional: a file
+  with `:line` for the test declared on that line, a file, a directory, a
+  glob, or a name. It must select exactly one test on the session's target.
+  The line is the one the `test(` call is on; a line inside the test
+  selects nothing.
+- **What runs.** The test's `beforeAll` hooks, its `test.extend()` fixtures,
+  its `beforeEach` hooks, and its body, with the same fixtures, locators,
+  `expect`, `timeout`, `actionTimeout`, and `assertionTimeout` as in a run.
+  The session does not open the app URL or launch the pinned app first; the
+  test opens the app itself.
+- **Where it stops.** At the first failure, or at the end of the body. Nothing
+  is torn down. The opening text leads with the outcome: passed, or failed
+  with the code, the message, the failing line and the code around it, the
+  URL, the nodes nearest a locator that matched nothing, and the last 15
+  steps. The session summary, the catalog, and the screen follow.
+- **Test lines.** The test's own steps print no [test line](#test_lines).
+  The session's lines start with the agent's first action, and `test_lines`
+  returns them as the lines that continue the test.
+- **Teardown.** `afterEach` hooks, fixture teardowns, and `afterAll` hooks
+  run at `close_session`, or when the session closes on its own. Their
+  failures show as `Cleanup (afterEach)` and `Cleanup (afterAll)` lines.
+- **Rerun.** `close_session`, then `open_session {test}` again. Each session
+  loads the config and the test files fresh, files they import included.
+- **Replay cache.** The test reads and writes the cache as a run's first
+  attempt: steps replay, and a new recording is saved once a later check
+  passes. A failure evicts the entries no check confirmed. The cache settles
+  when the body ends, so an `afterEach` check confirms nothing.
+  [`cache.strict`](/reference/config#cache) holds as in a run.
+- **Not part of it.** No test result, report, or trace page. Retries, and the
+  test's `trace` and `video` modes, don't apply. The failure screenshot and
+  `screen-at-failure.txt` land in the session's artifacts directory.
+- **Screenshots.** Each session counts as a run of its own for
+  `toHaveScreenshot`: a baseline one session writes is compared against in
+  the next.
+- **Several sessions.** Test code in two sessions takes turns: one session
+  runs its test or its teardown at a time, since `expect.poll`,
+  `expect.soft`, and `test.skip` find the running test through one slot per
+  process. An open cancelled while its test waits for its turn runs none of
+  the test's code.
+
+| Throws | When |
+| --- | --- |
+| `NO_TESTS` | `test` selects no runnable test. The message names the cause, as for `e2e run`. |
+| `TEST_AMBIGUOUS` | `test` selects several tests. The message lists them as `file:line`. |
+| `SESSION_TEST_UNSUPPORTED` | The test is in a serial group, starts from a setup test's `session`, or runs as several agents. |
+| `COLLECTION_ERROR` | A test file fails to collect, as for `e2e run`. |
 
 ## Several sessions
 
@@ -446,15 +719,15 @@ Several sessions can be open at once, up to `--max-sessions`, each on its
 own attempt and its own browser or device. Parallel agents, such as a
 coding agent's subagents, share one server this way: each opens a session
 and passes its id to every `tools`, `call`, and `close_session`.
-[Bug bashes](/bug-bash) use this: every verifying subagent drives its own
-session.
+[Bug bashes](/bug-bash) use this: a verifying subagent that hardens a repro
+into a scripted test drives its own session.
 
 | Throws | When |
 | --- | --- |
 | `SESSION_REQUIRED` | A call without `session` while several are open. The message lists the open sessions. |
 | `NO_SESSION` | A `session` id that is not open. For a session that is closing or ended, the message says why. |
 | `SESSION_OPEN` | An `open_session` past the limit, or while the server shuts down. |
-| `CONFIG_IN_USE` | An `open_session` on another config while sessions are open. |
+| `CONFIG_IN_USE` | An `open_session` on another config while sessions are open, or on a config beside sessions opened with `engine`. |
 | `ENGINE_IN_USE` | A second session on an engine created inside a package. |
 | `CANCELLED` | An `open_session` the client cancelled or disconnected from, or the server shut down during, once what it started has stopped. |
 
@@ -468,7 +741,7 @@ session.
   `readyUrl`, say) has stopped.
 - Each session loads the config afresh, down to the files it imports by
   path, such as a base config it spreads, so each gets engine instances of
-  its own. An engine created inside a package is one instance every session
+  its own. A session that runs a test loads the test files the same way. An engine created inside a package is one instance every session
   shares.
 - Sessions on one app command share its process: the first session starts
   it, and it stops when the last of them closes. A URL declared with port

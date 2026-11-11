@@ -1,9 +1,8 @@
 ---
 title: Security
 description: What the model can see and do, how secrets stay out of it, and what you still need to watch.
-icon: "shield-halved"
-"og:image": "https://e2e.tester.army/docs/images/og/security.png?v=6c43d95c56"
-"twitter:image": "https://e2e.tester.army/docs/images/og/security.png?v=6c43d95c56"
+"og:image": "https://e2e.com/docs/images/og/security.png?v=6c43d95c56"
+"twitter:image": "https://e2e.com/docs/images/og/security.png?v=6c43d95c56"
 ---
 
 e2e trusts the code you write and treats everything the app shows as
@@ -16,26 +15,26 @@ A `Secret` is a handle with no plaintext accessor. The model sees only its
 name and purpose. When the model asks to fill one, the runner checks the
 field and types the value itself.
 
-After a secret fill, the model gets no screenshots for the rest of the
-attempt, because the app could show the value anywhere. Every known secret value becomes
-`<secret:name>` in model input, reports, console output, and `.txt`,
-`.csv`, `.json`, `.html`, and `.htm` downloads.
+Every known secret value becomes `<secret:name>` in the model's text input, reports,
+console output, and `.txt`, `.csv`, `.json`, `.html`, and `.htm` downloads.
 
 ## What can still leak
 
-Redaction matches strings, and only a secret fill turns model screenshots off:
+Redaction matches strings, and screenshots mask secure fields only:
 
-- **Screenshots, video, and downloads.** Screenshots mask secure fields
-  only, video masks nothing, and a download other than a redacted text file
-  is kept as served. If the test typed a password, check them before you
-  share them.
+- **Screenshots, the model's included.** A generic secret filled into a
+  plain input, or a value the app shows outside a secure field, is in the
+  image and reaches your model provider. Use test credentials, not
+  production secrets.
+- **Video and downloads.** Video masks nothing, and a download other than a
+  redacted text file is kept as served. If the test typed a password, check
+  them before you share them.
 - **`command.log`.** It holds your app's stdout and stderr verbatim. Keep
   secrets out of your app's output.
 - **Transformed values.** The last four characters of a key, or its base64,
   pass through. Assert the outcome, not the secret.
-- **Values not filled as a secret.** A secret passed as a plain string, or a
-  sign-in that sets a cookie, leaves model screenshots on. Only a configured
-  secret's value is redacted.
+- **Values not filled as a secret.** Only a configured secret's value is
+  redacted. A value a sign-in sets in a cookie is not.
 - **Request credentials.** `basicAuth` answers a `401` from any origin.
   `headers` reach every host under a shared domain such as `vercel.app`.
 - **Committed recordings.** Cache entries store typed values verbatim, except
@@ -71,16 +70,16 @@ opt out, [telemetry](/telemetry) at `eu.i.posthog.com`. There is no crash
 reporting. A CLI command on a terminal checks `registry.npmjs.org` for a
 newer release at most once a day, `e2e feedback` checks before each
 report unless `--allow-outdated`, and `e2e upgrade` reads the versions of
-the e2e packages the project lists. Integrations such as Kernel, EAS Simulators, Limrun, and smol add
+the e2e packages the project lists. Integrations such as Kernel, Expo Simulators, Limrun, and smol add
 their own destinations, listed with the rest under
 [Outbound connections](/reference/security#outbound-connections).
 
 ## Report a vulnerability
 
 Report privately through
-[GitHub security advisories](https://github.com/tester-army/e2e/security/advisories/new)
-or by mail to security@tester.army. The
-[security policy](https://github.com/tester-army/e2e/blob/main/SECURITY.md)
+[GitHub security advisories](https://github.com/e2e-inc/e2e/security/advisories/new)
+or by mail to security@e2e.com. The
+[security policy](https://github.com/e2e-inc/e2e/blob/main/SECURITY.md)
 states response times and supported versions.
 
 ## Next
@@ -89,7 +88,7 @@ states response times and supported versions.
   <Card title="Security rules" icon="lock" href="/reference/security">
     Every rule behind this page, as the code enforces it.
   </Card>
-  <Card title="Signing in" icon="key" href="/authentication">
+  <Card title="Authentication" icon="key" href="/authentication">
     Pass secrets to tests and agent steps, and save sessions.
   </Card>
   <Card title="Continuous integration" icon="rotate" href="/ci">

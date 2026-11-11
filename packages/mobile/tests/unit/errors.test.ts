@@ -4,7 +4,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { AppError } from 'agent-device';
 import { EngineError, TestError, type OperationContext, type SemanticNode } from 'e2e/engine';
-import { isRunnerFailure, isSnapshotPresentationFailure, staleOr, translateError } from '../../src/errors.ts';
+import { isAppNotInstalled, isRunnerFailure, isSnapshotPresentationFailure, staleOr, translateError } from '../../src/errors.ts';
 import { SETTINGS_SNAPSHOT } from '../helpers/fake-client.ts';
 import { boot, harness, PROJECT_ROOT, type Harness } from '../helpers/harness.ts';
 import { ignoreTrace, noSecrets } from '../helpers/secrets.ts';
@@ -86,6 +86,18 @@ describe('error translation', () => {
     expect(translateError(refused, 'observe')).toMatchObject({ code: 'ENGINE_FAILURE' });
   });
 
+  it.each(['no', 'unknown', undefined] as const)('retries a moving target only when no input was dispatched (%s)', (dispatched) => {
+    const cause = new AppError('COMMAND_FAILED', 'Target position was not confirmed', {
+      reason: 'target_still_moving',
+      ...(dispatched === undefined ? {} : { dispatched }),
+    });
+    expect(staleOr(cause, 'perform tap')).toMatchObject({
+      code: dispatched === 'no' ? 'NODE_STALE' : 'ENGINE_FAILURE',
+      retryable: dispatched === 'no',
+      cause,
+    });
+  });
+
   it('maps the rest to ENGINE_FAILURE with the text, a ref named in a message without a stale reason included', () => {
     expect(staleOr(new Error('ref @e12 not found in the current snapshot'), 'perform tap')).toMatchObject({
       code: 'ENGINE_FAILURE',
@@ -115,6 +127,16 @@ describe('error translation', () => {
       hint: 'Check command arguments and run --help for usage examples.',
     });
     expect(translateError(advised, 'device.setPermission').message).toBe('device.setPermission failed: permission setting requires an active app in session');
+  });
+
+  it("drops the per-code default hint the daemon carries over, which names agent-device's CLI", () => {
+    const missing = new AppError('APP_NOT_INSTALLED', 'No app found matching "e2eBenchmark"', {
+      hint: 'Run apps to discover the exact installed package or bundle id, or install the app before open.',
+    });
+    const translated = translateError(missing, 'open e2eBenchmark');
+    expect(translated.message).toBe('open e2eBenchmark failed: No app found matching "e2eBenchmark"');
+    expect(isAppNotInstalled(translated)).toBe(true);
+    expect(isAppNotInstalled(translateError(new AppError('COMMAND_FAILED', 'plain'), 'open x'))).toBe(false);
   });
 
   it('turns an AbortError into CANCELLED', () => {
@@ -278,13 +300,15 @@ describe('automation runner failures through the engine', () => {
     await expect(h.prepare(prepareInfo(lines))).rejects.toMatchObject({
       message: expect.stringContaining('npx agent-device daemon stop'),
     });
-    expect(lines).toEqual(['booting iPhone 17 Pro (1 of 1)', 'booting iPhone 17 Pro (1 of 1)']);
+    // A failed open is timed too: the step times are logged as the error propagates.
+    const stepTimes = expect.stringMatching(/^iPhone 17 Pro: boot \d+\.\ds, iOS runner \d+\.\ds, open Settings \d+\.\ds$/);
+    expect(lines).toEqual(['booting iPhone 17 Pro (1 of 1)', stepTimes, 'booting iPhone 17 Pro (1 of 1)', stepTimes]);
 
     h.fake.respond('apps.open', () => {
       throw new Error('runner still installing');
     });
     await h.prepare(prepareInfo(lines));
-    expect(lines[3]).toMatch(/Settings did not open.*runner still installing/);
+    expect(lines[5]).toMatch(/Settings did not open.*runner still installing/);
   });
 
   it('closes every session a failed warm-up opened at finish, and still releases the leases when a close fails', async () => {

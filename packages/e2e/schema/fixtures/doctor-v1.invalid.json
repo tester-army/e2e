@@ -1,0 +1,6 @@
+{
+  "schemaVersion": "doctor-1",
+  "version": "0.22.1",
+  "ok": true,
+  "checks": [{ "id": "browser", "status": "missing", "target": "web" }]
+}

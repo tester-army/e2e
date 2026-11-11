@@ -1,6 +1,6 @@
 {
   "name": "@e2e-dev/web",
-  "version": "0.15.2",
+  "version": "0.15.5",
   "description": "Web engine for e2e agentic end-to-end testing, built on Playwright",
   "keywords": [
     "e2e",
@@ -20,13 +20,13 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/tester-army/e2e.git",
+    "url": "git+https://github.com/e2e-inc/e2e.git",
     "directory": "packages/web"
   },
   "bugs": {
-    "url": "https://github.com/tester-army/e2e/issues"
+    "url": "https://github.com/e2e-inc/e2e/issues"
   },
-  "homepage": "https://github.com/tester-army/e2e/tree/main/packages/web#readme",
+  "homepage": "https://github.com/e2e-inc/e2e/tree/main/packages/web#readme",
   "publishConfig": {
     "registry": "https://registry.npmjs.org/",
     "access": "public",
@@ -55,18 +55,17 @@
     "test:unit": "vitest run tests/unit"
   },
   "dependencies": {
-    "playwright-core": "1.64.1"
+    "playwright-core": "1.65.0"
   },
   "peerDependencies": {
-    "e2e": ">=0.18.0 <1"
+    "e2e": ">=0.22.1 <1"
   },
   "devDependencies": {
-    "@types/node": "26.6.2",
+    "@napi-rs/image": "1.16.0",
+    "@types/node": "26.6.6",
     "e2e": "workspace:*",
-    "@types/pngjs": "6.0.5",
-    "pngjs": "7.0.0",
     "typescript": "7.0.2",
-    "vitest": "5.0.1"
+    "vitest": "5.1.0"
   },
   "engines": {
     "node": "^22.22.3 || >=24.8.0"

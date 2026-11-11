@@ -1,9 +1,8 @@
 ---
 title: Decision models
 description: Run bounded actions with a decision model and a small text model instead of a full LLM agent.
-icon: "scale-balanced"
-"og:image": "https://e2e.tester.army/docs/images/og/decision-models.png?v=bc0d69c206"
-"twitter:image": "https://e2e.tester.army/docs/images/og/decision-models.png?v=bc0d69c206"
+"og:image": "https://e2e.com/docs/images/og/decision-models.png?v=bc0d69c206"
+"twitter:image": "https://e2e.com/docs/images/og/decision-models.png?v=bc0d69c206"
 ---
 
 `@e2e-dev/decision` runs `agent.act` and `agent.assert` through a decision
@@ -16,6 +15,9 @@ Any AI SDK decision model that answers `choice` questions with probabilities
 works, such as TypeSafe Jev or OpenAI `gpt-6-luna`. `evaluationModel()`
 instances work too. A model id string or a language model in `model` fails
 the config load with `INVALID_CONFIG`.
+
+The same package's `decisionFilter()` runs only the tests a pull request can
+affect. See [Test filters](/filters).
 
 ## Install and configure
 
@@ -169,8 +171,7 @@ set a threshold.
 `vision: true` adds a masked screenshot to every observation. Assertions and
 completion checks see it, so the model can judge drawn content the tree
 doesn't show. The operation and target questions read the tree only.
-`agent.assert(..., { vision: true })` and `vision: 'only'` work too. After a
-secret fill in the attempt, the executor gets no pixels.
+`agent.assert(..., { vision: true })` and `vision: 'only'` work too.
 
 The model must accept images and answer `score` questions. TypeSafe Jev
 does with `@ai-sdk/typesafe-ai` 3.0.19 or later and a TypeSafe API key in

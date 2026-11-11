@@ -8,7 +8,8 @@
  * | SESSION_NOT_FOUND, or a session-or-device-selector refusal  | INVALID_STATE                |
  * | UNSUPPORTED_OPERATION, NOT_IMPLEMENTED, UNSUPPORTED_PLATFORM | UNSUPPORTED_CAPABILITY      |
  * | "not supported on this device" under any code                | UNSUPPORTED_CAPABILITY       |
- * | a stale-ref refusal, by `details.reason` (action paths only) | NODE_STALE (retryable)      |
+ * | a stale-ref refusal by `details.reason` (action paths only)  | NODE_STALE (retryable)        |
+ * | target_still_moving with `details.dispatched: no`            | NODE_STALE (retryable)        |
  * | the iOS runner busy, wedged, or past its watchdog           | ENGINE_FAILURE, naming the   |
  * | a snapshot the iOS runner acquired but could not present    |   runner and the recovery    |
  * | anything else, agent-device's own timeouts included         | ENGINE_FAILURE with the text |
@@ -24,6 +25,7 @@
  */
 
 import { isAgentDeviceError, normalizeAgentDeviceError } from 'agent-device';
+import { defaultHintForCode } from 'agent-device/contracts';
 import { EngineError, ConfigurationError, InfrastructureError, TestError, raceAbort } from 'e2e/engine';
 import { cancelled } from './support.ts';
 
@@ -52,12 +54,14 @@ function details(cause: unknown): Record<string, unknown> {
  * The normalized message followed by the hint the failure itself declared.
  * That hint is the recovery path (press return, tap the app's own Done
  * control) and the model only ever sees the error text, so dropping it leaves
- * the agent retrying the same refused action. The per-code default hint the
- * normalizer would add is CLI advice and stays out.
+ * the agent retrying the same refused action. The per-code default hint is
+ * CLI advice (`Run apps to discover...`) and stays out, also when the daemon
+ * carries it over in `details.hint`.
  */
 function withHint(cause: unknown, text: string): string {
   const hint = details(cause).hint;
   if (typeof hint !== 'string' || hint.trim() === '' || CLI_ADVICE.test(hint)) return text;
+  if (hint === defaultHintForCode(normalizeAgentDeviceError(cause).code)) return text;
   return `${text} Hint: ${hint.trim()}`;
 }
 
@@ -257,6 +261,11 @@ export function isAppNotRunning(error: unknown): boolean {
   return error instanceof Error && details(error.cause).runnerErrorCode === 'APP_NOT_RUNNING';
 }
 
+/** True for a translated `open` agent-device refused because no installed app matches the name. */
+export function isAppNotInstalled(error: unknown): boolean {
+  return error instanceof Error && isAgentDeviceError(error.cause) && normalizeAgentDeviceError(error.cause).code === 'APP_NOT_INSTALLED';
+}
+
 /**
  * Runs one agent-device command under an abort signal and translates its
  * failure onto the engine taxonomy: the one boundary every command crosses.
@@ -272,15 +281,16 @@ export async function runCommand<T>(label: string, work: () => Promise<T>, signa
 /**
  * Like translateError, but a ref agent-device refused as stale becomes
  * retryable `NODE_STALE`: nothing was dispatched, so the harness may
- * re-observe and re-resolve the node instead of failing the action. Keyed on
- * the reason alone: agent-device marks a drag's stale ref `dispatched:
- * 'unknown'` after Android blocking-dialog recovery, although it refuses it
- * before the gesture.
+ * re-observe and re-resolve the node instead of failing the action. Existing
+ * stale-ref reasons are sufficient on their own: Android dialog recovery can
+ * mark a refused drag as `dispatched: unknown`. A `target_still_moving` refusal
+ * additionally requires `dispatched: no`; missing or unknown dispatch is not retryable.
  */
 export function staleOr(cause: unknown, operation: string, where?: string): Error {
   if (isClassified(cause)) return cause;
-  const { reason } = details(cause);
-  if (typeof reason === 'string' && STALE_REF_REASONS.has(reason)) {
+  const { reason, dispatched } = details(cause);
+  if ((typeof reason === 'string' && STALE_REF_REASONS.has(reason)) ||
+      (reason === 'target_still_moving' && dispatched === 'no')) {
     return new EngineError('NODE_STALE', `${operation}: ${message(cause)}`, { retryable: true, cause });
   }
   return translateError(cause, operation, where);

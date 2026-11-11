@@ -79,6 +79,12 @@ function serialGroup(id: string, memberTestId: string, status: 'passed' | 'faile
 }
 
 describe('foldLastRun', () => {
+  it('leaves the rerun as it is when the run before was an exploration', () => {
+    const explored = report({ status: 'failed', results: [result({ title: 'Explore checkout', status: 'failed', attempts: [failedAttempt] })] });
+    explored.run.explore = { goal: 'Explore checkout', budgets: { maxSteps: 8, timeoutMs: 600_000 }, ended: 'finished', steps: [], findings: [] };
+    expect(foldLastRun(rerun, explored)).toBe(rerun);
+  });
+
   it('carries the tests the rerun left out, marks a recovered test flaky with both runs\' attempts, and keeps a still-failing one failed', () => {
     const folded = foldLastRun(rerun, firstPass);
     const entries = byTitle(folded);
@@ -281,6 +287,93 @@ describe('foldLastRun', () => {
     expect(folded.run.serialGroups).toEqual([group]);
     expect(folded.run.status).toBe('failed');
     expect(renderMarkdownReport(folded)).toContain('step one broke');
+  });
+
+  it('keeps the filters and the change of the run before beside the tests its filters left out, since a --last-failed rerun runs no filter', () => {
+    const base = '0123456789abcdef0123456789abcdef01234567';
+    const before = report({
+      status: 'failed',
+      results: [
+        result({ title: 'alpha', status: 'failed', attempts: [failedAttempt] }),
+        result({ title: 'beta', status: 'passed', attempts: [attempt()] }),
+        result({ title: 'gamma', status: 'skipped', selected: false, skip: { cause: 'filtered', reason: 'Jev: 5% likely affected', filter: 'jev' } }),
+      ],
+      filters: [{ name: 'jev', candidates: 3, excluded: 1 }],
+      changes: { base, files: 4 },
+    });
+    const lastFailed = report({
+      results: [
+        result({ title: 'alpha', status: 'passed', attempts: [attempt()] }),
+        result({ title: 'beta', status: 'skipped', selected: false, skip: leftOut }),
+        result({ title: 'gamma', status: 'skipped', selected: false, skip: leftOut }),
+      ],
+      changes: { skipped: '--last-failed' },
+    });
+    const folded = foldLastRun(lastFailed, before);
+    expect(folded.run.filters).toEqual(before.run.filters);
+    expect(folded.run.changes).toEqual(before.run.changes);
+    expect(byTitle(folded).get('gamma#0')).toMatchObject({ selected: false, skip: { filter: 'jev' } });
+    const page = renderMarkdownReport(folded);
+    expect(page).toContain(', 1 left out by filters\n');
+    expect(page).toContain('**Filter** `jev` kept 2 of 3 tests, left out 1\n');
+
+    // A first pass that ran no filter folds to no run.filters and no run.changes, not even the rerun's `--last-failed` record.
+    const unfiltered = foldLastRun(lastFailed, report({ status: 'failed', results: before.run.results.slice(0, 2) }));
+    expect(unfiltered.run.filters).toBeUndefined();
+    expect(unfiltered.run.changes).toBeUndefined();
+  });
+
+  it('counts only the tests still left out on the page when the rerun ran one the run before\'s filter left out', () => {
+    const before = report({
+      status: 'failed',
+      results: [
+        result({ title: 'sign in', status: 'failed', attempts: [failedAttempt] }),
+        result({ title: 'member b', status: 'skipped', selected: false, skip: { cause: 'filtered', reason: 'unaffected', filter: 'pages' } }),
+        result({ title: 'guest page', status: 'passed', attempts: [attempt()] }),
+      ],
+      filters: [{ name: 'pages', candidates: 2, excluded: 1 }],
+      changes: { base: '0123456789abcdef0123456789abcdef01234567', files: 2 },
+    });
+    const lastFailed = report({
+      results: [
+        result({ title: 'sign in', status: 'passed', attempts: [attempt()] }),
+        result({ title: 'member b', status: 'passed', attempts: [attempt()] }),
+        result({ title: 'guest page', status: 'skipped', selected: false, skip: leftOut }),
+      ],
+      changes: { skipped: '--last-failed' },
+    });
+    const folded = foldLastRun(lastFailed, before);
+    expect(byTitle(folded).get('member b#0')).toMatchObject({ selected: true, status: 'passed' });
+    const page = renderMarkdownReport(folded);
+    expect(page).toContain('**Filter** `pages` kept all 2 tests\n');
+    expect(page).not.toContain('left out by filters');
+  });
+
+  it('counts a serial member executed when its body ran in any group attempt, one that skipped itself included', () => {
+    const titles = ['one', 'two', 'three'];
+    const memberIds = titles.map((title) => `tests/example.e2e.ts::wizard::${title}`);
+    const blocked = { cause: 'serial-predecessor-failed' as const, reason: 'member 0 failed in this group attempt' };
+    const run = (statuses: readonly ('failed' | 'skipped' | 'self-skipped')[]) => {
+      const group = serialGroup('g1', memberIds[0]!, 'failed');
+      const members = statuses.map((status, index) => ({
+        ...group.attempts[0]!.members[0]!,
+        id: `g1:member:${index}`,
+        index,
+        testId: memberIds[index]!,
+        status: status === 'failed' ? ('failed' as const) : ('skipped' as const),
+        ...(status === 'failed' ? {} : { error: undefined, skip: status === 'self-skipped' ? { cause: 'explicit' as const, reason: 'not here' } : blocked }),
+      }));
+      return report({
+        status: 'failed',
+        results: statuses.map((status, index) =>
+          result({ title: ['wizard', titles[index]!], status: status === 'failed' ? 'failed' : 'skipped', serialGroupId: 'g1', ...(status === 'failed' ? {} : { skip: members[index]!.skip }) }),
+        ),
+        serialGroups: [{ ...group, memberTestIds: memberIds, attempts: [{ ...group.attempts[0]!, members }] }],
+      });
+    };
+    const folded = foldLastRun(run(['self-skipped', 'failed', 'skipped']), run(['failed', 'skipped', 'skipped']));
+    // One ran in both runs and skipped itself in the rerun, two ran in the rerun, three never started.
+    expect(folded.run.summary).toMatchObject({ selected: 3, executed: 2, failed: 1, skipped: 2 });
   });
 
   it('leaves the rerun alone when the run before is another project\'s', () => {

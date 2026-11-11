@@ -3,8 +3,8 @@
  *
  * The feed owns every capture of a step: the settle that reads an action's
  * result after its effect, the ring of recent observations an id is resolved
- * against, the pixel decision (masking proven, viewport untainted), and the
- * executor's redacted view of a capture. Nothing else in the step observes
+ * against, the pixel decision (masking proven), and the executor's redacted
+ * view of a capture. Nothing else in the step observes
  * the engine; the dispatcher and the pixel tier ask the feed.
  */
 
@@ -66,6 +66,8 @@ export interface Lookup {
 }
 
 export interface ObservationFeedOptions {
+  /** False when the step asked for semantic evidence only. */
+  readonly pixelsAllowed: boolean;
   /** The agent's observation byte ceiling, clamped per capture by the token limit. */
   readonly maxObservationBytes: number;
   /** The agent's per-request input token ceiling. */
@@ -168,7 +170,7 @@ export class ObservationFeed {
     }
     return this.queue.run(async () => {
       this.accounting.checkpoint();
-      const pixels = options.pixels === true;
+      const pixels = options.pixels === true && this.options.pixelsAllowed;
       const opening = this.opening;
       this.opening = undefined;
       const reusable = opening !== undefined && opening === this.newest && this.accounting.metrics.actionSteps === 0 &&
@@ -184,7 +186,7 @@ export class ObservationFeed {
       viewport: observation.viewport,
       ...(observation.path === undefined ? {} : { path: observation.path }),
     };
-    const pixels = options.pixels === true || observation.kind === 'pixels' ? this.pixelsFor(observation) : {};
+    const pixels = this.options.pixelsAllowed && (options.pixels === true || observation.kind === 'pixels') ? this.pixelsFor(observation) : {};
     if (observation.kind === 'pixels') {
       return { ...metadata, text: observation.text, treeUnavailable: true, truncated: true, ...pixels };
     }
@@ -283,12 +285,12 @@ export class ObservationFeed {
    * list reads between its pages. Direct rather than queued, like
    * `relocate`, since the queue is held by this very caller.
    */
-  async look(mode: SettleMode): Promise<AgentObservation> {
+  async look(mode: SettleMode, settledWhen?: (observation: AgentObservation) => boolean): Promise<AgentObservation> {
     this.accounting.checkpoint();
     const observation = await instrumentPhase(
       this.runtime,
       { api: this.accounting.api, kind: 'observation', phase: 'agent.observe', name: 'page' },
-      () => this.captureSettled(mode, false),
+      () => this.captureSettled(mode, false, settledWhen),
       observationDetail,
     );
     this.publish(observation);
@@ -308,13 +310,10 @@ export class ObservationFeed {
   private async observeNow(mode: SettleMode, pixels: boolean): Promise<AgentObservation> {
     this.opening = undefined;
     this.accounting.checkpoint();
-    // A tainted viewport never captures pixels: the engine would mask what it
-    // knows about, and the secret may be anywhere on screen by now.
-    const capturePixels = pixels && !this.runtime.exposure.withholdsModelPixels;
     const observation = await instrumentPhase(
       this.runtime,
       { api: this.accounting.api, kind: 'observation', phase: 'agent.observe' },
-      () => this.captureSettled(mode, capturePixels),
+      () => this.captureSettled(mode, pixels),
       observationDetail,
     );
     this.publish(observation);
@@ -327,9 +326,14 @@ export class ObservationFeed {
    * screen to leave the pre-action shape once, so later looks read the screen
    * as is; held still, it then proves the new shape holds for a beat, while
    * after-change reads the first post-change capture, which is all a fill's
-   * own field needs.
+   * own field needs. A held-still look the caller can already vouch for
+   * (`settledWhen`) returns that capture without the proof.
    */
-  private captureSettled(mode: SettleMode, pixels: boolean): Promise<AgentObservation> {
+  private captureSettled(
+    mode: SettleMode,
+    pixels: boolean,
+    settledWhen?: (observation: AgentObservation) => boolean,
+  ): Promise<AgentObservation> {
     if (mode === 'raw') return this.capture(pixels);
     const changedFrom = this.pendingChange;
     this.pendingChange = undefined;
@@ -346,6 +350,7 @@ export class ObservationFeed {
       {
         changedFrom,
         stableWaitMs: mode === 'held-still' ? HELD_STILL_MS : 0,
+        ...(mode === 'held-still' && settledWhen !== undefined ? { settledWhen } : {}),
         changeShapeOf: changeShape,
         transitional: isTransitionalObservation,
       },
@@ -389,13 +394,9 @@ export class ObservationFeed {
   private async capture(pixels: boolean): Promise<AgentObservation> {
     this.opening = undefined;
     const raw = await retryingObserve({
-      observe: (operation, pixelFallback) => this.runtime.engine.session.observe(operation, { pixels, pixelFallback }),
-      operation: () => this.accounting.operation(),
+      capture: () => this.runtime.engine.session.observe(this.accounting.operation(), { pixels, pixelFallback: this.options.pixelsAllowed }),
       guard: (cause) => this.accounting.checkpoint(cause),
       signal: this.runtime.engine.signal,
-      api: this.accounting.api,
-      fallback: true,
-      tainted: () => this.runtime.exposure.withholdsModelPixels,
     });
     if (raw.kind === 'pixels') {
       this.semanticHistory = false;
@@ -406,7 +407,7 @@ export class ObservationFeed {
       redact: this.runtime.redact,
       redactCut: this.runtime.redactCut,
       maxBytes: this.byteBudget(pixels || raw.kind === 'pixels'),
-      pixelsAllowed: !this.runtime.exposure.withholdsModelPixels,
+      pixelsAllowed: this.options.pixelsAllowed,
       appOrigin: this.runtime.app.base?.origin,
     });
     return prepared;
@@ -435,13 +436,10 @@ export class ObservationFeed {
    * whenever it changes within the step.
    */
   private pixelsFor(observation: AgentObservation): Pick<ExecutorObservation, 'pixels' | 'pixelsWithheld'> {
-    const outcome = pixelsForModel(observation, this.runtime.exposure.withholdsModelPixels);
+    const outcome = pixelsForModel(observation);
     if ('withheld' in outcome) {
       this.recordPixelDecision('denied', outcome.withheld);
       this.visionDegraded = outcome.withheld;
-      if (observation.kind === 'pixels') {
-        throw new TestError('UNSUPPORTED_CAPABILITY', 'semantic capture is unavailable and its screenshot is no longer permitted');
-      }
       return { pixelsWithheld: outcome.withheld };
     }
     this.recordPixelDecision('allowed');

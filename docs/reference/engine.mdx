@@ -1,17 +1,18 @@
 ---
 title: e2e/engine
 description: Build an engine with observations, actions, lifecycle hooks, and fixtures.
-icon: "gear"
-"og:image": "https://e2e.tester.army/docs/images/og/reference/engine.png?v=d82cf186db"
-"twitter:image": "https://e2e.tester.army/docs/images/og/reference/engine.png?v=d82cf186db"
+"og:image": "https://e2e.com/docs/images/og/reference/engine.png?v=d82cf186db"
+"twitter:image": "https://e2e.com/docs/images/og/reference/engine.png?v=d82cf186db"
 ---
 
 `e2e/engine` is the contract an engine implements to drive a user interface,
 such as a browser or simulator. An engine implements shared types for nodes,
 locators, actions, and errors. `defineEngine` validates and freezes the
 implementation, derives its capabilities, and returns a handle for `targets`
-in the config. Use `test.extend` fixtures for resources outside the UI, such
-as APIs or databases.
+in the config. The runner drives it over the
+[engine protocol](/reference/engine-protocol), in its own process; see
+[Engines](/engines). Use `test.extend` fixtures for resources outside the UI,
+such as APIs or databases.
 
 This sketch assumes a `connect` adapter for the platform:
 
@@ -88,7 +89,7 @@ rules:
 | `spiVersion` | Anything but `1`. |
 | `platform` | Empty. |
 | `workers` | Not a positive safe integer. |
-| `observe`, `locate`, `perform`, `performAt`, `prepare`, `finish`, `init`, `startAttempt`, `settleAttempt`, `endAttempt`, `dispose`, `validateApp` | Not a function. |
+| `observe`, `locate`, `perform`, `performAt`, `prepare`, `finish`, `doctor`, `init`, `startAttempt`, `settleAttempt`, `endAttempt`, `dispose`, `validateApp` | Not a function. |
 | any other top-level key | On an object literal, `app` included: declare the app on the target and check it in `validateApp`. A class instance's own fields are not checked. |
 | `perform`, `locate`, `performAt`, `keyboard` | Declared without `observe`. |
 | `perform`, `actions` | One without the other. An `actions` list that is empty, repeats a kind, or names one outside `LOCATOR_ACTION_KINDS`. |
@@ -129,7 +130,7 @@ The body of one target. Every member but `name`, `version`, and
 | [`validateApp`](#app) | method |
 | [`secrets`](#startattempt) | `Secret[]` |
 | [`session`](#session) | `EngineSession` |
-| [`prepare`, `finish`, `init`, `startAttempt`, `settleAttempt`, `endAttempt`, `dispose`](#lifecycle) | hooks |
+| [`prepare`, `finish`, `doctor`, `init`, `startAttempt`, `settleAttempt`, `endAttempt`, `dispose`](#lifecycle) | hooks |
 
 ```ts
 /** The body of one target: typed, model-free, capability-graded. */
@@ -196,9 +197,9 @@ export interface Engine {
   /**
    * capability: pointer - requires observation. Performs one pointer action
    * at a viewport point, in the CSS pixels of `SemanticNode.rect`, with no
-   * node behind it: the agent's `tap_at` verb lands here when the point the
-   * model named in a screenshot sits on nothing the tree lists (a shape on a
-   * canvas, a pin on a map, a control in a system sheet), and so do a test's
+   * node behind it: the agent's `tap_at`, `hover_at`, and `drag_at` verbs land
+   * here with the point the model named in a screenshot (a shape on a canvas, a pin on
+   * a map, a control in a system sheet or one the tree lists), and so do a test's
    * `screen.tapAt`, `screen.swipe({ from, to })`, and `tap({ position })`.
    * Dispatch the pointer at the point as given; the harness has clamped an
    * agent's point to the viewport and validated a test's. Throw
@@ -248,13 +249,16 @@ export interface Engine {
    * no value reaches the config digest.
    */
   readonly secrets?: readonly Secret[];
-  /** Steering hooks: open, back, restart, reset. */
+  /** Steering hooks: open, back, resize, restart, reset. */
   readonly session?: EngineSession;
   /**
    * Runs once per target in the runner, after collection and before workers,
-   * app commands, and the run's clock start. Download dependencies or boot
-   * devices here; report progress through `info.log`. No launch timeout
-   * applies. A failure ends the run as an infrastructure error.
+   * app commands, and the run's clock start. A run with nothing to run (the
+   * test filters left nothing, or `--pass-with-no-tests` on an empty
+   * selection) prepares no target, and so calls no `finish`. Download
+   * dependencies or boot devices here; report progress through `info.log`.
+   * No launch timeout applies. A failure ends the run as an infrastructure
+   * error.
    * The result can lower the target's worker cap, for example after
    * discovering how many devices are available.
    */
@@ -267,6 +271,14 @@ export interface Engine {
    * failure is a cleanup-phase run error.
    */
   finish?(info: EngineFinishInfo): Promise<void>;
+  /**
+   * Checks this machine for what a run on the target needs, for
+   * `e2e doctor`. Read-only and quick: never install, launch, lease, or
+   * start anything a check could instead look up, and never call `prepare`.
+   * A check that cannot tell reports nothing rather than guess. A throw is
+   * reported as one failed check of the target.
+   */
+  doctor?(info: EngineDoctorInfo): Promise<readonly EngineDoctorCheck[]>;
   /**
    * Once per worker, before the first step; boot devices here, not in a step
    * budget. The same handle can be booted again after `dispose`: a config-held
@@ -292,7 +304,8 @@ export interface Engine {
   endAttempt?(context: EngineCleanupContext): Promise<void>;
   /**
    * Worker shutdown, within the cleanup budget; failure is a run error. Runs
-   * whether or not `init` ran, so it MUST tolerate a cold engine. A live
+   * once `init` was called, even when it failed, so it MUST tolerate a
+   * partly initialized engine. A live
    * `reuseSignal` permits preserving run-owned resources for a replacement,
    * until that permission is revoked or this hook settles.
    */
@@ -310,7 +323,11 @@ export interface OperationContext {
    * abort at `timeoutMs`: bound each call by that budget yourself.
    */
   readonly signal: AbortSignal;
-  /** Remaining operation budget when the call starts. */
+  /**
+   * Remaining operation budget when the call starts. A waiting call's last
+   * locate or read can get more than its deadline leaves: as long as the
+   * slowest one it has seen.
+   */
   readonly timeoutMs: number;
   /** The run id. */
   readonly runId: string;
@@ -353,7 +370,7 @@ member. Three gaps end differently:
 | `state` | `state` | - | `test.setup` sessions and the `session:` option. |
 | `artifacts` | `artifacts` | - | Screenshots and videos. |
 | `validateApp` | - | - | A config-load check of the target's `app`. |
-| `session` | - | - | The `app` steering methods and the agent's `navigate` and `back` verbs. |
+| `session` | - | - | The `app` steering methods and the agent's `navigate`, `back`, and `resize_viewport` verbs. |
 
 #### Agent verbs
 
@@ -378,18 +395,24 @@ An undeclared verb is absent from the toolset.
 | `upload` | `setInputFiles` |
 | `navigate` | `session.open` |
 | `back` | `session.back` |
+| `resize_viewport` | `session.resize` |
 | `tap_at`, `hover_at` | the `tap` or `hover` kind, in `actions` or in `pointerActions` |
+| `drag_at` | the `dragTo` kind, in `actions` or in `pointerActions` |
 | `type_at` | `fill` or `keyboard` |
 | `press_at` | `press` or `keyboard` |
 | `select_at` | `selectOption` |
 | `dismiss_keyboard` | `keyboard.dismiss` |
 
 - `clear` and `focus` unlock no verb.
-- `tap_at`, `hover_at`, `type_at`, `press_at`, and `select_at` go through
-  `perform` when the point lands on a node the tree lists.
-- When the point lands on nothing the tree lists, `tap_at` and `hover_at`
-  go through `performAt` (the `tap` and `hover` pointer kinds), and
-  `type_at` and `press_at` fall back to `keyboard`.
+- `tap_at` and `hover_at` go through `performAt` (the `tap` and `hover`
+  pointer kinds). Without that kind they go through `perform` when the point
+  lands on a node the tree lists.
+- `drag_at` goes through `performAt` with the `dragTo` pointer kind and the
+  second point as its `target`. Without that kind it goes through `perform`
+  when its two points land on two different listed nodes.
+- `type_at`, `press_at`, and `select_at` go through `perform` when the point
+  lands on a node the tree lists. Elsewhere `type_at` and `press_at` fall
+  back to `keyboard`.
 
 #### Test APIs
 
@@ -502,6 +525,7 @@ optional. The `Engine` declaration's JSDoc above states each hook's contract.
 | --- | --- |
 | [`prepare(info)`](#prepare) | Once per target, before any worker |
 | [`finish(info)`](#finish) | After the target's last worker is gone |
+| [`doctor(info)`](#doctor) | Once per target in `e2e doctor`, never in a run |
 | [`init(info)`](#init) | Once per worker, before its first step |
 | [`startAttempt(context)`](#startattempt) | Before each attempt |
 | [`settleAttempt(context)`](#settleattempt) | After the body and after teardown |
@@ -566,8 +590,9 @@ export interface EnginePrepareInfo {
    * The worker slots the run will start for this target, `0` to `slots - 1`:
    * the run's worker cap, the engine's declared `workers`, and the work units
    * selected for the target, whichever is smallest; `0` when nothing runs on
-   * it. Provision for exactly these slots (boot that many devices of a pool);
-   * `init` then finds them ready.
+   * it while another target has work. A run with nothing to run prepares no
+   * target. Provision for exactly these slots (boot that many devices of a
+   * pool); `init` then finds them ready.
    */
   readonly slots: number;
   /**
@@ -619,6 +644,60 @@ export interface EngineFinishInfo extends EngineCleanupContext {
   readonly env: Readonly<Record<string, string | undefined>>;
   /** Reports one line of progress, streamed as a `notice` run event like `prepare`'s. */
   readonly log: (line: string) => void;
+}
+```
+
+#### `doctor`
+
+Runs once per target when [`e2e doctor`](/reference/cli#e2e-doctor) checks
+the project, never during a run. Report what a run on this machine needs and
+whether it's there. Each finding becomes a check under the target. Without the
+hook, the target gets one `engine` check with status `skip`.
+
+```ts
+async doctor(info) {
+  const sdk = await findToolchain(info.env);
+  if (sdk === undefined) return [{ id: 'toolchain', status: 'fail', message: 'install the toolchain' }];
+  return [{ id: 'toolchain', status: 'pass', message: `toolchain ${sdk.version}` }];
+},
+```
+
+`e2e doctor` gives the hook 30 seconds, starting a protocol engine's
+server included. A throw, a timeout, a finding that isn't an
+`EngineDoctorCheck`, or one with an id `e2e doctor` uses itself (`node`,
+`config`, `engine`, `model`) becomes an `engine` check with status `fail`.
+
+```ts
+/** Facts handed to `doctor`, once per target in the process `e2e doctor` runs in. */
+export interface EngineDoctorInfo {
+  /** The target being checked. */
+  readonly targetName: string;
+  /** Directory relative paths in the config resolve against; see `EngineInitInfo.projectRoot`. */
+  readonly projectRoot: string;
+  /** The app the target declares, as `prepare` receives it. */
+  readonly app: EngineAppInfo;
+  /** The environment a run would start with. */
+  readonly env: Readonly<Record<string, string | undefined>>;
+  /** Whether the run would show the surface (`--headed`), as `prepare` receives it. */
+  readonly headed: boolean;
+  /** Aborts 30 seconds in, when the checks fail as timed out, or when `e2e doctor` is interrupted; return within 5 seconds of it, when the connection closes. */
+  readonly signal: AbortSignal;
+  /** Reports one line of progress; `e2e doctor` prints it to stderr. */
+  readonly log: (line: string) => void;
+}
+
+/** One finding of `doctor`. */
+export interface EngineDoctorCheck {
+  /** What was checked, in kebab case: `browser`, `toolchain`. */
+  readonly id: string;
+  /**
+   * `pass`; `warn` for something a run handles on its own, slower (a
+   * first-run download); `fail` for something that stops a run; `skip` for
+   * a check that does not apply to this target.
+   */
+  readonly status: 'pass' | 'warn' | 'fail' | 'skip';
+  /** One line: what was found and, unless it passed, what to do. */
+  readonly message?: string;
 }
 ```
 
@@ -705,7 +784,7 @@ On failure or timeout, `context.signal` aborts and `endAttempt` runs.
 <Warning>
 A value from `resolveSecret` is protected as text only. Reports, logs, and
 observations redact it and the attempt's text downloads are rewritten, but
-unlike a fill it withholds no screenshot or model pixels.
+a page that shows it outside a secure field is not masked in screenshots.
 </Warning>
 
 ```ts
@@ -726,7 +805,8 @@ export interface EngineAttemptContext {
    * `options.derived` computes from it, join the attempt's redaction before
    * this resolves, so reports, logs, and every observation redact them, and
    * the attempt's text downloads are rewritten. The protection is
-   * text only: unlike a fill, it withholds no screenshot or model pixels.
+   * text only: a page that shows the value outside a secure field is not
+   * masked in screenshots.
    * A secret the engine did not declare is `SECRET_UNAVAILABLE`.
    */
   readonly resolveSecret: (secret: Secret, options?: ResolveSecretOptions) => Promise<string>;
@@ -788,7 +868,7 @@ export interface ResolveSecretOptions {
    * `Authorization: Basic` header carries, which a page echoing its request
    * headers would otherwise show.
    */
-  readonly derived?: (plaintext: string) => readonly string[];
+  readonly derived?: (plaintext: string) => readonly string[] | Promise<readonly string[]>;
 }
 ```
 
@@ -970,7 +1050,7 @@ return {
   capture failure. Cancellation, policy denial, and hard engine failures
   propagate too.
 - The runner permits fallback for `act` and for judgments with
-  `vision: true` or `'only'`, before any secret fill. It includes the
+  `vision: true` or `'only'`. It includes the
   screenshot even if the initial observation requested only a tree.
 - A step that loses semantic evidence cannot record or finish by replaying a
   trace.
@@ -1006,7 +1086,7 @@ honors in `actions` and `pointerActions`.
 | `hover` | - | yes | yes |
 | `scrollIntoView` | - | yes | - |
 | `selectOption` | `value` | yes | - |
-| `setInputFiles` | `paths` | yes | - |
+| `setInputFiles` | `paths`; empty clears the input | yes | - |
 | `dragTo` | `target`: a `NodeRef` or a `ViewportPoint` | yes | yes |
 | `swipe` | `direction`, `momentum?` | yes | yes |
 | `swipeTo` | `target`, `durationMs?` | - | yes |
@@ -1291,20 +1371,21 @@ export interface EngineAppInfo {
   readonly appPath?: string;
   /** Arguments every fresh launch passes the app. */
   readonly launchArguments?: readonly string[];
-  /** Permissions the app holds on every fresh launch, by name. */
+  /** Permissions the app holds, by name; what each state means is the engine's (a device sets them before every fresh launch). */
   readonly permissions?: Readonly<Record<string, AppPermissionState>>;
 }
 ```
 
 ### Session
 
-Steering hooks behind the universal `app` fixture and the agent's `navigate`
-and `back` verbs.
+Steering hooks behind the universal `app` fixture and the agent's `navigate`,
+`back`, and `resize_viewport` verbs.
 
 | Hook | Behind |
 | --- | --- |
 | `open(url)` | `app.open()`, the agent's `navigate` verb, the reopen after `restart` and `reset` |
 | `back()` | `app.back()`, the agent's `back` verb |
+| `resize(size)` | the agent's `resize_viewport` verb; `size` is `{ width, height }` in CSS pixels and holds for the rest of the attempt |
 | `restart()` | `app.restart()` |
 | `reset()` | `app.clearState()` |
 
@@ -1337,6 +1418,8 @@ export interface EngineSession {
   open?(url: string, context: OperationContext): Promise<void>;
   /** Navigates back once in the surface's history. */
   back?(context: OperationContext): Promise<void>;
+  /** Sets the viewport to `size` in CSS pixels, for this page and every page the attempt opens after it. */
+  resize?(size: ViewportSize, context: OperationContext): Promise<void>;
   /** Recreates the execution context, keeping persisted state. */
   restart?(context: OperationContext): Promise<void>;
   /** Clears persisted client state and recreates the execution context. */
@@ -1405,8 +1488,9 @@ export const RETRYABLE_ENGINE_ERROR_CODES: ReadonlySet<EngineErrorCode> = new Se
 
 #### Timeouts at a deadline
 
-An `OPERATION_TIMEOUT` on a locate or read that started with under 100 ms of
-a waiting call's deadline left, after one that completed, ends the wait
+An `OPERATION_TIMEOUT` on a locate or read that started with under 100 ms, or
+under its slowest completed locate or read, of a waiting call's deadline left,
+after one that completed, ends the wait
 instead:
 
 | Waiting call | Fails with |
@@ -1663,6 +1747,7 @@ obj({ a: 1, b: undefined, c: 3 }); // { a: 1, c: 3 }
 ```ts
 export function raceAbort<T>(work: Promise<T> | (() => Promise<T>), signal: AbortSignal, label: string): Promise<T>;
 export function withTimeout<T>(promise: Promise<T>, timeoutMs: number, onTimeout: () => Error): Promise<T>;
+export function stepTimeout(timeout: unknown, api: string): number | undefined;
 export function withinCleanupBudget(
   promise: Promise<unknown>,
   budget: { readonly signal: AbortSignal; readonly timeoutMs: number },
@@ -1671,12 +1756,16 @@ export function withinCleanupBudget(
 
 ```ts
 await raceAbort(() => client.tap(ref.id), context.signal, 'kiosk tap');
+const operation = context.operation(stepTimeout(options?.timeout, 'kiosk.print'));
 ```
 
 - `raceAbort` abandons the wait when `signal` aborts. Pass a thunk to check
   cancellation before dispatch.
 - `withTimeout` races a promise against a timeout and throws what
   `onTimeout` builds.
+- `stepTimeout` turns a call's own `timeout` option into a budget for
+  `context.operation`: `0` waits until the test timeout, or `cleanupTimeout` in `afterEach`, and a negative,
+  `NaN`, or infinite one is `INVALID_ARGUMENT`.
 - `withinCleanupBudget` never rejects. It resolves when the promise settles,
   failures included, when `signal` aborts, or when `timeoutMs` passes.
 
@@ -1796,8 +1885,8 @@ export interface EngineArtifacts {
   /** Captures a redacted screenshot; secure fields are masked at the source. */
   screenshot(label: string | undefined, context: OperationContext): Promise<string>;
   /**
-   * Starts recording the surface for the attempt. Declared together with
-   * `stopVideo`. A surface that has nothing to show yet (no page open) may
+   * Starts recording the surface. Declared together with `stopVideo`. An
+   * attempt may start and stop more than once, never overlapping. A surface that has nothing to show yet (no page open) may
    * defer the actual capture to the moment it does; the segments returned by
    * `stopVideo` say when each one began.
    */
@@ -1838,8 +1927,11 @@ export interface VideoLink {
 
 #### Videos
 
-The runner calls `startVideo` only for an attempt whose
-[video mode](/reference/config#video) records.
+The runner calls `startVideo` for an attempt whose
+[video mode](/reference/config#video) records, and for each
+[`app.startRecording()`](/reference/app#startrecording), so one attempt may
+start and stop several times. It moves the files a stop returns before the
+next start, and never starts while a recording runs.
 
 - `startVideo` runs after `startAttempt` and any session restore, within the
   launch budget.
@@ -2121,7 +2213,10 @@ return context.fixture('printer', printer, { print: { kind: 'resource' } });
 `Secret`, `isSecret`, `TextMatch`, `JsonValue`, `JsonValueRules`,
 `ResolveExpressionOptions`, `PollConditionOptions`, `WithoutUndefined`,
 `FixtureOperation`, `OBSERVED_NAME_LIMIT`, and `OBSERVED_TEXT_LIMIT` are
-exported from `e2e/engine`.
+exported from `e2e/engine`. So are the [engine protocol](/reference/engine-protocol)'s
+`connectEngine`, `serveEngine`, `describeEngine`, `spawnTransport`,
+`socketTransport`, `loopbackTransport`, `ENGINE_METHODS`,
+`ENGINE_PROTOCOL_VERSION`, and their types.
 
 ### `SemanticNode`
 
@@ -2184,6 +2279,13 @@ export interface SemanticNode {
     readonly height: number;
   };
   /**
+   * The point an offset into the node is measured from, in `rect`'s space,
+   * when it is not `rect`'s top-left corner: a document element's padding
+   * box, inside its border, or the corner of a box a frame clipped `rect`
+   * from. `tap({ position })` adds the offset to it.
+   */
+  readonly origin?: ViewportPoint;
+  /**
    * Platform selector that addresses this node within its own document, when
    * the platform has one. It is structural, not semantic: it survives the
    * content changes that rename a node, and a runner may store it to re-find
@@ -2239,7 +2341,10 @@ scope, filter, or index too.
 
 ## Related
 
-[Writing an engine](/writing-an-engine) walks through building one.
+[Engines](/engines) compares the ways to build one.
+[Writing an engine](/writing-an-engine) walks through `defineEngine`, and
+[Engine servers](/engine-servers) runs an engine in another process,
+machine, or language.
 `@e2e-dev/web` ([reference](/reference/web)) and `@e2e-dev/mobile`
 ([reference](/reference/mobile)) implement this contract with the same
 public `defineEngine`.

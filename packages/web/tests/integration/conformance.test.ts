@@ -81,7 +81,7 @@ describe('axe-core conformance', () => {
       let targets = 0;
       for (const [index, entry] of cases.entries()) {
         await page.setContent(`<!doctype html><html lang="en"><head>${EMPTY_BOXES}</head><body>${entry.html}${SHADOW_TEMPLATES}</body></html>`);
-        const { nodes, elements } = await captureTagged(page);
+        const { nodes, published } = await captureTagged(page);
         try {
           const byId = new Map(nodes.map((node) => [node.ref.id, node]));
           const selectors = asList(entry.target);
@@ -112,7 +112,7 @@ describe('axe-core conformance', () => {
             }
           }
         } finally {
-          await Promise.all([...elements.values()].map((element) => element.dispose()));
+          published.dispose();
         }
       }
       expect(checked, `${table} checked nothing`).toBeGreaterThan(0);

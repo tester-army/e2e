@@ -34,7 +34,7 @@ such as the Docker image in CI, is a `web({ connect })` target instead.
 Lightpanda has no layout engine: locators, assertions, and agent steps on
 the accessibility tree work, while drags, dialogs, downloads, scrolling,
 and session restore do not. The full list lives at
-[e2e.tester.army/docs/integrations/lightpanda](https://e2e.tester.army/docs/integrations/lightpanda).
+[e2e.com/docs/integrations/lightpanda](https://e2e.com/docs/integrations/lightpanda).
 
 ## License
 

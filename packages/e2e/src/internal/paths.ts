@@ -20,6 +20,21 @@ export function realpathOfExisting(target: string): string {
   return resolveThroughLinks(target, 0);
 }
 
+/**
+ * `target` as the filesystem spells it, the way git and `process.cwd()`
+ * report a directory: symlinks resolved and, on a case-insensitive
+ * filesystem (default macOS, Windows), each name in its on-disk case,
+ * which `realpathOfExisting` keeps as typed. A path that does not exist
+ * resolves as `realpathOfExisting` does.
+ */
+export function onDiskPath(target: string): string {
+  try {
+    return realpathSync.native(target);
+  } catch {
+    return realpathOfExisting(target);
+  }
+}
+
 /** `realpathOfExisting`, having followed `hops` dangling symlinks so far. */
 function resolveThroughLinks(target: string, hops: number): string {
   const tail: string[] = [];

@@ -13,8 +13,9 @@ import type { CliOverrides, PortAssignments, ResolvedTarget } from '../../config
 import type { AiTraceSnapshot } from '../../internal/ai-trace.ts';
 import type { DebugSnapshot } from '../../internal/debug.ts';
 import type { SerializedError } from '../../internal/errors.ts';
-import type { AttemptRecord, ResultRecord, RunError, SerialGroupRecord, SerialMemberRecord, WireResultRecord } from '../records.ts';
-import type { SerialAttemptRun, SerialAttemptStart } from '../serial.ts';
+import type { AttemptRecord, ResultRecord, RunError, SerialAttemptRecord, SerialGroupRecord, SerialMemberRecord, WireResultRecord } from '../records.ts';
+import type { SerialAttemptStart } from '../serial.ts';
+import type { HeldStep } from '../step-hold.ts';
 import type { StepProgress } from '../steps.ts';
 
 /** One runnable pair on the wire; the worker resolves the test function. */
@@ -72,6 +73,8 @@ export interface WorkerBootstrap {
   readonly debug: boolean;
   /** Whether the worker should record model calls for `--ai-trace`. */
   readonly aiTrace: boolean;
+  /** Whether each top-level step waits for the runner's `step-release` (`e2e run --step`). */
+  readonly step: boolean;
 }
 
 export interface RunUnitMessage {
@@ -130,7 +133,13 @@ export interface PingMessage {
   readonly type: 'ping';
 }
 
-export type MainToWorker = RunUnitMessage | InterruptMessage | ShutdownMessage | TerminateMessage | PingMessage;
+/** The held step `holdId` names may run. Handled at once, like `ping`; an id the worker no longer holds is ignored. */
+export interface StepReleaseMessage {
+  readonly type: 'step-release';
+  readonly holdId: string;
+}
+
+export type MainToWorker = RunUnitMessage | InterruptMessage | ShutdownMessage | TerminateMessage | PingMessage | StepReleaseMessage;
 
 export interface ReadyMessage {
   readonly type: 'ready';
@@ -210,6 +219,11 @@ export interface AttemptDeadlineMessage {
   readonly startedAt: string;
   /** The test's resolved `timeout`. */
   readonly timeoutMs: number;
+  /**
+   * What is left of it, when the test clock runs again after `e2e run --step`
+   * held a step; absent when the attempt starts, with all of it left.
+   */
+  readonly remainingMs?: number;
   /** How long past the timeout the worker may go without answering a `ping`: the cleanup budget. */
   readonly graceMs: number;
 }
@@ -222,6 +236,19 @@ export interface AttemptEndMessage {
 /** The answer to `ping`. */
 export interface PongMessage {
   readonly type: 'pong';
+}
+
+/** A step waits for `step-release` before it runs (`e2e run --step`). */
+export interface StepHoldMessage {
+  readonly type: 'step-hold';
+  readonly holdId: string;
+  readonly step: HeldStep;
+}
+
+/** The hold `holdId` names ended without a release: its step was abandoned, or its attempt ended. */
+export interface StepCancelMessage {
+  readonly type: 'step-cancel';
+  readonly holdId: string;
 }
 
 export interface ResultMessage {
@@ -277,7 +304,7 @@ export interface SerialAttemptMessage {
   readonly type: 'serial-attempt';
   /** The group's report id (`SerialGroupRecord.id`). */
   readonly groupId: string;
-  readonly run: SerialAttemptRun;
+  readonly attempt: SerialAttemptRecord;
 }
 
 export interface UnitDoneMessage {
@@ -325,6 +352,8 @@ export type WorkerToMain =
   | AttemptDeadlineMessage
   | AttemptEndMessage
   | PongMessage
+  | StepHoldMessage
+  | StepCancelMessage
   | OutputMessage
   | NoticeMessage
   | ResultMessage

@@ -9,8 +9,7 @@
 import path from 'node:path';
 import { chromium, type Browser, type Page } from 'playwright-core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { CLOSED_SHADOW_ROOTS_INIT_SCRIPT } from '../../src/closed-shadow.ts';
-import { crossCheck } from '../crosscheck/crosscheck.ts';
+import { crossCheck, openCheckPage } from '../crosscheck/crosscheck.ts';
 import { diffExpectations, keyOf, readExpectations, TODO_REASON, writeExpectations } from '../crosscheck/expectations.ts';
 import { FIXTURE_PAGES } from '../crosscheck/fixtures.ts';
 
@@ -30,9 +29,7 @@ const pages = new Set<string>();
 
 beforeAll(async () => {
   browser = await chromium.launch();
-  const context = await browser.newContext();
-  await context.addInitScript(CLOSED_SHADOW_ROOTS_INIT_SCRIPT);
-  page = await context.newPage();
+  page = await openCheckPage(browser);
 });
 
 afterAll(async () => {

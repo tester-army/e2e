@@ -4,17 +4,19 @@ import { InvalidArgumentError, Option, type Command } from 'commander';
 import type { InitOptions } from '../init.ts';
 import { parseNames } from '../parse-names.ts';
 import { SKILL_LOCATIONS } from './agent-skill.ts';
-import { getEnginePresets } from './engines.ts';
+import { getEnginePresets, type EngineId } from './engines.ts';
 import { EXAMPLES, findExample } from './examples.ts';
 import { GATEWAYS, validateEndpoint } from './gateways.ts';
 import { MCP_LOCATIONS } from './mcp-config.ts';
 
 /** The values commander parses the init flags to, before {@link checkInitFlags}. */
-export type InitFlagValues = Omit<InitOptions, 'directory' | 'interactive' | 'skills' | 'mcp'> & {
+export type InitFlagValues = Omit<InitOptions, 'directory' | 'interactive' | 'engines' | 'skills' | 'mcp'> & {
+  engine?: string[];
   skills?: string[];
   mcp?: string[];
 };
 
+const ENGINE_IDS: readonly EngineId[] = getEnginePresets().map((preset) => preset.id);
 const SKILL_DIRS = SKILL_LOCATIONS.map((location) => location.dir);
 const MCP_FILES = MCP_LOCATIONS.map((location) => location.file);
 
@@ -25,7 +27,7 @@ export function addInitOptions(command: Command): Command {
       new Option('--example <name>', `start from an example app downloaded from GitHub: ${EXAMPLES.map((example) => example.id).join(', ')}`)
         .argParser(parseExample),
     )
-    .addOption(new Option('--engine <id>', 'engine for a new config').choices(getEnginePresets().map((preset) => preset.id)))
+    .option('--engine <ids>', `engines for a new config, comma-separated: ${ENGINE_IDS.join(', ')}, or none`, parseNames('engine'))
     .addOption(
       new Option('--gateway <id>', 'model gateway for agent steps in a new config; none for deterministic tests only').choices([
         ...GATEWAYS.map((gateway) => gateway.id),
@@ -58,29 +60,31 @@ export function checkInitFlags(options: InitFlagValues, command: Command): Omit<
       command.error(`error: --example ${options.example} brings its own e2e.config.ts; drop ${conflicts.map((flag) => `--${flag}`).join(', ')}`, { exitCode: 2 });
     }
   }
-  const { skills, mcp, ...rest } = options;
+  const { engine, skills, mcp, ...rest } = options;
   return {
     ...rest,
-    ...(skills === undefined ? {} : { skills: checkLocations(command, '--skills', 'skill directory', skills, SKILL_DIRS) }),
-    ...(mcp === undefined ? {} : { mcp: checkLocations(command, '--mcp', 'MCP config file', mcp, MCP_FILES) }),
+    ...(engine === undefined ? {} : { engines: checkNames(command, '--engine', 'engine', engine, ENGINE_IDS) }),
+    ...(skills === undefined ? {} : { skills: checkNames(command, '--skills', 'skill directory', skills, SKILL_DIRS) }),
+    ...(mcp === undefined ? {} : { mcp: checkNames(command, '--mcp', 'MCP config file', mcp, MCP_FILES) }),
   };
 }
 
 /**
- * The locations a `--skills` or `--mcp` list names: known ones, each once, or
- * none for `none` alone. Anything else exits 2 with the valid values.
+ * What an `--engine`, `--skills`, or `--mcp` list names: known values, each
+ * once, or none for `none` alone. Anything else exits 2 with the valid values.
  */
-function checkLocations(command: Command, flag: string, noun: string, names: readonly string[], known: readonly string[]): string[] {
+function checkNames<Name extends string>(command: Command, flag: string, noun: string, names: readonly string[], known: readonly Name[]): Name[] {
   if (names.includes('none')) {
     if (names.length > 1) command.error(`error: ${flag}: none cannot be combined with other values`, { exitCode: 2 });
     return [];
   }
   const locations = names.map(trimSlashes);
-  const unknown = locations.find((name) => !known.includes(name));
+  const isKnown = (name: string): name is Name => (known as readonly string[]).includes(name);
+  const unknown = locations.find((name) => !isKnown(name));
   if (unknown !== undefined) {
     command.error(`error: ${flag}: unknown ${noun} "${unknown}"; expected ${[...known, 'none'].join(', ')}`, { exitCode: 2 });
   }
-  return [...new Set(locations)];
+  return [...new Set(locations.filter(isKnown))];
 }
 
 /** A location with its trailing slashes dropped, so `.agents/skills/` is `.agents/skills`. */

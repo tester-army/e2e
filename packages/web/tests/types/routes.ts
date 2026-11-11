@@ -5,6 +5,9 @@ import type { Browser, Dialog, RouteContinueOverrides, RouteFulfillResponse, Web
 ({ path: 'fixtures/quote.json', status: 201 }) satisfies RouteFulfillResponse;
 ({}) satisfies RouteFulfillResponse;
 ({ url: '/api/other', method: 'PUT', headers: { 'x-a': 'b' }, postData: '{}' }) satisfies RouteContinueOverrides;
+({ headers: { 'x-a': undefined } }) satisfies RouteContinueOverrides;
+({ body: new Uint8Array([0, 255]) }) satisfies RouteFulfillResponse;
+({ body: Buffer.from('%PDF') }) satisfies RouteFulfillResponse;
 
 // @ts-expect-error a response has one source: `path` and `body` together are not one.
 ({ path: 'quote.json', body: 'x' }) satisfies RouteFulfillResponse;
@@ -14,6 +17,8 @@ import type { Browser, Dialog, RouteContinueOverrides, RouteFulfillResponse, Web
 ({ response: {} }) satisfies RouteFulfillResponse;
 // @ts-expect-error header values are strings.
 ({ headers: { 'x-n': 1 } }) satisfies RouteContinueOverrides;
+// @ts-expect-error only a request header can be dropped; a response header is a string.
+({ headers: { 'x-a': undefined } }) satisfies RouteFulfillResponse;
 
 declare const browser: Browser;
 void (browser.waitForDownload(async () => {}).then(file => file.absolutePath) satisfies Promise<string>);
@@ -22,6 +27,10 @@ void (browser.unrouteAll() satisfies Promise<void>);
 void browser.unrouteAll({ behavior: 'ignoreErrors' });
 
 declare const route: WebRoute;
+void (route.fetch().then(response => response.text()) satisfies Promise<string>);
+void (route.fetch().then(response => response.body()) satisfies Promise<Buffer>);
+// @ts-expect-error upstream fetch currently takes no overrides
+void route.fetch({ timeout: 100 });
 void route.continue();
 void route.fallback();
 // @ts-expect-error `abort` takes no Playwright error code.

@@ -61,7 +61,46 @@ describe('locator.filter({ has })', () => {
   it('refuses a has that is not an e2e locator before any engine call', () => {
     const { screen, expressions } = listScreen();
     expect(() => screen.getByRole('listitem').filter({ has: invalid<Locator>({}) })).toThrow(
-      expect.objectContaining({ code: 'INVALID_LOCATOR' }),
+      expect.objectContaining({ code: 'INVALID_LOCATOR', message: 'filter({ has }) requires an e2e locator' }),
+    );
+    expect(expressions).toEqual([]);
+  });
+});
+
+describe('locator.filter({ hasNot })', () => {
+  it('hands the engine one filter expression with the inner locator under hasNot, unchanged', async () => {
+    const { screen, expressions } = listScreen();
+    await screen.getByRole('listitem').filter({ hasNot: screen.getByRole('button', { name: 'Remove' }) }).count();
+    expect(expressions).toEqual([
+      {
+        kind: 'filter',
+        source: roleQuery('listitem', undefined, undefined),
+        hasNot: roleQuery('button', { name: 'Remove' }, undefined),
+      },
+    ]);
+  });
+
+  it('keeps the items whose subtree does not resolve the inner locator', async () => {
+    const { screen } = listScreen();
+    const items = screen.getByRole('listitem');
+    expect(await items.filter({ hasNot: screen.getByRole('button', { name: 'Remove' }) }).allTextContents()).toEqual(['Beta']);
+    expect(await items.filter({ has: screen.getByRole('button', { name: 'Remove' }), hasNot: screen.getByText('Read only') }).count()).toBe(1);
+  });
+
+  it('names the whole chain when a filtered read finds nothing', async () => {
+    const { screen } = listScreen();
+    await expect(
+      screen.getByRole('listitem').filter({ has: screen.getByRole('link'), hasNot: screen.getByRole('button') }).textContent(),
+    ).rejects.toMatchObject({
+      code: 'LOCATOR_NOT_FOUND',
+      message: expect.stringContaining('getByRole("listitem").filter({ has: getByRole("link"), hasNot: getByRole("button") })'),
+    });
+  });
+
+  it('refuses a hasNot that is not an e2e locator before any engine call', () => {
+    const { screen, expressions } = listScreen();
+    expect(() => screen.getByRole('listitem').filter({ hasNot: invalid<Locator>({}) })).toThrow(
+      expect.objectContaining({ code: 'INVALID_LOCATOR', message: 'filter({ hasNot }) requires an e2e locator' }),
     );
     expect(expressions).toEqual([]);
   });

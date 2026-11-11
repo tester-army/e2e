@@ -36,7 +36,7 @@ const recording: StepExecutor = {
   cache: 'off',
   async runStep(context) {
     const { instruction, params } = context.step;
-    appendFileSync(new URL('./executor-input.jsonl', import.meta.url), JSON.stringify({ instruction, params, agentContext: context.agentContext }) + '\\n');
+    appendFileSync(new URL('./executor-input.jsonl', import.meta.url), JSON.stringify({ instruction, params, agentContext: context.agentContext, titlePath: context.attempt.titlePath }) + '\\n');
     if (context.step.secrets.length > 0) {
       const observation = await context.observe();
       const id = /#(\\S+) textbox "Focus target"/.exec(observation.text)?.[1];
@@ -115,18 +115,19 @@ describe('a secret value passed as a plain string', () => {
     expect(attempt.steps.map((step) => step.label)).toContain(`inspect ${MARKER} with {note}`);
   });
 
-  it('hands the executor the instruction, params, and agent context redacted', () => {
+  it('hands the executor the instruction, params, agent context, and title path redacted', () => {
     const inputs = readFileSync(path.join(project.dir, 'executor-input.jsonl'), 'utf8').trim().split('\n').map((line) => JSON.parse(line) as unknown);
     expect(inputs).toEqual([
       {
         instruction: `inspect ${MARKER} with {note}`,
         params: { note: MARKER, [`key ${MARKER}`]: [MARKER] },
-        agentContext: `Test: suite ${MARKER} > title holds ${MARKER}\ncontext ${MARKER}`,
+        agentContext: `context ${MARKER}`,
+        titlePath: [`suite ${MARKER}`, `title holds ${MARKER}`],
       },
       {
         instruction: 'paste the key into the focus target',
         params: { key: { kind: 'secret', name: 'probe', purpose: 'generic-secret' } },
-        agentContext: 'Test: types the secret through its handle',
+        titlePath: ['types the secret through its handle'],
       },
     ]);
   });
@@ -190,10 +191,12 @@ describe('a secret value passed as a plain string to the built-in agent', () => 
     const [act] = loopCalls;
     expect(act!.prompt).toContain(`Execute this test step: inspect ${MARKER} with {note}`);
     expect(act!.prompt).toContain(`{"note":"${MARKER}"}`);
-    expect(act!.system).toContain(`Test: built-in agent ${MARKER}\ncontext ${MARKER}`);
+    expect(act!.prompt).toContain(`Test: built-in agent ${MARKER}`);
+    expect(act!.system).toContain(`context ${MARKER}`);
     expect(fakeCalls).toHaveLength(1);
     expect(fakeCalls[0]!.instruction).toBe(`the page does not show ${MARKER}`);
-    expect(fakeCalls[0]!.system).toContain(`Test: built-in agent ${MARKER}\ncontext ${MARKER}`);
+    expect(fakeCalls[0]!.prompt).toContain(`Test: built-in agent ${MARKER}`);
+    expect(fakeCalls[0]!.system).toContain(`context ${MARKER}`);
     expect(JSON.stringify([loopCalls, fakeCalls])).not.toContain(SECRET);
   });
 });

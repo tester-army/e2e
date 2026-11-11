@@ -1,9 +1,10 @@
 /** The real reader's `disabled` state is the effective one: a control inherits it from a disabled fieldset and from an `aria-disabled` ancestor, as the browser and Playwright report it. */
 
-import { chromium, type Browser, type ElementHandle, type Page } from 'playwright-core';
+import { chromium, type Browser, type Page } from 'playwright-core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { SemanticNode } from 'e2e/engine';
 import { captureDocument } from '../../src/observation.ts';
+import { Published } from '../helpers/published.ts';
 
 let browser: Browser;
 let page: Page;
@@ -20,18 +21,18 @@ afterAll(async () => {
 /** One observation of the page through the same capture the engine uses. */
 async function capture() {
   let nextId = 1;
-  const published = new Map<string, ElementHandle<Element>>();
+  const published = new Published();
   const captured = await captureDocument(
     {
       testIdAttribute: 'data-testid',
       site: undefined,
       reserveIds: (count) => { const first = nextId; nextId += count; return first; },
-      commit: (id, element) => { published.set(id, element); },
+      commit: published.commit,
     },
     page,
     { framePath: [], budget: 200, deadline: Date.now() + 10_000, signal: new AbortController().signal },
   );
-  await Promise.all([...published.values()].map((element) => element.dispose()));
+  published.dispose();
   return captured;
 }
 

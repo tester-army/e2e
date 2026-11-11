@@ -1,5 +1,7 @@
 import type { E2EConfig } from 'e2e';
 import { web } from '@e2e-dev/web';
+import { decisionFilter } from '@e2e-dev/decision';
+import { gateway } from 'ai';
 
 export default {
   projectId: 'dev.e2e.testbed',
@@ -13,6 +15,7 @@ export default {
       },
     },
   ],
+  filters: [decisionFilter({ model: gateway.decisionModel('typesafe-ai/jev') })],
   credentials: {
     admin: {
       username: 'admin',

@@ -10,9 +10,12 @@ import type { ModuleRegistration } from '../../collect/registry.ts';
 import type { TestTargetPair } from '../../collect/select.ts';
 import type { ResolvedConfig, ResolvedTarget } from '../../config/resolve.ts';
 import { DebugTrace } from '../../internal/debug.ts';
+import { uuidv7 } from '../../internal/ids.ts';
+import { abortError, cancelledError } from '../../internal/time.ts';
 import { TargetExecutor, type InMemoryAttempts } from '../execute.ts';
 import { encodeResult, type RunError } from '../records.ts';
 import type { SessionStore } from '../sessions.ts';
+import type { HeldStep } from '../step-hold.ts';
 import { countsTowardFailureLimit, disappearedResult, failureLimitSkip } from '../units.ts';
 import type { FailureLimit, MainToWorker, RunUnitMessage, WirePair, WorkerToMain } from './protocol.ts';
 
@@ -55,6 +58,8 @@ export interface TargetWorkerDeps {
   readonly debug?: DebugTrace;
   /** See `TargetExecutorOptions.inMemory`; only an in-process worker has tests registered in memory. */
   readonly inMemory?: InMemoryAttempts | undefined;
+  /** Whether steps wait for the runner's `step-release` (`e2e run --step`). */
+  readonly step?: boolean | undefined;
 }
 
 /** Transport callbacks a target worker needs. */
@@ -90,6 +95,8 @@ export class TargetWorker {
   private queue: Promise<void> = Promise.resolve();
   /** Disposal happens once, whichever of shutdown or terminate asks first. */
   private shutdownOnce: Promise<void> | undefined;
+  /** Each step waiting for `step-release`, by hold id: what lets it run. */
+  private readonly holds = new Map<string, () => void>();
 
   constructor(
     private readonly host: TargetWorkerHost,
@@ -113,6 +120,7 @@ export class TargetWorker {
         env: deps.env,
         isolated: deps.isolated,
         interruptSignal: this.interruptController.signal,
+        ...(deps.step === true ? { holdStep: (step: HeldStep, signal: AbortSignal) => this.holdStep(step, signal) } : {}),
         ...(deps.debug !== undefined ? { debug: deps.debug } : {}),
         inMemory: deps.inMemory,
         events: {
@@ -130,7 +138,7 @@ export class TargetWorker {
           onAttempt: (pair, attempt) =>
             this.host.emit({ type: 'attempt', testId: pair.test.id, agent: pair.agent, repeat: pair.repeat, attempt }),
           onSerialMember: (groupId, attempt, member) => this.host.emit({ type: 'serial-member', groupId, attempt, member }),
-          onSerialAttempt: (groupId, run) => this.host.emit({ type: 'serial-attempt', groupId, run }),
+          onSerialAttempt: (groupId, attempt) => this.host.emit({ type: 'serial-attempt', groupId, attempt }),
           onPairStart: (pair) => {
             this.inFlight = { testId: pair.test.id, agent: pair.agent, repeat: pair.repeat };
             this.host.emit({
@@ -155,6 +163,7 @@ export class TargetWorker {
               attemptId: attempt.id,
               startedAt: attempt.startedAt,
               timeoutMs: pair.options.timeout,
+              ...(attempt.remainingMs === undefined ? {} : { remainingMs: attempt.remainingMs }),
               graceMs: deps.config.cleanupTimeout,
             });
           },
@@ -202,9 +211,39 @@ export class TargetWorker {
         // Answered now, not queued behind the running unit: the answer is the proof the event loop turns.
         this.host.emit({ type: 'pong' });
         return;
+      case 'step-release':
+        // Now too: the unit it releases is the one running.
+        this.holds.get(message.holdId)?.();
+        return;
       default:
         message satisfies never;
     }
+  }
+
+  /**
+   * Holds one step until the runner releases it. A hold that ends first
+   * (the step was abandoned, its attempt ended) tells the runner, so its
+   * prompt goes away, and rejects with the signal's reason.
+   */
+  private holdStep(step: HeldStep, signal: AbortSignal): Promise<void> {
+    const holdId = uuidv7();
+    return new Promise<void>((resolve, reject) => {
+      const settle = (): void => {
+        this.holds.delete(holdId);
+        signal.removeEventListener('abort', cancel);
+      };
+      const cancel = (): void => {
+        settle();
+        this.host.emit({ type: 'step-cancel', holdId });
+        reject(abortError(signal, cancelledError));
+      };
+      this.holds.set(holdId, () => {
+        settle();
+        resolve();
+      });
+      signal.addEventListener('abort', cancel, { once: true });
+      this.host.emit({ type: 'step-hold', holdId, step });
+    });
   }
 
   /**

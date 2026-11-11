@@ -18,11 +18,15 @@ import {
   createProject,
   resultByTitle,
   runExisting,
+  webTarget,
   type FixtureProject,
   type RunOutcome,
 } from '../helpers/run-project.ts';
 import { readEntries } from '../helpers/trace-cache.ts';
+import { findNode } from '../helpers/executor-tree.ts';
 import type {
+  ExecutorNode,
+  PointTapResult,
   ReplayedPrefix,
   StepExecutor,
   StepExecutorContext,
@@ -705,6 +709,83 @@ describe('trace cache: a bare-point tap replays like a coordinate-driven tool', 
   }, 240_000);
 });
 
+const OFFER_SUITE = `import { test, expect } from 'e2e';
+
+test('reserves offer A at a point', async ({ app, agent, screen }) => {
+  await app.open('/repeats?still=1');
+  await agent.act('reserve offer A');
+  await expect(screen.getByRole('status', { name: 'Picked' })).toHaveText('A');
+});
+`;
+
+/** Taps the center of the "Reserve now" button in the Offer A row, found in the tree, as a bare point. No model. */
+function offerPointExecutor(record: ExecutorRecord, results: PointTapResult[]): StepExecutor {
+  return {
+    name: 'offer-point-executor',
+    version: 'test',
+    async runStep(context: StepExecutorContext) {
+      record.calls += 1;
+      record.prefixes.push(context.replayedPrefix);
+      const { tree } = await context.observe({ tree: true });
+      const flat = (node: ExecutorNode): ExecutorNode[] => [node, ...(node.children ?? []).flatMap(flat)];
+      const nodes = flat(tree!);
+      const row = nodes.findIndex((node) => node.text === 'Offer A' || node.name === 'Offer A');
+      const { rect } = nodes.slice(row + 1).find((node) => node.role === 'button' && node.name === 'Reserve now')!;
+      const tapped = await context.actions.tapAt({ x: rect!.x + rect!.width / 2, y: rect!.y + rect!.height / 2 });
+      results.push(tapped);
+      return { status: 'passed', summary: tapped.summary };
+    },
+  };
+}
+
+describe('trace cache: a point tap on a repeated control replays in its row', () => {
+  let app: FixtureApp;
+  let project: FixtureProject;
+  const records: ExecutorRecord[] = [];
+  const results: PointTapResult[] = [];
+
+  const options = () => {
+    const record: ExecutorRecord = { calls: 0, prefixes: [] };
+    records.push(record);
+    return {
+      appUrl: app.url,
+      config: {
+        tests: 'tests/**/*.e2e.ts',
+        reporters: ['json'] as const,
+        agents: { default: { executor: offerPointExecutor(record, results) } },
+        cache: 'read-write' as const,
+      },
+    };
+  };
+
+  beforeAll(async () => {
+    app = await startFixtureApp();
+    project = createProject({ 'tests/offer.e2e.ts': OFFER_SUITE });
+  }, 60_000);
+
+  afterAll(async () => {
+    project?.cleanup();
+    await app?.close();
+  });
+
+  it('names the control it tapped, records its row, and replays into that row after the rows reverse', async () => {
+    const first = await runExisting(project, options());
+    expect(first.exitCode).toBe(0);
+    expect(results[0]?.target).toBeDefined();
+    const { entry } = readOnlyEntry(project);
+    expect(entry.payload.actions[0]).toMatchObject({ name: 'tapAt', within: { target: { role: 'button', name: 'Reserve now', within: 'Offer A' } } });
+
+    // The `b` variant lists the offers C, B, A: the recorded point now sits in Offer C's row.
+    app.setVariant('b');
+    const second = await runExisting(project, options());
+    app.setVariant(null);
+    expect(second.exitCode).toBe(0);
+    expect(records.at(-1)!.calls).toBe(0);
+    const step = resultByTitle(second, 'reserves offer A at a point').attempts.at(-1)!.steps.find((s) => s.api === 'agent.act')!;
+    expect(step.cache).toMatchObject({ mode: 'self-finalized', replayedActions: 1, totalActions: 1 });
+  }, 240_000);
+});
+
 const TODOS_SUITE = `import { test, expect } from 'e2e';
 
 test('adds a todo', async ({ app, agent, screen }) => {
@@ -897,5 +978,77 @@ describe('trace cache: a composed word that appears on screen is not a run-time 
     expect(records.at(-1)!.calls).toBe(0);
     const step = resultByTitle(second, 'fills both row fields').attempts.at(-1)!.steps.find((s) => s.api === 'agent.act')!;
     expect(step.cache).toMatchObject({ mode: 'self-finalized', replayedActions: 2, totalActions: 2 });
+  }, 240_000);
+});
+
+const ABOUT_SUITE = `import { test, expect } from 'e2e';
+
+test('opens the about page', async ({ app, agent, screen }) => {
+  await app.open();
+  await agent.act('open the About page');
+  await expect(screen.getByRole('heading', 'About')).toBeVisible();
+});
+`;
+
+/** Navigates to the About link's href from the node tree, an absolute URL on the app. */
+function aboutLinkExecutor(record: ExecutorRecord): StepExecutor {
+  return {
+    name: 'about-link-executor',
+    version: 'test',
+    async runStep(context: StepExecutorContext) {
+      record.calls += 1;
+      const { tree } = await context.observe({ tree: true });
+      const href = findNode(tree, (node) => node.role === 'link' && node.name === 'About')?.attributes?.['href'];
+      if (href === undefined) return { status: 'failed' as const, summary: 'no About link' };
+      await context.actions.navigate(href);
+      return { status: 'passed' as const, summary: `opened ${href}` };
+    },
+  };
+}
+
+describe('trace cache: a navigate on the app replays where the app runs now', () => {
+  let recordedOn: FixtureApp | undefined;
+  let replayedOn: FixtureApp;
+  let project: FixtureProject;
+
+  const options = (app: FixtureApp, record: ExecutorRecord, strictCache: boolean) => ({
+    config: {
+      tests: 'tests/**/*.e2e.ts',
+      targets: [{ ...webTarget('web', app.url), app: { url: app.url, identity: 'fixture-app' } }],
+      agents: { default: { executor: aboutLinkExecutor(record) } },
+      cache: 'read-write' as const,
+    },
+    runOptions: { strictCache },
+  });
+
+  beforeAll(async () => {
+    recordedOn = await startFixtureApp();
+    replayedOn = await startFixtureApp();
+    project = createProject({ 'tests/about.e2e.ts': ABOUT_SUITE });
+  }, 60_000);
+
+  afterAll(async () => {
+    project?.cleanup();
+    await recordedOn?.close();
+    await replayedOn?.close();
+  });
+
+  it('records an absolute URL on the app as its path and replays it on another origin of the app', async () => {
+    const recording: ExecutorRecord = { calls: 0, prefixes: [] };
+    const first = await runExisting(project, options(recordedOn!, recording, false));
+    expect(first.exitCode).toBe(0);
+    expect(recording.calls).toBe(1);
+    const { entry } = readOnlyEntry(project);
+    expect(entry.payload.actions).toEqual([{ name: 'navigate', summary: 'navigate to "/about"', url: '/about' }]);
+    expect(entry.payload).toMatchObject({ startPath: '/', endPath: '/about' });
+
+    await recordedOn!.close();
+    recordedOn = undefined;
+    const replay: ExecutorRecord = { calls: 0, prefixes: [] };
+    const second = await runExisting(project, options(replayedOn, replay, true));
+    expect(second.exitCode).toBe(0);
+    expect(replay.calls).toBe(0);
+    const step = resultByTitle(second, 'opens the about page').attempts.at(-1)!.steps.find((s) => s.api === 'agent.act')!;
+    expect(step.cache).toMatchObject({ mode: 'self-finalized', replayedActions: 1, totalActions: 1 });
   }, 240_000);
 });

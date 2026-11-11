@@ -19,6 +19,8 @@ export interface PublishedAttempt {
   readonly budget: AttemptBudget;
   /** Where `expect.soft` keeps its failures until the body settles. */
   readonly soft: SoftFailures;
+  /** Marks the attempt expected to fail (`test.fail`); absent where no mark is allowed. */
+  readonly expectFailure?: (reason: string) => void;
   /** Hosted callers have no runner-owned body lineage; their polls belong to the session. */
   readonly polls?: PollScope;
 }
@@ -30,7 +32,8 @@ export interface PublishedAttempt {
  * process (the in-process runner is capped at one worker, a child worker
  * runs one unit at a time), so a single slot names it unambiguously.
  * `publishAttempt` refuses a second live attempt rather than trusting that.
- * Standalone hosts (`e2e mcp`) run no test body and never publish.
+ * An `e2e mcp` session publishes only while the test it runs has its turn,
+ * one at a time per process (`run/standalone-test.ts`).
  */
 const slot = realmSlot<PublishedAttempt>(attemptBrand);
 

@@ -1,15 +1,18 @@
 /**
- * Fails when a docs link points at an `#anchor` that no heading, tab,
- * accordion, or `id` on the target page produces.
+ * Fails when a docs link points at a page that does not exist, or at an
+ * `#anchor` that no heading, tab, accordion, or `id` on the target page
+ * produces; and when a `docs.json` navigation page or redirect destination
+ * has no page.
  *
- * `mint broken-links` checks pages, not anchors. A broken anchor still opens
- * the page on the site, but a coding agent reading the docs offline from the
- * `e2e` package can't find the section it was sent to. Slugs follow Mintlify:
+ * A broken anchor still opens the page on the site, but a coding agent
+ * reading the docs offline from the `e2e` package can't find the section it
+ * was sent to. Slugs follow the docs site:
  * `@sindresorhus/slugify` with a per-page counter for repeated titles. Only
- * site-relative (`/page#anchor`) and same-page (`#anchor`) links are checked.
+ * site-relative (`/page#anchor`) and same-page (`#anchor`) links are checked;
+ * links to files (`/images/a.png`) are not.
  *
  * Usage: `node scripts/check-docs-anchors.ts`, part of `pnpm docs:check`.
- * Exits 1 listing every broken anchor.
+ * Exits 1 listing every broken link.
  */
 
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
@@ -25,6 +28,13 @@ const CUSTOM_ID = /\s*\{#([^}]+)\}$/;
 const COMPONENT = /<(Tab|Accordion|[a-z][\w-]*|ShowMore)\b([^>]*)>/g;
 const ATTRIBUTE = (name: string) => new RegExp(`(?:^|\\s)${name}="([^"]*)"`);
 const LINK = /\]\(((?:\/[^)\s#?]*)?)(?:\?[^)\s#]*)?#([^)\s]+)\)|href="((?:\/[^"#?]*)?)(?:\?[^"#]*)?#([^"]+)"/g;
+const PAGE_LINK = /\]\((\/[^)\s#?]*)[^)\s]*\)|href="(\/[^"#?]*)[^"]*"/g;
+const FILE = /\.[a-z0-9]+$/i;
+
+interface DocsJson {
+  navigation: { tabs: { pages?: string[]; groups?: { pages: string[] }[] }[] };
+  redirects?: { source: string; destination: string }[];
+}
 
 /** Every `.mdx` page under `dir`, skipping `node_modules`. */
 function pages(dir: string): string[] {
@@ -66,7 +76,7 @@ function decode(text: string): string {
   }
 }
 
-/** Mintlify's id for a heading or tab title, from its plain text. */
+/** The docs site's id for a heading or tab title, from its plain text. */
 function headingSlug(text: string, counter: ReturnType<typeof slugifyWithCounter>): string {
   const plain = text
     .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
@@ -81,7 +91,7 @@ function headingSlug(text: string, counter: ReturnType<typeof slugifyWithCounter
 
 /**
  * Every anchor a page answers to: headings, tab and accordion titles, and the
- * `id` of an HTML element, a tab, an accordion, or a `ShowMore`. Mintlify
+ * `id` of an HTML element, a tab, an accordion, or a `ShowMore`. The site
  * drops the `id` of other components, such as `Card` or `Steps`.
  */
 function anchors(source: string): Set<string> {
@@ -134,6 +144,12 @@ const problems: string[] = [];
 let checked = 0;
 for (const page of all) {
   for (const [line, text] of prose(readFileSync(page, 'utf8'))) {
+    for (const match of text.matchAll(PAGE_LINK)) {
+      const path = match[1] ?? match[2]!;
+      if (!FILE.test(path) && !pageFor(path)) {
+        problems.push(`${relative(ROOT, page)}:${line}: no page for ${path}`);
+      }
+    }
     for (const match of text.matchAll(LINK)) {
       const path = match[1] ?? match[3] ?? '';
       const anchor = decode(match[2] ?? match[4] ?? '');
@@ -144,6 +160,21 @@ for (const page of all) {
         problems.push(`${relative(ROOT, page)}:${line}: no #${anchor} in ${relative(ROOT, target)}`);
       }
     }
+  }
+}
+
+const config = JSON.parse(readFileSync(join(DOCS, 'docs.json'), 'utf8')) as DocsJson;
+for (const tab of config.navigation.tabs) {
+  for (const file of [...(tab.pages ?? []), ...(tab.groups ?? []).flatMap((group) => group.pages)]) {
+    if (!existsSync(join(DOCS, `${file}.mdx`))) problems.push(`docs/docs.json: navigation page ${file} has no file`);
+  }
+}
+for (const { source, destination } of config.redirects ?? []) {
+  const [path = '', anchor] = destination.split('#');
+  const target = pageFor(path);
+  if (!target) problems.push(`docs/docs.json: redirect ${source} goes to ${destination}, which has no page`);
+  else if (anchor && !anchorsOf(target).has(decode(anchor))) {
+    problems.push(`docs/docs.json: redirect ${source} goes to ${destination}, but ${relative(ROOT, target)} has no #${anchor}`);
   }
 }
 

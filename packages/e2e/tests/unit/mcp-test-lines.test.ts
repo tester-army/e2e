@@ -72,6 +72,7 @@ async function harness(options: {
   readonly matches: Readonly<Record<string, readonly Fake[]>>;
   readonly actions?: Partial<ExecutorActions>;
   readonly tree?: boolean;
+  readonly testRan?: string;
 }): Promise<Harness> {
   const root: Fake = { id: 'root', role: 'document', name: 'Page', y: 0, children: options.screen };
   const base = fakeExecutorContext({ secrets: [{ name: 'admin.password', purpose: 'password' }, { name: 'apiKey', purpose: 'generic-secret' }] }).context;
@@ -80,7 +81,7 @@ async function harness(options: {
     ...base.actions,
     tap: ok, doubleTap: ok, longPress: ok, secondaryTap: ok, hover: ok, type: ok, typeSecret: ok, press: ok, select: ok,
     check: ok, drag: ok, scrollTo: ok, scrollUntil: ok, upload: ok, scroll: ok, navigate: ok, back: ok, typeText: ok, pressKey: ok,
-    dismissKeyboard: ok,
+    dismissKeyboard: ok, resize: ok,
     ...options.actions,
   };
   const observe = async (asked: ExecutorObserveOptions = {}): Promise<ExecutorObservation> => ({
@@ -110,6 +111,7 @@ async function harness(options: {
     redact: (text) => text.replaceAll('sk-live-0000', '<secret:apiKey>'),
     appBase: { href: 'http://127.0.0.1:4100/', origin: 'http://127.0.0.1:4100' },
     fills: { credentials: [{ name: 'admin', username: 'ada@example.test', password: 'admin.password' }], secrets: ['apiKey'] },
+    testRan: options.testRan,
   });
   const watched = lines.watch(context);
   const tools: ToolSet = { ...lines.wrap(createGrammarTools(watched)), test_lines: lines.tool() };
@@ -164,7 +166,7 @@ describe('SessionTestLines', () => {
     const tools = createGrammarTools(context);
     expect(new Set(Object.keys(tools))).toEqual(GRAMMAR_TOOL_NAMES);
     const wrapped = new SessionTestLines({ query: locateQuery, resolve: async () => [], read: async () => ({ ref: { id: 'x', revision: 'x' } }), redact: (text) => text }).wrap(tools);
-    expect(Object.keys(tools).filter((name) => wrapped[name] === tools[name]).toSorted()).toEqual(['hover_at', 'observe', 'press_at', 'screenshot', 'select_at', 'tap_at', 'type_at']);
+    expect(Object.keys(tools).filter((name) => wrapped[name] === tools[name]).toSorted()).toEqual(['drag_at', 'hover_at', 'observe', 'press_at', 'screenshot', 'select_at', 'tap_at', 'type_at']);
   });
 
   const save: Fake = { id: 'n2', role: 'button', name: 'Save', y: 40 };
@@ -358,12 +360,13 @@ describe('SessionTestLines', () => {
     }
   });
 
-  it('says why an action has no line: no node, a repeated key, a scroll, a keyboard fallback', async () => {
+  it('says why an action has no line: no node, a repeated key, a scroll, a keyboard fallback, a sample file', async () => {
     const field: Fake = { id: 'n60', role: 'textbox', name: 'Notes', y: 40 };
     const canvas: Fake = { id: 'n61', role: 'image', name: 'Pad', y: 80 };
+    const file: Fake = { id: 'n62', role: 'button', name: 'Attach', y: 120 };
     const session = await harness({
-      screen: [field, canvas],
-      matches: { 'getByRole("textbox", name: "Notes")': [field], 'getByRole("image", name: "Pad")': [canvas] },
+      screen: [field, canvas, file],
+      matches: { 'getByRole("textbox", name: "Notes")': [field], 'getByRole("image", name: "Pad")': [canvas], 'getByRole("button", name: "Attach")': [file] },
       actions: {
         type: async (target) => {
           if (target.id === 'n61') throw new TestError('ACTION_FAILED', 'fill failed', { cause: Object.assign(new Error('the node is not an input'), { code: 'NOT_ACTIONABLE' }) });
@@ -376,6 +379,9 @@ describe('SessionTestLines', () => {
     expect(noteOf(await session.run('scroll', { direction: 'down' }))).toMatch(/^No test line: a test action brings its node into view itself/);
     expect(noteOf(await session.run('scroll_to', { text: 'Row 40' }))).toMatch(/^No test line: scrolling to a text has none/);
     expect(noteOf(await session.run('type_secret', { target: 'n60', name: 'unknown' }))).toMatch(/^No test line: the secret is neither/);
+    expect(noteOf(await session.run('upload', { target: 'n62', files: ['sample:photo.png'] }))).toBe(
+      'No test line: a sample file exists only for the agent; save a file in the project and upload its path for a line.',
+    );
     const fallback = await session.run('type', { target: 'n61', value: 'x' });
     expect(fallback.split('\n')[0]).toMatch(/is not an input; tapped it to focus it and typed through the keyboard/);
     expect(noteOf(fallback)).toMatch(/^No test line: the node is not an input and took the value through the keyboard/);
@@ -417,19 +423,56 @@ describe('SessionTestLines', () => {
     );
   });
 
+  it('prints no line for a resize, naming the size to set with the engine fixture', async () => {
+    const session = await harness({ screen: [save], matches: {} });
+    await session.run('resize_viewport', { width: 390, height: 844 });
+    expect(session.lines.draft()).toContain("// resize_viewport: no test line: set 390x844 with the engine fixture's viewport call");
+  });
+
+  it('drafts the lines after a test the session ran as the ones that continue it', async () => {
+    const session = await harness({ screen: [save], matches: { 'getByRole("button", name: "Save")': [save] }, testRan: 'tests/profile.e2e.ts:4' });
+    await session.run('tap', { target: 'n2' });
+    expect(session.lines.draft()).toBe(
+      [
+        "Test lines from this session's actions after test tests/profile.e2e.ts:4 stopped, in order (1 lines):",
+        '',
+        'await screen.getByRole("button", "Save").tap();',
+        '',
+        'Put them in that test where it stopped, in place of the line that failed or after its last line, and add an expect after each step that should change the screen.',
+      ].join('\n'),
+    );
+  });
+
+  it('drafts the statements run_code passed among the action lines, each awaited and ended', async () => {
+    const session = await harness({ screen: [save], matches: { 'getByRole("button", name: "Save")': [save] } });
+    session.lines.opened();
+    session.lines.ran(["await screen.getByLabel('Email').fill(credentials.user('admin').password);", "expect(screen.getByRole('status')).toHaveText('Saved')"]);
+    await session.run('tap', { target: 'n2' });
+    const draft = session.lines.draft();
+    expect(draft.split('\n').slice(0, 6)).toEqual([
+      "Draft test body from this session's actions, in order (4 lines):",
+      '',
+      'await app.open();',
+      "await screen.getByLabel('Email').fill(credentials.user('admin').password);",
+      "await expect(screen.getByRole('status')).toHaveText('Saved');",
+      'await screen.getByRole("button", "Save").tap();',
+    ]);
+    expect(draft).toContain("Import credentials from 'e2e'.");
+  });
+
   it('hands the caller the observation it asked for, tree or not, and keeps the context live', async () => {
-    let tainted = false;
+    let resolutions = 0;
     const base = fakeExecutorContext().context;
     const context = Object.defineProperty(
       { ...base, observe: async (asked?: ExecutorObserveOptions) => ({ revision: 'r', text: '', truncated: false, viewport: { width: 1, height: 1 }, ...(asked?.tree === true ? { tree: { id: 'root' } } : {}) }) },
-      'pixelsTainted',
-      { get: () => tainted },
+      'model',
+      { get: () => { resolutions += 1; return undefined; } },
     ) as StepExecutorContext;
     const watched = new SessionTestLines({ query: locateQuery, resolve: async () => [], read: async () => ({ ref: { id: 'x', revision: 'x' } }), redact: (text) => text }).watch(context);
     expect(await watched.observe()).not.toHaveProperty('tree');
     expect(await watched.observe({ tree: true })).toHaveProperty('tree', { id: 'root' });
-    expect(watched.pixelsTainted).toBe(false);
-    tainted = true;
-    expect(watched.pixelsTainted).toBe(true);
+    expect(resolutions).toBe(0);
+    void watched.model;
+    expect(resolutions).toBe(1);
   });
 });

@@ -1,9 +1,8 @@
 ---
 title: Security rules
 description: Every rule the runner enforces on model input, tool calls, secrets, redaction, sessions, the replay cache, artifacts, and network connections.
-icon: "lock"
-"og:image": "https://e2e.tester.army/docs/images/og/reference/security.png?v=888009ffe4"
-"twitter:image": "https://e2e.tester.army/docs/images/og/reference/security.png?v=888009ffe4"
+"og:image": "https://e2e.com/docs/images/og/reference/security.png?v=888009ffe4"
+"twitter:image": "https://e2e.com/docs/images/og/reference/security.png?v=888009ffe4"
 ---
 
 The [Security](/security) guide explains the trust boundary. This page
@@ -19,7 +18,7 @@ lists the rules behind it, as the code enforces them.
 | [Navigation](#navigation) | URL schemes per entry point |
 | [Site check](#site-check) | Headers, child frames, `basicAuth` |
 | [Secret fills](#secret-fills) | `type_secret`, `fill(secret)` |
-| [Screenshots after a secret fill](#screenshots-after-a-secret-fill) | Model pixels, pixel tools, restored sessions |
+| [Screenshots after a secret fill](#screenshots-after-a-secret-fill) | What masking covers |
 | [Secrets in engine options](#secrets-in-engine-options) | `basicAuth` and other engine options |
 | [Redaction](#redaction) | Model input, reports, downloads, output |
 | [Where redaction stops](#where-redaction-stops) | Transformed values, video, `command.log` |
@@ -40,9 +39,9 @@ larger budget. [How agent steps work](/agent-steps) explains a step in full.
 | --- | --- |
 | Your instruction and params | Quoted inside `<instruction>` and marked as data. A `Secret` param shows only its name and purpose. |
 | The screen | An accessibility tree with node ids, roles, names, text, test ids, link targets, and states, cut at a size limit. No selectors. A link's query and fragment show only as `?…` and `#…`. Secure fields show as `value=<secure>`. |
-| The location | The current URL, redacted. |
-| A screenshot | When needed or requested, and only if the engine proves secure fields are masked and no secret was filled in the attempt. |
-| Prior steps | `agent.act` receives bounded records from the same test or serial group. Judgments use only the current screen and instruction. |
+| The location | The current URL, redacted, without userinfo. A judgment gets it as a path on the app's origin and as the whole URL elsewhere, cut at a size limit. On a device, the app and screen title. |
+| A screenshot | When needed or requested, and only if the engine proves secure fields are masked. |
+| Prior steps | `agent.act` receives bounded records from the same test or serial group. Judgments use only the current screen, its location, the instruction and its params, and the agent's context. |
 
 ### Tool calls
 
@@ -74,14 +73,15 @@ These calls fail with `POLICY_DENIED`.
 | A `Secret` reaching a JSON sink | Handles carry no value, and no value may be serialized. |
 | Reading a value, text, or attribute from a secure field, with a getter or a `toHaveValue`, `toHaveText`, `toContainText`, or `toHaveAttribute` matcher | Assert the outcome, not the secret. A withheld value is redacted, not empty or absent. |
 | `type_secret` with an undeclared name | Only secrets in the step's params can be filled. |
-| `type_secret` into a disabled or non-editable node | Sinks are `textbox`, `searchbox`, and `combobox`. |
+| `type_secret`, or a `fill` in MCP `run_code`, into a disabled or non-editable node | Sinks are `textbox`, `searchbox`, and `combobox`. |
 | A password into a field that isn't a password field | Purpose must match. A generic secret fills any editable input. |
+| An MCP `run_code` locator found by part of a text (a regular expression, an `exact` other than `true`, `hasText`) when the config declares a secret | The engine matches it on unredacted text, so whether it matches could spell a secret out one piece at a time. `run_code` matchers compare redacted text instead. |
 | A mutating project tool requesting an observation | Observe in a separate call. |
 | `vision: 'only'` when pixels are withheld | There is nothing to fall back to. |
 | `browser.setCookies` with a cookie URL that isn't `http:` or `https:` | Only a web origin holds cookies. |
 | `toHaveScreenshot()` when the engine can't prove every secure field is masked | The screenshot isn't kept. |
-| An agent, executor, or MCP `upload` of a file outside the project root, a hidden file, or a file under a hidden directory | Only project files can leave the computer through a form. |
-| An `act` or `vision: true` step whose semantic capture times out after a secret fill | It can't fall back to a screenshot. |
+| An agent, executor, or MCP `upload` of a file outside the project root, a hidden file, or a file under a hidden directory | Only project files, and the sample files e2e ships (`sample:photo.png` and the rest), can leave the computer through a form. |
+| An MCP `screenshot` `path` outside the project root, hidden, or under a hidden directory | A session writes only project files, and never over `.git` or `.e2e`. |
 
 ### Navigation
 
@@ -90,6 +90,7 @@ These calls fail with `POLICY_DENIED`.
 | `app.open`, `browser.goto`, the agent's `navigate` verb | `http:`, `https:`, and the exact `about:blank` | Every other scheme |
 | `device.openLink` | Any absolute URL: an app's custom scheme, or `http:` and `https:` | `file:`, `data:`, `javascript:`, `view-source:`, `blob:`, `filesystem:` |
 | `device.openApp`, the `open_app` tool | An app id | A link |
+| The browser `e2e login` opens | `http:` and `https:` | Every other scheme; the link is printed instead, for you to open yourself |
 
 - The runner doesn't re-check redirects or attach to popup pages. Register
   `browser.onDialog` to handle browser dialogs.
@@ -132,36 +133,23 @@ test('connect Stripe', async ({ screen, agent }) => {
 | Fill | Checks before the value resolves |
 | --- | --- |
 | Model-directed (`type_secret`) | The step declared the secret. The secret is configured. The target is an enabled, editable input on the newest observation. A password goes into a password field. Replay repeats these checks. |
-| Deterministic `fill(secret)` | None on the field: test code chose it. The value is still registered for redaction and turns off pixels. |
+| Deterministic `fill(secret)` | None on the field: test code chose it. The value is still registered for redaction. |
 
 The runner resolves the value on the host and passes it to the engine. The
 model never sees or picks it.
 
 ### Screenshots after a secret fill
 
-After any secret fill, no pixels reach a model for the rest of the attempt:
-
-- screenshot and pixel tools are unavailable,
-- an `act` or `vision: true` step whose semantic capture times out before the
-  step does fails with `POLICY_DENIED`.
-
-The app could show the value anywhere, not only in the field's masked
-rectangle, and model input leaves your computer.
-
-Screenshots the runner keeps as artifacts stay on: `app.screenshot()`,
-`toHaveScreenshot()`, and assertion and failure screenshots.
+A secret fill doesn't turn screenshots off. The model, the pixel tools, and
+the artifacts the runner keeps get the same masked screenshots before and
+after a fill.
 
 <Warning>
-An artifact screenshot masks secure fields only. If the app shows the value
-anywhere else, the image has it. Treat screenshots like
-[videos](#where-redaction-stops).
+A screenshot masks secure fields only. A generic secret filled into a plain
+input is in the image, and so is a value the app shows anywhere else, such
+as behind a show-password toggle. The model provider gets the image too. Use
+test credentials, and treat screenshots like [videos](#where-redaction-stops).
 </Warning>
-
-A test that restores a [session](#sessions) whose setup filled a secret keeps
-this rule. A setup that signs in without a secret fill, for example by
-setting a session cookie with `browser.setCookies`, leaves model pixels on for
-the tests that restore it. A value it uses is redacted only if it's a
-configured secret.
 
 ### Secrets in engine options
 
@@ -203,14 +191,13 @@ The runner replaces every registered secret value with `<secret:name>` in:
 - reports and trace pages,
 - text downloads,
 - what your code prints during `e2e run`: tests, the top-level code of the
-  config and test files, and reporters.
+  config and test files, test filters, and reporters.
 
 It also redacts a value passed as a plain string instead of a
 `secrets.get()` handle: test and `describe` titles, step labels (an
 `app.open` URL, a locator's text), a `fill`, an `agent.act` or `agent.assert`
 instruction, the strings in `agent.act` params, `agentContext`, and an
-`e2e explore` goal. A plain string isn't a secret fill, so screenshots stay
-on.
+`e2e explore` goal.
 
 | Rule | Detail |
 | --- | --- |
@@ -230,7 +217,7 @@ Redaction matches strings. These pass through:
 
 - a transformed value, such as its last four characters,
 - a value encoded as a whole, such as a hash, or base64 outside a text
-  [download](#downloads),
+  [download](#downloads) and a test filter's `redact`,
 - a value in another Unicode normalization form, such as decomposed accents
   where the secret has composed ones,
 - text that drops the whitespace inside the value. Text that widens it passes
@@ -238,12 +225,17 @@ Redaction matches strings. These pass through:
   form holds the value stays collapsed and masked,
 - a value spread over several nodes, such as one character per cell on a PIN
   pad,
+- a yes or no about a value: an `e2e mcp` `locate` count says whether the
+  screen matches the text the agent passed, `exact: false` included, as an
+  assertion in a test does,
 - a case mapping that changes length (`ß` shown as `SS`), for the cut-text
   rule,
-- a value a secret provider returns, in titles, since titles are redacted
-  before any provider runs,
+- a value a secret provider returns, in titles and in what a test filter
+  sees or sends, since both are redacted before any provider runs,
 - console output of tests that run in the runner's own process, when an
   embedding host passes the config or tests in memory,
+- a screenshot, including one sent to the model: it masks secure fields
+  only, so a value the app shows elsewhere is in the image,
 - video: it masks nothing and is labeled `redaction: "incomplete"`. A
   recording a hosted browser or device service keeps stays with that
   service, and the report holds only its URL,
@@ -271,9 +263,8 @@ Every other download is kept as served and labeled
 
 A saved session holds authentication state. It also carries, in the same
 ciphertext, the secret values the setup test resolved from a provider. The
-test that restores it redacts those values and keeps its pixels withheld. The
-envelope holds, unencrypted but authenticated, the secret names and whether a
-secret was filled.
+test that restores it redacts those values. The envelope holds, unencrypted
+but authenticated, the secret names.
 
 | Property | Value |
 | --- | --- |
@@ -319,7 +310,7 @@ project-relative path you configure.
 | `results/.../*.webm`, `*.mp4` | Video, opt-in through `video` or `--video`. | incomplete |
 | `results/.../downloads/*` | Files the app served. See [Downloads](#downloads). | complete or incomplete |
 | `results/.../screen-at-failure.txt` | The redacted tree at the moment of failure. | complete |
-| `ai-trace.json` | Every model call, opt-in through `--ai-trace`. Prompts are the redacted ones the model saw. Inline image bytes are replaced by their size. | as the prompt |
+| `ai-trace.json` | Every model call except a test filter's, opt-in through `--ai-trace`. Prompts are the redacted ones the model saw. Inline image bytes are replaced by their size. | as the prompt |
 | `sessions/<runId>/` | Encrypted sessions, deleted at cleanup. | encrypted |
 | `videos/<session>/*.webm`, `*.mp4` | Videos an `e2e mcp` session recorded with `start_recording`, kept until you delete them. Never handed to `artifacts.store`. | none |
 | `cache.dir` (default `.e2e/cache/`) | Replay cache entries. | secret-free by construction |
@@ -332,18 +323,22 @@ after download redaction, with the `redaction` label the report records.
 
 | Destination | When |
 | --- | --- |
-| `eu.i.posthog.com` | One telemetry request per CLI invocation or per `run()` from `e2e/runner` that returns a report, plus at most one per session `e2e mcp` serves, unless you opt out ([Telemetry](/telemetry)). One request per `e2e feedback` report sent: none under `--dry-run` or `E2E_TELEMETRY_DEBUG`, for a bug without `--repro`, or under `E2E_TELEMETRY_DISABLED` or `DO_NOT_TRACK`. |
+| `eu.i.posthog.com` | One telemetry request per CLI invocation or per `run()` or `explore()` from `e2e/runner` that returns a report, plus at most one per session `e2e mcp` serves, unless you opt out ([Telemetry](/telemetry)). One request per `e2e feedback` report sent: none under `--dry-run` or `E2E_TELEMETRY_DEBUG`, for a bug without `--repro`, or under `E2E_TELEMETRY_DISABLED` or `DO_NOT_TRACK`. |
 | Your model provider | Agent steps that call a model. Deterministic tests and fully replayed steps make no model call. |
 | A subscription provider's sign-in and model-list endpoints | `e2e login` and `e2e models` ([Subscriptions](/subscriptions)). |
 | The app's `readyUrl` | Readiness probes for an app the runner starts. |
 | Playwright's browser download | One time, when the browser is missing. |
 | The DevTools endpoint in `web({ connect })` | Every run of that target. |
 | The GitHub API | Only from the `@e2e-dev/github` reporter. |
+| The provider of the `model` you pass | Only from [`decisionFilter()`](/filters): the diff of what the commits change (a file only the working tree changes, by name alone), the test files, and the setup files that save their sessions, redacted as a [text download](#downloads) is, except a value a secret provider returns. |
 | `registry.npmjs.org` | At most one request a day from a CLI command run on a terminal, to check for a newer e2e release. Skipped in CI, when stderr is piped, for `e2e mcp` and `e2e upgrade`, and under `E2E_UPDATE_CHECK_DISABLED`, `NO_UPDATE_NOTIFIER`, `E2E_TELEMETRY_DISABLED`, or `DO_NOT_TRACK`. One request per `e2e feedback` you run, skipped with `--allow-outdated` and under `E2E_TELEMETRY_DISABLED` or `DO_NOT_TRACK`. One request per `e2e` or `@e2e-dev/*` package the project lists with a registry version, each time you run `e2e upgrade`, to `npm_config_registry` instead when the package manager sets it; then the package manager installs from its own registry. |
 | `api.limrun.com` (or `LIMRUN_BASE_URL`) and its devices | Only from [`limrun()`](/integrations/limrun). It signs in with `LIMRUN_API_KEY`. |
 | The Kernel API and its hosted browsers | Only from [`kernel()`](/integrations/kernel). |
 | TestMu AI's CDP hub and its hosted browsers | Only from [`testmuBrowsers()`](/integrations/testmu#run-web-targets-in-browsers). The username and access key travel only in the CDP URL, never in a log line. |
-| The Expo API and the simulators' agent-device daemons | Only from [`easSimulators()`](/integrations/eas). It signs in with `EXPO_TOKEN`, else with the eas-cli login in `~/.expo/state.json`. On a CI runner, set `EXPO_TOKEN` or keep that login out of the runner's home. |
+| `mobile-hub.lambdatest.com`, `mobile-api.lambdatest.com` (or `TESTMU_API_ENDPOINT`), and `manual-api.lambdatest.com` | Only from [`testmu()`](/integrations/testmu#run-mobile-targets-on-devices). It signs in with `LT_USERNAME` and `LT_ACCESS_KEY`. For each session, agent-device looks the device up in the API's catalog, uploads a local `app` to `manual-api.lambdatest.com`, and runs the session on TestMu AI's Appium hub. The provider asks the API for the session's video only when an attempt records one. |
+| `hub-cloud.browserstack.com` and `api-cloud.browserstack.com` (or `BROWSERSTACK_API_ENDPOINT`) | Only from [`browserstack()`](/integrations/browserstack). It signs in with `BROWSERSTACK_USERNAME` and `BROWSERSTACK_ACCESS_KEY`. For each session, agent-device looks the device up in the App Automate API, uploads a local `app`, and runs the session on BrowserStack's Appium hub. For an `https` `app`, the provider has the API fetch the build once per run, and it asks the API for the session's video only when an attempt records one. |
+| `api.e2b.app` and its sandboxes (or `E2B_DOMAIN`, `E2B_API_URL`, `E2B_SANDBOX_URL`) | Only from [`e2b()`](/integrations/e2b#run-android-targets) and [`e2bBrowsers()`](/integrations/e2b#run-web-targets-in-browsers). It signs in with `E2B_API_KEY`. The engine reaches each sandbox's agent-device or Chromium through a tunnel on `127.0.0.1` ([How the sandboxes stay private](/integrations/e2b#how-the-sandboxes-stay-private)), and `e2b()` sends the `.apk` through it. Each Android sandbox downloads Node from `nodejs.org` if Node is absent, and installs agent-device from npm. |
+| The Expo API and the simulators' agent-device daemons | Only from [`expoSimulators()`](/integrations/eas), or its deprecated alias `easSimulators()`. It signs in with `EXPO_TOKEN`, else with the eas-cli login in `~/.expo/state.json`. On a CI runner, set `EXPO_TOKEN` or keep that login out of the runner's home. |
 | `mcr.microsoft.com` | Only from [`smol()`](/integrations/smol), to pull the Playwright image. The machines then have unrestricted network access, and reach every port on your computer's loopback through `host.smolvm.internal`, not only `hostPorts` ([Set up the provider](/integrations/smol#set-up-the-provider)). |
 | The package registry | When `e2e init` installs dependencies. |
 | The app under test | Every run, plus whatever the app itself loads. |
@@ -358,5 +353,5 @@ plugins, and app can make more connections.
 
 | Command | Rule |
 | --- | --- |
-| `e2e mcp` | Uses stdio and the same action authorization as a test run. Four open sessions by default ([`--max-sessions`](/reference/mcp), 1 through 16). Closes idle sessions. |
+| `e2e mcp` | Uses stdio and the same action authorization as a test run. Four open sessions by default ([`--max-sessions`](/reference/mcp), 1 through 16). Closes idle sessions. `open_session {engine}` loads the installed packages the agent names and calls the exports it names. That code runs with the server's full authority, like a config's imports. `engine` names packages only, never a path or a URL, and the server installs nothing. |
 | `e2e explore` | Offers every configured credential to every step. The explorer sees account names and usernames. Passwords stay handles and need an engine that supports sensitive fills; without one, the explorer skips them. With no credentials, it may sign in with made-up test credentials, typed as plain text. |

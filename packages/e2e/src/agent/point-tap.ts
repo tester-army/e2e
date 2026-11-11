@@ -1,10 +1,10 @@
 /**
  * Point taps: how a viewport point an executor names is routed onto the
- * tree, and how the result reads back. A point that a listed, enabled
- * control contains is tapped by that control's id, so policy, stale
- * relocation, and the trace cache see an ordinary tap; a point on nothing
- * listed goes to the engine as a bare point. Coordinates read off a
- * screenshot are scaled into the observation's CSS pixels first.
+ * tree, and how the result reads back. A point goes to the engine as a bare
+ * point, where the model aimed, and the trace keeps it inside the node under
+ * it; an engine that taps listed nodes only gets the enabled control
+ * containing the point, tapped by its id. Coordinates read off a screenshot
+ * are scaled into the observation's CSS pixels first.
  */
 
 import type { PointActionName } from '../cache/trace.ts';
@@ -110,8 +110,8 @@ export interface PointProse {
 }
 
 /**
- * The point verbs: the node verb each resolves onto when a listed control
- * sits under the point, and how each reads back to the model. The one place
+ * The point verbs: the node verb each resolves onto on an engine without
+ * the bare-point kind, and how each reads back to the model. The one place
  * the pairing lives; the tools, the dispatcher, and the prose read it.
  */
 export const POINT_VERBS: Readonly<Record<PointActionName, { readonly node: 'tap' | 'hover'; readonly did: string }>> = {
@@ -119,22 +119,59 @@ export const POINT_VERBS: Readonly<Record<PointActionName, { readonly node: 'tap
   hoverAt: { node: 'hover', did: 'Hovered over' },
 };
 
-/** What one point action did, for the model that named the point. */
+/**
+ * What one point action did, for the model that named the point: the
+ * control it acted on by id, the control it acted inside as a bare point,
+ * or the bare point on nothing listed.
+ */
 export function describePointAction(
   input: PointProse & {
     readonly verb: PointActionName;
     readonly point: ViewportPoint;
     readonly control: RedactedNode | undefined;
     readonly under: RedactedNode | undefined;
+    /** Whether the control was acted on by id rather than at the bare point. */
+    readonly byId: boolean;
   },
 ): string {
   const { did } = POINT_VERBS[input.verb];
   const at = `(${String(input.point.x)}, ${String(input.point.y)})`;
   if (input.control !== undefined) {
-    return `${did} ${describeNode(input, input.control)}, the control at ${at}.`;
+    if (input.byId) return `${did} ${describeNode(input, input.control)}, the control at ${at}.`;
+    return `${did} the point ${at} inside ${describeNode(input, input.control)}.`;
   }
   const under = input.under === undefined ? '' : ` (under it: ${describeNode(input, input.under)})`;
   return `${did} the point ${at}; no listed control is there${under}.`;
+}
+
+/**
+ * What one point drag did, for the model that named the points: the two
+ * controls it joined by id, or the bare points with what each sits on.
+ */
+export function describePointDrag(
+  input: PointProse & {
+    readonly from: ViewportPoint;
+    readonly to: ViewportPoint;
+    /** The listed control holding the start, if any. */
+    readonly source: RedactedNode | undefined;
+    /** The listed control holding the end, if any. */
+    readonly destination: RedactedNode | undefined;
+    readonly fromUnder: RedactedNode | undefined;
+    readonly toUnder: RedactedNode | undefined;
+    /** Whether the two controls were joined by id rather than dragged between the bare points. */
+    readonly byId: boolean;
+  },
+): string {
+  const at = (point: ViewportPoint) => `(${String(point.x)}, ${String(point.y)})`;
+  if (input.byId && input.source !== undefined && input.destination !== undefined) {
+    return `Dragged ${describeNode(input, input.source)}, the control at ${at(input.from)}, onto ${describeNode(input, input.destination)}, the control at ${at(input.to)}.`;
+  }
+  const end = (point: ViewportPoint, control: RedactedNode | undefined, under: RedactedNode | undefined) => {
+    if (control !== undefined) return `the point ${at(point)} inside ${describeNode(input, control)}`;
+    return `the point ${at(point)}${under === undefined ? '' : ` (under it: ${describeNode(input, under)})`}`;
+  };
+  const neither = input.source === undefined && input.destination === undefined ? '; no listed control is at either end' : '';
+  return `Dragged from ${end(input.from, input.source, input.fromUnder)} to ${end(input.to, input.destination, input.toUnder)}${neither}.`;
 }
 
 /** What one hit test found, for the model that named the point. */

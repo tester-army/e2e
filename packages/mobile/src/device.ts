@@ -7,7 +7,8 @@
 
 import type { EngineFixtureContext, Locator } from 'e2e/engine';
 import { linkLabel, linkTarget } from './links.ts';
-import type { DevicePermission, PermissionState } from './options.ts';
+import type { AgentDeviceClient, DevicePermission, MobilePlatform, PermissionState } from './options.ts';
+import type { DeviceSelection } from './pool.ts';
 import { unsupported } from './support.ts';
 import type { AgentDeviceSurface, FoldPose, InstallAppOptions, InstalledApp, OpenAppOptions } from './surface.ts';
 
@@ -32,8 +33,31 @@ export interface ForegroundApp {
   readonly bundleId?: string;
 }
 
+/** The agent-device session behind `device`; see `Device.unstable_raw`. */
+export interface DeviceSession {
+  readonly platform: MobilePlatform;
+  /** The agent-device session name: `e2e-<target>-<worker slot>`, or `<session>-<worker slot>` with the `session` option. */
+  readonly session: string;
+  /** The device's agent-device id: a simulator UDID or an Android serial. */
+  readonly deviceId: string;
+  readonly deviceName: string;
+  /** The device selection the engine passes commands; spread it into a call that can run before `app.open()`. */
+  readonly selection: DeviceSelection;
+  /** agent-device's client, bound to this session. */
+  readonly client: AgentDeviceClient;
+}
+
 /** Deterministic device management exposed to tests as `device`. */
 export interface Device {
+  /**
+   * The agent-device session this test drives, for what the methods here do
+   * not cover. Calls through `client` bypass e2e: they are not steps, so the
+   * report and trace leave them out, the agent's cache does not replay them,
+   * their arguments reach agent-device unredacted, and nothing waits for the
+   * screen to settle after one. Unstable: it may change or go away in any
+   * release.
+   */
+  readonly unstable_raw: DeviceSession;
   /**
    * A locator from an agent-device selector (`'id=SW_VERSION_SPECIFIER'`,
    * `'role=text label="26.2"'`), for nodes the closed `screen` query
@@ -141,7 +165,21 @@ export interface Device {
   back(): Promise<void>;
   /** Accepts or dismisses the visible system alert. */
   alert(action: 'accept' | 'dismiss'): Promise<void>;
-  /** Dismisses the soft keyboard. */
+  /**
+   * Dismisses the soft keyboard: the keyboard's own dismiss key where it has
+   * one (Android, iPad), else the way a user does it on an iPhone, a short
+   * drag that a scroll view turns into a dismissal, horizontal first and
+   * vertical second, stopping as soon as the keyboard is gone. Each drag
+   * starts at the point nearest the centre of the screen that no control in
+   * the captured accessibility tree covers, inside a scroll view when the
+   * screen has one, to avoid pressing a button or toggling a checkbox. A
+   * control the tree leaves out, such as pressable text, can still be hit.
+   * The simulator's "Speed up your typing" tip goes through its Continue
+   * button first. A screen with no clear point
+   * above the keyboard, or a keyboard that outlives both drags, fails with
+   * `UNSUPPORTED_CAPABILITY`; the message names the alternatives (the app's
+   * own Done or close control, or pressing Enter on the field).
+   */
   dismissKeyboard(): Promise<void>;
   /** Reads the clipboard. */
   clipboard(): Promise<string>;
@@ -152,6 +190,19 @@ export interface Device {
 /** Builds the device fixture for one attempt. */
 export function createDeviceFixture(surface: AgentDeviceSurface, context: EngineFixtureContext): Device {
   const device: Device = {
+    get unstable_raw() {
+      const { session, deviceId, deviceName } = surface.boundDevice;
+      return {
+        platform: surface.options.platform,
+        session,
+        deviceId,
+        deviceName,
+        selection: surface.selection(),
+        get client() {
+          return surface.requireClient();
+        },
+      };
+    },
     locator: (selector) => context.locator({ kind: 'selector', selector }),
     async setNetwork(state) {
       if (surface.options.platform === 'ios') {
@@ -265,7 +316,7 @@ export function createDeviceFixture(surface: AgentDeviceSurface, context: Engine
       await surface.screenCommand('device.alert', (client) => client.command.alert({ ...surface.selection(), action }), context.signal);
     },
     async dismissKeyboard() {
-      await surface.dismissKeyboard(context.signal);
+      await surface.dismissKeyboard(context.signal, surface.inputBudget('device.dismissKeyboard', context.timeouts.action));
     },
     async clipboard() {
       const result = await surface.command(

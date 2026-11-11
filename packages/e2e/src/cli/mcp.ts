@@ -8,10 +8,13 @@
  */
 
 import { Writable } from 'node:stream';
+import { isAbandonedRejection } from '../internal/abandoned.ts';
 import { errorMessage, exitCodeForCategory, classifyError } from '../internal/errors.ts';
+import { onBun } from '../internal/runtime.ts';
 import { McpOutput } from '../mcp/output.ts';
 import { serveMcp, type ServeOptions } from '../mcp/server.ts';
 import { processSecrets } from '../run/secrecy.ts';
+import { claimStrayRejection } from '../run/standalone-test.ts';
 import { mcpSessionEvent } from '../telemetry/events.ts';
 import type { Telemetry } from '../telemetry/telemetry.ts';
 
@@ -95,17 +98,26 @@ export async function mcp(version: string, options: McpCommandOptions, telemetry
     output.report(`e2e mcp: [error] uncaught: ${text}`);
     stop.abort();
   };
+  // A rejection nobody handled is charged to the test a session ran, as in a
+  // run's worker, once one has; before that it is uncaught.
+  const onRejection = (cause: unknown): void => {
+    if (isAbandonedRejection(cause)) return;
+    if (claimStrayRejection(cause, (message) => output.log(`e2e mcp: [warning] ${processSecrets.redact(message)}`))) return;
+    onUncaught(cause);
+  };
   process.once('SIGINT', onSignal);
   process.once('SIGTERM', onSignal);
-  // A rejection nobody handled arrives here too: with no `unhandledRejection` listener, Node raises it as uncaught.
+  process.on('unhandledRejection', onRejection);
   process.on('uncaughtException', onUncaught);
+  // Bun keeps one instance of each project module (`config/bun-loader.ts`): two live sessions would share their helpers.
+  if (onBun && (options.maxSessions ?? 1) > 1) output.log(`e2e mcp: --max-sessions ${options.maxSessions} ignored: on Bun, one session is open at a time`);
   try {
     const code = await serveMcp({
       cwd: process.cwd(),
       configPath: options.config,
       target: options.target,
       headed: options.headed === true,
-      maxSessions: options.maxSessions,
+      maxSessions: onBun ? 1 : options.maxSessions,
       env: process.env,
       version,
       stdin: process.stdin,
@@ -124,6 +136,7 @@ export async function mcp(version: string, options: McpCommandOptions, telemetry
     output.end();
     process.off('SIGINT', onSignal);
     process.off('SIGTERM', onSignal);
+    process.off('unhandledRejection', onRejection);
     process.off('uncaughtException', onUncaught);
   }
 }

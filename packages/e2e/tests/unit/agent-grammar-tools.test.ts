@@ -6,11 +6,27 @@
 
 import type { ToolSet } from 'ai';
 import { z } from 'zod';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { aiSdk, loadAiSdk } from '../../src/agent/ai-sdk.ts';
 import { GRAMMAR_TOOL_NAMES } from '../../src/agent/action-names.ts';
 import { createGrammarTools, createVerdictTool } from '../../src/agent/primitives.ts';
+import { createBuiltInAgent, projectTools } from '../../src/agent/default-agent.ts';
+import { defineTool } from '../../src/agent/tool.ts';
 import { fakeExecutorContext } from '../helpers/fake-executor-context.ts';
+import { installFakeLoopModel } from '../helpers/fake-loop-model.ts';
+
+it('does not repeat a static assertion opening to request pixels it cannot use', async () => {
+  const { context } = fakeExecutorContext({ verbs: [], secrets: [] });
+  const observe = vi.fn(async () => ({
+    revision: '1', text: '#n1 text "Static content"', truncated: false,
+    viewport: { width: 800, height: 600 },
+  }));
+  const model = installFakeLoopModel(() => [{ toolName: 'complete_step', input: { status: 'passed', summary: 'read static content' } }]);
+  await expect(createBuiltInAgent().runStep({
+    ...context, step: { ...context.step, kind: 'assert', vision: false }, model, observe,
+  })).resolves.toMatchObject({ status: 'passed' });
+  expect(observe).toHaveBeenCalledExactlyOnceWith({ pixels: false });
+});
 
 /** An input each tool accepts; a tool added to the grammar without one fails the vocabulary check. */
 const ACCEPTED: Readonly<Record<string, Record<string, unknown>>> = {
@@ -31,9 +47,11 @@ const ACCEPTED: Readonly<Record<string, Record<string, unknown>>> = {
   upload: { target: 'n1', files: ['fixtures/a.txt'] },
   navigate: { url: '/about' },
   back: {},
+  resize_viewport: { width: 390, height: 844 },
   screenshot: {},
   tap_at: { x: 10, y: 20 },
   hover_at: { x: 10, y: 20 },
+  drag_at: { x: 10, y: 20, to_x: 30, to_y: 40 },
   type_at: { x: 10, y: 20, value: 'ada', replace: true },
   press_at: { x: 10, y: 20, key: 'Enter' },
   select_at: { x: 10, y: 20, value: 'Pro' },
@@ -95,43 +113,14 @@ describe('the grammar tools have closed schemas', () => {
     expect(schemaOf(tools, 'type').safeParse({ target: 'n1', value: 'ada' }).success).toBe(false);
   });
 
-  it('refuses every point verb once a secret was filled mid-step, without reaching the engine', async () => {
-    // A secret fill after a screenshot leaves the model holding pixels that may no longer match the screen.
-    const fake = fakeExecutorContext();
-    let tainted = false;
-    const context = { ...fake.context, get pixelsTainted() { return tainted; } };
-    const tools = createGrammarTools(context);
-    tainted = true;
-    const options = { toolCallId: 'point', messages: [], context: undefined };
-    const pointTools = [...GRAMMAR_TOOL_NAMES].filter((name) => name.endsWith('_at'));
-    expect(pointTools).toHaveLength(5);
-    for (const name of pointTools) {
-      const result = await tools[name]!.execute!(ACCEPTED[name]!, options);
-      expect(result, name).toContain('PIXEL_TAINTED');
-    }
-    expect(fake.dispatched).toEqual([]);
-  });
-
-  it('checks the taint when a point verb runs, not when it is queued: a fill batched ahead of it in the same turn wins', async () => {
-    // AI SDK turns can carry parallel tool calls; the queue runs them in order. The first
-    // body here stands in for a type_secret that taints the attempt before tap_at's turn.
-    const fake = fakeExecutorContext();
-    let tainted = false;
-    const context = { ...fake.context, get pixelsTainted() { return tainted; } };
-    let first = true;
-    const guard = async <T,>(body: () => Promise<T>): Promise<T | string> => {
-      if (!first) return body();
-      first = false;
-      tainted = true;
-      return 'Filled secret "admin".';
-    };
-    const tools = createGrammarTools(context, { guard });
-    const options = { toolCallId: 'batched', messages: [], context: undefined };
-    const queued = tools['observe']!.execute!({}, options);
-    const pointed = await tools['tap_at']!.execute!({ x: 10, y: 20 }, options);
-    expect(await queued).toBe('Filled secret "admin".');
-    expect(pointed).toContain('PIXEL_TAINTED');
-    expect(fake.dispatched).toEqual([]);
+  it('offers resize_viewport only with the resize verb, in whole pixels within the bounds', () => {
+    expect(Object.keys(createGrammarTools(fakeExecutorContext({ verbs: ['tap', 'back'] }).context))).not.toContain('resize_viewport');
+    const resize = schemaOf(createGrammarTools(fakeExecutorContext({ verbs: ['resize'] }).context), 'resize_viewport');
+    expect(resize.safeParse({ width: 1440, height: 900 }).success).toBe(true);
+    expect(resize.safeParse({ width: 390.5, height: 844 }).success).toBe(false);
+    expect(resize.safeParse({ width: 100, height: 844 }).success).toBe(false);
+    expect(resize.safeParse({ width: 390, height: 5000 }).success).toBe(false);
+    expect(resize.safeParse({ width: 390 }).success).toBe(false);
   });
 
   it('closes complete_step', () => {
@@ -195,4 +184,35 @@ describe('the schema a provider receives', () => {
     expect(Object.keys(sent(schema)).toSorted()).toEqual(['$schema', 'additionalProperties', 'properties', 'required', 'type']);
     expect(Object.keys(emitted(schema)).toSorted()).toEqual(['$schema', 'additionalProperties', 'properties', 'required', 'type']);
   });
+});
+
+
+it('offers only viewport exploration tools to assertion steps', () => {
+  const { context } = fakeExecutorContext();
+  const tools = createGrammarTools({ ...context, step: { ...context.step, kind: 'assert' } });
+  expect(Object.keys(tools).toSorted()).toEqual(['observe', 'screenshot', 'scroll', 'scroll_to']);
+});
+
+
+it('offers read-only project tools alongside assertion exploration', () => {
+  const { context } = fakeExecutorContext();
+  const tool = { inputSchema: z.object({}), execute: async () => 'read' };
+  const tools = {
+    read_status: defineTool(tool, { mutates: false }),
+    write_status: defineTool(tool, { mutates: true }),
+  };
+  expect(Object.keys(projectTools({ ...context, step: { ...context.step, kind: 'assert' } }, tools))).toEqual(['read_status']);
+  expect(Object.keys(projectTools(context, tools))).toEqual(['read_status', 'write_status']);
+});
+
+it('drops an inconclusive code from an act verdict and keeps it on an assertion', async () => {
+  const input = { status: 'failed', summary: 'no evidence', errorCode: 'ASSERTION_INCONCLUSIVE' } as const;
+  const options = { toolCallId: 'verdict', messages: [], context: undefined };
+  const act = createVerdictTool('act');
+  expect((act.tool.inputSchema as z.ZodType).safeParse(input).success).toBe(true);
+  expect(await act.tool.execute!(input, options)).toBe('Step concluded as failed; the errorCode ASSERTION_INCONCLUSIVE you sent applies only to assertions and was ignored.');
+  expect(act.verdict()).toEqual({ status: 'failed', summary: 'no evidence' });
+  const assertion = createVerdictTool('assert');
+  expect(await assertion.tool.execute!(input, options)).toBe('Step concluded.');
+  expect(assertion.verdict()).toEqual(input);
 });

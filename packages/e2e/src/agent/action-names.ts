@@ -6,12 +6,21 @@
  * can check a project tool's name without loading the grammar.
  */
 
+/** Assertion tool names and the dispatcher actions each may perform. */
+export const READ_ONLY_GRAMMAR = {
+  observe: [],
+  screenshot: [],
+  scroll: ['scroll', 'scrollUntil'],
+  scroll_to: ['scrollIntoView'],
+} as const;
+
 /** The name of each grammar action, as the dispatcher records it. */
 export const GRAMMAR_ACTION_NAMES = [
   'back',
   'check',
   'dismissKeyboard',
   'doubleTap',
+  'dragAt',
   'dragTo',
   'hover',
   'hoverAt',
@@ -19,6 +28,7 @@ export const GRAMMAR_ACTION_NAMES = [
   'navigate',
   'press',
   'pressKey',
+  'resize',
   'scroll',
   'scrollIntoView',
   'scrollUntil',
@@ -44,14 +54,15 @@ export const MCP_SESSION_SURFACE = 'an e2e mcp session';
 
 /**
  * The tools the harness adds beside the grammar, each where it adds them:
- * `complete_step` in every agent step, `locate`, `test_lines`, and the
- * recording tools in an `e2e mcp` session, and `report_finding` under
- * `e2e explore`. A project tool named like one would be replaced or dropped
- * there, so the config load refuses the name.
+ * `complete_step` in every agent step, `locate`, `run_code`, `test_lines`,
+ * and the recording tools in an `e2e mcp` session, and `report_finding`
+ * under `e2e explore`. A project tool named like one would be replaced or
+ * dropped there, so the config load refuses the name.
  */
 export const HARNESS_TOOL_NAMES: ReadonlyMap<string, string> = new Map([
   ['complete_step', 'every agent step'],
   ['locate', MCP_SESSION_SURFACE],
+  ['run_code', MCP_SESSION_SURFACE],
   ['test_lines', MCP_SESSION_SURFACE],
   ['start_recording', MCP_SESSION_SURFACE],
   ['stop_recording', MCP_SESSION_SURFACE],
@@ -81,9 +92,11 @@ export const GRAMMAR_TOOL_NAMES: ReadonlySet<string> = new Set([
   'upload',
   'navigate',
   'back',
+  'resize_viewport',
   'screenshot',
   'tap_at',
   'hover_at',
+  'drag_at',
   'type_at',
   'press_at',
   'select_at',

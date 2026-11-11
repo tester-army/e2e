@@ -1,9 +1,8 @@
 ---
 title: Debugging a run
 description: Read the trace page, open the evidence, watch the browser, and see what the model was sent.
-icon: "magnifying-glass"
-"og:image": "https://e2e.tester.army/docs/images/og/debugging.png?v=38a51086e1"
-"twitter:image": "https://e2e.tester.army/docs/images/og/debugging.png?v=38a51086e1"
+"og:image": "https://e2e.com/docs/images/og/debugging.png?v=38a51086e1"
+"twitter:image": "https://e2e.com/docs/images/og/debugging.png?v=38a51086e1"
 ---
 
 A failed test prints its error and the path to its [trace page](#traces). For
@@ -13,8 +12,10 @@ a summary of the whole run, add the `markdown` reporter. It writes
 ## Read the failure
 
 The `list` reporter's `Failed Tests` section shows the error, the failing
-line, nearby matches for a failed locator, the app's error count, and the
-trace page:
+line, nearby matches for a failed locator, what the app logged, and the
+trace page. It quotes the app's first 3 errors (console errors, uncaught
+exceptions, failed requests, 5xx responses), redacted like the trace page.
+`.e2e/summary.md` quotes them too:
 
 ```text
  FAIL  |web| tests/todos.e2e.ts > shows the remaining count
@@ -22,6 +23,8 @@ LOCATOR_NOT_FOUND: locator did not become visible: getByRole("heading", name: "T
  ❯ tests/todos.e2e.ts:31:3
  ❯ at http://127.0.0.1:4271/nope
  ❯ app 2 errors, 2 warnings logged
+   × console error: Error occurred prerendering page "/todos"
+   × network error: GET /api/todos 500 Internal Server Error
  ❯ trace .e2e/results/todos-shows-the-remaining-count-796fac5f12ab34cd/trace.md
 ```
 
@@ -31,7 +34,7 @@ The exit code tells the type of failure:
 | ---: | --- | --- |
 | 1 | A test failed | Only if the test is flaky |
 | 2 | Configuration, collection, or policy | Fix the reported problem first |
-| 3 | Engine, app process, model provider, or artifact failure | If the cause is temporary |
+| 3 | Engine, app process, model provider, artifact, or cleanup infrastructure failure | If the cause is temporary |
 | 4 | An internal runner error | Report it |
 | 130 | The run was interrupted | |
 
@@ -176,10 +179,12 @@ result holds:
 | `artifacts` | The captured files |
 
 A serial group's tests have no `attempts` of their own. Their results are in
-`run.serialGroups`, one member for each test in each attempt:
+`run.serialGroups`, one member for each test in each attempt. A retry the run
+interrupted or that never reached its members has `cutRetry: true` and does
+not hold the verdicts, so skip it:
 
 ```bash
-jq '.run.serialGroups[] | .attempts[-1].members[]? | select(.status != "passed")
+jq '.run.serialGroups[] | (.attempts | map(select(.cutRetry != true)) | last).members[]? | select(.status != "passed")
     | {testId, status, error, failure}' .e2e/report.json
 ```
 
@@ -227,6 +232,64 @@ recording its engine can't make, the run fails with `UNSUPPORTED_ARTIFACT`
 before any test starts.
 
 [Recording](/reference/config#recording) has every mode and file.
+
+## Step through a test
+
+`--step` runs the first step, then holds each later step until you press a
+key. Add `--headed` to watch the browser between steps.
+
+<CodeGroup>
+```bash npm
+npx e2e run tests/checkout.e2e.ts --step --headed
+```
+
+```bash pnpm
+pnpm exec e2e run tests/checkout.e2e.ts --step --headed
+```
+
+```bash bun
+bunx e2e run tests/checkout.e2e.ts --step --headed
+```
+</CodeGroup>
+
+The held step shows under its test, below the steps that already ran:
+
+```text
+ ❯ |web| tests/checkout.e2e.ts 0/1
+   └── pays with a card paused
+       ✓ app.open "/checkout" 412ms
+       ▶ step 2  locator.fill "getByLabel("Email")"  tests/checkout.e2e.ts:9
+         press enter to run this step, press h to show help, press q to quit
+```
+
+The keys follow [`--watch`](/reference/cli#watch-mode). These work at a prompt:
+
+| Key | Does |
+| --- | --- |
+| Enter | runs the held step and holds the next one |
+| `n` | runs the rest of this test, retries included, and holds at the next test |
+| `a` | runs the rest of the run without stopping |
+| `h` | shows every key under the prompt, or hides them |
+| `q`, Esc | stops the run as Ctrl-C does: the test ends `interrupted`, the rest are skipped, exit 130 |
+
+- A key pressed within 150 ms of a prompt is ignored, so a key meant for the
+  last step never runs this one. Ctrl-C works at any time, also while a step
+  runs.
+- The time a step is held counts toward nothing: not its duration, not the
+  test's `timeout`, not `maxDuration`. A test that hangs after a step still
+  times out on the time it had left. The test's own duration in the report
+  includes the holds.
+- Setup tests, retries, `afterEach` hooks, fixture teardowns, and steps inside
+  an `expect.poll` read run without stopping. An `agent.act` is one step.
+- Steps started together, as in `Promise.all`, share one prompt and run on one
+  Enter, so a `waitForResponse` beside the click that triggers it never waits
+  for a key. A step already running when another is held keeps running on its
+  own timeout.
+- A hosted browser or device can end a session that sits idle too long while
+  a step is held.
+
+`--step` runs one test at a time. It needs a terminal, and it is refused in
+CI, with `--watch`, with `--workers` above 1, and with the json reporter.
 
 ## Console output
 
@@ -288,7 +351,7 @@ an artifact.
 
 `--ai-trace` writes `.e2e/ai-trace.json`: one run per agent step, one entry
 per model call, with the redacted input and image bytes replaced by counts.
-Read it with [unbox-ai](https://github.com/tester-army/unbox-ai) to see
+Read it with [unbox-ai](https://github.com/e2e-inc/unbox-ai) to see
 prompts, tool calls, and token usage:
 
 <CodeGroup>

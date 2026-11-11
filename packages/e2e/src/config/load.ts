@@ -3,6 +3,7 @@
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { ConfigurationError, InfrastructureError, isE2EError } from '../internal/errors.ts';
+import { onBun } from '../internal/runtime.ts';
 import { withConfigSecretReferences } from '../secrets.ts';
 import type { E2EConfig } from '../types.ts';
 import { explainModuleError } from './diagnose.ts';
@@ -34,9 +35,7 @@ export interface DiscoveredConfig {
 export function discoverConfig(cwd: string, explicitPath?: string): DiscoveredConfig {
   if (explicitPath !== undefined) {
     const absolute = path.resolve(cwd, explicitPath);
-    if (!existsSync(absolute)) {
-      throw new ConfigurationError('CONFIG_NOT_FOUND', `config file not found: ${explicitPath}`);
-    }
+    if (!existsSync(absolute)) throw explicitConfigNotFound(cwd, explicitPath, absolute);
     return { configPath: absolute, projectRoot: path.dirname(absolute) };
   }
   let dir = path.resolve(cwd);
@@ -62,19 +61,34 @@ export function discoverConfig(cwd: string, explicitPath?: string): DiscoveredCo
 }
 
 /**
+ * The failure for an explicit config path with no file behind it. A relative
+ * path names the `cwd` it resolved against (the process's working directory
+ * for the CLI and MCP server), which may not be the one the caller meant.
+ */
+function explicitConfigNotFound(cwd: string, explicitPath: string, absolute: string): ConfigurationError {
+  if (path.isAbsolute(explicitPath)) return new ConfigurationError('CONFIG_NOT_FOUND', `config file not found: ${absolute}`);
+  const base = path.resolve(cwd);
+  return new ConfigurationError(
+    'CONFIG_NOT_FOUND',
+    `config file not found: ${absolute} (${explicitPath} resolved against the working directory ${base}); pass an absolute path, or a path relative to that directory`,
+  );
+}
+
+/**
  * The failure for a run that found no config file: where the search looked,
  * a lookalike in the working directory when one exists, and otherwise the
  * command that creates a config. Thrown when a config file is discovered,
- * never for a supplied config value.
+ * never for a supplied config value. `alternative` is what the caller can do
+ * instead of creating one: the CLI's flag by default.
  */
-export function missingConfigError(cwd: string): ConfigurationError {
+export function missingConfigError(cwd: string, alternative = 'pass --config <path>'): ConfigurationError {
   const root = path.resolve(cwd);
   const lookalike = CONFIG_LOOKALIKES.find((name) => existsSync(path.join(root, name)));
   const names = `${CONFIG_NAMES.slice(0, -1).join(', ')}, or ${CONFIG_NAMES.at(-1)}`;
   const searched = `no ${names} found in ${root} or its parent directories`;
   const remedy =
     lookalike === undefined
-      ? 'run e2e init to create one, or pass --config <path>'
+      ? `run e2e init to create one, or ${alternative}`
       : `found ${lookalike}, but only ${names} is loaded: rename it and keep it an ES module`;
   return new ConfigurationError('CONFIG_NOT_FOUND', `${searched}; ${remedy}`);
 }
@@ -102,7 +116,8 @@ export interface ConfigLoadOptions {
  * receives another realm's instance of it and a second `run()` in one
  * process sees the file as it is now. The files it imports keep one instance
  * per process, unless `graph` names a fresh graph to load them in, shared
- * by every module loaded under that name.
+ * by every module loaded under that name. Bun ignores the query, so there
+ * `bun-loader.ts` takes the module out of Bun's registry instead.
  */
 export async function importModule(absolutePath: string, cacheKey = 'module', graph?: string): Promise<unknown> {
   return importFresh(absolutePath, cacheKey, graph ?? false);
@@ -115,7 +130,9 @@ async function importFresh(absolutePath: string, cacheKey: string, graph: boolea
   imports += 1;
   registerLoader();
   const key = `${cacheKey}-${imports}`;
-  return import(freshModuleURL(absolutePath, key, graph === true ? key : graph === false ? undefined : graph));
+  const graphName = graph === true ? key : graph === false ? undefined : graph;
+  if (onBun) return (await import('./bun-loader.ts')).importFreshOnBun(absolutePath, graphName);
+  return import(freshModuleURL(absolutePath, key, graphName));
 }
 
 /** Loads and returns the raw default export of a config module. */

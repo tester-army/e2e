@@ -49,8 +49,14 @@ under `executor`. `openai.decisionModel('gpt-6-luna')` from `@ai-sdk/openai`
 4.0.90 or later works too and takes the `vision: true` screenshot.
 Tests stay plain language with no params. The text model writes field values
 and upload paths. See the shipped `docs/decision-models.mdx` or
-[the online guide](https://e2e.tester.army/docs/decision-models) for setup,
+[the online guide](https://e2e.com/docs/decision-models) for setup,
 gates, and limits.
+
+A coding agent the user already signs in to runs agent steps over the Agent Client Protocol:
+install `@e2e-dev/acp` and its adapter, and put
+`claudeCode({ model: 'sonnet' })` or `codex()` under
+`executor`; no model provider is needed. See the shipped `docs/subscriptions.mdx` or
+[the online guide](https://e2e.com/docs/subscriptions#use-your-coding-agent).
 
 - Pass a model instance, not a string (`INVALID_CONFIG`).
 - An agents entry is one plain object of `model`, `judge`, `system`,
@@ -67,7 +73,7 @@ gates, and limits.
 - `context` is what the app calls things, sent to every model call, judges
   included; `system` is how the acting agent works, read only by the act
   loop. Both live on the agents entry; `agentContext` on a test or group
-  adds more. Under `e2e run`, the context opens with the test's title path
+  adds more. Under `e2e run`, every prompt opens with the test's title path
   (`Test: billing > upgrades the tier`), judges included, so name a test
   for what it covers, not for the verdict it expects.
 
@@ -144,25 +150,33 @@ The tools, one per engine action. Name the target as the screen names it
 - `scroll`: viewport or one scrollable node, a screen or a few.
 - `scroll_to`: a listed node into view, or by `text` page a list to a row.
 - `drag`: one node onto another.
-- `upload`: project-root files to a file input; outside it or hidden (`.env`)
-  is `POLICY_DENIED`.
+- `upload`: project-root files, or e2e's samples (`sample:photo.png`,
+  `sample:document.pdf`, and the rest) when the step names none, to a file
+  input or a visible control that opens a native file chooser; outside the
+  root or hidden (`.env`) is `POLICY_DENIED`.
 - `navigate`: a URL or app-relative path.
 - `back`: browser history or in-app back.
+- `resize_viewport`: set the viewport size (200 to 4096 CSS px) to check a
+  layout at phone, tablet, or desktop width. Engines with `session.resize`,
+  such as web.
 - `type_secret`: a declared secret by name; plaintext never reaches the model.
   Offered only when the step declares secrets and the engine can fill them.
 - `screenshot`: attach viewport pixels; every later result then carries one.
 - `tap_at`/`hover_at`/`press_at`/`select_at`/`type_at`: a screenshot point.
+- `drag_at`: from one screenshot point to another (`to_x`, `to_y`).
 - `dismiss_keyboard` (device): hide the on-screen keyboard.
 
 The focused field's selected text is listed as `selection="..."` (never for
 a secret), so a repeated `Shift+ArrowLeft` selects one word with visible
 feedback. Point tools serve a canvas shape, map pin, image region, or system
-sheet control, hit-testing the tree first so a listed control underneath is
-acted on by id; `type_at` on nothing listed taps, then types. A screen with
+sheet control. `tap_at`, `hover_at`, and `drag_at` act at the point
+(`drag_at` by id between two different listed controls on an engine without
+a bare-point drag); `press_at`, `select_at`, and `type_at` hit-test the
+tree first so a listed control underneath is acted on by id, and `type_at`
+on nothing listed taps, then types. A screen with
 nothing to tap by id opens with a screenshot attached. A device has no
-`right_click`, `select`, `upload`, or `scroll_to` by node id. Pixels are
-masked and withheld after a secret fill (topic writing-tests): act on pixels
-before signing in, or in a test of its own. A result says when an action
+`right_click`, `select`, `upload`, or `scroll_to` by node id. Pixels mask
+secure fields only (topic writing-tests). A result says when an action
 closed an on-screen keyboard; on a touch screen that tap was often spent
 closing it, so act again.
 
@@ -190,14 +204,37 @@ expect(data.titles).toContain('Buy milk');
   screen first and ask about what is visible. Judged from the tree alone,
   it adds `pass vision: true when the answer is in pixels`, as does
   `waitFor`'s timeout after an inconclusive round.
-- Judgments see the assertion and the current screen only, never prior
-  steps or the act loop's summaries; malformed output gets one repair
-  round, then `MODEL_OUTPUT_INVALID`.
+- Judgments see the assertion, its params, the agent's context, the test
+  title, and the current screen with its location, never prior steps or the act loop's
+  summaries; malformed output gets one repair round, then
+  `MODEL_OUTPUT_INVALID`.
+- `assert` and `waitFor` take `params` like `act`:
+  `assert('the table lists {name}', { params: { name } })`. The judge sees a
+  `Secret` by name only; check a secret's value with a locator assertion.
 - A value shown in more than one place (a total in the summary and on the
   pay button) must agree everywhere, or the judgment fails. Name the one
   you mean (`'the order summary total is $42.00'`) when only it matters.
 - `waitFor` observes every `interval` (default 3 s), judges only when the
-  screen changed, and is `STEP_TIMEOUT` after `timeout` (default 30 s).
+  screen or its location changed, and is `STEP_TIMEOUT` after `timeout` (default 30 s).
+- Never sleep for a fixed time to let the app settle. A sleep is too short
+  on a slow run and wasted time on a fast one; `waitFor` returns as soon as
+  the state appears:
+
+```ts
+// BAD: guesses how long the export takes.
+await new Promise((resolve) => setTimeout(resolve, 10_000));
+
+// GOOD: waits for the state, up to the timeout.
+await agent.waitFor('the export finished and a download link appeared', { timeout: 60_000 });
+```
+
+- `waitFor` needs a model even under a custom executor and is never cached,
+  so each run spends judgments on it. It judges again on every screen
+  change, and on every location change except under `vision: 'only'`, up
+  to `maxModelCalls` (25): for a long wait on a screen that keeps
+  changing (a progress counter), raise `interval`. The test timeout still
+  caps its `timeout`.
+
 - `extract` takes any Standard Schema validator (zod works); the model sees
   the schema's shape, never its value rules (`min`, `max`, lengths,
   patterns), which check what it read. Data the screen does not show is
@@ -205,11 +242,53 @@ expect(data.titles).toContain('Buy milk');
   accept absence, ask for it (`'the phone, or null when none is shown'`
   with `.nullable()`).
 
+For a debug view that pairs each action with the screen it started on, give
+`agent.act` an `onBeforeAction` hook that calls `app.screenshot`, and match
+each capture to `onAction` by `index`, which restarts at 1 in each `act` call.
+It runs before replayed actions too, does not wait for the screen to settle,
+and a failed action gets a capture but no `onAction`.
+Narrow `onAction`'s event on `action` for coordinates, replay included:
+`point` for `tapAt`/`hoverAt`, `from`/`to` for `dragAt`. They are in the
+same space as `screen.tapAt` and `boundingBox()`, rounded and clamped to the
+viewport. Mobile engines have no `hoverAt` or `dragAt`.
+
 `vision` on a judgment picks the evidence: `false` (default) the tree;
 `true` the tree plus a masked screenshot; `'only'` the screenshot alone, for
 what the screen presents (an overlay, a broken layout, a chart) where the
 tree would answer first. `'only'` never falls back to the tree: unprovably
 masked pixels fail with `POLICY_DENIED`.
+
+### Viewport exploration
+
+With `explore: true`, `agent.assert` can scroll the current screen and combine
+evidence from several viewports. This helps when a list fits on a tablet but
+needs scrolling on a phone.
+
+```ts
+await agent.assert('Settings lists HOS Settings, Account, Language and Theme', {
+  explore: true,
+  maxSteps: 10,
+  maxModelCalls: 6,
+});
+```
+
+Exploration offers `observe`, `scroll`, `scroll_to`, and project tools declared
+`mutates: false`. The built-in executor also offers `screenshot` when `vision`
+is `true` or `'only'`; the default is tree-only. Other actions are rejected. The viewport stays
+where exploration ends.
+
+Defaults are 10 scroll actions and 6 model calls, each capped at the selected
+agent's configured limit. Overrides may exceed the 10/6 defaults, up to the
+configured limits. The deadline
+defaults to `judgmentTimeout`. `maxSteps` or `maxModelCalls` without
+`explore: true` throws `INVALID_ARGUMENT`. The built-in executor uses
+`agents.<name>.model`, even when `judge` is configured.
+
+A contradiction is `ASSERTION_FAILED`; insufficient evidence within the time
+or action/model budget is `ASSERTION_INCONCLUSIVE`.
+
+Use `waitFor` for a condition that changes over time, and `explore` for content
+elsewhere on the current screen.
 
 ## Write instructions the model can execute
 
@@ -259,7 +338,7 @@ values, or a `Secret`'s value; password fields masked. The first
 screen of a step arrives whole; later action results report what changed,
 keyed by node ids stable while an element exists, or the whole screen when
 most changed. Pixels arrive through `vision` on a judgment or the act loop's
-`screenshot` and point tools, masked and withheld after a secret fill. When
+`screenshot` and point tools, with secure fields masked. When
 the browser engine's tree capture times out, the model gets a screenshot and
 a warning, a judgment needs `vision: true`, and no control may be inferred
 absent nor old node ids reused. The browser engine's tree shows a frame
@@ -309,7 +388,8 @@ matches. Misses and hand-offs use the model; `agent.assert`,
   ids and tokens aside; unless the recording opens with a navigation),
   re-finds each control by role, name, test id, placeholder, input purpose,
   and its named row (an unnamed control with twins and no named container
-  hands off), and passes alone only when the recorded end route is back,
+  hands off, and so does one known only by a generated test id once that id
+  is gone), and passes alone only when the recorded end route is back,
   every control that appeared (with its checked or selected state) is
   there, every one that went away is gone, at least one of those changed
   during the replay, and no new alert showed; otherwise the agent takes
@@ -385,12 +465,13 @@ make no model calls.
   `defineTool(tool({ ... }), { mutates: true })` from `e2e/agent` for a
   test API a flow calls mid-step.
 - `createToolLoopExecutor` keeps the loop and replaces prompt and tool
-  vocabulary.
+  vocabulary; spread `createGrammarTools(ctx, { guard })` into its tools and
+  start its `system` with `BASE_RULES` to keep the built-in actions.
 - Any `StepExecutor` (`{ name, version?, cache?, runStep(ctx) }`) goes under
   `executor`; the runner still owns observations, actions, budgets, and the
   report, and `system` or `tools` beside `executor` is `INVALID_CONFIG`.
 
-Reference: https://e2e.tester.army/docs/agents
+Reference: https://e2e.com/docs/agents
 
 ## In CI
 

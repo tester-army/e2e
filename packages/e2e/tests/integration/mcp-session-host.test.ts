@@ -3,6 +3,7 @@
  * engine, an idle session closes itself, the TTL ends a session through the
  * step's own deadline, sessions open side by side up to the limit, hold their
  * engine and config until their attempt is gone, and share one app process,
+ * a session opens on a named engine where the project has no config file,
  * a shutdown cancels sessions still opening and waits for them, a cancelled
  * open stops what it started, an `open_session` that fails
  * after the attempt opened tears the attempt down and leaves the host ready
@@ -19,6 +20,7 @@ import { createFakeEngine, FAKE_APP, type FakeEngineBehavior, type FakeEngineHan
 import { freePort } from '../helpers/free-port.ts';
 import { gate } from '../helpers/gate.ts';
 import { startupLog, writeStartupScripts } from '../helpers/startup-scripts.ts';
+import type { EngineSession } from '../../src/mcp/config.ts';
 import type { McpSessionSummary } from '../../src/mcp/usage.ts';
 import type { RecordingMode, TargetApp } from '../../src/types.ts';
 
@@ -68,6 +70,8 @@ describe('SessionHost', { timeout: 60_000 }, () => {
     readonly tools?: Record<string, ReturnType<typeof defineTool>>;
     /** Secrets the config declares beside the admin credential. */
     readonly secrets?: Record<string, string>;
+    /** Told what each `engine` session asked for. */
+    readonly onEngineSession?: (session: EngineSession) => void;
   }
 
   /**
@@ -92,6 +96,10 @@ describe('SessionHost', { timeout: 60_000 }, () => {
           { projectRoot: dir, env: {}, configPath },
         );
         return { ...config, configPath };
+      },
+      loadEngineConfig: async (session) => {
+        options.onEngineSession?.(session);
+        return resolveConfig({ targets: [{ platform: 'kiosk', engine: engine().engine, ...(session.app === undefined ? {} : { app: session.app }) }] } as never, { projectRoot: dir, env: {} });
       },
       env: {},
       headed: options.headed ?? false,
@@ -292,11 +300,37 @@ describe('SessionHost', { timeout: 60_000 }, () => {
     const first = sessionId(await mixed.open({}));
     await expect(mixed.open({ config: 'other.config.ts' })).rejects.toMatchObject({
       code: 'CONFIG_IN_USE',
-      message: `session ${first} is open on config ${path.join(dir, 'e2e.config.ts')}; sessions open at once share one config, because credentials and secrets resolve process-wide; open this one on that config, or close every session on it first`,
+      message: `session ${first} is open on config ${path.join(dir, 'e2e.config.ts')}; sessions open at once share one config, because credentials and secrets resolve process-wide; open this one the same way, or close every session on it first`,
     });
     await mixed.close('done');
     expect(await mixed.open({ config: 'other.config.ts' })).toContain(`config ${path.join(dir, 'other.config.ts')}`);
     await mixed.close('done');
+  });
+
+  it('opens sessions on a named engine without a config file, apart from sessions on one', async () => {
+    const asked: EngineSession[] = [];
+    const bare = host(engines().next, { maxSessions: 3, onEngineSession: (session) => asked.push(session) });
+    const text = await bare.open({ engine: { package: '@acme/kiosk', options: { lane: 2 } }, app: FAKE_APP });
+    expect(text).toContain('), headless; no config file: one target on @acme/kiosk, every other setting at its default.');
+    expect(text).toContain(`App: ${FAKE_APP.url}/`);
+    expect(asked).toEqual([{ package: '@acme/kiosk', options: { lane: 2 }, app: FAKE_APP }]);
+    // Engine sessions hold no secrets, so a second one opens beside the first; a config's session does not.
+    const second = sessionId(await bare.open({ engine: '@acme/other' }));
+    await expect(bare.open({})).rejects.toMatchObject({ code: 'CONFIG_IN_USE', message: expect.stringContaining('is open on engine defaults, with no config file;') });
+    expect(asked[1]).toEqual({ package: '@acme/other' });
+    await bare.close('done', second);
+    await bare.close('done');
+  });
+
+  it.each([
+    [{ engine: '@acme/kiosk', target: 'kiosk' }, 'target names part of a config file'],
+    [{ engine: '@acme/kiosk', config: 'e2e.config.ts' }, 'config names part of a config file'],
+    [{ engine: '@acme/kiosk', test: 'tests/a.e2e.ts' }, 'test names part of a config file'],
+    [{ app: FAKE_APP }, 'app describes the session engine opens'],
+  ])('refuses %j before anything loads', async (args, message) => {
+    const fake = createFakeEngine();
+    await expect(host(() => fake).open(args)).rejects.toMatchObject({ code: 'INVALID_ARGUMENT', message: expect.stringContaining(message) });
+    expect(fake.events).toEqual([]);
   });
 
   it('refuses a session on another config before evaluating it, so its secrets never resolve against the open session\'s', async () => {
@@ -329,6 +363,32 @@ describe('SessionHost', { timeout: 60_000 }, () => {
     expect(await (await fetch(url)).text()).toBe('ready');
     await shared.close('done', second);
     await expect(fetch(url)).rejects.toThrow();
+  });
+
+  it('names the app command it started and the port it assigned, without args or env values', async () => {
+    writeStartupScripts(dir);
+    const command = {
+      executable: process.execPath,
+      args: ['server.cjs', '{port}', '--token=arg-secret-5678'],
+      env: { DATABASE_URL: 'postgres://app:db-pass-1234@127.0.0.1:55432/app' },
+      inheritEnv: ['STRIPE_*'],
+      log: 'app log.txt',
+    };
+    const started = host(engines().next, { app: { url: 'http://127.0.0.1:0', readyUrl: 'http://127.0.0.1:{port}/health?token=query-secret-42', command } });
+    const text = await started.open({});
+    const port = /App: http:\/\/127\.0\.0\.1:(\d+)\/ \(port \1, assigned for the declared port 0\)\./.exec(text)?.[1];
+    expect(port, text).toBeDefined();
+    expect(text).toContain(
+      `Process: app.command ${JSON.stringify(process.execPath)} (ready at http://127.0.0.1:${port}/health; env DATABASE_URL; inherits STRIPE_*; log app log.txt). e2e starts no other app process for this session;`,
+    );
+    expect(text).not.toContain('db-pass-1234');
+    expect(text).not.toContain('arg-secret-5678');
+    expect(text).not.toContain('query-secret-42');
+    await started.close('done');
+
+    const external = host(engines().next);
+    expect(await external.open({})).toContain('Process: none; the target declares no app.command, so the app runs outside e2e.');
+    await external.close('done');
   });
 
   it('cancels a session still opening when it shuts down, waits for it, and admits none meanwhile', async () => {

@@ -6,8 +6,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { InfrastructureError } from '../../src/internal/errors.ts';
-import { ManagedProcess } from '../../src/run/managed-process.ts';
+import { ManagedProcess, stopsSettled } from '../../src/run/managed-process.ts';
 import type { CommandConfig } from '../../src/types.ts';
+import { freePort } from '../helpers/free-port.ts';
 
 describe('ManagedProcess', () => {
   it.each(['preflight', 'startup'] as const)('cancels an in-flight %s readiness probe', async (phase) => {
@@ -72,6 +73,33 @@ describe('ManagedProcess', () => {
     await app.start(controller.signal);
     expect(Date.now() - startedAt).toBeLessThan(5_000);
     await app.stop();
+  }, 20_000);
+
+  // Windows has no SIGTERM a process can ignore: the stop ends it at once.
+  it.skipIf(process.platform === 'win32')('keeps stopsSettled pending until a stop force-kills a process that ignores SIGTERM at shutdownTimeout', async () => {
+    const port = await freePort();
+    const app = new ManagedProcess(
+      'app.command',
+      {
+        executable: process.execPath,
+        args: ['-e', `process.on('SIGTERM', () => {}); require('node:http').createServer((request, response) => response.end()).listen(${port}, '127.0.0.1');`],
+        startupTimeout: 10_000,
+        shutdownTimeout: 500,
+      },
+      process.cwd(),
+      { readyUrl: `http://127.0.0.1:${port}/` },
+    );
+    await app.start(new AbortController().signal);
+    const stopped = app.stop();
+    let settled = false;
+    const settling = stopsSettled().then(() => {
+      settled = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(settled).toBe(false);
+    await stopped;
+    await settling;
+    expect(settled).toBe(true);
   }, 20_000);
 });
 
@@ -231,12 +259,155 @@ describe('ManagedProcess stall diagnostics', () => {
     expect(notices).toEqual([]);
   });
 
-  it('keeps the last 20 lines only', async () => {
+  it('quotes every line the command appended when the log since it started fits both windows', async () => {
     const lines = Array.from({ length: 25 }, (_, i) => `line ${i + 1}`);
     const app = new ManagedProcess('service "compose"', stalled(printThen(lines), { log }), dir, { waitForExit: true });
     const failure = await failureOf(app, 'line 25');
     const quoted = failure.message.split('\n').slice(2);
-    expect(quoted).toEqual(lines.slice(5).map((line) => `  ${line}`));
+    expect(quoted).toEqual(lines.map((line) => `  ${line}`));
+  });
+
+  it('quotes the first and last 20 lines, and only those, of a log longer than both windows', async () => {
+    const lines = Array.from({ length: 300 }, (_, i) => `line ${String(i + 1).padStart(3, '0')} ${'x'.repeat(40)}`);
+    const app = new ManagedProcess('service "compose"', stalled(printThen(lines), { log }), dir, { waitForExit: true });
+    const failure = await failureOf(app, lines[lines.length - 1]!);
+    const quoted = failure.message.split('\n').slice(2);
+    expect(quoted).toHaveLength(41);
+    expect(quoted.slice(0, 20)).toEqual(lines.slice(0, 20).map((line) => `  ${line}`));
+    expect(quoted[20]).toBe('  [startup output omitted]');
+    expect(quoted.slice(21)).toEqual(lines.slice(-20).map((line) => `  ${line}`));
+  });
+
+  it('quotes whole lines only when the windows cut inside a line at either edge', async () => {
+    // Long lines come back as one long command line, so the child builds them.
+    const lines = Array.from({ length: 60 }, (_, i) => `line ${String(i + 1).padStart(2, '0')} ${'y'.repeat(280)}`);
+    const script = [
+      `const pad = 'y'.repeat(280)`,
+      `for (let i = 1; i <= 60; i++) process.stdout.write('line ' + String(i).padStart(2, '0') + ' ' + pad + '\\n')`,
+      'setInterval(() => {}, 1000)',
+    ].join('; ');
+    const app = new ManagedProcess('service "compose"', stalled(script, { log }), dir, { waitForExit: true });
+    const failure = await failureOf(app, lines[lines.length - 1]!);
+    const quoted = failure.message.split('\n').slice(2);
+    const printed = quoted.filter((line) => line !== '  [startup output omitted]').map((line) => line.slice(2));
+    for (const line of printed) expect(lines).toContain(line);
+    expect(quoted).toContain('  [startup output omitted]');
+    expect(printed[0]).toBe(lines[0]);
+    expect(printed[printed.length - 1]).toBe(lines[lines.length - 1]);
+  });
+
+  it('keeps the complete line before a whitespace fragment the head window cut into', async () => {
+    // The head window ends 9 bytes into this line's indent, so the fragment it
+    // cut is whitespace alone: filtering empty lines first would drop it, and
+    // the pop that removes the fragment would then take the fatal line above it.
+    const fatal = `fatal: ${'x'.repeat(4_080)}`;
+    const lines = [
+      fatal,
+      '            at Object.<anonymous> (/app/server.js:12:3)',
+      ...Array.from({ length: 200 }, (_, i) => `watcher: rebuilt module ${i + 1}`),
+    ];
+    const script = [
+      `process.stdout.write('fatal: ' + 'x'.repeat(4080) + '\\n')`,
+      `process.stdout.write('            at Object.<anonymous> (/app/server.js:12:3)\\n')`,
+      `for (let i = 1; i <= 200; i++) process.stdout.write('watcher: rebuilt module ' + i + '\\n')`,
+      'setInterval(() => {}, 1000)',
+    ].join('; ');
+    const app = new ManagedProcess('service "compose"', stalled(script, { log }), dir, { waitForExit: true });
+    const failure = await failureOf(app, lines[lines.length - 1]!);
+    const quoted = failure.message.split('\n').slice(2);
+    expect(quoted[0]).toBe(`  ${fatal}`);
+  });
+
+  it('leaves an earlier run out when the tail window reaches back into it', async () => {
+    fs.mkdirSync(path.join(dir, 'out'));
+    const earlier = Array.from({ length: 200 }, (_, i) => `earlier run: line ${i + 1}`);
+    fs.writeFileSync(path.join(dir, log), `${earlier.join('\n')}\n`);
+    const lines = Array.from({ length: 40 }, (_, i) => `added ${i + 1}`);
+    const app = new ManagedProcess('service "compose"', stalled(printThen(lines), { log }), dir, { waitForExit: true });
+    const failure = await failureOf(app, 'added 40');
+    expect(failure.message.split('\n').slice(2)).toEqual(lines.map((line) => `  ${line}`));
+  });
+
+  it('quotes the first and last 20 lines of a log that fits the byte window but not the line budget', async () => {
+    const lines = Array.from({ length: 50 }, (_, i) => `line ${i + 1}`);
+    const app = new ManagedProcess('service "compose"', stalled(printThen(lines), { log }), dir, { waitForExit: true });
+    const failure = await failureOf(app, 'line 50');
+    const quoted = failure.message.split('\n').slice(2);
+    expect(quoted).toHaveLength(41);
+    expect(quoted.slice(0, 20)).toEqual(lines.slice(0, 20).map((line) => `  ${line}`));
+    expect(quoted[20]).toBe('  [startup output omitted]');
+    expect(quoted.slice(21)).toEqual(lines.slice(-20).map((line) => `  ${line}`));
+  });
+
+  it('keeps whole lines at both window edges when the cut lands exactly between two lines', async () => {
+    // 256-byte lines put the 4 KiB window edge on a line boundary at both ends.
+    const lines = Array.from({ length: 60 }, (_, i) => `line ${String(i + 1).padStart(2, '0')} ${'z'.repeat(247)}`);
+    const script = [
+      `const pad = 'z'.repeat(247)`,
+      `for (let i = 1; i <= 60; i++) process.stdout.write('line ' + String(i).padStart(2, '0') + ' ' + pad + '\\n')`,
+      'setInterval(() => {}, 1000)',
+    ].join('; ');
+    const app = new ManagedProcess('service "compose"', stalled(script, { log }), dir, { waitForExit: true });
+    const failure = await failureOf(app, lines[lines.length - 1]!);
+    const quoted = failure.message.split('\n').slice(2);
+    expect(quoted).toHaveLength(33);
+    expect(quoted.slice(0, 16)).toEqual(lines.slice(0, 16).map((line) => `  ${line}`));
+    expect(quoted[16]).toBe('  [startup output omitted]');
+    expect(quoted.slice(17)).toEqual(lines.slice(-16).map((line) => `  ${line}`));
+  });
+
+  it('keeps the marker when the head window sits inside one huge first line', async () => {
+    const script = [
+      `process.stdout.write('fatal: ' + 'x'.repeat(5000) + '\\n')`,
+      `for (let i = 1; i <= 400; i++) process.stdout.write('watcher: rebuilt module ' + i + '\\n')`,
+      'setInterval(() => {}, 1000)',
+    ].join('; ');
+    const app = new ManagedProcess('service "compose"', stalled(script, { log }), dir, { waitForExit: true });
+    const failure = await failureOf(app, 'watcher: rebuilt module 400');
+    const quoted = failure.message.split('\n').slice(2);
+    expect(quoted).toHaveLength(21);
+    expect(quoted[0]).toBe('  [startup output omitted]');
+    expect(quoted[20]).toBe('  watcher: rebuilt module 400');
+  });
+
+  it('quotes a log of 25 long lines whole while it stays inside the byte window', async () => {
+    const body = (index: number) => `line ${String(index + 1).padStart(2, '0')} ${'w'.repeat(241)}`;
+    const lines = Array.from({ length: 25 }, (_, i) => body(i));
+    const script = [
+      `const pad = 'w'.repeat(241)`,
+      `for (let i = 1; i <= 25; i++) process.stdout.write('line ' + String(i).padStart(2, '0') + ' ' + pad + '\\n')`,
+      'setInterval(() => {}, 1000)',
+    ].join('; ');
+    const app = new ManagedProcess('service "compose"', stalled(script, { log }), dir, { waitForExit: true });
+    const failure = await failureOf(app, lines[lines.length - 1]!);
+    expect(failure.message.split('\n').slice(2)).toEqual(lines.map((line) => `  ${line}`));
+  });
+
+  it('quotes whole lines around the marker when a short log has lines longer than the byte window', async () => {
+    const lines = Array.from({ length: 10 }, (_, i) => {
+      const prefix = `line ${i + 1} `;
+      return prefix + 'v'.repeat(1_024 - prefix.length);
+    });
+    const script = [
+      `for (let i = 1; i <= 10; i++) { const prefix = 'line ' + i + ' '; process.stdout.write(prefix + 'v'.repeat(1024 - prefix.length) + '\\n') }`,
+      'setInterval(() => {}, 1000)',
+    ].join('; ');
+    const app = new ManagedProcess('service "compose"', stalled(script, { log }), dir, { waitForExit: true });
+    const failure = await failureOf(app, `${lines[lines.length - 1]!.slice(0, 24)}`);
+    const quoted = failure.message.split('\n').slice(2);
+    expect(quoted).toHaveLength(7);
+    expect(quoted.slice(0, 3)).toEqual(lines.slice(0, 3).map((line) => `  ${line}`));
+    expect(quoted[3]).toBe('  [startup output omitted]');
+    expect(quoted.slice(4)).toEqual(lines.slice(-3).map((line) => `  ${line}`));
+  });
+
+  it('keeps the first line the command wrote when the log it appends to did not end with one', async () => {
+    fs.mkdirSync(path.join(dir, 'out'));
+    fs.writeFileSync(path.join(dir, log), 'from an earlier run that never finished its line');
+    const lines = ['fatal: EADDRINUSE', ...Array.from({ length: 400 }, (_, i) => `watcher: rebuilt module ${i + 1}`)];
+    const app = new ManagedProcess('service "compose"', stalled(printThen(lines), { log }), dir, { waitForExit: true });
+    const failure = await failureOf(app, 'watcher: rebuilt module 400');
+    expect(failure.message.split('\n').slice(2)[0]).toBe('  fatal: EADDRINUSE');
   });
 
   it('redacts command.env values from the quoted output with the report-wide secret markers, the log itself untouched', async () => {

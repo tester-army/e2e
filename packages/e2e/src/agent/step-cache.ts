@@ -19,7 +19,8 @@ import { sameRoute } from '../cache/route.ts';
 import { keyContextChanges, type CacheAgentIdentity } from '../cache/identity.ts';
 import { recordedProvenance, TraceRecorder } from '../cache/recorder.ts';
 import { expandTrace, templateParams, templatesCollide, templateTrace, type ParamTemplate } from '../cache/template.ts';
-import { readTraceEntry, targetLabel, type ActionTrace, type DerivedReason, type RecordedModel, type TraceEntry, type TraceTargetDescriptor } from '../cache/trace.ts';
+import { targetLabel, type ActionTrace, type DerivedReason, type RecordedModel, type TraceEntry, type TraceTargetDescriptor } from '../cache/trace.ts';
+import { readTraceEntry } from '../cache/trace-read.ts';
 import { sleep } from '../internal/time.ts';
 import type { StepCacheInfo } from '../run/steps.ts';
 import type { JsonValue } from '../types.ts';
@@ -527,9 +528,9 @@ export class StepTraceSession {
       const observation = await probeScreen(this.host, 'raw');
       if (observation?.kind !== 'semantic' || !this.host.traceEligible) return undefined;
       if (recorded === undefined || observation.path === undefined || sameRoute(recorded, observation.path)) return observation;
-      const delay = END_PATH_DELAYS_MS[attempt];
+      // The last delay repeats until the timeout, as in `pollSettled`.
+      const delay = END_PATH_DELAYS_MS[attempt] ?? END_PATH_DELAYS_MS[END_PATH_DELAYS_MS.length - 1]!;
       if (
-        delay === undefined ||
         Date.now() - startedMs + delay > END_PATH_TIMEOUT_MS ||
         this.host.remainingMs() <= delay ||
         this.host.signal.aborted

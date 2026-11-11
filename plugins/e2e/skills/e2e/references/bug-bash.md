@@ -37,9 +37,8 @@ prove each bug. Report confirmed bugs only, each with its failing test.
   Explorers that share an account report each other's edits as bugs.
 - Start signed-in charters from a saved session: `e2e explore --session
   <name>` runs the setup test that saves it and explores signed in (topic
-  `explore`). A setup that types a password withholds screenshots from then
-  on; sign in by cookie or API call to keep them (topic `writing-tests`).
-  Each charter with its own account needs its own setup and session.
+  `explore`). Each charter with its own account needs its own setup and
+  session.
 - Put what the local app cannot do in the agent's `context`: integrations
   without keys, what is seed data, what must never be clicked (paid runs,
   real accounts). Add the explorer's own blind spots from step 5's artifact
@@ -104,8 +103,11 @@ export default {
 ```
 
 Set `BUGBASH_PASSWORD` to 6 or more characters first, or the config fails to
-load. Pass `--config e2e.bugbash.config.ts` to every command below, and
-`open_session {config: "e2e.bugbash.config.ts"}` over MCP.
+load: a shorter password can't be redacted without rewriting ordinary text,
+so an account the app seeds with one (`admin`/`admin`) needs a longer
+password before it can be a credential. Pass `--config e2e.bugbash.config.ts`
+to every command below, and `open_session {config: "e2e.bugbash.config.ts"}`
+over MCP.
 
 ## 2. Plan charters
 
@@ -152,8 +154,13 @@ CHARTERS
 while IFS='|' read -r slug target agent charter; do
   [ -n "$slug" ] && printf '%s\0%s\0%s\0%s\0' "$slug" "$target" "$agent" "$charter"
 done < .e2e/bugbash/charters.txt | xargs -0 -n 4 -P 4 sh -c \
-  'npx e2e explore "$4" --config e2e.bugbash.config.ts --target "$2" --agent "$3" --output ".e2e/bugbash/$1" --max-steps 6 --video --reporter list,markdown < /dev/null > ".e2e/bugbash/$1.log" 2>&1' _
+  'npx e2e explore "$4" --config e2e.bugbash.config.ts --target "$2" --agent "$3" --output ".e2e/bugbash/$1" --max-steps 15 --timeout 900000 --video --reporter list,markdown < /dev/null > ".e2e/bugbash/$1.log" 2>&1' _
 ```
+
+`--timeout` ends a charter with its assessment whatever its step count, and
+a step takes about a minute, so the flags above give each charter about
+fifteen minutes. Under a time limit, size the first round to end by about a
+third of it.
 
 The log's summary prints `AI` (cost) and `Duration`. Exit code `1` means
 issues were reported: read the log either way. Exit codes `2` and `3` are
@@ -169,9 +176,8 @@ Merge findings that describe one defect: same path, same broken behavior.
 Keep the clearest reproduction and every charter that hit it. Keep warnings
 in a separate list unless the user asked for polish.
 
-A charter that filled a password, or whose session's setup did, prints no
-`evidence` line after that point. Its video is not masked: check it for
-secrets before sharing (topic `writing-tests`).
+A charter's video is not masked: check it for secrets before sharing (topic
+`writing-tests`).
 
 ## 5. Triage
 
@@ -190,40 +196,71 @@ Sort every finding before writing any test. Read the source to sort them.
 A finding is a model's claim; prove each candidate before reporting it. When
 your client can start subagents (Claude Code's Agent or Task tool, for one),
 start one per area with its three to five candidates as the log printed
-them and these steps, up to four at a time, the `e2e mcp` server's default
-session limit. Each reports back, per finding: confirmed or rejected, the
-root cause as `file:line` when it may read the source, the repro test path,
-and the failure it saw. Without subagents, verify one area after another.
+them and these steps, up to four at a time (the `e2e mcp` server's default
+session limit, which step 4 uses). Each reports back, per finding:
+confirmed or rejected, the root cause as `file:line` when it may read the
+source, the repro test path, and the failure it saw. Without subagents,
+verify one area after another.
 
 1. Read `actual` against the screenshot, or the video when there is none.
    A finding the evidence contradicts is rejected here. Settle the artifact
    bucket first: a "dead" link's destination must actually open (a valid
    href with a prevented default is still dead), a copy claim must show in
    the rendered screenshot.
-2. Write a repro test that follows the reproduction and asserts the
-   expected behavior, so it fails today and passes once the bug is fixed.
-   Put it under `bugbash/` inside the directory the config's `tests` glob
-   covers (`tests/bugbash/<slug>.e2e.ts` for the default): a file the glob
-   does not match is never selected, whatever path you pass to `e2e run`.
-   Build on the project's fixtures (a `test.extend` fixture, a setup test's
-   session). Prefer `screen` actions and `expect` with exact values;
-   `agent.act` for a step that varies, `agent.assert` for an outcome only
-   judgment can check (topic `writing-tests`). Tag it `{ tags: ['bugbash'] }`.
-3. Get exact locators from the live app: with the `e2e mcp` server
-   registered, `open_session` with the bug-bash config, pass its session id
-   to every call, walk the reproduction, and `locate` each locator before
-   writing it (topic `mcp`). Close your session when done.
-4. Run the file alone: `npx e2e run tests/bugbash/<slug>.e2e.ts`. Confirmed
-   only when it fails with `ASSERTION_FAILED` on the assertion that encodes
-   the bug. Any other failure (`LOCATOR_NOT_FOUND`, a timeout, a setup
-   error) means the test is wrong: fix it and rerun. A passing test means
-   the bug did not reproduce: reject the finding, say so, and move the test
-   out of `tests/bugbash/` (to `.e2e/bugbash/extra-tests/`, or offer it as
-   a regression test). Only failing repro tests stay there.
+2. Write a repro test from the finding: its reproduction as `agent.act`
+   steps and its expected behavior as the closing `agent.assert`, so it
+   fails today and passes once the bug is fixed. It needs no locators. Sign
+   in as the charter did, with its credential as step parameters or a setup
+   test's session. Assert only the defect: a count or a record another repro
+   changes makes it fail for the wrong reason. Put it under `bugbash/`
+   inside the directory the config's `tests` glob covers
+   (`tests/bugbash/<slug>.e2e.ts` for the default): a file the glob does not
+   match is never selected, whatever path you pass to `e2e run`. Tag it
+   `{ tags: ['bugbash'] }`.
+
+   ```ts
+   // tests/bugbash/cart-line-quantity.e2e.ts
+   import { test } from '@e2e-dev/web';
+   import { credentials } from 'e2e';
+
+   test('a cart line counts its quantity', { tags: ['bugbash'] }, async ({ app, agent }) => {
+     const shopper = credentials.user('bb-cart');
+     await app.open('/');
+     await agent.act('sign in with the given credentials', {
+       params: { username: shopper.username, password: shopper.password },
+     });
+     await agent.assert('the app shows you are signed in');
+     await agent.act('add "Dune" to the cart');
+     await agent.act('set the quantity of "Dune" in the cart to 2');
+     await agent.assert('the cart line for "Dune" totals twice its unit price');
+   });
+   ```
+3. Run your repros with the bug-bash config and an output directory of your
+   own, `npx e2e run tests/bugbash/<slug>.e2e.ts --config
+   e2e.bugbash.config.ts --output .e2e/bugbash/verify-<area>` (a run clears
+   its output's results, and another subagent may be reading them), then one
+   file alone while you fix it. Confirmed when it fails on the
+   reported defect: `ASSERTION_FAILED` from the closing `assert`, or a
+   failed `act` whose message names the defect. A failed `act` carries the
+   code the model chose, so only its message and screenshot tell the defect
+   apart from a failure short of it. A blocked `act`, a timeout, a setup
+   error, or a failure that names something else means the repro is wrong:
+   sharpen the step and rerun. A passing test means the bug did not
+   reproduce: reject the finding, say so, and move the test out of
+   `tests/bugbash/` (to `.e2e/bugbash/extra-tests/`, or offer it as a
+   regression test). Only failing repro tests stay there.
+4. When the user wants a scripted regression test, harden a confirmed repro
+   with `screen` actions and exact `expect` values (topic `writing-tests`):
+   with the `e2e mcp` server registered, `open_session` with the bug-bash
+   config, pass its session id to every call, walk the reproduction, and
+   `locate` each locator before writing it (topic `mcp`). Close your session
+   when done. A scripted step that opens a native dialog needs
+   `browser.onDialog` first.
 
 ## 7. Report
 
-Lead with the confirmed bugs, most severe first. For each: title, path, one
+Run every repro once, `npx e2e run --tag bugbash --config
+e2e.bugbash.config.ts`, so each bug you report still fails. Lead with the confirmed bugs, most severe first. For each: title, path, one
 line of expected against actual, root cause when known, steps, screenshot
 and video paths, repro test, and the charters that found it. Then the
 environment candidates that are production risks, marked unverified. Then
@@ -241,6 +278,10 @@ regression test with its `bugbash` tag removed.
 
 - Never report an unverified finding as a bug. "The explorer reported" is
   not "confirmed".
+- Under a time limit, spend it: once a round is verified, run charters for
+  the areas and postures no charter reached, until about a tenth of the
+  time is left. Report each bug as soon as its repro confirms it, so a bash
+  cut off at the limit keeps it.
 - One charter, one area. A charter that spans the whole app ends at its
   step budget having skimmed everything.
 - Seeded data and test accounts the app ships for development are not

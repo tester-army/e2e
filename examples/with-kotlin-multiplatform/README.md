@@ -4,7 +4,7 @@ A Compose Multiplatform greeting app with three locator tests and two agent
 tests per platform. Android and iOS share one screen in `shared/`. The test
 project is in `e2e/`, next to the Gradle project.
 
-<img src="screenshot-android.png" alt="Kotlin Multiplatform app on Android with the greeting Hello, Ada!" width="300" /> <img src="screenshot-ios.png" alt="Kotlin Multiplatform app on iOS with the greeting Hello, Ada!" width="300" />
+<img src="screenshot-android.png" alt="Kotlin Multiplatform app on Android with the greeting hello, Ada!" width="300" /> <img src="screenshot-ios.png" alt="Kotlin Multiplatform app on iOS with the greeting hello, Ada!" width="300" />
 
 ## Run
 
@@ -60,11 +60,11 @@ iOS, and the resource id on Android once
 sets `testTagsAsResourceId`. The screen is in
 [GreetingScreen.kt](shared/src/commonMain/kotlin/dev/e2e/examples/kmp/GreetingScreen.kt).
 See [e2e/e2e.config.ts](e2e/e2e.config.ts) and [e2e/tests/](e2e/tests/) for the setup.
-For device setup and CI, see the [Mobile guide](https://e2e.tester.army/docs/mobile).
+For device setup and CI, see the [Mobile guide](https://e2e.com/docs/mobile).
 
 The bundled fonts use the [SIL Open Font License](shared/src/commonMain/composeResources/files/OFL.txt).
 
-Last checked on 2026-10-19 with e2e 0.21.2, @e2e-dev/mobile 0.12.3, Kotlin
+Last checked on 2026-11-04 with e2e 0.22.0, @e2e-dev/mobile 0.12.5, Kotlin
 2.4.20, Compose Multiplatform 1.12.1, and AGP 9.4.1 on an Android 16
 emulator and an iOS 26 simulator. The three locator tests and the two agent
 tests passed on each.

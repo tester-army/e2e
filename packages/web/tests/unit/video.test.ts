@@ -17,14 +17,15 @@ const VIEWPORT = { width: 320, height: 200 };
 
 /**
  * A page whose screencast writes its file on start unless told not to, sends
- * its first frame at once (or after `firstFrameMs`, or never with `null`),
- * and fails to stop when told to.
+ * its first frame at once (or after `firstFrameMs`, or never with `null`)
+ * and records frame/stop order, and can fail to stop.
  */
 function fakePage(options: { writes?: boolean; stopError?: Error; startError?: Error; viewport?: { width: number; height: number }; firstFrameMs?: number | null } = {}) {
   const started: string[] = [];
   const sizes: { width: number; height: number }[] = [];
   const startOptions: Record<string, unknown>[] = [];
   const stopped = { count: 0, at: [] as number[] };
+  const events: ('frame' | 'stop')[] = [];
   const page = {
     viewportSize: () => options.viewport ?? VIEWPORT,
     screencast: {
@@ -36,16 +37,22 @@ function fakePage(options: { writes?: boolean; stopError?: Error; startError?: E
         startOptions.push({ path: file, size, ...rest });
         if (options.writes !== false) writeFileSync(file, 'webm');
         const firstFrameMs = options.firstFrameMs === undefined ? 0 : options.firstFrameMs;
-        if (firstFrameMs !== null) setTimeout(() => start.onFrame?.(), firstFrameMs);
+        if (firstFrameMs !== null) {
+          setTimeout(() => {
+            events.push('frame');
+            start.onFrame?.();
+          }, firstFrameMs);
+        }
       },
       stop: async () => {
+        events.push('stop');
         stopped.at.push(Date.now());
         stopped.count += 1;
         if (options.stopError !== undefined) throw options.stopError;
       },
     },
   } as unknown as Page;
-  return { page, started, sizes, startOptions, stopped };
+  return { page, started, sizes, startOptions, stopped, events };
 }
 
 describe('VideoRecorder', () => {
@@ -62,9 +69,8 @@ describe('VideoRecorder', () => {
     const video = recorder();
     const late = fakePage({ firstFrameMs: 150 });
     await video.arm(late.page);
-    const stopping = Date.now();
     await video.stop();
-    expect(late.stopped.at[0]! - stopping).toBeGreaterThanOrEqual(140);
+    expect(late.events).toEqual(['frame', 'stop']);
 
     const silent = fakePage({ firstFrameMs: null });
     await video.arm(silent.page);
@@ -94,6 +100,19 @@ describe('VideoRecorder', () => {
     for (const segment of segments) expect(Number.isNaN(Date.parse(segment.startedAt))).toBe(false);
     expect(video.isArmed).toBe(false);
     expect([first.stopped.count, second.stopped.count]).toEqual([1, 1]);
+  });
+
+  it('starts again after a stop on the same page, and the second stop hands over only the new segment', async () => {
+    const video = recorder();
+    const page = fakePage();
+    await video.arm(page.page);
+    expect((await video.stop()).map((segment) => segment.path)).toEqual(['video/video.webm']);
+    // Disarmed between recordings: a page opened now starts nothing.
+    await video.pageOpened(fakePage().page);
+    await video.arm(page.page);
+    expect((await video.stop()).map((segment) => segment.path)).toEqual(['video/video-part2.webm']);
+    expect(page.started).toEqual([path.join(dir, 'video', 'video.webm'), path.join(dir, 'video', 'video-part2.webm')]);
+    expect(page.stopped.count).toBe(2);
   });
 
   it('records at the viewport size by default, and at the configured size and quality when given', async () => {

@@ -87,7 +87,7 @@ describe('defineEngine', () => {
     );
     expect(() =>
       defineEngine(observingEngine({ session: { navigate: async () => undefined } as never })),
-    ).toThrow(/session has unknown key "navigate"; expected one of open, back, restart, reset/);
+    ).toThrow(/session has unknown key "navigate"; expected one of open, back, resize, restart, reset/);
     expect(() =>
       defineEngine(observingEngine({ session: { open: 'https://example.test/' } as never })),
     ).toThrow(/session.open must be a function/);
@@ -436,6 +436,7 @@ describe('createEngineSession', () => {
     // The point verbs need their own pointer kind; other pointer kinds alone offer nothing.
     expect(verbs({ performAt: async () => undefined, pointerActions: ['tap', 'hover'] })).toEqual(['hoverAt', 'tapAt']);
     expect(verbs({ performAt: async () => undefined, pointerActions: ['hover'] })).toEqual(['hoverAt']);
+    expect(verbs({ performAt: async () => undefined, pointerActions: ['dragTo'] })).toEqual(['dragAt']);
     expect(verbs({ performAt: async () => undefined, pointerActions: ['longPress', 'swipeTo'] })).toEqual([]);
     const keyboard = { type: async () => undefined, press: async () => undefined };
     expect(verbs({ keyboard })).toEqual(['pressKey', 'typeText']);
@@ -443,6 +444,7 @@ describe('createEngineSession', () => {
     expect(verbs({ session: { open: async () => undefined } })).toEqual(['navigate']);
     expect(verbs({ session: { back: async () => undefined, restart: async () => undefined } })).toEqual(['back']);
     expect(verbs({ session: { restart: async () => undefined } })).toEqual([]);
+    expect(verbs({ session: { resize: async () => undefined } })).toEqual(['resize']);
   });
 
   it('rejects a superseded located ref but lets observation refs through to the engine', async () => {

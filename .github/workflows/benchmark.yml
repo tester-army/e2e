@@ -70,7 +70,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Install browsers
-        run: pnpm --filter @e2e-dev/web exec playwright-core install chromium --with-deps
+        uses: ./.github/actions/chromium
       - name: Build
         run: pnpm run build
       - name: Run test
@@ -135,7 +135,7 @@ jobs:
           fi
       - run: pnpm install --frozen-lockfile
       - name: Install browsers
-        run: pnpm --filter @e2e-dev/web exec playwright-core install chromium --with-deps
+        uses: ./.github/actions/chromium
       - name: Build
         run: pnpm run build
       - name: Run test:agent

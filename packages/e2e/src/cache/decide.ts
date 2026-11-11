@@ -14,10 +14,11 @@ import type { ActionTrace, TraceEntry } from './trace.ts';
 /**
  * Whether a trace establishes its own starting point by navigating first.
  * Such a trace needs no start-path precondition — and a trace with neither
- * anchor can never replay at all, so it is not worth writing.
+ * anchor can never replay at all, so it is not worth writing. A resize
+ * before the navigate does not depend on the route, so it is passed over.
  */
 export function opensWithNavigate(trace: ActionTrace): boolean {
-  return trace.actions.find((action) => action.name !== 'tool')?.name === 'navigate';
+  return trace.actions.find((action) => action.name !== 'tool' && action.name !== 'resize')?.name === 'navigate';
 }
 
 /**

@@ -1,7 +1,6 @@
 ---
-import '@fontsource/stack-sans-notch/400.css';
 import '@fontsource/inter/400.css';
-import '@fontsource/dm-mono/400.css';
+import '@fontsource/jetbrains-mono/400.css';
 import '../styles/global.css';
 ---
 
@@ -16,26 +15,26 @@ import '../styles/global.css';
   <body>
     <div class="page">
       <header class="nav">
-        <img src="/e2e-lockup-32-white.svg" alt="e2e" width="109" height="32" />
+        <img src="/e2e-logotype-white.svg" alt="e2e" width="69" height="24" />
       </header>
 
       <main class="hero">
-        <p class="eyebrow">[01] with-astro</p>
-        <h1 class="title">Say hello</h1>
+        <p class="eyebrow">[ with-astro ]</p>
+        <h1 class="title">say hello</h1>
         <p class="lede">A demo screen for the e2e examples. Type a name and the app greets you.</p>
 
         <form class="form" id="greeting">
-          <label class="label" for="name">Name</label>
-          <div class="row">
-            <input id="name" class="field" autocomplete="off" placeholder="Ada Lovelace" />
-            <button class="button" type="submit">Greet</button>
+          <div class="field">
+            <input id="name" class="field-input" autocomplete="off" aria-invalid="false" />
+            <label class="field-label" for="name">name</label>
           </div>
-          <p class="error" role="alert" id="error" hidden>Enter a name first.</p>
+          <button class="button" type="submit">greet</button>
+          <p class="error" role="alert" id="error" hidden>enter a name first.</p>
           <p class="status" role="status" id="status" hidden></p>
         </form>
       </main>
 
-      <footer class="footer">Example app for e2e. The tests live in tests/.</footer>
+      <footer class="footer">example app for e2e. the tests live in tests/.</footer>
     </div>
 
     <script>
@@ -49,11 +48,13 @@ import '../styles/global.css';
         const value = input.value.trim();
         if (value === '') {
           error.hidden = false;
+          input.setAttribute('aria-invalid', 'true');
           status.hidden = true;
           return;
         }
         error.hidden = true;
-        status.textContent = `Hello, ${value}!`;
+        input.setAttribute('aria-invalid', 'false');
+        status.textContent = `hello, ${value}!`;
         status.hidden = false;
         input.value = '';
       });

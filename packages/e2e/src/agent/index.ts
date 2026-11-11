@@ -15,12 +15,13 @@ import { rejectUnknownOptions } from '../internal/options.ts';
 import { describeIssue, requireStandardSchema } from '../internal/standard-schema.ts';
 import { sleep } from '../internal/time.ts';
 import type { StepRunOptions } from '../run/steps.ts';
-import type { Agent, StandardSchemaV1, VisionMode } from '../types.ts';
+import type { Agent, AgentParams, JsonValue, StandardSchemaV1, VisionMode } from '../types.ts';
+import { redactParams, validateParams } from './act-validation.ts';
 import { AgentError, isAgentError, toAgentError } from './error.ts';
 import { isUnservedModelError, unservedModelError } from './model/sdk.ts';
 import { resolveBoundedBudget, resolveTimeout } from './call-options.ts';
 import { runActStep, runAssertStep } from './act.ts';
-import { observationShape, type AgentObservation } from './observation.ts';
+import { judgmentShape, type AgentObservation } from './observation.ts';
 import {
   Invocation,
   type AgentContext,
@@ -65,9 +66,9 @@ const VISION_HINT = 'the judge saw the semantic tree only; pass vision: true whe
 const VISION_HINT_UNPROVEN =
   'the judge saw the semantic tree only; if the engine captures pixels, pass vision: true when the answer is in pixels';
 
-const WAIT_FOR_KEYS = ['timeout', 'interval', 'maxModelCalls', 'vision', 'agent'] as const;
+const WAIT_FOR_KEYS = ['params', 'timeout', 'interval', 'maxModelCalls', 'vision', 'agent'] as const;
 const EXTRACT_KEYS = ['schema', 'timeout', 'vision', 'agent'] as const;
-const ASSERT_KEYS = ['timeout', 'screenshot', 'vision', 'agent'] as const;
+const ASSERT_KEYS = ['params', 'timeout', 'screenshot', 'vision', 'agent', 'explore', 'maxSteps', 'maxModelCalls'] as const;
 
 /** Builds the agent fixture for one attempt. */
 export function createAgentFixture(runtime: AgentContext): Agent {
@@ -75,11 +76,11 @@ export function createAgentFixture(runtime: AgentContext): Agent {
   /**
    * The vision hint for an inconclusive judgment made from the tree alone,
    * or none when `vision: true` could add no evidence in this attempt: the
-   * engine declares no screenshot capture, a secret was filled, or an
-   * earlier step's pixel request was already degraded.
+   * engine declares no screenshot capture, or an earlier step's pixel
+   * request was already degraded.
    */
   const visionHint = (): string | undefined => {
-    if (runtime.exposure.withholdsModelPixels || !runtime.engineCapabilities.has('artifacts')) return undefined;
+    if (!runtime.engineCapabilities.has('artifacts')) return undefined;
     const steps = runtime.steps.completed();
     if (steps.some((step) => step.visionDegraded !== undefined)) return undefined;
     return steps.some((step) => step.visionInput === true) ? VISION_HINT : VISION_HINT_UNPROVEN;
@@ -125,8 +126,9 @@ export function createAgentFixture(runtime: AgentContext): Agent {
 
   /**
    * One judgment call against a fresh observation. The judge is shown the
-   * instruction and the screen, never the prior steps or the acting agent's
-   * summaries: a verdict rests on evidence, not on what the actor said it did.
+   * instruction, its params, the agent's context, and the screen with its location, never the
+   * prior steps or the acting agent's summaries: a verdict rests on evidence,
+   * not on what the actor said it did.
    */
   const askJudgment = (invocation: Invocation, instruction: string, observation: AgentObservation) =>
     invocation.ask({
@@ -136,12 +138,26 @@ export function createAgentFixture(runtime: AgentContext): Agent {
       prompt: { request: JUDGMENT_REQUEST, instruction, observation },
     });
 
+  /**
+   * A judgment's params as the judge reads them: projected as `act` projects
+   * them, a `Secret` by name only and a `unique()` value as its string, then
+   * redacted per call, so a registered value spelled into a param never reaches the model.
+   */
+  const judgmentParams = (
+    params: AgentParams | undefined,
+    api: string,
+  ): Readonly<Record<string, JsonValue>> | undefined => {
+    const { projected, templates } = validateParams(params, api);
+    return projected === undefined ? undefined : redactParams(projected, templates, runtime.redact, api).params;
+  };
+
   const agent: Agent = {
     // The rest parameter exists only to catch the pre-0.8 three-argument call.
     act: (instruction, options, ...legacy: readonly unknown[]) =>
       runActStep(runtime, instruction, options, legacy.length),
     waitFor(condition, options) {
       rejectUnknownOptions('agent.waitFor', options, WAIT_FOR_KEYS);
+      const params = judgmentParams(options?.params, 'agent.waitFor');
       const intervalMs = validateInterval(options?.interval);
       const { config } = runtime.select(options?.agent);
       const vision = resolveVision(options?.vision);
@@ -149,6 +165,7 @@ export function createAgentFixture(runtime: AgentContext): Agent {
         {
           api: 'agent.waitFor',
           agent: options?.agent,
+          params,
           task: 'judge whether a condition holds',
           timeoutMs: resolveTimeout(options?.timeout, config.judgmentTimeout),
           maxModelCalls: resolveBoundedBudget(options?.maxModelCalls, config.maxModelCalls, 'maxModelCalls'),
@@ -241,19 +258,27 @@ export function createAgentFixture(runtime: AgentContext): Agent {
 
     assert(assertion, options) {
       rejectUnknownOptions('agent.assert', options, ASSERT_KEYS);
+      if (options?.explore !== undefined && typeof options.explore !== 'boolean') {
+        throw new TestError('INVALID_ARGUMENT', 'explore must be a boolean');
+      }
+      if (options?.explore !== true && (options?.maxSteps !== undefined || options?.maxModelCalls !== undefined)) {
+        throw new TestError('INVALID_ARGUMENT', 'assert budgets require explore: true');
+      }
       // A custom executor judges assertions through the socket: swapping
       // brains swaps all the thinking. The built-in path keeps the optimized
       // judgment tier below: one call, plus one repair round for a response
       // that missed the grammar, vision-capable.
       const { config, customExecutor } = runtime.select(options?.agent);
-      if (customExecutor) {
+      if (customExecutor || options?.explore === true) {
         return runAssertStep(runtime, assertion, options);
       }
+      const params = judgmentParams(options?.params, 'agent.assert');
       const vision = resolveVision(options?.vision);
       return step(
         {
           api: 'agent.assert',
           agent: options?.agent,
+          params,
           task: 'judge whether an assertion holds',
           timeoutMs: resolveTimeout(options?.timeout, config.judgmentTimeout),
           maxModelCalls: ASSERT_MODEL_CALLS,
@@ -305,10 +330,16 @@ export function createAgentFixture(runtime: AgentContext): Agent {
  * to spend it on.
  *
  * A judgment reads the observation and nothing else, so while the screen looks the
- * same the answer is the same and re-asking is a model call that can only repeat
- * itself. So a false judgment is followed by engine-only observations until the
- * screen actually changes, which is also what makes a condition that came true two
- * seconds ago cost two seconds rather than a full interval.
+ * same at the same location the answer is the same and re-asking is a model call
+ * that can only repeat itself. So a false judgment is followed by engine-only
+ * observations until one of them changes, which is also what makes a condition that
+ * came true two seconds ago cost two seconds rather than a full interval.
+ *
+ * The screen and the location the judge is shown are compared with
+ * `judgmentShape`. The location is not part of `observationShape`, because the
+ * settles after an action wait on that and must not treat an address change as
+ * the screen moving. Under `vision: 'only'` the judge is not shown the location,
+ * so it is not compared there either.
  *
  * `interval` stays the rate limit it always was: at most one judgment per
  * interval, so a screen that changes continuously — a spinner, a countdown —
@@ -333,7 +364,7 @@ async function waitForNextJudgment(
 ): Promise<AgentObservation> {
   const tickMs = Math.min(options.intervalMs, CHANGE_POLL_MS);
   const judgedAt = Date.now();
-  const judgedShape = observationShape(options.since);
+  const judgedShape = judgmentShape(options.since, { treeWithheld: invocation.treeWithheld });
   const timedOut = (cause?: unknown): AgentError =>
     new AgentError(
       'STEP_TIMEOUT',
@@ -364,7 +395,7 @@ async function waitForNextJudgment(
       throw cause;
     });
     if (Date.now() - judgedAt < options.intervalMs) continue;
-    if (observationShape(observation) !== judgedShape) return observation;
+    if (judgmentShape(observation, { treeWithheld: invocation.treeWithheld }) !== judgedShape) return observation;
   }
 }
 

@@ -24,8 +24,8 @@ import {
 } from '../collect/select.ts';
 import {
   classifyError,
-  ConfigurationError,
   combineExitCodes,
+  ConfigurationError,
   InfrastructureError,
   E2EError,
   errorMessage,
@@ -34,31 +34,38 @@ import {
   type ErrorPhase,
 } from '../internal/errors.ts';
 import { loadAiSdk } from '../agent/ai-sdk.ts';
+import { leaveWorkBehind } from '../internal/abandoned.ts';
 import { AiTraceCollector, AiTraceRecorder, registerAiTraceRecorder } from '../internal/ai-trace.ts';
 import { DebugTrace } from '../internal/debug.ts';
+import { printableUrl } from '../internal/urls.ts';
 import { resultId, timestamp, uuidv7 } from '../internal/ids.ts';
 import type { ExploreProgress } from '../explore/progress.ts';
-import { buildReport, projectSource, type Report1Document, type ReportExplore, type TargetProvenance } from '../report/build.ts';
+import { buildReport, projectSource, type Report1Document, type ReportChanges, type ReportExplore, type ReportFilter, type TargetProvenance } from '../report/build.ts';
 import { agentStepTable } from '../report/debug-steps.ts';
 import { writeTracePages, type TracePages } from '../report/traces.ts';
 import { STATELESS_REPORTERS } from '../report/builtin.ts';
+import { failureLine } from '../report/format.ts';
 import { ListReporter } from '../report/list.ts';
 import { writeJsonReport } from '../report/write.ts';
-import { createRunEventEmitter, toEventResult, type RunEventSink, type RunExitCode, type RunStatus, type RunEventFact, type SetupStep } from './events.ts';
+import { createRunEventEmitter, toEventResult, type RunEventSink, type RunExitCode, type RunStatus, type RunEventFact, type SetupOutcome, type SetupStep } from './events.ts';
 import { allocateAppPorts } from './app-ports.ts';
 import { inProcessSpawner } from './in-process.ts';
-import { someSkippedAfterFailure, tracedResultIds, type ResultRecord, type RunError, type SerialGroupRecord } from './records.ts';
+import { cleanupErrorsOf, someSkippedAfterFailure, tracedResultIds, type ResultRecord, type RunError, type SerialGroupRecord } from './records.ts';
 import { runUnits } from './scheduler.ts';
-import { buildWorkPlans, longestFirst, plannedSlots, type TargetWorkPlan, type TimeLimit } from './units.ts';
+import type { BeforeStep, HeldStep, StepPrompt } from './step-hold.ts';
+import { stepPromptLine } from '../report/list-steps.ts';
+import { buildWorkPlans, longestFirst, nonRunResult, plannedSlots, type TargetWorkPlan, type TimeLimit } from './units.ts';
 import { SessionStore } from './sessions.ts';
 import { outputLayout } from './output.ts';
 import type { RunnerOutput } from './process-output.ts';
-import { registerStaticSecrets } from './secrecy.ts';
+import { refuseBun } from './public-ownership.ts';
+import { registerStaticSecrets, staticSecretLedger } from './secrecy.ts';
 import { nextRerunDir, pruneArtifacts } from './artifacts.ts';
-import { carryForward, fileDurationKey, lastFailedIds, previousFileDurations, readLastRun, reportArtifactPaths, type RerunCollection } from './last-run.ts';
+import { carryForward, fileDurationKey, lastFailedIds, readLastRun, reportArtifactPaths, type RerunCollection } from './last-run.ts';
+import { loadTimings, writeTimings } from './timings.ts';
 import { childProcessSpawner } from './worker/handle.ts';
 import { setSecretRegistry } from '../secrets.ts';
-import { withAbort } from '../internal/time.ts';
+import { budgetText, withAbort } from '../internal/time.ts';
 import type { BuiltinReporter, E2EConfig, FinishedRun, RecordingMode, Reporter, ReporterSummary } from '../types.ts';
 import { modelLabel } from '../config/agent.ts';
 import { boundedInt, describeValue, positiveInt, timerMs } from '../config/validate.ts';
@@ -66,6 +73,7 @@ import { detectVcs, type VcsInfo } from '../internal/vcs.ts';
 import type { EnginePrepareResult } from '../engine/index.ts';
 import type { AppProcesses } from './managed-process.ts';
 import { PreparedEngines, recordingNotices, startDeclaredProcesses, validateEngine, type EngineGrade, type PrepareScope } from './provision.ts';
+import { filterSelection } from './test-filters.ts';
 
 export interface RunOptions {
   cwd?: string | undefined;
@@ -96,8 +104,15 @@ export interface RunOptions {
    * process.
    */
   freshGraph?: boolean | undefined;
-  /** One shard of the selection, cut once every other filter applied (`--shard 2/3`). */
+  /** One shard of the selection, cut once every other flag applied and before the test filters judge it (`--shard 2/3`). */
   shard?: Shard | undefined;
+  /**
+   * Runs the configured `filters` on the change since this git ref
+   * (`--changed-since`): the files that differ from the merge base of it and
+   * HEAD. Without it no filter runs; a ref git cannot measure from is
+   * `INVALID_CHANGED_SINCE`.
+   */
+  changedSince?: string | undefined;
   targetIds?: readonly string[] | undefined;
   headed?: boolean | undefined;
   retries?: number | undefined;
@@ -159,6 +174,13 @@ export interface RunOptions {
   agent?: string | readonly string[] | undefined;
   /** Prints aggregated phase timings to stderr after the run. */
   debug?: boolean | undefined;
+  /**
+   * The timings history file for this run (`--timings`), relative to the
+   * project root, over `<output>/timings.json`: read to start the longest
+   * files first and rewritten when the run ends. A missing or invalid file
+   * is no history, never an error.
+   */
+  timings?: string | undefined;
   /** Records every model call to `<output>/ai-trace.json` (`--ai-trace`). */
   aiTrace?: boolean | undefined;
   /**
@@ -200,10 +222,22 @@ export interface RunOptions {
    * the CLI's Ctrl-C ladder (`cli/signals.ts`) feeds these two.
    */
   forceSignal?: AbortSignal | undefined;
+  /**
+   * Holds every top-level step of a test's first attempt, in `beforeEach`
+   * and the body, until it resolves (`e2e run --step`); setup tests and
+   * retries never wait. To stop, interrupt the run. While any step is held,
+   * the test's timeout and the time limit do not run, and the worker
+   * watchdog counts none of the held time.
+   * A rejection stops the run with its error. Refused with the json reporter,
+   * whose stdout the prompt would break.
+   */
+  beforeStep?: BeforeStep | undefined;
   /** A second sink on the run's event spine, beside the list reporter. */
   onEvent?: RunEventSink | undefined;
   /** Budget for each reporter's `onRunFinished`, in ms. Only the test harness sets it; there is no flag. */
   reporterTimeout?: number | undefined;
+  /** Budget for each test filter's call, in ms; 5 minutes unless set. Only the test harness sets it; there is no flag. */
+  filterTimeout?: number | undefined;
   /**
    * The process's stdout and stderr, when the caller claimed them (the CLI):
    * what user code in this process prints is held while the config loads
@@ -233,6 +267,12 @@ export interface InMemoryTests {
    * events, and its record is read once the run is over, as `run.explore`.
    */
   readonly explore?: InMemoryExplore | undefined;
+  /**
+   * Notices decided before the run started, such as the target an
+   * exploration chose: the run emits them as `run` notices once it has
+   * started, for a caller with no terminal of its own to print them on.
+   */
+  readonly notices?: readonly string[] | undefined;
 }
 
 /** What the runner needs from an exploration: its moments as they happen, and its record at the end. */
@@ -266,6 +306,7 @@ export interface ListOptions
     | 'grepInvert'
     | 'lastFailed'
     | 'shard'
+    | 'changedSince'
     | 'passWithNoTests'
     | 'output'
     | 'env'
@@ -308,6 +349,8 @@ export interface ListedPair {
   readonly disposition: 'run' | 'skip' | 'filtered';
   /** Why the pair is skipped or filtered; omitted when it runs. */
   readonly reason?: string;
+  /** The name of the test filter that left the pair out; omitted otherwise. */
+  readonly filter?: string;
 }
 
 /** The selection `list` returns. */
@@ -328,25 +371,40 @@ export interface ListResult {
  * `targets` the selected target names in config order. An empty selection
  * throws `NO_TESTS` unless `passWithNoTests`. Config, collection, and
  * selection failures throw the same classified error `run` records. Each
- * call imports the test files again, so a later call sees an edit.
+ * call imports the test files again, so a later call sees an edit. With
+ * `changedSince`, the configured test filters then judge the selection,
+ * which may call a model: a pair one left out is `filtered`, with its
+ * `filter` and `reason`, and a selection they leave empty resolves.
  */
 export async function list(options: ListOptions = {}): Promise<ListResult> {
+  refuseBun();
+  return listSelection(options, () => undefined);
+}
+
+/**
+ * `list`, handing each line about the test filters, what they judge and
+ * what each decided, to `notice`: what `e2e list` prints on stderr. With
+ * `processOutput`, what the config prints while it loads is held until its
+ * secrets are known, as `run` does, since the filters run in this process.
+ */
+export async function listSelection(options: ListOptions, notice: (message: string) => void, processOutput?: RunnerOutput): Promise<ListResult> {
   const cwd = options.cwd ?? process.cwd();
   const env = options.env ?? process.env;
   const runOptions = toSelectionRunOptions(options);
-  const config = await loadRunConfig(
-    runOptions,
-    cwd,
-    env,
-    runOptions.output === undefined ? {} : { output: runOptions.output },
-  );
+  const loadConfig = async (): Promise<ResolvedConfig> => {
+    const loaded = await loadRunConfig(runOptions, cwd, env, runOptions.output === undefined ? {} : { output: runOptions.output });
+    registerStaticSecrets(loaded.allSecrets);
+    return loaded;
+  };
+  const config = await (processOutput === undefined ? loadConfig() : processOutput.withholdDuring(loadConfig));
+  const { changedSince } = runOptions;
   const collection = await collect(config, runOptions.files);
-  const selection = select(
-    collection,
-    config,
-    (await selectionInputs(runOptions, config)).filters,
-    runOptions.passWithNoTests !== undefined ? { passWithNoTests: runOptions.passWithNoTests } : {},
-  );
+  const inputs = await selectionInputs(runOptions, config);
+  const first = select(collection, config, inputs.filters, runOptions.passWithNoTests !== undefined ? { passWithNoTests: runOptions.passWithNoTests } : {});
+  const selection =
+    changedSince === undefined
+      ? first
+      : (await filterSelection(first, { config, collection, selectionFilters: inputs.filters, changedSince, signal: new AbortController().signal, notice })).selection;
   return {
     pairs: selection.pairs.map((pair) => toListedPair(config.projectRoot, pair)),
     unmatched: collection.unmatchedPositionals,
@@ -458,7 +516,9 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   const reporterIds = loaded.config?.reporters ?? options.reporters ?? ['list'];
   keepStdoutFor(reporterIds);
   const listReporter =
-    options.quiet === true || !reporterIds.includes('list') ? undefined : new ListReporter(processOutput?.listOutput);
+    options.quiet === true || !reporterIds.includes('list')
+      ? undefined
+      : new ListReporter(processOutput?.listOutput, { stepping: options.beforeStep !== undefined });
   // Without the list reporter to print it under a heading, a test's output
   // goes to the terminal as written.
   const printsTestOutput = options.quiet !== true && listReporter === undefined;
@@ -489,6 +549,12 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   /** Records a failure of the run itself, outside any test. */
   const recordFailure = (cause: unknown, phase?: ErrorPhase): void => {
     recordRunError({ error: serializeError(classifyError(cause), phase === undefined ? {} : { phase }) });
+  };
+
+  /** Records one result: into the report and onto the stream. */
+  const recordResult = (result: ResultRecord): void => {
+    results.push(result);
+    emit({ type: 'test-finished', result: toEventResult(result) });
   };
 
   /**
@@ -544,6 +610,15 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   // among them, and the files it could not collect: what a rerun can still
   // carry when the report lists no row.
   let rerunCollection: RerunCollection = { testIds: new Set(), uncollectedFiles: new Set() };
+  // What each test filter decided, once they ran, and the change they judged.
+  let filterReport: readonly ReportFilter[] = [];
+  let changesReport: ReportChanges | undefined;
+  // The results of the pairs that never run (skipped, filtered by a flag, or
+  // left out by a filter), from selection until the scheduler starts and
+  // records them with the rest. A run that stops in between records them
+  // once it has stopped, so the report, the events, and the outcome still
+  // show every test the selection held.
+  let pendingNonRun: readonly ResultRecord[] = [];
   const buildRunReport = (exitCode: RunExitCode): Report1Document => {
     const document = buildReport({
       runId,
@@ -556,6 +631,8 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
       serialGroups,
       runErrors,
       targetProvenance,
+      changes: changesReport,
+      filters: filterReport,
       explore: options.tests?.explore?.snapshot(),
     });
     const carried = lastRun === undefined ? undefined : carryForward(lastRun, document, rerunCollection);
@@ -589,6 +666,29 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     }
   };
 
+
+  /** The timings file: `--timings` against the project root, else the one in the output directory. */
+  const timingsPath = (config: ResolvedConfig): string =>
+    options.timings === undefined ? outputLayout(config.output).timings : path.resolve(config.projectRoot, options.timings);
+
+  /**
+   * Folds the run's file durations into the timings history. Advisory like
+   * the history itself: a write that fails is a line on stderr, never a run
+   * error. Runs before the report is written, because an absent timings file
+   * falls back to the previous report as the history to merge into.
+   */
+  const writeTimingsHistory = async (config: ResolvedConfig, document: Report1Document): Promise<void> => {
+    try {
+      await writeTimings(document, {
+        timingsPath: timingsPath(config),
+        reportPath: outputLayout(config.output).report,
+        projectRoot: config.projectRoot,
+        targets: new Set(config.targets.map((target) => target.name)),
+      });
+    } catch (cause) {
+      process.stderr.write(`e2e: the timings history could not be written: ${errorMessage(cause)}\n`);
+    }
+  };
 
   /**
    * Writes the AI trace next to the report, on the same terms: the path is
@@ -655,6 +755,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     // Only a failed write, itself a run error, forces a rebuild that records it.
     const document = buildRunReport(currentExitCode());
     const recorded = runErrors.length;
+    if (written !== undefined) await writeTimingsHistory(written, document);
     const reportPath = written === undefined ? undefined : await writeCanonicalReport(written, document);
     const traces = written === undefined ? new Map<string, string>() : await writeTraces(written, document);
     const exitCode = currentExitCode();
@@ -675,6 +776,11 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     // The list reporter has printed its summary and stopped its window; a
     // line another reporter left unfinished on `run-finished` prints too.
     processOutput?.showThrough(undefined);
+    // Only the list reporter prints run errors, and a run that stopped before
+    // its tests writes no file to read them in, so without it they go to stderr.
+    if (listReporter === undefined && options.quiet !== true) {
+      for (const error of report.run.errors) process.stderr.write(failureLine(error));
+    }
     if (debug.enabled) {
       process.stderr.write(debug.summary());
       process.stderr.write(agentStepTable(results, serialGroups));
@@ -697,6 +803,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
         aiTracePath,
         traces,
         ...(lastRun === undefined ? {} : { lastRun }),
+        redact: redactStaticSecrets(loaded.config?.allSecrets),
       },
       options.reporterTimeout ?? REPORTER_TIMEOUT_MS,
       forceController.signal,
@@ -709,6 +816,13 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     recordFailure(loaded.error, 'config');
     return finish();
   }
+  if (options.beforeStep !== undefined && reporterIds.includes('json')) {
+    recordFailure(
+      new ConfigurationError('INVALID_CONFIG', '--step cannot run with the json reporter: the step prompt would land in its stdout document'),
+      'config',
+    );
+    return finish();
+  }
   const config = loaded.config;
   vcs = await detectVcs(config.projectRoot, env);
 
@@ -717,6 +831,9 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   // The judge is named only when it is a model of its own.
   const runAgent = config.agentNames.length === 1 ? config.agent : undefined;
   const runJudge = runAgent?.judge?.model === runAgent?.model?.model ? undefined : runAgent?.judge;
+  // Settled once, before the header: the header names what --target
+  // selected, and an unknown --target fails the run once it begins.
+  const selected = selectRunTargets(config.targets, options.targetIds);
   emit({
     type: 'run-started',
     runId,
@@ -724,7 +841,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     projectRoot: config.projectRoot,
     artifactsRoot: outputLayout(config.output).results,
     ci: isCiMode(env),
-    targets: config.targets.map((target) => target.name),
+    targets: ('targets' in selected ? selected.targets : config.targets).map((target) => target.name),
     ...(config.agentNames.length === 1 && config.agentNames[0] === 'default' ? {} : { agents: config.agentNames }),
     ...(runAgent?.model === undefined ? {} : { model: modelLabel(runAgent.model) }),
     ...(runJudge === undefined ? {} : { judge: modelLabel(runJudge) }),
@@ -736,32 +853,32 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     // decides the outcome.
     if (interrupted.aborted) return;
 
-    // Which targets the run is for, settled before anything is collected,
-    // downloaded, or started: an unknown --target is a collection failure.
-    let targets: readonly ResolvedTarget[];
-    try {
-      targets = selectTargets(config.targets, options.targetIds);
-    } catch (cause) {
-      recordFailure(cause, 'collection');
+    // An unknown --target is a collection failure, before anything is
+    // collected, downloaded, or started.
+    if ('error' in selected) {
+      recordFailure(selected.error, 'collection');
       return;
     }
+    const { targets } = selected;
 
     /**
-     * Narrates and times one setup step on the event spine. A step that
+     * Narrates and times one setup step on the event spine, its `finished`
+     * carrying the outcome `outcomeOf` reads off the result. A step that
      * throws ends as a run error, and a step the interrupt cut short reports
      * nothing more; either way no `finished` follows.
      */
-    const setupStep = async <T>(step: SetupStep, work: () => Promise<T>): Promise<T> => {
+    const setupStep = async <T>(step: SetupStep, work: () => Promise<T>, outcomeOf: (result: T) => SetupOutcome | undefined = () => undefined): Promise<T> => {
       emit({ type: 'setup', step, state: 'started' });
       const startedMs = Date.now();
       const result = await work();
-      if (!interrupted.aborted) emit({ type: 'setup', step, state: 'finished', durationMs: Date.now() - startedMs });
+      const outcome = outcomeOf(result);
+      if (!interrupted.aborted) emit({ type: 'setup', step, state: 'finished', durationMs: Date.now() - startedMs, ...(outcome === undefined ? {} : { outcome }) });
       return result;
     };
 
     // Collection comes first and starts no process: a collection failure or
     // NO_TESTS is reported before any dev server boots or browser downloads.
-    let planned: { collection: Collection; selection: Selection };
+    let planned: { collection: Collection; filters: SelectionFilters; selection: Selection };
     try {
       planned = await setupStep({ kind: 'collect' }, () =>
         debug.time('collect', async () => {
@@ -780,29 +897,51 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
             testIds: new Set(collection.tests.map((test) => test.id)),
             uncollectedFiles: new Set(collection.uncollected.map((skipped) => skipped.file)),
           };
-          const selection = repeatEach(
-            select(
-              collection,
-              config,
-              inputs.filters,
-              options.passWithNoTests !== undefined ? { passWithNoTests: options.passWithNoTests } : {},
-            ),
-            options.repeatEach ?? 1,
-          );
-          return { collection, selection };
+          const flags = options.passWithNoTests !== undefined ? { passWithNoTests: options.passWithNoTests } : {};
+          // Pass 1, what any test filter judges. The run's own flag still
+          // decides an empty one, so a mistyped --tag fails before any
+          // filter calls a model.
+          return { collection, filters: inputs.filters, selection: select(collection, config, inputs.filters, flags) };
         }),
       );
     } catch (cause) {
       recordFailure(cause, 'collection');
       return;
     }
-    const { collection, selection } = planned;
+    const { collection } = planned;
+    let selection = planned.selection;
     if (!interrupted.aborted) {
       for (const skipped of collection.uncollected) {
         const why = options.tests === undefined ? 'which no positional selected' : 'collected only for its setup tests';
         notice('collect', `skipped ${skipped.file}, ${why} and which failed to collect: ${skipped.reason}`);
       }
     }
+
+    // The filters decide before any engine prepares or app starts, so a run
+    // they leave empty boots nothing. An interrupt records nothing: the run
+    // ends interrupted, like one cut short in `prepare`.
+    if (options.changedSince !== undefined) {
+      try {
+        const filtered = await filterSelection(selection, {
+          config,
+          collection,
+          selectionFilters: planned.filters,
+          changedSince: options.changedSince,
+          signal: interrupted,
+          notice: (message) => notice('filter', message),
+          step: (name, work) => setupStep({ kind: 'filter', name }, () => debug.time('filter', work), (call) => (call.outcome === 'answered' ? undefined : call.outcome)),
+          timeoutMs: options.filterTimeout,
+        });
+        selection = filtered.selection;
+        filterReport = filtered.records;
+        changesReport = filtered.changes;
+      } catch (cause) {
+        if (!interrupted.aborted) recordFailure(cause, 'filter');
+        return;
+      }
+    }
+    selection = repeatEach(selection, options.repeatEach ?? 1);
+    pendingNonRun = selection.pairs.filter((pair) => pair.test.kind !== 'setup' && pair.disposition !== 'run').map(nonRunResult);
 
     // Pre-flight: grade every selected target from its engine declaration
     // before any worker starts, so a config that asks for more than the
@@ -813,11 +952,16 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
       grades.set(target.name, grade);
       targetProvenance.set(target.name, grade.provenance);
     }
+    for (const message of options.tests?.notices ?? []) notice('run', message);
     for (const message of recordingNotices(selection.perTarget, grades, { explore: options.tests?.explore !== undefined })) notice('run', message);
 
     // The work units, built once: the same plans tell each engine's `prepare`
     // how many worker slots to provision and the scheduler what to dispatch.
     let plans = buildWorkPlans(selection, collection, config.projectRoot);
+    // A run with nothing to run (the filters left nothing, or
+    // --pass-with-no-tests on an empty selection) still reports, but
+    // prepares no engine and starts no app.
+    const hasWork = plans.some((plan) => plan.setupUnits.length + plan.fileUnits.length > 0);
     // Workers re-load the config module themselves, so a file-backed config
     // runs across processes. A supplied `rawConfig` cannot cross a process
     // boundary (it may hold live engine handles), and neither can the bodies
@@ -828,7 +972,8 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     const inProcess = workerConfigPath === undefined;
     const runWorkers = inProcess ? 1 : config.workers;
     if (runWorkers > 1) {
-      const previous = await previousFileDurations(outputLayout(config.output).report);
+      const layout = outputLayout(config.output);
+      const previous = await loadTimings(timingsPath(config), layout.report);
       plans = longestFirst(plans, (targetName, file) => previous.get(fileDurationKey(targetName, file)));
     }
     const timeLimit: TimeLimit | undefined =
@@ -844,13 +989,15 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     // short. Each target is one setup step, and the engine's progress lines
     // stream as `notice` events under it, so the reporter prints them instead
     // of a worker's stderr fighting the live status block.
-    try {
-      plans = await debug.time('engine.prepare', () =>
-        prepareEngines(plans, runWorkers, engines, { runId, projectRoot: config.projectRoot, env, signal: interrupted, headed: options.headed ?? false, notice }, emit),
-      );
-    } catch (cause) {
-      if (!interrupted.aborted) recordFailure(cause, 'launch');
-      return;
+    if (hasWork) {
+      try {
+        plans = await debug.time('engine.prepare', () =>
+          prepareEngines(plans, runWorkers, engines, { runId, projectRoot: config.projectRoot, env, signal: interrupted, headed: options.headed ?? false, notice }, emit),
+        );
+      } catch (cause) {
+        if (!interrupted.aborted) recordFailure(cause, 'launch');
+        return;
+      }
     }
     if (interrupted.aborted) return;
 
@@ -864,23 +1011,24 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
 
     // Each selected target declares the app it drives and the command that
     // starts it. Nothing spawns once the run was interrupted. Each command is
-    // one setup step; a reused process or an ignored `reuseExisting` narrates
-    // as a run notice.
+    // one setup step, named with the URL it answers on; a reused process or
+    // an ignored `reuseExisting` narrates as a run notice.
+    const appStep = (label: string, url: string | undefined) => ({ kind: 'app' as const, label, ...(url === undefined ? {} : { url: printableUrl(url) }) });
     const processHooks = () => ({
       ci: isCiMode(env),
       env,
       notice: (message: string) => emit({ type: 'notice', target: 'app', message }),
-      starting: (label: string) => emit({ type: 'setup', step: { kind: 'app', label }, state: 'started' }),
-      ready: (label: string, durationMs: number, reused: boolean) =>
+      starting: (label: string, url: string | undefined) => emit({ type: 'setup', step: appStep(label, url), state: 'started' }),
+      ready: (label: string, url: string | undefined, durationMs: number, reused: boolean) =>
         emit({
           type: 'setup',
-          step: { kind: 'app', label },
+          step: appStep(label, url),
           state: 'finished',
           durationMs,
           ...(reused ? { outcome: 'reused' as const } : {}),
         }),
     });
-    processes = await startDeclaredProcesses(targets, config.projectRoot, processHooks, interrupted, debug);
+    processes = hasWork ? await startDeclaredProcesses(targets, config.projectRoot, processHooks, interrupted, debug) : undefined;
     // A run cancelled while the app was starting runs no test: the interrupt
     // alone decides the outcome.
     if (interrupted.aborted) return;
@@ -938,6 +1086,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
             sessionStore: store,
             headed: options.headed ?? false,
             debug,
+            step: options.beforeStep !== undefined,
             envFor: workerEnvFor(plans, env),
           })
         : childProcessSpawner({
@@ -954,9 +1103,25 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
             sessionKeyBase64: store.exportKeyForWorker(),
             debug: debug.enabled,
             aiTrace: aiTrace !== undefined,
+            step: options.beforeStep !== undefined,
             envFor: workerEnvFor(plans, env),
           });
 
+    // The list reporter shows the prompt under its test; without it, the
+    // prompt goes to stderr as one line, where a person still reads it.
+    const beforeStep = options.beforeStep;
+    let promptLine: string | undefined;
+    const showStep = (prompt: StepPrompt | undefined): void => {
+      if (listReporter !== undefined) {
+        listReporter.showStepPrompt(prompt);
+        return;
+      }
+      // Printed once per prompt: `h` lists nothing more on a plain line.
+      const line = prompt === undefined ? undefined : stepPromptLine(prompt);
+      if (line !== undefined && line !== promptLine) process.stderr.write(`${line}\n`);
+      promptLine = line;
+    };
+    pendingNonRun = [];
     await debug.time('scheduler', () =>
       runUnits({
         plans,
@@ -964,15 +1129,13 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
         ...(options.maxFailures === undefined ? {} : { maxFailures: options.maxFailures }),
         ...(timeLimit === undefined ? {} : { timeLimit }),
         spawn,
+        ...(beforeStep === undefined ? {} : { beforeStep: (step: HeldStep, signal: AbortSignal) => beforeStep(step, { signal, show: showStep }) }),
         interruptGraceMs: config.timeout + config.cleanupTimeout,
         interruptSignal: interrupted,
         forceSignal: forceController.signal,
         forceGraceMs: config.cleanupTimeout + FORCE_KILL_MARGIN_MS,
         events: {
-          onResult: (result) => {
-            results.push(result);
-            emit({ type: 'test-finished', result: toEventResult(result) });
-          },
+          onResult: recordResult,
           onSerialGroup: (group) => {
             serialGroups.push(group);
             emit({ type: 'serial-group', group });
@@ -1032,6 +1195,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     } catch (cause) {
       recordFailure(cause);
     }
+    for (const result of pendingNonRun) recordResult(result);
     // Engines finish first: every worker is gone, and what `prepare` leased
     // (a cloud device billed by the minute) should not wait on the app's
     // shutdown. Services go down after the apps that depended on them; a
@@ -1150,6 +1314,7 @@ type SelectionRunOptions = Pick<
   | 'lastFailed'
   | 'freshGraph'
   | 'shard'
+  | 'changedSince'
   | 'targetIds'
   | 'passWithNoTests'
   | 'output'
@@ -1186,6 +1351,7 @@ function toListedPair(projectRoot: string, pair: TestTargetPair): ListedPair {
     agent: pair.agent,
     disposition: pair.disposition,
     ...(pair.skip === undefined ? {} : { reason: pair.skip.reason }),
+    ...(pair.skip?.filter === undefined ? {} : { filter: pair.skip.filter }),
   };
 }
 
@@ -1215,7 +1381,9 @@ async function selectionInputs(options: SelectionRunOptions, config: ResolvedCon
  * The run options the CLI parser already bounds, checked again for the SDK
  * path so `run({ maxFailures: 0 })` or `run({ repeatEach: 0 })` is
  * `INVALID_CONFIG` rather than a run that stops at its first failure or
- * runs each test once.
+ * runs each test once. A `changedSince` that is not a string, is empty, or
+ * reads as a git option is `INVALID_CHANGED_SINCE` whether or not a filter
+ * would run.
  */
 function validateRunOptions(options: SelectionRunOptions): void {
   positiveInt(options.maxFailures, 'maxFailures');
@@ -1233,6 +1401,13 @@ function validateRunOptions(options: SelectionRunOptions): void {
     }
     const total = positiveInt(options.shard.total, 'shard.total');
     boundedInt(options.shard.index, 'shard.index', 1, total!);
+  }
+  const ref = options.changedSince;
+  if (ref !== undefined && typeof ref !== 'string') {
+    throw new ConfigurationError('INVALID_CHANGED_SINCE', `--changed-since must name a git ref, such as origin/main; got ${describeValue(ref)}`);
+  }
+  if (ref !== undefined && (ref === '' || ref.startsWith('-'))) {
+    throw new ConfigurationError('INVALID_CHANGED_SINCE', `--changed-since must name a git ref, such as origin/main; got ${JSON.stringify(ref)}`);
   }
 }
 
@@ -1259,6 +1434,22 @@ async function loadRunConfig(
     env,
     cli,
   });
+}
+
+/**
+ * The targets the run is for, as `--target` selected them in config order,
+ * or the `UNKNOWN_TARGET` error an unknown target ID raised. The run records
+ * the error once it begins, so `run-started` still comes first.
+ */
+function selectRunTargets(
+  targets: readonly ResolvedTarget[],
+  targetIds: readonly string[] | undefined,
+): { readonly targets: readonly ResolvedTarget[] } | { readonly error: unknown } {
+  try {
+    return { targets: selectTargets(targets, targetIds) };
+  } catch (error) {
+    return { error };
+  }
 }
 
 /**
@@ -1292,6 +1483,8 @@ function statusOf(exitCode: RunExitCode): Exclude<RunStatus, 'blocked'> {
  * or its attempts' error category when that is worse. A serial group answers
  * for its members, whose results carry no attempts, and for a group attempt
  * that failed before any member ran (a launch), whose members are skipped.
+ *
+ * An attempt whose cleanup failed adds its cleanup errors' codes, even when the test passed.
  */
 function verdictExitCodes(results: readonly ResultRecord[], serialGroups: readonly SerialGroupRecord[]): number[] {
   const codes: number[] = [0];
@@ -1310,12 +1503,22 @@ function verdictExitCodes(results: readonly ResultRecord[], serialGroups: readon
       default:
         break;
     }
+    for (const cleanupError of cleanupErrorsOf(verdict.attempts)) {
+      codes.push(exitCodeForCategory(cleanupError.category));
+    }
   }
   return codes;
 }
 
 /** Why a reporter's `onRunFinished` was given up on: the message is the stderr line. */
 class ReporterAbandoned extends Error {}
+
+/** `FinishedRun.redact`: the config's fixed secret values; a config that never loaded declared none. */
+function redactStaticSecrets(secrets: ResolvedConfig['allSecrets'] | undefined): (text: string) => string {
+  if (secrets === undefined) return (text) => String(text);
+  const { redactFragments } = staticSecretLedger(secrets);
+  return (text) => redactFragments(String(text));
+}
 
 /**
  * The built-in reporters that write files beside `report.json`. A forced
@@ -1330,9 +1533,10 @@ const FILE_REPORTERS: ReadonlySet<Reporter> = new Set([STATELESS_REPORTERS.junit
  * and, except the built-in file reporters, until a forced interrupt, and
  * collects the summary rows they resolve with. Each reporter gets a signal
  * that aborts on either, so a well-behaved one cancels its own work and
- * leaves no handle holding the process. A reporter that throws, runs out of
- * time, or returns something other than rows is one line on stderr; it can
- * never change the run's outcome.
+ * leaves no handle holding the process; one given up on is work left behind,
+ * which the CLI does not wait for. A reporter that throws, runs out of time,
+ * or returns something other than rows is one line on stderr; it can never
+ * change the run's outcome.
  */
 async function runReporters(
   reporters: readonly Reporter[],
@@ -1343,21 +1547,23 @@ async function runReporters(
   const warn = (reporter: Reporter, detail: string): void => {
     process.stderr.write(`e2e: reporter "${reporter.name}" ${detail}\n`);
   };
-  const budget = timeoutMs >= 1000 ? `${Math.round(timeoutMs / 1000)}s` : `${timeoutMs}ms`;
+  const budget = budgetText(timeoutMs);
+  const forced = 'abandoned: the run was forced to stop';
   const outcomes = await Promise.all(
     reporters.map(async (reporter): Promise<ReporterSummary> => {
       const { onRunFinished } = reporter;
       if (onRunFinished === undefined) return [];
+      if (!FILE_REPORTERS.has(reporter) && force.aborted) {
+        warn(reporter, forced);
+        return [];
+      }
       const abandon = new AbortController();
       const timer = setTimeout(
         () => abandon.abort(new ReporterAbandoned(`did not finish within ${budget}`)),
         timeoutMs,
       );
-      const onForce = (): void => abandon.abort(new ReporterAbandoned('abandoned: the run was forced to stop'));
-      if (!FILE_REPORTERS.has(reporter)) {
-        if (force.aborted) onForce();
-        else force.addEventListener('abort', onForce, { once: true });
-      }
+      const onForce = (): void => abandon.abort(new ReporterAbandoned(forced));
+      if (!FILE_REPORTERS.has(reporter)) force.addEventListener('abort', onForce, { once: true });
       try {
         const result = await withAbort(
           () => Promise.resolve(onRunFinished.call(reporter, finished, abandon.signal)),
@@ -1374,6 +1580,7 @@ async function runReporters(
         if (dropped > 0) warn(reporter, `returned ${dropped} row(s) without a label and text; dropped`);
         return rows;
       } catch (cause) {
+        if (cause instanceof ReporterAbandoned) leaveWorkBehind();
         warn(reporter, cause instanceof ReporterAbandoned ? cause.message : `failed: ${errorMessage(cause)}`);
         return [];
       } finally {

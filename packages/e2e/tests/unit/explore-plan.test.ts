@@ -96,4 +96,30 @@ describe('planInstruction', () => {
     expect(text).toContain('work as the signed-in user rather than signing in again');
     expect(text).not.toContain('sign in with the accounts listed above');
   });
+
+  it('keeps the summaries of the latest eight steps only, so a long run stays within the model input', () => {
+    const state = new ExploreState('Explore checkout', { maxSteps: 100, timeoutMs: 7_200_000 });
+    for (let index = 1; index <= 100; index++) {
+      state.beginStep(`Area ${String(index)}`, 'Look around');
+      state.endStep('passed', `summary-${String(index)} ${'x'.repeat(4_000)}`);
+    }
+    const text = planInstruction(state, { mustFinish: false, remainingMs: 600_000, timeoutMs: 60_000 });
+    expect(text).toContain('1. [passed] Area 1\n');
+    expect(text).not.toContain('summary-92 ');
+    expect(text).toContain('summary-93 ');
+    expect(text).toContain('summary-100 ');
+    expect(text.length).toBeLessThan(40_000);
+  });
+
+  it('offers the other-account lens only with several accounts and no restored session', () => {
+    const accounts = [
+      { name: 'ada', username: 'ada@example.test' },
+      { name: 'bob', username: 'bob@example.test' },
+    ];
+    const plan = (request: { session?: string; accounts?: typeof accounts }) =>
+      planInstruction(fresh(), { mustFinish: false, remainingMs: 300_000, timeoutMs: 60_000, ...request });
+    expect(plan({ accounts })).toContain('another account or role');
+    expect(plan({ accounts: accounts.slice(0, 1) })).not.toContain('another account or role');
+    expect(plan({ accounts, session: 'admin' })).not.toContain('another account or role');
+  });
 });

@@ -1,3 +1,5 @@
+import os from 'node:os';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { collectFromRegistration } from '../../src/collect/collect.ts';
 import * as registry from '../../src/collect/registry.ts';
@@ -60,7 +62,7 @@ describe('registration', () => {
       'test options has unknown key "timout"; did you mean "timeout"?',
     );
     await expect(register(() => test('x', { retry: 2 } as never, noop))).rejects.toThrow(
-      'test options has unknown key "retry"; expected one of timeout, retries, tags, skip, only, platforms, requires, session, agentContext, agent, trace, video',
+      'test options has unknown key "retry"; expected one of timeout, retries, tags, skip, fail, only, platforms, requires, session, agentContext, agent, trace, video',
     );
     await expect(register(() => test.describe('group', { searial: true } as never, () => {}))).rejects.toThrow(
       'describe options has unknown key "searial"; did you mean "serial"?',
@@ -138,6 +140,27 @@ describe('registration', () => {
     expect(registration.tests[2]!.options.skip).toBe('flaky upstream');
   });
 
+  it('registers expected failures by test.fail(title, fn) and the fail option, and checks the option', async () => {
+    const registration = await collectModule(async () => {
+      test.fail('registered', noop);
+      test('by option', { fail: 'known gap' }, noop);
+    });
+    expect(registration.tests.map((item) => [item.mode, item.options.fail])).toEqual([
+      ['normal', true],
+      ['normal', 'known gap'],
+    ]);
+    await expect(collectModule(async () => test('bad', { fail: 1 } as never, noop))).rejects.toThrow(
+      'test options: fail must be true, false, or a reason string, got 1',
+    );
+    await expect(collectModule(async () => test.describe('group', { fail: true } as never, () => {}))).rejects.toThrow(/unknown key "fail"/);
+    await expect(collectModule(async () => test.setup('login', { sessions: ['admin'], fail: true } as never, noop))).rejects.toThrow(/unknown key "fail"/);
+  });
+
+  it('rejects test.fail(condition) outside a test body', async () => {
+    expect(() => test.fail(true, 'not here')).toThrow(CollectionError);
+    expect(() => test.fail(false)).toThrow(/must be called inside a test body/);
+  });
+
   it('validates titles', async () => {
     await expect(
       collectModule(async () => {
@@ -176,6 +199,29 @@ describe('registration', () => {
         });
       }),
     ).rejects.toThrow(`describe options: ${kind} must be one of ${modes}, got "yes"`);
+  });
+});
+
+describe('declaration sites from a JavaScriptCore stack', () => {
+  const file = path.join(os.tmpdir(), 'declared.e2e.ts');
+
+  /** Collects one test declared in `file` while every stack reads as `frames`, as Bun writes them. */
+  async function sourceUnder(frames: readonly string[]): Promise<unknown> {
+    const original = Error.prepareStackTrace;
+    Error.prepareStackTrace = () => ['Error', ...frames.map((frame) => `    at ${frame}`)].join('\n');
+    try {
+      return (await collectModule(async () => void test('declared', noop), file)).tests[0]!.source;
+    } finally {
+      Error.prepareStackTrace = original;
+    }
+  }
+
+  it('reads a top-level frame without a column', async () => {
+    expect(await sourceUnder([`${file}:5`, 'unknown', 'processTicksAndRejections (native:7:39)'])).toEqual({ file, line: 5, column: 1 });
+  });
+
+  it("never takes Bun's builtin code for a file", async () => {
+    expect(await sourceUnder(['processTicksAndRejections (native:7:39)'])).toBeUndefined();
   });
 });
 
@@ -242,7 +288,7 @@ describe('serial groups', () => {
   });
 
   it('rejects member overrides of unit-owned options', async () => {
-    for (const options of [{ retries: 1 }, { trace: 'on' }, { video: 'on' }, { session: 's' }, { skip: true }, { only: true }]) {
+    for (const options of [{ retries: 1 }, { trace: 'on' }, { video: 'on' }, { session: 's' }, { skip: true }, { fail: true }, { only: true }]) {
       await expect(
         collectModule(async () => {
           test.describe('unit', { serial: true }, () => {

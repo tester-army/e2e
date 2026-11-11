@@ -25,6 +25,9 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The base branch and the merge base, for the testbed's --changed-since.
+          fetch-depth: 0
       - uses: pnpm/action-setup@9fd676a19091d4595eefd76e4bd31c97133911f1 # v4.2.0
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -43,6 +46,8 @@ jobs:
         run: pnpm check:peer-ranges
       - name: Changeset bumps on 0.x packages
         run: pnpm check:changeset-bumps
+      - name: Examples registry (examples/examples.json)
+        run: pnpm check:examples
       - name: No install scripts in published dependency trees
         run: pnpm check:install-scripts
       - name: Plugin package matches its sources
@@ -59,9 +64,23 @@ jobs:
           pnpm exec tsc -p .dev/skills/babysit/scripts
           node --test .dev/skills/babysit/scripts/pr-status.test.ts
       - name: Install browsers
-        run: node packages/web/dist/bin.js install chromium --with-deps
+        uses: ./.github/actions/chromium
+      # On a pull request, Jev leaves out the tests the change can't affect;
+      # a push to main passes no --changed-since and runs every test.
+      # Without the key (a fork's pull request), every test runs.
       - name: Testbed
-        run: pnpm --filter @e2e-dev/testbed test
+        run: pnpm --filter @e2e-dev/testbed test ${{ github.event_name == 'pull_request' && format('--changed-since origin/{0} --exclude-tag playwright', github.base_ref) || '' }}
+        env:
+          AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
+      # `scroll_to` by text under a scripted executor; the default suite's
+      # arguments would not reach it, so it is a step of its own.
+      - name: Testbed, scroll_to
+        run: pnpm --filter @e2e-dev/testbed test:scroll
+      # The tests ported from Playwright pin the web engine's behavior, so a
+      # pull request runs all of them, not only the ones Jev picks.
+      - name: Testbed, Playwright tests
+        if: ${{ github.event_name == 'pull_request' }}
+        run: pnpm --filter @e2e-dev/testbed exec e2e run --tag playwright
 
   test:
     runs-on: blacksmith-4vcpu-ubuntu-2404
@@ -83,9 +102,39 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Install browsers
-        run: pnpm --filter @e2e-dev/web exec playwright-core install chromium --with-deps
+        uses: ./.github/actions/chromium
+        with:
+          only-shell: false
       - name: Unit and integration tests
         run: pnpm test
+
+  # The built CLI on Bun with no Node.js on its PATH
+  # (packages/e2e/tests/integration/bun-runtime.test.ts): the floor
+  # runtime.ts names, and the newest release. Vitest itself runs on Node.js.
+  bun:
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        bun: [1.4.3, latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@9fd676a19091d4595eefd76e4bd31c97133911f1 # v4.2.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+          cache: pnpm
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: ${{ matrix.bun }}
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter e2e run build
+      - name: The CLI on Bun ${{ matrix.bun }}
+        run: pnpm --filter e2e exec vitest run tests/integration/bun-runtime.test.ts
+        env:
+          # Requires Bun rather than skipping without it.
+          E2E_BUN: bun
 
   # A new user's first install of the packed packages, which pnpm 11 and
   # later fail on any dependency build script (scripts/install-smoke.ts).
@@ -112,7 +161,7 @@ jobs:
   # passes (the change cannot reach it); a failed or cancelled one fails it.
   gate:
     name: spec gate
-    needs: [check, test, install]
+    needs: [check, test, bun, install]
     if: ${{ always() }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 5

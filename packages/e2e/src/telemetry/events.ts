@@ -18,6 +18,7 @@ import type { ResolvedConfig } from '../config/resolve.ts';
 import type { McpClient } from '../mcp/server.ts';
 import type { McpSessionSummary } from '../mcp/usage.ts';
 import type { Report1Document, ReportError, ReportExplore, ReportStep, ReportUsage } from '../report/build.ts';
+import { memberRan } from '../run/records.ts';
 import { STEP_KINDS } from '../run/steps.ts';
 import type { JsonValue } from '../types.ts';
 import { failureKind } from './failure-kind.ts';
@@ -249,7 +250,7 @@ function testSteps(report: Report1Document): ReportStep[][] {
     const members = new Map<number, ReportStep[]>();
     for (const attempt of group.attempts) {
       for (const member of attempt.members) {
-        if (member.status === 'skipped') continue;
+        if (!memberRan(member)) continue;
         members.set(member.index, [...(members.get(member.index) ?? []), ...member.steps]);
       }
     }
@@ -393,6 +394,7 @@ function configFeatures(config: ResolvedConfig): Record<string, JsonValue> {
     config_cache_strict: config.cache.strict !== false,
     config_reporters: unique(config.reporters),
     config_custom_reporters: config.customReporters.length,
+    config_filters: config.filters.length,
     config_artifact_store: config.artifactStore !== undefined,
     config_trace_modes: unique(config.targets.map((target) => target.trace.mode)),
     config_video_modes: unique(config.targets.map((target) => target.video.mode)),
@@ -453,6 +455,13 @@ export function runCompletedEvent(report: Report1Document, context: RunContext):
       tests_interrupted: run.summary.interrupted,
       tests_flaky: run.summary.flaky,
       tests_skipped: run.summary.skipped,
+      tests_failed_as_expected: run.results.filter((result) => result.attempts.at(-1)?.expectedFailure?.error !== undefined).length,
+      filters_run: run.filters?.length ?? 0,
+      filters_timed_out: run.filters?.filter((record) => record.outcome === 'timed-out').length ?? 0,
+      filters_failed: run.filters?.filter((record) => record.outcome === 'failed').length ?? 0,
+      filters_skipped: run.changes?.skipped !== undefined,
+      filters_changed_files: run.changes?.files ?? 0,
+      tests_left_out_by_filters: run.filters?.reduce((total, record) => total + record.excluded, 0) ?? 0,
       attempts_total: attempts.reduce((total, count) => total + count, 0),
       tests_retried: attempts.filter((count) => count > 1).length,
       targets: run.targets.length,

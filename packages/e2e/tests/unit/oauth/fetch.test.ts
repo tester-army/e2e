@@ -7,7 +7,7 @@ import { OAuthError } from '../../../src/oauth/errors.ts';
 import { createOAuthFetch } from '../../../src/oauth/fetch.ts';
 import { type OAuthCredentials, type OAuthProvider } from '../../../src/oauth/types.ts';
 import { MemoryCredentialStore } from './helpers/store.ts';
-import { json, useServers } from './helpers/server.ts';
+import { json, useServers } from '../../helpers/recording-server.ts';
 import { onFakeTimeouts } from './helpers/time.ts';
 
 const serve = useServers(afterEach);

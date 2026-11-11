@@ -88,6 +88,23 @@ test('waits without re-judging a page that has not changed', async ({
   });
 });
 
+test('a judgment reads the current path', async ({ app, agent }) => {
+  await app.open('/about');
+  await agent.assert('the URL path is /about');
+});
+
+test('judges again when only the URL changed', async ({ app, agent, screen }) => {
+  await app.open('/moves?key=tree');
+  await expect(screen.getByRole('heading')).toHaveText('Moves');
+  await agent.waitFor('the URL path is /moved', { interval: 100, timeout: 3000, maxModelCalls: 4 });
+});
+
+test('a vision-only wait does not judge again on a URL it is not shown', async ({ app, agent, screen }) => {
+  await app.open('/moves?key=pixels');
+  await expect(screen.getByRole('heading')).toHaveText('Moves');
+  await agent.waitFor('the chart moved', { interval: 100, timeout: 1500, maxModelCalls: 4, vision: 'only' });
+});
+
 test('observes the token link page', async ({ app, agent }) => {
   await app.open();
   await agent.assert('the About with token link is present');
@@ -116,6 +133,9 @@ const VISION_HINT = 'the judge saw the semantic tree only; pass vision: true whe
 const VISION_HINT_UNPROVEN = 'the judge saw the semantic tree only; if the engine captures pixels, pass vision: true when the answer is in pixels';
 const LATE_BUTTON_CONDITION = 'the Late arrival button exists';
 const NEVER_CONDITION = 'a checkout button is on the About page';
+const PATH_ASSERTION = 'the URL path is /about';
+const MOVED_CONDITION = 'the URL path is /moved';
+const PIXEL_MOVED_CONDITION = 'the chart moved';
 const REPAIRED_ASSERTION = 'the Home heading is visible after a malformed first answer';
 const RETIRED_SHAPE_ONCE = 'the Home heading is visible, answered in the retired shape first';
 const RETIRED_SHAPE_TWICE = 'the Home heading is visible, answered in the retired shape twice';
@@ -128,6 +148,13 @@ const RETIRED_JUDGMENT = JSON.parse(
   readFileSync(new URL('../../schema/fixtures/agent-judgment-v1.valid.json', import.meta.url), 'utf8'),
 ) as Record<string, unknown>;
 const PROVIDER_OPTIONS = { fake: { reasoningEffort: 'low' } };
+
+/**
+ * The running app. The scripted judgment of a `/moves` wait releases the page's
+ * move itself, so the URL changes only after the first judgment was asked,
+ * never before it: a release from the test would race that judgment.
+ */
+let fixture: FixtureApp;
 
 /** Scripted responder: judge and extract from the observation. */
 function respond(call: FakeCall): unknown {
@@ -146,6 +173,15 @@ function respond(call: FakeCall): unknown {
       if (call.instruction === LATE_BUTTON_CONDITION) {
         const present = call.observation.includes('Late arrival');
         return judgment(present, present ? 'Late arrival is present' : 'not rendered yet');
+      }
+      if (call.instruction === PATH_ASSERTION) return judgment(call.prompt.includes(' location="/about" '), 'read the location');
+      if (call.instruction === MOVED_CONDITION) {
+        fixture.releaseMove('tree');
+        return judgment(call.prompt.includes(' location="/moved" '), 'read the location');
+      }
+      if (call.instruction === PIXEL_MOVED_CONDITION) {
+        fixture.releaseMove('pixels');
+        return judgment(false, 'the chart has not moved');
       }
       if (call.instruction === REPAIRED_ASSERTION) {
         // A reasoning model that ran out of output mid-answer: no verdict.
@@ -184,6 +220,7 @@ describe('agent judgment tier', () => {
 
   beforeAll(async () => {
     app = await startFixtureApp();
+    fixture = app;
     // The judge is a model of its own: every call in this suite is a judgment,
     // so every recorded call must have reached it and none the act model.
     const model = installFakeModel(respond, { modelId: 'actor' });
@@ -235,6 +272,24 @@ describe('agent judgment tier', () => {
     // It kept looking, though: observations are driver-only and cost nothing.
     const observations = step.events.filter((event) => event.kind === 'observation').length;
     expect(observations).toBeGreaterThan(2);
+  });
+
+  it('shows the judge the current location', () => {
+    expect(resultByTitle(outcome, 'a judgment reads the current path').status).toBe('passed');
+  });
+
+  it('judges again when only the URL changed', () => {
+    const result = resultByTitle(outcome, 'judges again when only the URL changed');
+    expect(result.status).toBe('passed');
+    const step = result.attempts.at(-1)!.steps.find((candidate) => candidate.api === 'agent.waitFor')!;
+    expect(step.metrics!.modelCalls).toBe(2);
+  });
+
+  it('spends no judgment on a URL a vision-only wait is not shown', () => {
+    const result = resultByTitle(outcome, 'a vision-only wait does not judge again on a URL it is not shown');
+    expect(result.status).toBe('failed');
+    const step = result.attempts.at(-1)!.steps.find((candidate) => candidate.api === 'agent.waitFor')!;
+    expect(step.metrics!.modelCalls).toBe(1);
   });
 
   it('repairs a malformed judgment with a second model call', () => {
@@ -423,7 +478,7 @@ describe('agent judgment tier', () => {
 describe('an inconclusive judgment after a secret fill', () => {
   const SUITE = `import { test, credentials } from 'e2e';
 
-test('the judge is not pointed at vision once a secret was filled', async ({ app, agent }) => {
+test('the judge is pointed at vision after a secret fill', async ({ app, agent }) => {
   await app.open();
   await agent.act('sign in as the member', { params: { password: credentials.user('member').password } });
   await agent.assert('the order total equals the sum of the line items');
@@ -435,8 +490,8 @@ test('the judge is not pointed at vision once a secret was filled', async ({ app
 
   beforeAll(async () => {
     app = await startFixtureApp();
-    // The act model fills the password through type_secret; from then on the
-    // attempt is pixel-tainted, and no screenshot could reach a judge.
+    // The act model fills the password through type_secret; a screenshot can
+    // still reach a judge afterwards.
     const model = installFakeLoopModel((call) => {
       if (call.toolNames.includes('type_secret') && call.lastToolResult === '') {
         return [{ toolName: 'type_secret', input: { target: nodeIdFor(call.prompt, /textbox "Password"/), name: 'member.password' } }];
@@ -445,7 +500,7 @@ test('the judge is not pointed at vision once a secret was filled', async ({ app
     });
     const judge = installFakeModel(respond, { modelId: 'judge' });
     const result = await runProject(
-      { 'tests/tainted.e2e.ts': SUITE },
+      { 'tests/filled.e2e.ts': SUITE },
       {
         appUrl: app.url,
         config: {
@@ -464,8 +519,8 @@ test('the judge is not pointed at vision once a secret was filled', async ({ app
     await app?.close();
   });
 
-  it('carries the explanation alone: vision: true could add nothing while pixels are withheld', () => {
-    const result = resultByTitle(outcome, 'the judge is not pointed at vision once a secret was filled');
+  it('carries the vision hint: a secret fill does not withhold pixels', () => {
+    const result = resultByTitle(outcome, 'the judge is pointed at vision after a secret fill');
     expect(result.status).toBe('failed');
     const attempt = result.attempts.at(-1)!;
     const filled = attempt.steps.find((step) => step.api === 'agent.act')!;
@@ -473,8 +528,7 @@ test('the judge is not pointed at vision once a secret was filled', async ({ app
     expect(filled.events.some((event) => event.kind === 'engine' && event.name === 'typeSecret' && event.status === 'passed')).toBe(true);
     expect(attempt.steps.find((step) => step.api === 'agent.assert')!.status).toBe('failed');
     expect(attempt.error!.code).toBe('ASSERTION_INCONCLUSIVE');
-    // The same judgment on an untainted attempt carries the hint (the suite above); here the engine
-    // declares screenshots and no pixel request was degraded, so the fill is the only gate closing it.
-    expect(attempt.error!.message).toBe('no order total or line items are on this screen');
+    expect(attempt.error!.message).toContain('no order total or line items are on this screen');
+    expect(attempt.error!.message).toContain('vision: true');
   });
 });

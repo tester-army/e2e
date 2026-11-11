@@ -42,6 +42,35 @@ describe('support helpers', () => {
         message: expect.stringMatching(/^longPress holds for 3000 ms, but only 2000 ms of its timeout are left/),
       });
       expect(held).toBe(false);
+
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('runs a read with what is left of its budget, and reports one cut off after an input as possibly committed', async () => {
+    const hung = () => new Promise<never>(() => undefined);
+    vi.useFakeTimers();
+    try {
+      await expect(new InputBudget('snapshot', 300, (pending) => pending).read(async () => 'tree')).resolves.toBe('tree');
+
+      const cut = new InputBudget('snapshot', 200, (pending) => pending).read(hung);
+      const timedOut = expect(cut).rejects.toMatchObject({ code: 'OPERATION_TIMEOUT', message: 'snapshot timed out before the device answered' });
+      await vi.advanceTimersByTimeAsync(200);
+      await timedOut;
+
+      const spent = new InputBudget('snapshot', 100, (pending) => pending);
+      await vi.advanceTimersByTimeAsync(100);
+      await expect(spent.read(async () => 'late')).rejects.toMatchObject({ code: 'OPERATION_TIMEOUT', message: 'snapshot timed out before it was sent' });
+
+      // After a swipe went out, a read that does not answer must not let a replay send the swipe again.
+      const dismissal = new InputBudget('keyboard dismiss', 300, (pending) => pending);
+      await dismissal.send(async () => undefined);
+      const after = dismissal.read(hung);
+      const committed = expect(after).rejects.toMatchObject({ code: 'ACTION_MAY_HAVE_COMMITTED' });
+      await vi.advanceTimersByTimeAsync(300);
+      await committed;
+      await expect(dismissal.read(async () => 'late')).rejects.toMatchObject({ code: 'ACTION_MAY_HAVE_COMMITTED' });
     } finally {
       vi.useRealTimers();
     }

@@ -1,9 +1,8 @@
 ---
 title: Web
 description: Point the web engine at your app or let the runner start it, and run a suite at several viewport sizes.
-icon: "globe"
-"og:image": "https://e2e.tester.army/docs/images/og/web.png?v=e860636537"
-"twitter:image": "https://e2e.tester.army/docs/images/og/web.png?v=e860636537"
+"og:image": "https://e2e.com/docs/images/og/web.png?v=e860636537"
+"twitter:image": "https://e2e.com/docs/images/og/web.png?v=e860636537"
 ---
 
 `@e2e-dev/web` runs tests in a browser against your app's URL. For routes,
@@ -49,7 +48,7 @@ export default {
 ```
 
 ```text
- ✓ target "web" command ready 1.20s
+ ✓ target "web" command at http://localhost:3000/ ready 1.20s
 ```
 
 The command runs without a shell: `executable` comes from `PATH` and `args`
@@ -59,7 +58,7 @@ variables, `inheritEnv`, and `env`.
 | Option | Purpose |
 | --- | --- |
 | `reuseExisting: true` | Use a server that already runs, such as one an [MCP session](/mcp-server#run-tests-next-to-a-session) started. In CI, e2e ignores it, and a server that already answers is `APP_ALREADY_RUNNING`. |
-| `log` | Save the app's stdout and stderr to a project-relative file. A startup error quotes the last 20 lines any process appended to the file since the command started, with `command.env` and `inheritEnv` values redacted. The file itself is not redacted. |
+| `log` | Save the app's stdout and stderr to a project-relative file. A startup error quotes the lines any process appended to the file since the command started. A log of up to 40 lines inside 8 KiB is quoted whole; otherwise the quote keeps up to 20 lines from each end, with `[startup output omitted]` between them, and for a log past 8 KiB those lines come from its first and last 4 KiB. `command.env` and `inheritEnv` values of at least four characters are redacted from the quote. The file itself is not redacted. |
 | `env` | Environment variables for the app. |
 | `inheritEnv` | Host variables to pass through when set, by name or prefix: `['DATABASE_URL', 'STRIPE_*']`. `env` wins over them. |
 | `startupTimeout` | How long to wait for the app to answer. Default 60 seconds. |
@@ -174,7 +173,8 @@ works, but e2e redacts only a `secrets.get` password.
 ## Viewports
 
 Set a viewport on the target to run a suite at that size, or call
-`browser.setViewport()` during a test. The agent can't resize.
+`browser.setViewport()` during a test. The agent resizes with its
+[`resize_viewport`](/reference/agent#action-tools) tool.
 
 ### One size per target
 
@@ -255,6 +255,13 @@ link is also listed as a control. The agent reads the first 512 characters
 of each block of text. In a longer block, e2e also lists its links and
 emphasized text on their own.
 
+The agent also sees a checkbox or radio that a component library shrinks
+to no size under its own label, as Element Plus does, with its checked
+state. A tap on it clicks the label. When that label is or holds a link
+or another control, the agent sees the label's text and that control but
+not the checkbox, since a click on the label could land on the link. Locators still call that control hidden, as
+Playwright does, so check it with `toBeChecked()`, not `toBeVisible()`.
+
 ### Scoping a test to one size
 
 `platforms` and `requires` can't select a viewport, because every browser
@@ -284,6 +291,28 @@ A video keeps the size the page had when recording started. Set
 `web({ screencast: { size } })` for one fixed size. A browser provider that
 records, such as [Kernel](/integrations/kernel#recordings), records the
 whole screen instead.
+
+## Granting browser permissions
+
+Headless Chromium refuses a permission the target doesn't grant, so
+`navigator.clipboard.writeText` fails even after a click. To let
+the app use the clipboard, grant it on the target:
+
+```ts
+{
+  engine: web(),
+  app: {
+    url: 'http://localhost:3000',
+    permissions: { 'clipboard-read': 'grant', 'clipboard-write': 'grant' },
+  },
+}
+```
+
+- Every page of every attempt holds the grant, on any origin.
+- A web target takes `'grant'` only. `'deny'` and `'reset'` are
+  `INVALID_CONFIG`: leave the permission out instead.
+- The names are Playwright's, and each browser grants its own set. See
+  [`permissions`](/reference/config#permissions).
 
 ## Next
 

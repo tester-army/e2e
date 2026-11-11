@@ -1,0 +1,35 @@
+name: pr-size
+
+# Labels every PR size:XS..size:XXL by changed lines, not counting tests,
+# fixtures, snapshots, or the lockfile (scripts/pr-size/label.ts).
+# pull_request_target so fork PRs get a token that can label; the checkout is
+# the base branch's script, never PR code.
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize]
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  label:
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: scripts/pr-size
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+      - name: Label the PR
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/pr-size/label.ts

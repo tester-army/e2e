@@ -73,11 +73,15 @@ export const SEARCH_ROOTS_SELECTOR_ENGINE = 'e2e-roots';
  * reached from exactly one root. A document that has attached no closed root
  * (the record's `count` is zero) has none to find, and the walk over every
  * element is skipped; every locator resolution runs this, so a page without
- * closed roots must pay nothing for the reach.
+ * closed roots must pay nothing for the reach. The record counts as present
+ * when the init script defined it on the global, checked with `in` because
+ * it calls nothing the page can replace: `instanceof WeakMap` reads the
+ * page's own `WeakMap`, which a polyfill may swap out.
  */
 export const CLOSED_SHADOW_HELPERS_SOURCE = `
-  const roots = globalThis[Symbol.for(${JSON.stringify(CLOSED_SHADOW_ROOTS_KEY)})];
-  const tracked = roots instanceof WeakMap;
+  const key = Symbol.for(${JSON.stringify(CLOSED_SHADOW_ROOTS_KEY)});
+  const tracked = key in globalThis;
+  const roots = globalThis[key];
   const closedRootsUnder = (root, out) => {
     if (!tracked || roots.count === 0) return out;
     const scan = (el) => {

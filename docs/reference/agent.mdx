@@ -1,9 +1,8 @@
 ---
 title: agent
 description: Run agent actions, check conditions, and extract structured data.
-icon: "robot"
-"og:image": "https://e2e.tester.army/docs/images/og/reference/agent.png?v=9a239b0466"
-"twitter:image": "https://e2e.tester.army/docs/images/og/reference/agent.png?v=9a239b0466"
+"og:image": "https://e2e.com/docs/images/og/reference/agent.png?v=9a239b0466"
+"twitter:image": "https://e2e.com/docs/images/og/reference/agent.png?v=9a239b0466"
 ---
 
 The `agent` fixture runs natural-language steps against the app: `act`
@@ -72,6 +71,7 @@ const { summary, cache } = await agent.act('Sign in', {
 | `maxModelCalls` | `number` | `agents.<name>.maxModelCalls`, 25 |
 | `agent` | `string` | the test's agent |
 | `onAction` | [`ActionHook`](#types) | none |
+| `onBeforeAction` | [`BeforeActionHook`](#types) | none |
 
 `params` values come from your code, never from the model. Wrap a value that
 differs on every run in [`unique()`](#unique). The model sees a `Secret` as
@@ -89,6 +89,33 @@ A check inside it never confirms the step's recording.
 ```ts
 await agent.act('open settings and turn on dark mode', {
   onAction: ({ index, action }) => app.screenshot(`${index} ${action}`),
+});
+```
+
+Narrow on `event.action` to read an action's details: `point` for `tapAt`
+and `hoverAt`, `from` and `to` for `dragAt`. Points are in the same space as
+`screen.tapAt` and `boundingBox()`, rounded and clamped to the viewport.
+Replay reports the points it dispatches on the current screen. Mobile
+engines have no `hoverAt` or `dragAt`.
+
+```ts
+await agent.act('move the pin to Warsaw', {
+  onAction: (event) => {
+    if (event.action === 'dragAt') console.log(event.from, event.to);
+  },
+});
+```
+
+`onBeforeAction` runs before each action, replayed ones included, with the
+same `index` that action's `onAction` gets. Use it to capture the screen an
+action started on. The step waits for it, and it does not wait for the screen
+to settle first. If it throws, the step fails before the action runs, with a
+message that starts with `agent.act onBeforeAction failed`. An action can still
+fail after it, with no `onAction` call.
+
+```ts
+await agent.act('open settings and turn on dark mode', {
+  onBeforeAction: ({ index }) => app.screenshot(`before ${index}`),
 });
 ```
 
@@ -117,19 +144,20 @@ The runner's own stops, and the checks on the call itself:
 | `MODEL_PROVIDER_FAILED` | The provider's transport failed after its retries. |
 | `MODEL_OUTPUT_INVALID` | A verdict outside the grammar. |
 | `REPLAY_STALE` | Under a strict cache, the step's recording no longer replays. |
-| `INVALID_ARGUMENT` | A malformed instruction, oversized `params`, an unknown option, an `onAction` that is not a function, or a budget above the configured limit. An unknown `agent` name fails before the step opens. |
+| `INVALID_ARGUMENT` | A malformed instruction, oversized `params`, an unknown option, an `onAction` or `onBeforeAction` that is not a function, or a budget above the configured limit. An unknown `agent` name fails before the step opens. |
 | `UNSUPPORTED_CAPABILITY` | `schema` or `vision`, which `act` does not take. |
 
 ### agent.assert
 
-Checks one fresh observation without polling.
+Checks one fresh observation without polling by default.
 
 ```ts
 await agent.assert('the dashboard shows a trial badge');
+await agent.assert('the table lists {name}', { params: { name } });
 ```
 
-- The judge sees the assertion, the current observation, and the agent's
-  `context`, never prior steps or `act` summaries. It answers `holds`,
+- The judge sees the assertion, its `params`, the current observation with
+  its location, and the agent's `context`, never prior steps or `act` summaries. It answers `holds`,
   `fails`, or `inconclusive`.
 - When the subject appears more than once, such as a total in a summary and
   on a pay button, every instance must agree: one that contradicts it fails.
@@ -139,6 +167,10 @@ await agent.assert('the dashboard shows a trial badge');
 
 | Option | Type | Default |
 | --- | --- | --- |
+| `explore` | `boolean` | `false` |
+| `maxSteps` | `number`, requires `explore` | min(10, configured limit) |
+| `maxModelCalls` | `number`, requires `explore` | min(6, configured limit) |
+| `params` | `AgentParams` | none |
 | `timeout` | `number` | `agents.<name>.judgmentTimeout`, 30000 |
 | `screenshot` | `boolean` | `true` |
 | `vision` | [`VisionMode`](#vision) | `false` |
@@ -148,6 +180,10 @@ await agent.assert('the dashboard shows a trial badge');
 failing.
 `vision` controls what the model is shown before it. No evidence is captured
 with `screenshot: false`.
+
+`params` follow the [`agent.act`](#agent-act) rules, and invalid ones throw
+`INVALID_ARGUMENT`. A `Secret` param reaches the judge as its name, never its
+value. To check that a secret's value is on screen, use a locator assertion.
 
 | Throws | When |
 | --- | --- |
@@ -161,9 +197,9 @@ message:
 - The hint reads `pass vision: true when the answer is in pixels`. Until a
   step of the attempt has received pixels, it is worded as a condition
   (`if the engine captures pixels, ...`).
-- There is no hint when the engine declares no screenshot capture, a secret
-  was filled, or an earlier step's pixel request was degraded: `vision: true`
-  could add no evidence then.
+- There is no hint when the engine declares no screenshot capture, or an
+  earlier step's pixel request was degraded: `vision: true` could add no
+  evidence then.
 
 <Note>
 A custom `StepExecutor` judges the assertion itself, and `assert` carries the
@@ -173,6 +209,38 @@ as `step.vision` when it declares `vision: true`; otherwise `vision` is
 `UNSUPPORTED_CAPABILITY`. Its budget and timeout are under
 [Budgets](#budgets).
 </Note>
+
+#### Viewport exploration
+
+With `explore: true`, `agent.assert` can scroll the current screen and combine
+evidence from several viewports. This helps when a list fits on a tablet but
+needs scrolling on a phone.
+
+```ts
+await agent.assert('Settings lists HOS Settings, Account, Language and Theme', {
+  explore: true,
+  maxSteps: 10,
+  maxModelCalls: 6,
+});
+```
+
+Exploration offers `observe`, `scroll`, `scroll_to`, and project tools declared
+`mutates: false`. The built-in executor also offers `screenshot` when `vision`
+is `true` or `'only'`; the default is tree-only. Other actions are rejected. The viewport stays
+where exploration ends.
+
+Defaults are 10 scroll actions and 6 model calls, each capped at the selected
+agent's configured limit. Overrides may exceed the 10/6 defaults, up to the
+configured limits. The deadline
+defaults to `judgmentTimeout`. `maxSteps` or `maxModelCalls` without
+`explore: true` throws `INVALID_ARGUMENT`. The built-in executor uses
+`agents.<name>.model`, even when `judge` is configured.
+
+A contradiction is `ASSERTION_FAILED`; insufficient evidence within the time
+or action/model budget is `ASSERTION_INCONCLUSIVE`.
+
+Use `waitFor` for a condition that changes over time, and `explore` for content
+elsewhere on the current screen.
 
 ### agent.waitFor
 
@@ -186,13 +254,16 @@ await agent.waitFor('the upload progress reports completion', { interval: 500 })
   holds.
 - After a false or inconclusive judgment it waits out `interval`. Then it
   observes every 500 ms (or every `interval`, when shorter) without a model
-  call. It judges again only once the screen differs from the one last
-  judged, pixels included under `vision`.
+  call. It judges again only once the screen or its location differs from the
+  one last judged, pixels included under `vision`. Under `vision: 'only'` a
+  location change alone does not count, since that mode is not shown the
+  location.
 - Judgments follow the [`agent.assert`](#agent-assert) rules: a value shown
   in more than one place holds only once every instance agrees.
 
 | Option | Type | Default |
 | --- | --- | --- |
+| `params` | `AgentParams` | none |
 | `timeout` | `number` | `agents.<name>.judgmentTimeout`, 30000 |
 | `interval` | `number` | 3000 |
 | `maxModelCalls` | `number` | `agents.<name>.maxModelCalls`, 25 |
@@ -200,12 +271,13 @@ await agent.waitFor('the upload progress reports completion', { interval: 500 })
 | `agent` | `string` | the test's agent |
 
 `interval` is the least time between two judgments, 100 through 60000 ms.
+`params` work as in [`agent.assert`](#agent-assert).
 
 | Throws | When |
 | --- | --- |
 | `STEP_TIMEOUT` | The deadline expired. |
 | `STEP_BUDGET_EXHAUSTED` | The budget ran out. |
-| `INVALID_ARGUMENT` | An out-of-range option, or one `waitFor` does not take. |
+| `INVALID_ARGUMENT` | An out-of-range option, invalid `params`, or an option `waitFor` does not take. |
 
 `STEP_TIMEOUT` and `STEP_BUDGET_EXHAUSTED` carry the last judgment. When that
 round was inconclusive, they add the same vision hint as `agent.assert`.
@@ -257,7 +329,8 @@ timeout.
 | `act` | `agents.<name>.maxModelCalls`, 25 | `agents.<name>.maxSteps`, 25 | `config.timeout`, 120000 ms |
 | `waitFor` | `agents.<name>.maxModelCalls`, 25 | 0 | `agents.<name>.judgmentTimeout`, 30000 ms |
 | `extract` | 2 | 0 | `agents.<name>.judgmentTimeout`, 30000 ms |
-| `assert` | 2 | 0 | `agents.<name>.judgmentTimeout`, 30000 ms |
+| `assert` without exploration | 2 | 0 | `agents.<name>.judgmentTimeout`, 30000 ms |
+| `assert` with exploration | min(6, configured limit) | min(10, configured limit) | `agents.<name>.judgmentTimeout`, 30000 ms |
 
 - `actionTimeout` limits engine operations, not model calls.
 - Per-call budgets (`maxSteps`, `maxModelCalls`) can only lower the
@@ -265,9 +338,10 @@ timeout.
   limits; a larger one is `INVALID_ARGUMENT`.
 - All durations are in milliseconds.
 
-The `assert` row holds for the built-in agent. When the selected agent has a
-custom `executor`, `assert` runs on it as a step. Its budget is the agent's
-`maxSteps` and `maxModelCalls`, and its default timeout is `config.timeout`.
+Without exploration, the `assert` row describes the built-in agent. A custom
+`executor` runs non-exploring assertions with the agent's `maxSteps` and
+`maxModelCalls`, and `config.timeout` as the default deadline. Exploring
+assertions use the capped defaults and `judgmentTimeout` with any executor.
 For `vision` and `screenshot` there, see the Note under
 [`agent.assert`](#agent-assert).
 
@@ -296,16 +370,21 @@ click, as a Shift-click extends a selection.
 | `scroll({ direction, target?, times? })` | `swipe` | Scrolls the viewport or one scrollable node, up to 20 screens per call. |
 | `scroll_to({ target })` or `scroll_to({ text, direction?, target? })` | `scrollIntoView`; with `text`, `swipe` | With `target` alone, brings one listed node into the viewport, for a node the tree lists below or above the fold. With `text`, pages the list (`target`, else the viewport) screen by screen in `direction` (down by default) until a node reading that text shows, then brings it in when the engine can. That is for a row deep in a long or windowed list the tree has not rendered yet. The node's label must be the text, or hold it with no part of a word on either side, so `Row 12` never stops at `Row 120`. When `target` names a list, the node must be inside it, so a heading elsewhere reading the same does not end the paging. One action however many screens, up to 800; a screen that stops moving or the cap is `LOCATOR_NOT_FOUND`. Each form is offered only with its action kind. |
 | `drag({ target, to })` | `dragTo` | Drags one node and drops it on another: reordering, kanban columns, drop zones. |
-| `upload({ target, files })` | `setInputFiles` | Attaches files to a file input. Paths are project-relative; see the policy below. |
+| `upload({ target, files })` | `setInputFiles` | Attaches files to a file input, or to a visible control that opens a native file chooser. Paths are project-relative or name a `sample:` file; see the policy below. |
 | `navigate({ url })` | `session.open` | Opens a URL or an app-relative path. |
 | `back()` | `session.back` | Goes back once: browser history on a page, the in-app back on a device. |
+| `resize_viewport({ width, height })` | `session.resize` | Sets the viewport size in CSS pixels, 200 to 4096 per side, to check a layout at another width. The size holds until the next resize. Engines with `session.resize`, such as web. |
 | `observe()` | | Looks again and reports what changed since the last screen the model received. |
 | `dismiss_keyboard()` | `keyboard.dismiss` | Hides an on-screen keyboard. Device engines only. |
 
-`scroll_to({ text })` waits for each scrolled screen to settle. On a device,
-the next observation checks stability without waiting for a second scroll
-effect. Engines with `scrollIntoView` still wait for the final adjustment
-that brings the matched node into view. Replay follows the same rule.
+`scroll_to({ text })` reads each screen once when it has visibly scrolled, and
+otherwise re-reads it for up to a second, the same beat a held-still look
+uses, before that screen counts as stopped. A list that appends when it
+reaches the end keeps being paged. A single changing time value
+(`12:05`) beside other text does not count as the list moving. On a device, the next observation
+checks stability without waiting for a second scroll effect. Engines with
+`scrollIntoView` still wait for the final adjustment that brings the matched
+node into view. Replay follows the same rule.
 
 `upload` takes the model's path, but the runner decides:
 
@@ -316,6 +395,10 @@ that brings the matched node into view. Replay follows the same rule.
   `.e2e`, is refused with `POLICY_DENIED`.
 - A path that names no regular file is `INVALID_ARGUMENT`, an ordinary action
   failure the model reads and corrects.
+- `sample:photo.png`, `sample:photo.jpg`, `sample:document.pdf`,
+  `sample:notes.txt`, `sample:table.csv`, and `sample:empty.txt` name small
+  files e2e ships, so the agent can try an upload when the project has no
+  file to give it. The tool lists them.
 - Every refusal and the final allow is a `policy` event named `upload.path`
   on the step. Nothing reaches the engine until every path passes.
 
@@ -355,13 +438,14 @@ switching has no verb yet: a new tab is invisible to the model.
 the same model reads both. A screen with no listed interactive nodes, such
 as a canvas, opens with a screenshot.
 
-The built-in agent offers these tools while no secret has been filled:
+The built-in agent offers these tools:
 
 | Tool | What it does |
 | --- | --- |
 | `screenshot()` | Returns a masked viewport screenshot and includes a fresh screenshot after every later action in the step. |
-| `tap_at({ x, y })` | Taps the control at the point by node id, or taps the coordinates directly when no control is listed. |
-| `hover_at({ x, y })` | Hovers the control at the point by node id, or moves the pointer to the coordinates when no control is listed. Needs the `hover` action or pointer kind. |
+| `tap_at({ x, y })` | Taps the coordinates. On an engine that cannot, taps the listed control at the point by node id. |
+| `hover_at({ x, y })` | Moves the pointer to the coordinates. On an engine that cannot, hovers the listed control at the point by node id. Needs the `hover` action or pointer kind. |
+| `drag_at({ x, y, to_x, to_y })` | Drags from one point to the other, for a shape on a canvas or a pin on a map. On an engine that cannot, drags by node id when the points land on two different listed controls. Needs the `dragTo` action or pointer kind. |
 | `type_at({ x, y, value, replace? })` | Replaces a listed input's value. For an unlisted input, taps to focus and types at the caret unless `replace` is set. Unlisted inputs require keyboard support. |
 | `press_at({ x, y, key })` | Sends a key to the control at the point. If no control is listed, taps to focus and uses the engine's keyboard. |
 | `select_at({ x, y, value })` | Selects an option by visible label in the control at the point. |
@@ -369,14 +453,18 @@ The built-in agent offers these tools while no secret has been filled:
 - Coordinates refer to the latest screenshot. The model must take a
   screenshot before it uses a point tool, and should prefer node ids for
   listed controls.
-- The runner checks each point against the tree. A point on a listed control
-  gets the same policy checks and [replay cache](/cache) recording as an
-  action by id.
+- `type_at`, `press_at`, and `select_at` check each point against the tree.
+  A point on a listed control gets the same policy checks and
+  [replay cache](/cache) recording as an action by id. A `tap_at` or
+  `hover_at` point replays inside the node under it.
 - `tap_at` needs an engine whose `actions` or `pointerActions` include `tap`,
-  and `hover_at` one whose include `hover`. Without the pointer kind, the
-  point must land on a listed control.
-- A bare-point tap or hover replays only on a viewport of the recorded size,
-  or at the same place inside the listed node that contained it.
+  `hover_at` one whose include `hover`, and `drag_at` one whose include
+  `dragTo`. Without the pointer kind, the point must land on a listed
+  control, and the two `drag_at` points on two different listed controls.
+  Otherwise the call fails with `UNSUPPORTED_CAPABILITY`.
+- A bare-point tap, hover, or drag replays only on a viewport of the recorded
+  size, or at the same place inside the listed node that contained it. A
+  drag places each of its two points that way.
 - Once screenshots are in use, the post-action wait also detects pixel
   changes, including canvas redraws.
 - Screenshots have a maximum long side of 768 px. Older images are removed in
@@ -384,19 +472,13 @@ The built-in agent offers these tools while no secret has been filled:
 - A step that sent pixels records `visionInput: true` and
   `metrics.pixelBytes`.
 
-A secret filled during the step withholds every later screenshot from the
-model (`PIXEL_TAINTED`). A step that opens on a tainted viewport offers none of the
-six pixel tools.
-
 If semantic capture times out, an engine that proves masking independently
 can return a fresh screenshot with an explicit unavailable-tree warning.
 Every `act` observation with unavailable semantics includes that image and
 warning. Earlier node ids are then invalid, and the next successful semantic
 capture presents the whole tree again. The screenshot shows the current
 viewport; an unavailable tree does not prove that a control or message is
-absent. After a secret fill there is no fallback. When semantic capture times
-out before the step does, `act`, and a judgment with `vision: true`, fails
-with `POLICY_DENIED`.
+absent.
 
 If semantic capture fails, trace replay stops. The step cannot record a new
 trace entry, even if the tree recovers later.
@@ -416,7 +498,7 @@ await agent.assert('no overlay covers the checkout form', { vision: 'only' }); /
 | --- | --- |
 | `false`, the default | Semantic tree |
 | `true` | Semantic tree and a masked screenshot |
-| `'only'` | Masked screenshot only |
+| `'only'` | Masked screenshot only, no tree or location |
 
 Use `'only'` for visual checks, such as whether an overlay covers a form or a
 chart looks correct. Screenshots show the current viewport, so scroll to the
@@ -428,8 +510,6 @@ content, use `true` or `'only'`.
 
 Pixels are withheld, and the tree is sent alone, when:
 
-- a secret fill has tainted the viewport (`visionDegraded: "PIXEL_TAINTED"`
-  on the step),
 - the engine masked fewer regions than the secure fields it observed
   (`MASKING_UNPROVEN`), or
 - the engine cannot capture pixels (`UNSUPPORTED_CAPABILITY`).
@@ -438,9 +518,8 @@ In `'only'` mode those cases fail with `POLICY_DENIED` instead.
 
 With `vision: true` or `'only'`, a recoverable semantic-capture failure can
 use a fresh screenshot when the engine proves masking independently. With
-`vision: false`, or after a secret fill, the capture failure stops the
-judgment before any model call: a missing tree cannot support a judgment
-about an empty screen.
+`vision: false`, the capture failure stops the judgment before any model
+call: a missing tree cannot support a judgment about an empty screen.
 
 If capture fails before a judgment, the report records zero model calls and
 omits `observationRevision` and `explanation`. The step error describes the
@@ -489,7 +568,16 @@ export interface ActOptions extends AgentOption {
    * Observe only: drive nothing from it. A throw fails the step.
    */
   onAction?: ActionHook;
+  /**
+   * Runs before each action, replayed ones included, and the step waits for
+   * it. Observe only: drive nothing from it. A throw fails the step before
+   * the action runs.
+   */
+  onBeforeAction?: BeforeActionHook;
 }
+
+/** The `onBeforeAction` hook of an `act` call. */
+export type BeforeActionHook = (event: BeforeActionEvent) => void | Promise<void>;
 
 /** The `onAction` hook of an `act` call. */
 export type ActionHook = (event: ActionEvent) => void | Promise<void>;
@@ -499,8 +587,19 @@ export interface AgentOption {
   agent?: string;
 }
 
-/** `assert` options: one judgment plus one repair round, within `timeout`. */
+/** `assert` options: one judgment, or opt-in bounded viewport exploration. */
 export interface AssertOptions extends VisionOption, AgentOption {
+  /** Look around by scrolling before judging; defaults to false. */
+  explore?: boolean;
+  /** Scroll budget; requires explore, defaults to min(10, configured maxSteps). */
+  maxSteps?: number;
+  /** Model-call budget; requires explore, defaults to min(6, configured maxModelCalls). */
+  maxModelCalls?: number;
+  /**
+   * Values the assertion refers to as `{name}`, with the same rules as `act`
+   * params. A `Secret` reaches the judge by name only, never its value.
+   */
+  params?: AgentParams;
   /** Deadline in milliseconds; defaults to the agent's `judgmentTimeout`, 30000. */
   timeout?: number;
   /** Attach a redacted screenshot to the step; on by default. */
@@ -509,6 +608,11 @@ export interface AssertOptions extends VisionOption, AgentOption {
 
 /** `waitFor` options: a judgment at most once per `interval` until `timeout`. */
 export interface WaitForOptions extends VisionOption, AgentOption {
+  /**
+   * Values the condition refers to as `{name}`, with the same rules as `act`
+   * params. A `Secret` reaches the judge by name only, never its value.
+   */
+  params?: AgentParams;
   /** Deadline in milliseconds; defaults to the agent's `judgmentTimeout`, 30000. */
   timeout?: number;
   /** Least time between two judgments, in milliseconds; 100 through 60000, default 3000. */
@@ -554,15 +658,54 @@ export interface ActResult {
   readonly actions: number;
 }
 
-/** One completed action of an `act` step, as `onAction` receives it. */
-export interface ActionEvent {
+/** The name `onAction` reports a committed grammar action under, e.g. `tap`, `navigate`, or `dragAt`. */
+export type ActionName =
+  | 'tap' | 'doubleTap' | 'longPress' | 'secondaryTap' | 'hover' | 'scrollTo'
+  | 'type' | 'typeSecret' | 'press' | 'select' | 'check' | 'upload' | 'drag'
+  | 'scroll' | 'scrollUntil' | 'navigate' | 'back' | 'resize' | 'typeText'
+  | 'pressKey' | 'dismissKeyboard' | 'tapAt' | 'hoverAt' | 'dragAt';
+
+/**
+ * The fields `onAction` adds for an action, by action name; other actions add
+ * none. Points are in the same space as `screen.tapAt` and `boundingBox()`,
+ * rounded and clamped to the viewport.
+ */
+export interface ActionDetails {
+  /** The dispatched point. */
+  readonly tapAt: { readonly point: Point };
+  /** The dispatched point. Mobile engines have no `hoverAt`. */
+  readonly hoverAt: { readonly point: Point };
+  /** The dispatched start and end. Mobile engines have no `dragAt`. */
+  readonly dragAt: { readonly from: Point; readonly to: Point };
+}
+
+/** What every `onAction` event carries. */
+interface ActionEventBase {
   /** 1-based position in the step's action budget; a failed attempt uses a number too. */
   readonly index: number;
-  /** The committed action, e.g. `tap` or `navigate`; a mutating project tool reads `tool:<name>`. */
-  readonly action: string;
   /** What the action did, secrets redacted. */
   readonly summary: string;
   /** `model` when the executor chose the action, `replay` when the cache replayed it. */
+  readonly source: 'model' | 'replay';
+}
+
+/**
+ * One completed action of an `act` step, as `onAction` receives it. Narrow on
+ * `action` to read its {@link ActionDetails}; a mutating project tool reads
+ * `tool:<name>`.
+ */
+export type ActionEvent = ActionEventBase &
+  (
+    | { readonly action: 'tapAt' | 'hoverAt'; readonly point: Point }
+    | { readonly action: 'dragAt'; readonly from: Point; readonly to: Point }
+    | { readonly action: Exclude<ActionName, keyof ActionDetails> | `tool:${string}` }
+  );
+
+/** One action of an `act` step about to run, as `onBeforeAction` receives it. */
+export interface BeforeActionEvent {
+  /** The same `index` the action's `onAction` event carries. */
+  readonly index: number;
+  /** `model` when the executor chose the action, `replay` when the cache replays it. */
   readonly source: 'model' | 'replay';
 }
 
