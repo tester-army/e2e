@@ -1,3 +1,4 @@
+import { cacheContext } from '../helpers/cache-context.ts';
 import { mkdtemp, readFile, readdir, rm, writeFile, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -9,9 +10,10 @@ import { cacheFileName, resolveCacheFile } from '../../src/cache/file-name.ts';
 import { FileCacheStore, MAX_CACHE_WIRE_BYTES } from '../../src/cache/store.ts';
 import type { ActionTrace } from '../../src/cache/trace.ts';
 import type { ReplayTest } from '../../src/cache/test-file.ts';
-import { sha256Hex } from '../../src/internal/ids.ts';
+import { canonicalDigest, sha256Hex } from '../../src/internal/ids.ts';
 
 const flow: ActionTrace = {
+  keyedBy: cacheContext(),
   instruction: 'save the profile',
   executor: { name: 'test' }, summary: 'done', startPath: '/form', endPath: '/done', endAnchors: [{ role: 'status', name: 'Saved' }],
   actions: [
@@ -45,6 +47,16 @@ describe.each(['web', 'mobile'])('%s committed recordings', (platform) => {
       expect(readReplayYaml(encodeReplayYaml(entry)), file).toEqual(entry);
       expect(encodeReplayYaml(entry), file).toBe(source);
       expect(entry.steps.every((step) => step.trace.instruction !== undefined)).toBe(true);
+      expect(file).toBe(cacheFileName(entry.testId));
+      for (const step of entry.steps) {
+        const { recordedFor, keyedBy } = step.trace;
+        expect(step.key, file).toBe(canonicalDigest({
+          specVersion: '0.1', ...keyedBy, kind: 'act', testId: entry.testId,
+          targetId: recordedFor?.targetId, agent: recordedFor?.agent,
+          instructionDigest: recordedFor?.instructionDigest, paramsDigest: recordedFor?.paramsDigest,
+          callIndex: recordedFor?.callIndex,
+        }));
+      }
     }
   });
 });
@@ -74,7 +86,7 @@ it('rejects unsafe YAML and reports the file and source line', () => {
     source.replace('order: 0', 'order: 0\n      surprise: true'),
     source.replace('- tap:', '- runShell:'),
     source.replace('position: { index: 0, of: 1 }', 'position: { index: -1, of: 1 }'),
-    source.replace('recordedWith: {}', 'recordedWith: { platform: android }'),
+    source.replace('platform: web', 'platform: android'),
     source.replace('instruction: save the profile', 'instruction: save the profile\n    params: wrong'),
   ]) expect(() => readReplayYaml(bad, 'save.yml')).toThrow(/save.yml:\d+:/u);
   expect(() => readReplayYaml('x'.repeat(MAX_CACHE_WIRE_BYTES + 1), 'huge.yml')).toThrow('huge.yml:');
@@ -89,12 +101,15 @@ it('rejects duplicate act identities and unknown action fields', () => {
   expect(() => readReplayYaml(source.replace('- tap: {', '- tap: { surprise: 1,'))).toThrow();
 });
 
-it('makes safe readable names, with deterministic suffixes only on collisions', async () => {
+it.each([
+  ['tests/save.e2e.ts::Save!', 'tests/save.e2e.ts::Save?'],
+  ['tests/save.e2e.ts::save-the-profile-with-a-very-long-title-first', 'tests/save.e2e.ts::save-the-profile-with-a-very-long-title-second'],
+])('makes safe readable names, with deterministic suffixes only on collisions: %s', async (first, second) => {
   expect(cacheFileName('tests/login.e2e.ts::logs%20in')).toBe('login-logs-in.yml');
   expect(cacheFileName('../CON.ts')).toBe('test-con.yml');
   expect(cacheFileName('x.ts::../../evil/\\file')).not.toMatch(/[\\/]/u);
-  expect(cacheFileName('x.ts::' + 'long'.repeat(100)).length).toBeLessThanOrEqual(76);
-  const ids = ['tests/save.e2e.ts::Save!', 'tests/save.e2e.ts::Save?'];
+  expect(cacheFileName('x.ts::' + 'long'.repeat(100)).length).toBeLessThanOrEqual(44);
+  const ids = [first, second];
   expect(cacheFileName(ids[0]!)).toBe(cacheFileName(ids[1]!));
   const outputs: string[][] = [];
   for (const order of [ids, ids.toReversed()]) {
@@ -105,7 +120,7 @@ it('makes safe readable names, with deterministic suffixes only on collisions', 
       const names = (await readdir(directory)).toSorted();
       outputs.push(names);
       expect(names).toHaveLength(2);
-      expect(names.every((name) => /^save--[a-f0-9]{12}\.yml$/u.test(name))).toBe(true);
+      expect(names).toEqual(ids.map((id) => cacheFileName(id).replace('.yml', `--${sha256Hex(id).slice(0, 12)}.yml`)).toSorted());
       for (const [index, store] of stores.entries()) {
         expect(await store.read('b'.repeat(64))).toMatchObject({ status: 'hit' });
         const file = await resolveCacheFile(directory, order[index]!);
@@ -164,4 +179,39 @@ it('re-resolves a file renamed by a colliding writer between lookup and opening'
       expect(reads).toBeGreaterThanOrEqual(2);
     } finally { hook.mockRestore(); syncBuiltinESMExports(); }
   } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+it('caps slugs at a word boundary, including Unicode and redacted titles', () => {
+  const examples = [
+    ['tests/control-inventory.e2e.ts::control%20inventory::back%20returns%20from%20the%20details%20view%20to%20the%20inventory', 'control-inventory-back-returns-from-the.yml'],
+    ['tests/café.e2e.ts::' + encodeURIComponent('déjà vu 🎉 confirms the résumé and returns to checkout'), 'cafe-deja-vu-confirms-the-resume-and.yml'],
+    ['tests/login.e2e.ts::' + encodeURIComponent('logs in as [REDACTED] then saves the profile'), 'login-logs-in-as-redacted-then-saves-the.yml'],
+    ['tests/登录.e2e.ts::' + encodeURIComponent('登录成功'), 'test.yml'],
+    ['tests/' + 'x'.repeat(60) + '.e2e.ts::title', 'x'.repeat(40) + '.yml'],
+    ['tests/x.e2e.ts::' + 'a'.repeat(38) + '-next', 'x-' + 'a'.repeat(38) + '.yml'],
+  ];
+  for (const [id, expected] of examples) {
+    const name = cacheFileName(id!);
+    expect(name).toBe(expected);
+    expect(name.length).toBeLessThanOrEqual(44);
+    expect(name).not.toContain('-.yml');
+  }
+});
+
+it('rejects absent, empty, partial or mistyped recordedWith with the filename and line', () => {
+  const source = encodeReplayYaml(recording());
+  for (const header of ['', 'recordedWith: {}\n', 'recordedWith: { engine: 1, platform: web }\n', 'recordedWith: null\n']) {
+    const invalid = source.replace(/recordedWith:\n(?:  [^\n]*\n)+/u, header);
+    expect(invalid).not.toBe(source);
+    expect(() => readReplayYaml(invalid, 'profile.yml')).toThrow(/profile.yml:\d+: invalid recordedWith/u);
+  }
+  for (const [from, to] of [['engine: 1', 'engine: 0'], ['engine: 1', 'engine: "1"'], ['platform: web', 'platform: ""'], [flow.keyedBy!.appIdentity, 'not-a-digest'], [flow.keyedBy!.agentContextDigest, 'not-a-digest']]) {
+    const invalid = source.replace(from!, to!);
+    expect(invalid).not.toBe(source);
+    expect(() => readReplayYaml(invalid, 'profile.yml')).toThrow(/profile.yml:\d+: invalid recordedWith/u);
+  }
+  const { keyedBy: _context, ...incomplete } = flow;
+  expect(() => encodeReplayYaml(recording(incomplete))).toThrow('recordedWith requires');
+  const two = recording();
+  expect(() => encodeReplayYaml({ ...two, steps: [...two.steps, { ...two.steps[0]!, key: 'c'.repeat(64), order: 1, trace: incomplete }] })).toThrow('keyedBy validity');
 });

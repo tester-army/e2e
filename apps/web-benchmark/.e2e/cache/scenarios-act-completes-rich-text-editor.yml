@@ -1,6 +1,10 @@
 test: act completes rich-text-editor
 file: tests-agent/scenarios.e2e.ts
-recordedWith: {}
+recordedWith:
+  engine: 1
+  platform: web
+  app: dc587874e98340c0ead3b9555bef25c85bca9337c6c8e28ae9e991c982ef1202
+  contextDigest: "02e45116d4a18a6603260cbbc8fa198d311b6a1a01362cc9dd6aa341d16bb3cf"
 
 acts:
   - instruction: 'Complete this scenario as the page instructs: type "release approved" into the editor, make exactly the word approved bold, and check the document'
@@ -62,6 +66,15 @@ acts:
         executor:
           name: e2e-default-agent
           version: "2"
+        keyedBy:
+          agentContextDigest: "02e45116d4a18a6603260cbbc8fa198d311b6a1a01362cc9dd6aa341d16bb3cf"
+          appIdentity: dc587874e98340c0ead3b9555bef25c85bca9337c6c8e28ae9e991c982ef1202
+          cacheSchema: trace-1
+          engineName: web
+          engineSpiVersion: 1
+          platform: web
+          policyVersion: conservative/6
+          project: "6c340b4558007fd12144b6a4e0daf3abb724b92faa2d08705fa564444b68533c"
         recordedFor:
           agent: default
           callIndex: 0

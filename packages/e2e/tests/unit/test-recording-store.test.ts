@@ -1,3 +1,4 @@
+import { cacheContext } from '../helpers/cache-context.ts';
 import { mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -12,7 +13,7 @@ import type { ActionTrace } from '../../src/cache/trace.ts';
 
 const testId = 'tests/flow.e2e.ts::flow';
 const first = 'a'.repeat(64), second = 'b'.repeat(64), third = 'c'.repeat(64);
-const trace: ActionTrace = { executor: { name: 'fixture' }, actions: [{ name: 'tap', summary: 'Save', target: { name: 'Save', role: 'button' } }], summary: 'Saved' };
+const trace: ActionTrace = { keyedBy: cacheContext(), executor: { name: 'fixture' }, actions: [{ name: 'tap', summary: 'Save', target: { name: 'Save', role: 'button' } }], summary: 'Saved' };
 const dirs: string[] = [];
 afterEach(async () => { await Promise.all(dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true }))); });
 

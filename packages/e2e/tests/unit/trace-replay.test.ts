@@ -1,3 +1,4 @@
+import { cacheContext } from '../helpers/cache-context.ts';
 /** Zero-turn replay: typed dispatch, relocation backoff, divergence. */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -24,7 +25,7 @@ const upgrade: SemanticNode = { ref: { id: 'n1', revision: 'r1' }, role: 'button
 const email: SemanticNode = { ref: { id: 'n2', revision: 'r1' }, role: 'textbox', name: 'Email' };
 
 function trace(actions: RecordedAction[]): ActionTrace {
-  const payload = { actions, executor: { name: 'test' }, summary: 'done' };
+  const payload = { keyedBy: cacheContext(), actions, executor: { name: 'test' }, summary: 'done' };
   return readReplayYaml(emitReplayYaml({ id: 'a'.repeat(64), testId: 'fixture', steps: [{ key: 'b'.repeat(64), order: 0, variant: { project: '', target: '', agent: '' }, trace: payload }] })).steps[0]!.trace;
 }
 

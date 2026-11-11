@@ -447,12 +447,15 @@ strict mode. There is no migration command, format switch or cache diff command.
 
 `tests/checkout.e2e.ts::buys` becomes `.e2e/cache/checkout-buys.yml`.
 Names combine the source file stem and decoded test titles, lowercase them,
-remove accent marks, replace punctuation with hyphens and truncate at 72
-characters. A title prefix repeating the file stem is included once. Empty names become `test`; Windows device names get a `test-`
-prefix. Directory paths remain part of identity even though filenames omit them.
+remove accent marks and replace punctuation with hyphens. Slugs stop at the
+last word boundary within 40 characters. A single word longer than 40 characters
+is cut at the limit. For example, "control inventory › back returns from the
+details view to the inventory" becomes `control-inventory-back-returns-from-the.yml`.
+A title prefix repeating the file stem is included once. Empty names become
+`test`; Windows device names get a `test-` prefix. Directory paths remain part of identity even though filenames omit them.
 
-When two identities produce the same slug, both files get `--` plus the first
-12 hexadecimal characters of their test identity digest. For example,
+When two identities produce the same slug, including after truncation, both
+files get `--` plus the first 12 hexadecimal characters of their test identity digest. For example,
 `tests/a/login.e2e.ts::logs%20in` and
 `tests/b/login.e2e.ts::logs%20in` share the slug `login-logs-in` and receive
 different suffixes. Suffixes remain stable after a collision. A digest collision
@@ -470,7 +473,8 @@ file: tests/checkout.e2e.ts
 recordedWith:
   engine: 1
   platform: web
-  app: <app identity>
+  app: <app identity digest>
+  contextDigest: <agent context digest>
 
 acts:
   - instruction: log in with the given credentials
@@ -489,8 +493,10 @@ appeared and disappeared anchors. The replay checks them together as the
 outcome, not as sequential sleeps. A target's
 `targetValue` distinguishes its observed value from a `type` action's input.
 Optional targets on scrolling actions remain nested to avoid ambiguous fields.
-The `recordedWith` header describes the first variant; each variant keeps its
-own validity metadata.
+The required `recordedWith` header describes the first variant: engine contract
+version, platform, app identity digest and redacted agent context digest. Each
+act retains its own validity metadata. Missing, empty or mismatched headers
+fail validation with the filename and line.
 
 Calls match by instruction, params, occurrence, test, target, agent and replay
 policy, not array position. A missing call runs the agent. A stale recording

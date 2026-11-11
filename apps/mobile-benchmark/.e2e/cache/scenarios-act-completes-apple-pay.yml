@@ -4,6 +4,7 @@ recordedWith:
   engine: 1
   platform: ios
   app: "873e96a3c0364ffd8e603a0fb9ccef7bb32dd2c64eb8bddaa76d36fdfbf446ae"
+  contextDigest: "9851c2b004c95e29037ba508c9a81e7efff8fcaa01e5491077154e702520281a"
 
 acts:
   - instruction: "Complete this scenario as the screen instructs: start the Apple Pay payment and authorize it in the sheet that appears; the sheet is not in the tree, use the screenshot"

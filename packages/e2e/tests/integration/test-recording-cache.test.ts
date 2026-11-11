@@ -1,3 +1,4 @@
+import { parseDocument } from 'yaml';
 /** Real runner coverage for one cache file per test and unchanged act-call miss semantics. */
 import { readFileSync, readdirSync, unlinkSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -60,6 +61,9 @@ describe('per-test file discovery and act matching', () => {
     expect(recording.steps.map((step) => step.order)).toEqual([0, 1, 2]);
     expect(new Set(recording.steps.map((step) => step.key)).size).toBe(3);
     const before = readFileSync(f.file, 'utf8');
+    expect(parseDocument(before).toJS().recordedWith).toEqual({
+      engine: 1, platform: 'web', app: expect.stringMatching(/^[a-f0-9]{64}$/u), contextDigest: expect.stringMatching(/^[a-f0-9]{64}$/u),
+    });
     f.calls.length = 0;
     const second = await f.run();
     expect(second.exitCode).toBe(0);

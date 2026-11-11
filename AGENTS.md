@@ -74,7 +74,7 @@ suites that consume the built packages the way a user would.
     are the whole public surface: the flows, stores, and fetch behind them
     are module-private, not a library for other products. `tests/live/` holds hand-run
     checks that need a stored login and are never part of `pnpm test`.
-- The file cache parses YAML core-schema data, never executable code. It supports only `.yml` recordings, one per collected test under `cache.dir`, named from the test file stem and titles with a 12-character digest suffix only on collision. Ordered act calls and target/agent variants share that file. Old JSON and TypeScript recordings are ignored.
+- The file cache parses YAML core-schema data, never executable code. It supports only `.yml` recordings, one per collected test under `cache.dir`, named from the test file stem and titles, capped at a word boundary within 40 characters, with a 12-character digest suffix only on collision. Every file requires complete `recordedWith` metadata matching its first variant; every act requires its own `keyedBy` validity metadata. Ordered act calls and target/agent variants share that file. Old JSON and TypeScript recordings are ignored.
 - `packages/web` — the published `@e2e-dev/web` package: the
   browser engine, built with the public `defineEngine`, contributing the
   `browser` fixture and `expect(browser)`. It depends on `e2e` (peer), never the

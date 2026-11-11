@@ -4,6 +4,7 @@ recordedWith:
   engine: 1
   platform: android
   app: e18e9835187bab993e11f2dd7ff5624429bc26890c846accacf0057b525e92a0
+  contextDigest: "9851c2b004c95e29037ba508c9a81e7efff8fcaa01e5491077154e702520281a"
 
 acts:
   - instruction: "Complete this scenario as the screen instructs: retry the failed load, then delete the draft and confirm"

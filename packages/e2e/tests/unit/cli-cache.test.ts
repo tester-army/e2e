@@ -1,3 +1,4 @@
+import { cacheContext } from '../helpers/cache-context.ts';
 /** `e2e cache ls`, `clear`, and `stats` over a real store directory. */
 
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
@@ -32,6 +33,7 @@ function writeDefaultConfig(): void {
 
 function trace(recordedFor: TraceProvenance | undefined, actions: number): ActionTrace {
   return {
+    keyedBy: cacheContext(),
     actions: Array.from({ length: actions }, (_, index) => ({
       name: 'tap' as const,
       summary: `tap ${index}`,

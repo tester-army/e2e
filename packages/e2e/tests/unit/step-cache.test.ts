@@ -1,3 +1,5 @@
+import { parseDocument } from 'yaml';
+import { cacheContext } from '../helpers/cache-context.ts';
 /** StepTraceSession: store resilience, staging anchors, replay postconditions, the write-side decision. */
 
 import { readReplayYaml } from '../../src/cache/yaml.ts';
@@ -1182,6 +1184,7 @@ describe('settleStagedTraces and a re-recorded flow', () => {
     const file = join(directory, cacheFileName(exampleStep.testId));
     const snapshot = async () => ({ bytes: await readFile(file, 'utf8'), mtimeMs: (await stat(file)).mtimeMs });
     const trace = (summary: string, endWaitMs: number, taps: number): ActionTrace => ({
+      keyedBy: exampleContext,
       actions: Array.from({ length: taps }, (_, index) => ({
         name: 'tap' as const,
         summary: `tap ${String(index)}`,
@@ -1222,6 +1225,7 @@ describe('settleStagedTraces and a re-recorded flow', () => {
     const store = new FileCacheStore({ testId: exampleStep.testId, directory, maxBytes: MAX_CACHE_WIRE_BYTES, writable: true });
     const file = join(directory, cacheFileName(exampleStep.testId));
     const trace = (derived?: DerivedReason): ActionTrace => ({
+      keyedBy: exampleContext,
       actions: [
         { name: 'tool', summary: 'tool type (run-time value)', ...(derived === undefined ? {} : { derived }) },
         { name: 'tap', summary: 'tap Apply', target: { role: 'button', name: 'Apply' } },
@@ -1257,6 +1261,7 @@ describe('settleStagedTraces and a re-recorded flow', () => {
   it('says a confirmed recording the store did not write was not written, rather than saved', async () => {
     const directory = await tempDir('e2e-flush-too-large-');
     const trace: ActionTrace = {
+      keyedBy: exampleContext,
       actions: [{ name: 'tap', summary: 'tap Save', target: { role: 'button', name: 'Save' } }],
       executor: { name: 'scripted' },
       summary: 'saved',
@@ -1338,6 +1343,7 @@ describe('cache.strict and a step whose key changed under its recording', () => 
   const OWN_KEY = 'a'.repeat(64);
   const OLD_KEY = 'b'.repeat(64);
   const recordedPayload = (recordedFor: ActionTrace['recordedFor'], overrides: Partial<ActionTrace> = {}): ActionTrace => ({
+    keyedBy: exampleContext,
     actions: [{ name: 'navigate', summary: 'navigate to "/customers"', url: '/customers' }],
     executor: { name: 'recorded-agent' },
     ...(recordedFor === undefined ? {} : { recordedFor }),
@@ -1413,4 +1419,23 @@ describe('cache.strict and a step whose key changed under its recording', () => 
     await expect(failure).rejects.toMatchObject({ code: 'REPLAY_STALE' });
     await expect(failure).rejects.not.toThrow('hunter2');
   });
+});
+
+it.each(['web', 'ios', 'android'])('carries %s validity through recording, confirmation and the YAML header', async (platform) => {
+  const directory = await tempDir('e2e-recorded-with-');
+  const store = new FileCacheStore({ testId: exampleStep.testId, directory, maxBytes: MAX_CACHE_WIRE_BYTES, writable: true });
+  const keyedBy = cacheContext(platform);
+  const context: AgentCacheContext = {
+    mode: 'read-write', store, replayEligible: true, strict: false, staged: [],
+    claimKey: () => ({ ...claimedKey('a'.repeat(64)), context: keyedBy }),
+  };
+  const session = recordingSession(context, ['/pricing', '/customers', '/customers']);
+  expect(await session.begin()).toBeUndefined();
+  session.record({ name: 'navigate', url: '/customers' });
+  await session.conclude('passed', 'opened customers');
+  expect(stagedTrace(context).keyedBy).toEqual(keyedBy);
+  expect((await settleStagedTraces(context, { lastVerifiedStepIndex: 5, implicatesUnconfirmed: true })).get(1)).toBe('saved');
+  const source = await readFile(join(directory, cacheFileName(exampleStep.testId)), 'utf8');
+  expect(parseDocument(source).toJS().recordedWith).toEqual({ engine: 1, platform, app: keyedBy.appIdentity, contextDigest: keyedBy.agentContextDigest });
+  expect(readReplayYaml(source).steps[0]!.trace.keyedBy).toEqual(keyedBy);
 });

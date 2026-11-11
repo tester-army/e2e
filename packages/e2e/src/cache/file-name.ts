@@ -11,7 +11,9 @@ export function cacheFileName(testId: string): string {
   const clean = (text: string) => text.normalize('NFKD').replace(/[\u0300-\u036f]/gu, '').toLowerCase().replace(/[^a-z0-9]+/gu, '-').replace(/^-+|-+$/gu, '');
   const filePart = clean(stem), titlePart = clean(title);
   const combined = titlePart.startsWith(filePart + '-') || titlePart === filePart ? titlePart : [filePart, titlePart].filter(Boolean).join('-');
-  const slug = combined.slice(0, 72).replace(/-+$/u, '') || 'test';
+  // Include a boundary at character 40; only split a word when the first word alone exceeds the cap.
+  const boundary = combined.lastIndexOf('-', 40);
+  const slug = (combined.length <= 40 ? combined : combined.slice(0, boundary > 0 ? boundary : 40)) || 'test';
   return `${/^(?:con|prn|aux|nul|com[0-9]|lpt[0-9])$/u.test(slug) ? 'test-' : ''}${slug}.yml`;
 }
 

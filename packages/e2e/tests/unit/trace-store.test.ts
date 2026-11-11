@@ -1,3 +1,4 @@
+import { cacheContext } from '../helpers/cache-context.ts';
 /** trace-1 file store: atomic writes, fail-to-miss reads. */
 
 import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
@@ -11,6 +12,7 @@ import type { ActionTrace } from '../../src/cache/trace.ts';
 const KEY = 'a'.repeat(64);
 
 const payload: ActionTrace = {
+  keyedBy: cacheContext(),
   actions: [{ name: 'tap', summary: 'tap button "Upgrade"', target: { role: 'button', name: 'Upgrade' } }],
   executor: { name: 'example-agent' },
   summary: 'upgraded the plan',

@@ -306,7 +306,11 @@ jobs:
 
 ## YAML recordings
 
-The file cache writes YAML core-schema data with compact action maps.
+The file cache writes YAML core-schema data with compact action maps. Slugs
+use the file stem and test titles, capped at a word boundary within 40 characters;
+only collisions add a stable digest suffix. Every file requires `recordedWith`
+with engine contract version, platform, app identity digest and agent context
+digest. Empty or missing headers fail validation.
 Tags, aliases, anchors, duplicate keys and unknown fields are rejected with
 a filename and line. The runner never evaluates recordings. Web and mobile share target matching,
 outcome checks, confirmation and agent fallback. Runtime-derived values remain

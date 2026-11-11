@@ -83,8 +83,18 @@ export function readReplayYaml(source: string, filename = '<cache>'): ReplayTest
     if (typeof id !== 'string' || !DIGEST.test(id) || typeof testId !== 'string' || testId.length === 0 || testId.length > 8192 || raw['acts'].length > 4096) throw new Error('invalid test identity or act count');
     const [file, ...titles] = testId.split('::');
     if (raw['file'] !== file || raw['test'] !== titles.map(displayTitle).join(' › ')) throw new Error('test and file must match identity');
-    const environment = mapping(raw['recordedWith']);
-    keys(environment, ['engine', 'platform', 'app']);
+    const header = doc.get('recordedWith', true);
+    let environment: Record<string, unknown>;
+    try {
+      environment = mapping(raw['recordedWith']);
+      keys(environment, ['engine', 'platform', 'app', 'contextDigest']);
+      if (typeof environment['engine'] !== 'number' || !Number.isSafeInteger(environment['engine']) || environment['engine'] < 1
+        || typeof environment['platform'] !== 'string' || environment['platform'].length === 0
+        || typeof environment['app'] !== 'string' || !DIGEST.test(environment['app'])
+        || typeof environment['contextDigest'] !== 'string' || !DIGEST.test(environment['contextDigest'])) {
+        throw new Error('expected engine, platform, app and contextDigest');
+      }
+    } catch (cause) { return fail(`invalid recordedWith: ${(cause as Error).message}`, isNode(header) ? header.range?.[0] : 0); }
     const seen = new Set<string>();
     const steps: ReplayStep[] = raw['acts'].map((item: unknown, index: number) => {
       const location = doc.getIn(['acts', index], true);
@@ -115,6 +125,7 @@ export function readReplayYaml(source: string, filename = '<cache>'): ReplayTest
         const payload = { ...context, ...(endAnchors.length === 0 ? {} : { endAnchors }), ...(goneAnchors.length === 0 ? {} : { goneAnchors }), ...(metadata['instructionUnavailable'] === true ? {} : { instruction: act['instruction'] }), ...(act['params'] === undefined ? {} : { params: act['params'] }), actions: actionRows.map((action, i) => actionFrom(action, summaries[i])) };
         const entry = readTraceEntry({ schemaVersion: TRACE_SCHEMA_VERSION, createdAt: '1970-01-01T00:00:00.000Z', payload });
         if (entry === undefined || canonicalJson(entry.payload) !== canonicalJson(payload)) throw new Error('invalid replay action or verification metadata');
+        if (entry.payload.keyedBy === undefined) throw new Error('replay checks must include keyedBy validity metadata');
         if (canonicalJson(entry.payload.actions.map(actionValue)) !== canonicalJson(actionRows)) throw new Error('unknown action fields or verb');
         const actIdentity = canonicalJson([variant, key]);
         if (seen.has(actIdentity)) throw new Error('duplicate act key');
@@ -123,7 +134,7 @@ export function readReplayYaml(source: string, filename = '<cache>'): ReplayTest
         return { key, order, variant: { project: variant['project'] as string, target: variant['target'] as string, agent: variant['agent'] as string }, trace: entry.payload };
       } catch (cause) { return fail((cause as Error).message, isNode(location) ? location.range?.[0] : 0); }
     });
-    if (canonicalJson(environment) !== canonicalJson(recordedWith(steps))) throw new Error('recordedWith must match replay validity metadata');
+    if (canonicalJson(environment) !== canonicalJson(recordedWith(steps))) return fail('recordedWith must match replay validity metadata', isNode(header) ? header.range?.[0] : 0);
     return { id, testId, steps };
   } catch (cause) {
     if ((cause as Error).message.startsWith(filename + ':')) throw cause;
@@ -162,7 +173,8 @@ export function emitReplayYaml(recording: ReplayTest): string {
 /** Gives the first variant's environment a readable header; every variant retains its own validity. */
 function recordedWith(steps: readonly ReplayStep[]): Record<string, unknown> {
   const first = steps[0]?.trace.keyedBy;
-  return first === undefined ? {} : { engine: first.engineSpiVersion, platform: first.platform, app: first.appIdentity };
+  if (first === undefined) throw new Error('recordedWith requires replay keyedBy validity metadata');
+  return { engine: first.engineSpiVersion, platform: first.platform, app: first.appIdentity, contextDigest: first.agentContextDigest };
 }
 
 /** Refuses a lossy encoding before the store publishes any bytes. */

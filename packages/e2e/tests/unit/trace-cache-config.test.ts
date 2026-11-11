@@ -1,3 +1,4 @@
+import { cacheContext } from '../helpers/cache-context.ts';
 /** Cache config resolution and the staged-write settlement. */
 
 import os from 'node:os';
@@ -278,7 +279,7 @@ describe('settleStagedTraces', () => {
     const directory = await mkdtemp(path.join(tmpdir(), 'e2e-cache-delete-'));
     try {
       const store = new FileCacheStore({ testId: STEP.testId, directory, maxBytes: 1_048_576, writable: true });
-      await store.write(KEY_B, trace('stale trailing flow'));
+      await store.write(KEY_B, { ...trace('stale trailing flow'), keyedBy: cacheContext() });
       const entryPath = path.join(directory, cacheFileName(STEP.testId));
       const before = await readFile(entryPath, 'utf8');
       await chmod(directory, 0o500);
