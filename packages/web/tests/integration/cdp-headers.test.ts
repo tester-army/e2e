@@ -63,10 +63,13 @@ it('sends authorization during CDP discovery without adding it to page requests'
   }
 });
 
-it('removes handshake secrets from real connection errors and their causes', async () => {
+it.each([
+  ['Unauthorized', '401 Unauthorized'],
+  ['Authorization Bearer synthetic-token, token synthetic-token', '401 Authorization [redacted], token [redacted]'],
+])('sanitizes rejected WebSocket upgrades with reason %s', async (reason, expected) => {
   const server = createServer();
   server.on('upgrade', (_request, socket) => {
-    socket.end('HTTP/1.1 401 Authorization Bearer synthetic-token, token synthetic-token\r\nContent-Length: 0\r\n\r\n');
+    socket.end(`HTTP/1.1 401 ${reason}\r\nContent-Length: 0\r\n\r\n`);
   });
 
   try {
@@ -77,7 +80,7 @@ it('removes handshake secrets from real connection errors and their causes', asy
       expect.unreachable('the server rejected the WebSocket upgrade');
     } catch (cause) {
       if (!(cause instanceof Error)) throw cause;
-      expect(cause.message).toContain('401 Authorization [redacted], token [redacted]');
+      expect(cause.message).toContain(expected);
       expect(cause.stack).not.toContain('synthetic-token');
       expect(cause.cause).toBeUndefined();
     }
