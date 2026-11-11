@@ -52,6 +52,7 @@ describe('browserRun', () => {
 
   it('validates options without credentials or network access', () => {
     expect(() => browserRun()).not.toThrow();
+    expect(browserRun()).not.toHaveProperty('scope');
 
     for (const keepAlive of [0, 9999, 1_200_001, NaN, 10000.1]) expect(() => browserRun({ keepAlive })).toThrow(/keepAlive/);
     expect(() => browserRun({ keepAlive: 10_000 })).not.toThrow();

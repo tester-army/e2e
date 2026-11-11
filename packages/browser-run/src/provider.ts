@@ -68,7 +68,7 @@ export function browserRun(options: BrowserRunOptions = {}): BrowserProvider {
 
   const provider: BrowserProvider = {
     name: 'browser-run',
-    scope,
+    ...(scope === undefined ? {} : { scope }),
     async acquire(context): Promise<BrowserLease> {
       const { base, headers } = credentials(context.env);
       const url = new URL(base);
