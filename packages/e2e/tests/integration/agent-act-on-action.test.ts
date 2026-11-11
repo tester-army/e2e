@@ -9,8 +9,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 import { nodeIdFor } from '../helpers/fake-loop-model.ts';
 import { createProject, resultByTitle, runExisting, runProject, type FixtureProject, type RunOutcome } from '../helpers/run-project.ts';
-import { writeFileSync } from 'node:fs';
-import { readEntries } from '../helpers/trace-cache.ts';
+import { readFileSync } from 'node:fs';
+import { readEntries, writeEntry } from '../helpers/trace-cache.ts';
 import type { StepExecutor, StepExecutorContext } from '../../src/agent/executor.ts';
 
 const TITLE = 'screenshots every action';
@@ -281,13 +281,13 @@ test('captures point geometry', async ({ app, agent, screen }) => {
       const [first, second] = entry.payload.actions;
       if (first === undefined || second?.name !== 'tap') throw new Error(`expected two taps, got ${JSON.stringify(entry.payload.actions)}`);
       const payload = { ...entry.payload, actions: [first, { ...second, target: { ...second.target, name: 'No Such Button' } }] };
-      recording = JSON.stringify({ ...entry, payload }, null, 2);
-      writeFileSync(file, recording, 'utf8');
+      writeEntry(file, { ...entry, payload });
+      recording = readFileSync(file, 'utf8');
     });
     try {
       const attempt = resultByTitle(replayed, 'throws after a hand-off').attempts.at(-1)!;
       expect(attempt.error?.message).toContain('agent.act onAction failed: hook broke after the hand-off');
-      expect(readEntries(project).map(({ entry }) => JSON.stringify(entry, null, 2))).toEqual([recording]);
+      expect(readEntries(project).map(({ file }) => readFileSync(file, 'utf8'))).toEqual([recording]);
     } finally {
       project.cleanup();
     }
