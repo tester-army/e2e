@@ -62,6 +62,16 @@ function mergeImportKinds(target: Map<string, ImportKind>, names: Iterable<reado
   }
 }
 
+/** Merges `names` into `target`'s map for `subpath`, creating it when absent. */
+function mergeInto(target: Map<string, Map<string, ImportKind>>, subpath: string, names: Iterable<readonly [string, ImportKind]>): void {
+  let map = target.get(subpath);
+  if (map === undefined) {
+    map = new Map<string, ImportKind>();
+    target.set(subpath, map);
+  }
+  mergeImportKinds(map, names);
+}
+
 /** The `import(...)` call in `node`, unwrapping `await` and parentheses; undefined when `node` is not one. */
 function importCall(node: unknown): AstNode | undefined {
   let current: unknown = node;
@@ -111,12 +121,7 @@ function walkAst(value: unknown, visit: (node: AstNode) => void): void {
 export function engineImports(source: string): EngineImportMap {
   const found = new Map<string, Map<string, ImportKind>>();
   const add = (subpath: string, names: readonly (readonly [string, ImportKind])[]): void => {
-    let map = found.get(subpath);
-    if (map === undefined) {
-      map = new Map<string, ImportKind>();
-      found.set(subpath, map);
-    }
-    mergeImportKinds(map, names);
+    mergeInto(found, subpath, names);
   };
   const parsed = parseModule(source);
   for (const statement of parsed.module.staticImports) {
@@ -186,12 +191,7 @@ export function engineImports(source: string): EngineImportMap {
 /** Merges `source` into `target`, a value import of a name winning over a type import of the same name. */
 export function addEngineImports(target: Map<string, Map<string, ImportKind>>, source: EngineImportMap): void {
   for (const [subpath, names] of source) {
-    let map = target.get(subpath);
-    if (map === undefined) {
-      map = new Map<string, ImportKind>();
-      target.set(subpath, map);
-    }
-    mergeImportKinds(map, names);
+    mergeInto(target, subpath, names);
   }
 }
 
@@ -301,6 +301,9 @@ export interface ExportSets {
   readonly types: ReadonlySet<string>;
 }
 
+/** The export state of a subpath at a version: its export sets when the tag exports the subpath, `'missing'` when the tag record exists but the sibling does not export that subpath there. */
+export type TagExports = ExportSets | 'missing';
+
 /** Resolves a relative module specifier against the file that imports it; undefined for a bare specifier. */
 export function resolveModule(fromFile: string, specifier: string): string | undefined {
   if (!specifier.startsWith('.')) return undefined;
@@ -376,19 +379,21 @@ function entryFileFromExports(exports: Record<string, unknown> | undefined, sibl
 }
 
 /**
- * The export set of a sibling's subpath at a version, split by kind.
- * `readFile` reads a repo path at that version. Undefined when the tag
- * record cannot be read (no manifest, unparseable manifest, unreadable
- * entry). Empty sets when the record exists but the sibling does not
- * export that subpath there: every import from it is then a problem,
- * not unverifiable. An export entry with no types target stays
- * unverifiable, since no entry file can be found for it that way.
+ * The export state of a sibling's subpath at a version. `readFile` reads a
+ * repo path at that version. Undefined when the tag record cannot be read
+ * (no manifest, unparseable manifest, unreadable entry). `'missing'` when
+ * the record exists but the sibling does not export that subpath there:
+ * every import from it is then a problem, not unverifiable. Empty sets
+ * when the entry exists but exports nothing: a side-effect import of it
+ * passes, a named import still fails on the name. An export entry with no
+ * types target stays unverifiable, since no entry file can be found for
+ * it that way.
  */
 export function tagExportsAt(
   readFile: (path: string) => string | undefined,
   siblingDir: string,
   subpath: string,
-): ExportSets | undefined {
+): TagExports | undefined {
   const manifest = readFile(`${siblingDir}/package.json`);
   if (manifest === undefined) return undefined;
   let exports: Record<string, unknown> | undefined;
@@ -400,7 +405,7 @@ export function tagExportsAt(
   const entry = entryFileFromExports(exports, siblingDir, subpath);
   if (entry !== undefined) return resolveEntryExports(readFile, entry);
   if (exports?.[exportKey(subpath)] !== undefined) return undefined;
-  return { values: new Set<string>(), types: new Set<string>() };
+  return 'missing';
 }
 
 export interface EngineImportCheck {
@@ -423,7 +428,7 @@ export interface EngineImportCheck {
  */
 export function engineImportProblems(
   checks: readonly EngineImportCheck[],
-  exportsAt: (sibling: string, subpath: string, version: string) => ExportSets | undefined,
+  exportsAt: (sibling: string, subpath: string, version: string) => TagExports | undefined,
 ): { problems: string[]; unverifiable: string[]; verified: number } {
   const problems: string[] = [];
   const unverifiable: string[] = [];
@@ -433,36 +438,28 @@ export function engineImportProblems(
     let allResolved = true;
     for (const [subpath, names] of check.imports) {
       const label = subpath === '' ? check.sibling : `${check.sibling}/${subpath}`;
-      const named = [...names].filter(([name]) => name !== '*');
-      if (named.length === 0) {
-        // No names to check, but the subpath itself must exist at the
-        // floor: a namespace or side-effect import from a
-        // subpath the floor tag never exported fails at runtime.
-        const exported = exportsAt(check.sibling, subpath, check.floor);
-        if (exported === undefined) {
-          unverifiable.push(`${check.packagePath}: ${label} at ${check.sibling}@${check.floor} cannot be verified, no tag record for that version; the floor must still name a released version`);
-          allResolved = false;
-        } else if (exported.values.size === 0 && exported.types.size === 0) {
-          problems.push(
-            `${check.packagePath}: imports from ${label}, but ${check.sibling}@${check.floor} does not export that subpath; a new ${label} import counts as raising the floor, so raise the ${check.sibling} peer floor to the first version that exports it (as a **Breaking:** minor when it passes a runner minor the previous range accepted)`,
-          );
-        } else if (names.has('*')) {
-          unverifiable.push(`${check.packagePath}: ${label} is imported as a namespace, so its names cannot be verified against ${check.sibling}@${check.floor}`);
-        } else {
-          checked = true;
-        }
-        continue;
-      }
-      if (names.has('*')) {
-        unverifiable.push(`${check.packagePath}: ${label} is imported as a namespace, so its names cannot be verified against ${check.sibling}@${check.floor}`);
-      }
       const exported = exportsAt(check.sibling, subpath, check.floor);
       if (exported === undefined) {
         unverifiable.push(`${check.packagePath}: ${label} at ${check.sibling}@${check.floor} cannot be verified, no tag record for that version; the floor must still name a released version`);
         allResolved = false;
         continue;
       }
-      checked = true;
+      if (exported === 'missing') {
+        problems.push(
+          `${check.packagePath}: imports from ${label}, but ${check.sibling}@${check.floor} does not export that subpath; a new ${label} import counts as raising the floor, so raise the ${check.sibling} peer floor to the first version that exports it (as a **Breaking:** minor when it passes a runner minor the previous range accepted)`,
+        );
+        checked = true;
+        continue;
+      }
+      const named = [...names].filter(([name]) => name !== '*');
+      if (names.has('*')) {
+        unverifiable.push(`${check.packagePath}: ${label} is imported as a namespace, so its names cannot be verified against ${check.sibling}@${check.floor}`);
+      }
+      // A namespace-only import names nothing to check, so it does not
+      // count the check as verified; any other import was checked
+      // against the tag record, including a side-effect import, whose
+      // only question is whether the subpath exists.
+      if (named.length > 0 || !names.has('*')) checked = true;
       const missing = named
         .filter(([name, kind]) => (kind === 'value' ? !exported.values.has(name) : !exported.values.has(name) && !exported.types.has(name)))
         .map(([name]) => name)

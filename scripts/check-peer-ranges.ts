@@ -25,7 +25,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { collectEngineImports, listTags, pendingChangesets, readChangelog, showAtTag } from './check-helpers.ts';
 import { nextVersionAfterBump, pendingBumps } from './changeset-bumps.ts';
-import { engineImportProblems, tagExportsAt, type EngineImportCheck, type ExportSets } from './engine-exports.ts';
+import { engineImportProblems, tagExportsAt, type EngineImportCheck, type TagExports } from './engine-exports.ts';
 import { peerFloor, peerRangeProblems } from './peer-ranges.ts';
 import { REPO_ROOT, publicPackages, siblingPeers } from './public-packages.ts';
 
@@ -62,7 +62,7 @@ if (listTags('e2e@*').length === 0) {
 // Rule (c): every named import from `e2e/*` must be exported by `e2e` at
 // the package's peer floor, read off the `e2e@<floor>` tag.
 const siblingDirs = new Map(packages.map(({ manifest, path }) => [manifest.name, relative(REPO_ROOT, dirname(path))]));
-const exportsCache = new Map<string, ExportSets | undefined>();
+const exportsCache = new Map<string, TagExports | undefined>();
 
 /** Reads `path` from the working tree, undefined when it cannot be read. */
 function showWorkingTree(path: string): string | undefined {
@@ -73,7 +73,7 @@ function showWorkingTree(path: string): string | undefined {
   }
 }
 
-const exportsAt = (sibling: string, subpath: string, version: string): ExportSets | undefined => {
+const exportsAt = (sibling: string, subpath: string, version: string): TagExports | undefined => {
   const key = `${sibling}@${version}:${subpath}`;
   if (exportsCache.has(key)) return exportsCache.get(key);
   const siblingDir = siblingDirs.get(sibling);

@@ -109,6 +109,11 @@ describe('engineImports', () => {
     assert.deepEqual(imports.get('engine'), new Map<string, ImportKind>([['*', 'value']]));
   });
 
+  it('records an export-star-as re-export as the subpath with no names', () => {
+    const imports = engineImports(`export * as ns from 'e2e/missing';\n`);
+    assert.deepEqual(imports.get('missing'), new Map<string, ImportKind>());
+  });
+
   it('reads names destructured from a dynamic import', () => {
     // A `type` modifier is not valid syntax in a destructuring pattern, so
     // destructured names are values.
@@ -198,6 +203,17 @@ describe('exportedNames and resolveEntryExports', () => {
     const exported = resolveEntryExports((path) => files.get(path), 'src/engine/index.ts');
     assert.deepEqual([...(exported?.values ?? [])].toSorted(), ['parseKey']);
     assert.deepEqual([...(exported?.types ?? [])].toSorted(), ['KeyModifier']);
+  });
+
+  it('does not count a value export-star reached through a type-star as a value export', () => {
+    const files = new Map([
+      ['src/engine/index.ts', `export type * from './mid.ts';\n`],
+      ['src/engine/mid.ts', `export * from './leaf.ts';\n`],
+      ['src/engine/leaf.ts', `export function stepTimeout(): void {}\nexport type NodeRef = string;\n`],
+    ]);
+    const exported = resolveEntryExports((path) => files.get(path), 'src/engine/index.ts');
+    assert.deepEqual([...(exported?.values ?? [])], []);
+    assert.deepEqual([...(exported?.types ?? [])].toSorted(), ['NodeRef']);
   });
 
   it('exports only the namespace name for export star as', () => {
@@ -319,11 +335,14 @@ describe('tagExportsAt', () => {
         exports: {
           '.': { types: './dist/index.d.ts', default: './dist/index.js' },
           './engine': { types: './dist/engine/index.d.ts', default: './dist/engine/index.js' },
+          './setup': { types: './dist/setup/index.d.ts', default: './dist/setup/index.js' },
         },
       }),
     ],
     ['packages/e2e/src/index.ts', `export function test(): void {}\n`],
     ['packages/e2e/src/engine/index.ts', `export function stepTimeout(): void {}\n`],
+    ['packages/e2e/src/setup/index.ts', `import './register.ts';\nexport {};\n`],
+    ['packages/e2e/src/setup/register.ts', `export function register(): void {}\n`],
   ]);
   const readAtTag = (path: string): string | undefined => tagFiles.get(path);
   const agentCheck: EngineImportCheck = {
@@ -334,11 +353,32 @@ describe('tagExportsAt', () => {
     imports: new Map([['agent', new Map<string, ImportKind>([['acp', 'value']])]]),
   };
 
-  it('returns empty sets for a subpath the tag does not export', () => {
-    const atAgent = tagExportsAt(readAtTag, 'packages/e2e', 'agent');
-    assert.notEqual(atAgent, undefined);
-    assert.deepEqual([...(atAgent?.values ?? [])], []);
-    assert.deepEqual([...(atAgent?.types ?? [])], []);
+  it('returns missing for a subpath the tag does not export', () => {
+    assert.equal(tagExportsAt(readAtTag, 'packages/e2e', 'agent'), 'missing');
+  });
+
+  it('returns empty sets, not missing, for an entry that exports nothing', () => {
+    const atSetup = tagExportsAt(readAtTag, 'packages/e2e', 'setup');
+    if (atSetup === undefined || atSetup === 'missing') assert.fail('expected export sets for an entry that exists but exports nothing');
+    assert.deepEqual([...atSetup.values], []);
+    assert.deepEqual([...atSetup.types], []);
+  });
+
+  it('passes a side-effect import of an entry that exports nothing', () => {
+    const sideEffect: EngineImportCheck = {
+      packageName: '@e2e-dev/web',
+      packagePath: 'packages/web/package.json',
+      sibling: 'e2e',
+      floor: '0.22.0',
+      imports: new Map([['setup', new Map<string, ImportKind>()]]),
+    };
+    const { problems, unverifiable, verified } = engineImportProblems(
+      [sideEffect],
+      (_sibling, subpath) => tagExportsAt(readAtTag, 'packages/e2e', subpath),
+    );
+    assert.deepEqual(problems, []);
+    assert.deepEqual(unverifiable, []);
+    assert.equal(verified, 1);
   });
 
   it('fails a named import from a subpath the floor tag does not export', () => {
@@ -347,7 +387,7 @@ describe('tagExportsAt', () => {
       (_sibling, subpath) => tagExportsAt(readAtTag, 'packages/e2e', subpath),
     );
     assert.equal(problems.length, 1);
-    assert.match(problems[0]!, /imports `acp` from e2e\/agent, but e2e@0\.22\.0 does not export it/);
+    assert.match(problems[0]!, /imports from e2e\/agent, but e2e@0\.22\.0 does not export that subpath/);
     assert.deepEqual(unverifiable, []);
     assert.equal(verified, 1);
   });
@@ -447,7 +487,7 @@ describe('engineImportProblems', () => {
   it('fails a namespace import from a subpath the floor tag does not export', () => {
     const { problems, unverifiable } = engineImportProblems(
       [check('0.23.0', new Map([['nope', new Map<string, ImportKind>([['*', 'value']])]]))],
-      () => exported([]),
+      () => 'missing',
     );
     assert.equal(problems.length, 1);
     assert.match(problems[0]!, /imports from e2e\/nope, but e2e@0\.23\.0 does not export that subpath/);
@@ -457,11 +497,40 @@ describe('engineImportProblems', () => {
   it('fails a side-effect import from a subpath the floor tag does not export', () => {
     const { problems, unverifiable } = engineImportProblems(
       [check('0.23.0', new Map([['nope2', new Map<string, ImportKind>()]]))],
-      () => exported([]),
+      () => 'missing',
     );
     assert.equal(problems.length, 1);
     assert.match(problems[0]!, /imports from e2e\/nope2, but e2e@0\.23\.0 does not export that subpath/);
     assert.deepEqual(unverifiable, []);
+  });
+
+  it('reports a namespace import from an entry that exports nothing as unverifiable, not a problem', () => {
+    const { problems, unverifiable } = engineImportProblems(
+      [check('0.23.0', new Map([['engine', new Map<string, ImportKind>([['*', 'value']])]]))],
+      () => exported([]),
+    );
+    assert.deepEqual(problems, []);
+    assert.equal(unverifiable.length, 1);
+    assert.match(unverifiable[0]!, /imported as a namespace/);
+  });
+
+  it('fails a named import from an entry that exports nothing', () => {
+    const { problems } = engineImportProblems(
+      [check('0.23.0', named([['stepTimeout', 'value']]))],
+      () => exported([]),
+    );
+    assert.equal(problems.length, 1);
+    assert.match(problems[0]!, /imports `stepTimeout` from e2e\/engine, but e2e@0\.23\.0 does not export it/);
+  });
+
+  it('fails an export-star-as re-export from a subpath the floor tag does not export', () => {
+    const imports = engineImports(`export * as ns from 'e2e/missing';\n`);
+    const { problems } = engineImportProblems(
+      [{ packageName: '@e2e-dev/web', packagePath: 'packages/web/package.json', sibling: 'e2e', floor: '0.23.0', imports }],
+      () => 'missing',
+    );
+    assert.equal(problems.length, 1);
+    assert.match(problems[0]!, /imports from e2e\/missing, but e2e@0\.23\.0 does not export that subpath/);
   });
 
   it('passes a side-effect import from a subpath the floor tag exports', () => {
