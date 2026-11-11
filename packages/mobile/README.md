@@ -172,7 +172,7 @@ targets can hand the pack to one agents entry's `tools`.
 `unstable_deviceSession(...engines)` from `@e2e-dev/mobile/tools` gives a
 custom tool the running attempt's raw driver session, for capabilities e2e
 does not wrap yet. Its client is bound to the engine's daemon, lease, and
-session. The client is `unknown`; narrow it to the operations your tool needs.
+session. The client is typed as `DeviceSessionClient`, exported from `@e2e-dev/mobile`.
 This API can change in any release, like `device.unstable_raw`
 ([reference](https://e2e.com/docs/reference/mobile#unstable_devicesession)).
 

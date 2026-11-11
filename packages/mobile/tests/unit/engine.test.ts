@@ -1634,7 +1634,7 @@ describe('device fixture', () => {
       });
       expect(declared).not.toHaveProperty('unstable_raw');
       const before = h.fake.calls.length;
-      await (device.unstable_raw.client as typeof h.fake.client).apps.list(device.unstable_raw.selection);
+      await device.unstable_raw.client.apps.list(device.unstable_raw.selection);
       expect(h.fake.calls.slice(before)).toEqual([{ method: 'apps.list', args: { platform: 'ios', device: 'iPhone 17 Pro' } }]);
     });
 

@@ -448,13 +448,11 @@ readonly unstable_raw: DeviceSession;
 
 ```ts
 const { client, selection } = device.unstable_raw;
-// Describe only the raw operations this test needs.
-const raw = client as { apps: { list(options: typeof selection): Promise<unknown> } };
-await raw.apps.list(selection);
+await client.apps.list(selection);
 ```
 
-`client` is `unknown`. Its operations are driver-specific and unstable;
-callers must narrow it to the operations they use.
+`client` is typed as `DeviceSessionClient`, exported from `@e2e-dev/mobile`.
+Its operations are unstable and can change in any release.
 After the worker disposes the session, reading `unstable_raw` or `client`
 throws `INVALID_STATE`.
 
@@ -963,7 +961,7 @@ prove a fallback screenshot safe.
 the running attempt's `DeviceSession`, the same object a test reads from
 [`device.unstable_raw`](#unstable_raw). Its `client` is bound to the engine's
 daemon, lease, and per-worker session, for capabilities e2e does not wrap
-yet. Its `client` is `unknown`; narrow it to the operations your tool needs.
+yet. Its `client` is typed as `DeviceSessionClient`.
 The following example assumes the current driver supports `settings.update`.
 
 ```ts
@@ -978,14 +976,7 @@ const mobileData = defineTool(
     inputSchema: z.object({ on: z.boolean() }),
     execute: async ({ on }) => {
       const { client, selection } = unstable_deviceSession(iphone, pixel);
-      const raw = client as {
-        settings: {
-          update(options: typeof selection & {
-            setting: 'mobile-data'; state: 'on' | 'off';
-          }): Promise<unknown>;
-        };
-      };
-      await raw.settings.update({ ...selection, setting: 'mobile-data', state: on ? 'on' : 'off' });
+      await client.settings.update({ ...selection, setting: 'mobile-data', state: on ? 'on' : 'off' });
       return on ? 'mobile data is on' : 'mobile data is off';
     },
   }),
@@ -1206,8 +1197,8 @@ export interface DeviceSession {
   readonly deviceName: string;
   /** The device selection the engine passes commands; spread it into a call that can run before `app.open()`. */
   readonly selection: DeviceSelection;
-  /** The raw driver client, bound to this session. Narrow it to the operations your tool needs. */
-  readonly client: unknown;
+  /** The raw driver client, bound to this session. */
+  readonly client: DeviceSessionClient;
 }
 
 /** The fields agent-device commands select a device by: the platform, then one of a name, a simulator UDID, or an Android serial. */
@@ -1224,7 +1215,7 @@ export interface DeviceSelection {
 `MobileOptions`, `MobilePlatform`, `DevicePermission`, `LaunchPermissions`,
 `PermissionState`, `DeviceClientConfig`, `DeviceConnection`, `DeviceDaemon`,
 `DeviceProvider`, `DeviceLease`, `DeviceReleaseContext`, `DeviceRequest`,
-`Device`, `DeviceSession`, `DeviceSelection`, `DeviceOrientation`, `BiometricSensor`, `ForegroundApp`,
+`Device`, `DeviceSession`, `DeviceSessionClient`, `DeviceSelection`, `DeviceOrientation`, `BiometricSensor`, `ForegroundApp`,
 `FoldPose`, `InstallAppOptions`, `InstalledApp`, and `OpenAppOptions` are exported from
 `@e2e-dev/mobile`. The runtime exports are `mobile`, and `test`, `describe`,
 `beforeEach`, `afterEach`, `beforeAll`, and `afterAll`, typed with the `device`

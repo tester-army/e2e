@@ -5,6 +5,7 @@
  * `device.<method>` step bounded by the action timeout.
  */
 
+import type { AgentDeviceClient as DeviceSessionClient } from 'agent-device';
 import type { EngineFixtureContext, Locator } from 'e2e/engine';
 import { linkLabel, linkTarget } from './links.ts';
 import type { DevicePermission, MobilePlatform, PermissionState } from './options.ts';
@@ -33,6 +34,9 @@ export interface ForegroundApp {
   readonly bundleId?: string;
 }
 
+/** The raw driver client. Unstable: its operations can change in any release. */
+export type { DeviceSessionClient };
+
 /** The raw driver session behind `device`; see `Device.unstable_raw`. */
 export interface DeviceSession {
   readonly platform: MobilePlatform;
@@ -43,8 +47,8 @@ export interface DeviceSession {
   readonly deviceName: string;
   /** The device selection the engine passes commands; spread it into a call that can run before `app.open()`. */
   readonly selection: DeviceSelection;
-  /** The raw driver client, bound to this session. Narrow it to the operations your tool needs. */
-  readonly client: unknown;
+  /** The raw driver client, bound to this session. */
+  readonly client: DeviceSessionClient;
 }
 
 /** Deterministic device management exposed to tests as `device`. */

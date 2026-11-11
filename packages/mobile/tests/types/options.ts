@@ -36,7 +36,9 @@ const farm = {
 // @ts-expect-error a lease names its daemon by URL.
 ({ id: 'lease-1', daemon: { baseUrl: 4700 } }) satisfies DeviceLease;
 
-// Raw operations require an explicit narrowing at the call site.
 const raw = {} as DeviceSession;
-// @ts-expect-error the raw client has no stable driver-specific methods.
-raw.client.settings.update({ setting: 'mobile-data', state: 'on' });
+raw.client.settings.update({ ...raw.selection, setting: 'mobile-data', state: 'on' });
+// @ts-expect-error a setting state must be supported by the client.
+raw.client.settings.update({ setting: 'mobile-data', state: 'invalid' });
+// @ts-expect-error the client has no such operation.
+raw.client.missingOperation();

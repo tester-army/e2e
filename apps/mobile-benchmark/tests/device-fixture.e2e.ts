@@ -109,13 +109,9 @@ test.describe('device fixture', () => {
   test('unstable_raw reaches the test session through the raw driver', async ({ device, platform }) => {
     const { client, session, deviceId, deviceName } = device.unstable_raw;
     expect(platform).toBe(device.unstable_raw.platform);
-    const raw = client as {
-      sessions: { list(): Promise<{ name: string; device: { id: string; name: string } }[]> };
-      capture: { snapshot(options: Record<string, never>): Promise<{ nodes: { identifier?: string }[] }> };
-    };
-    const own = (await raw.sessions.list()).find((entry) => entry.name === session);
+    const own = (await client.sessions.list()).find((entry) => entry.name === session);
     expect(own?.device).toMatchObject({ id: deviceId, name: deviceName });
-    const { nodes } = await raw.capture.snapshot({});
+    const { nodes } = await client.capture.snapshot({});
     expect(nodes.some((node) => node.identifier === 'inventory-header')).toBe(true);
   });
 
