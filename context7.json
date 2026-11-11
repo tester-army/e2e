@@ -10,10 +10,10 @@
   "rules": [
     "Set up a project with npx e2e init (pnpm: pnpm dlx e2e init, bun: bunx e2e init). It writes e2e.config.ts and an example test, and keeps existing files.",
     "Run tests with npx e2e run (pnpm: pnpm exec e2e run, bun: bunx e2e run). Pass a file path, or file:line for a single test.",
-    "Name test files *.e2e.ts. Web tests use the @e2e-dev/web engine and mobile tests the @e2e-dev/mobile engine, set in targets in e2e.config.ts.",
+    "Test files match tests/**/*.e2e.ts by default (set tests for .e2e.js). Web tests use the @e2e-dev/web engine and mobile tests the @e2e-dev/mobile engine, set in targets in e2e.config.ts.",
     "Give agent.act one atomic goal per call, then check the result with agent.assert or a locator expect.",
-    "Tests without agent steps need no model. For agent steps, set agents.default.model in e2e.config.ts. To use a ChatGPT, Copilot, OpenCode Console or SuperGrok plan, run npx e2e login, then set a model from e2e/oauth/<provider>, like chatgpt('gpt-6-luna').",
-    "Verified agent steps are recorded in .e2e/cache/ and replayed with no model calls until the app changes. Add --no-cache to e2e run to skip cached actions.",
+    "Tests without agent steps need no model. For the built-in agent, set agents.default.model in e2e.config.ts. To use a subscription plan, run npx e2e login, then set a model from e2e/oauth/<provider>, like chatgpt('gpt-6-luna').",
+    "Verified agent steps are recorded (by default in .e2e/cache/) and replayed with no model calls until the app changes. Add --no-cache to e2e run to skip cached actions.",
     "Run npx e2e guide to print the e2e skill, or npx e2e guide <topic> for one of: setup, writing-tests, agent, running, explore, debugging, mcp, bug-bash.",
     "Run npx e2e doctor to check the config, engines and model before debugging a setup that does not start.",
     "npx e2e mcp starts an MCP server that gives a coding agent a live session on the app under test.",
