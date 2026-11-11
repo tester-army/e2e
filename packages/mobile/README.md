@@ -72,7 +72,7 @@ the other old app options are `INVALID_CONFIG` naming their key under `app`.
 | `device` | Simulator or emulator name or UDID, or a connected phone's name. A list is a pool: one worker per entry, worker slot `n` driving the `n`th. Omitted, every booted device of the platform is the pool, as many as the run has slots. |
 | `session` | agent-device session name, before the worker slot: slot `n` drives its device under `<session>-<n>`, `e2e-<target name>-<n>` by default. One run per session at a time. |
 | `snapshot` | `'full'` (default, includes static text) or `'interactive'` (actionable nodes only). |
-| `settle` | For agent actions: milliseconds the UI must hold still after an action before the agent observes again, default `150`; `false` skips the wait. A test's locator actions do not settle; `expect` verifies their outcome. |
+| `settle` | Milliseconds the UI must hold still after an agent action before the agent observes again, default `150`; `false` skips the wait. A test's steps do not settle, except `device.back()`; `expect` verifies their outcome. |
 | `transition` | For a test's steps: milliseconds a control that appeared or moved with the last action gets to finish arriving before it is acted on, default `500`. Unmoved controls are acted on immediately only when keyboard visibility is unchanged. Opening or closing the keyboard also uses the remaining budget. Screen swipes in tests wait out the remaining budget before scrolling. |
 
 Every optional `mobile()` value also accepts `undefined`, so a config passes

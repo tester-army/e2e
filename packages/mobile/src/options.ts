@@ -87,16 +87,16 @@ export interface MobileOptions {
    */
   readonly snapshot?: 'full' | 'interactive' | undefined;
   /**
-   * For the agent's actions: how long the UI must hold still after a tap,
-   * fill, screen scroll, or back before the agent observes again, in
-   * milliseconds; `false` skips the wait. The wait keeps that observation off
-   * a transition frame; the runner's own polling (`expect`, actions waiting
-   * for their node) covers the rest, so a short window suffices. Default
+   * How long the UI must hold still after a tap, fill, screen scroll, or
+   * back before the agent observes again, in milliseconds; `false` skips the
+   * wait. The wait keeps that observation off a transition frame; the runner's
+   * own polling (`expect`, actions waiting for their node) covers the rest, so a short window suffices. Default
    * 150. Every frame of a running animation changes the tree, so a 150 ms
    * window still catches a transition in flight; raise it for slow devices
    * or apps that settle in stages, or lower it to 0 to keep only the first
-   * re-observation. A test's locator actions do not settle: `expect` verifies
-   * their outcome, and `transition` covers a control that is still arriving.
+   * re-observation. A test's steps do not settle, except `device.back()`:
+   * `expect` verifies their outcome, and `transition` covers a control that is
+   * still arriving.
    */
   readonly settle?: number | false | undefined;
   /**
