@@ -67,6 +67,8 @@ Sessions are deleted during teardown. If the runner exits before cleanup, the in
 Chromium, navigation, locators, network routes, cookies, screenshots, and the web engine's screencast video use CDP.
 CDP authorization headers authenticate the browser connection and do not become page request headers.
 
+History navigation can time out on Browser Run while waiting for the page's `load` event after `browser.back()` or `browser.forward()`.
+
 Remote file downloads are not supported. Browser Run exposes no browser filesystem API for the provider to read.
 Cloudflare-native session recordings are not attached to reports.
 When [video](/reference/config#video) is enabled, the web engine records a per-attempt WebM screencast.
