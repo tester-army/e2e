@@ -259,6 +259,10 @@ suites that consume the built packages the way a user would.
   pages to `packages/e2e/docs/` (gitignored,
   `packages/e2e/scripts/prepare-build.ts`) so the published package ships
   them for agents to read offline.
+  e2e.com builds the docs from the newest `e2e@X.Y.Z` tag, not `main`: a docs
+  change goes live when the next e2e release publishes (`release.yml` calls
+  `site.yml`), and there is no docs versioning. The examples registry still
+  goes live from `main`.
 - `skills/e2e/` — the agent skill for consumers: `SKILL.md` plus
   `references/<topic>.md`, one per `e2e guide` topic. It lives at the repo
   root because `npx skills add e2e-inc/e2e` only looks in well-known
