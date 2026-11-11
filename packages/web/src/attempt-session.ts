@@ -29,7 +29,6 @@ interface SessionOptions {
   readonly persistent?: {
     readonly provision: CdpEndpointResolver;
     readonly reconnect: CdpEndpointResolver;
-    readonly headers?: Readonly<Record<string, string>> | undefined;
     /**
      * The default contexts earlier attempts rode, for an endpoint that could
      * hand one back (a `connect` resolver). Absent for a provider's lease,
@@ -170,7 +169,7 @@ export class AttemptSession {
           return { browser, context, page: null };
         }
 
-        const binding = await attachPersistent(persistent.provision, remaining(), undefined, persistent.headers);
+        const binding = await attachPersistent(persistent.provision, remaining());
         const { usedContexts } = persistent;
         if (usedContexts === undefined) return binding;
         const contextId = binding.identity.contextId;
@@ -210,7 +209,7 @@ export class AttemptSession {
         await this.transition(previous, remaining(), async () => {
           await this.video.pageClosing();
 
-          return attachPersistent(persistent.reconnect, remaining(), previous.identity, persistent.headers);
+          return attachPersistent(persistent.reconnect, remaining(), previous.identity);
         }, true);
       });
     }

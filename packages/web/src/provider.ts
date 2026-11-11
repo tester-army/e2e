@@ -25,6 +25,7 @@ import {
   type ProviderRecordContext,
   type ProviderRecording,
 } from 'e2e/engine';
+import type { CdpTarget } from './browser-connection.ts';
 import { connectionAbort } from './operation-budget.ts';
 import { invalidState, message } from './support.ts';
 
@@ -495,11 +496,6 @@ export class LeasedBrowsers {
     this.current = { lease, owned: false };
   }
 
-  /** The current lease's CDP handshake headers, read after resolving its endpoint. */
-  cdpHeaders(): Readonly<Record<string, string>> | undefined {
-    return this.current?.lease.cdpHeaders;
-  }
-
   /**
    * The endpoint the worker's shared browser attaches to, in `worker` scope:
    * the slot's lease the first time, and a replacement the worker leases
@@ -509,12 +505,12 @@ export class LeasedBrowsers {
    * replacement that arrives once the attempt was cancelled or the worker
    * disposed is given straight back and never committed.
    */
-  async endpoint(signal: AbortSignal): Promise<string> {
+  async endpoint(signal: AbortSignal): Promise<CdpTarget> {
     const run = this.requireRun();
     const previous = this.current;
     if (previous !== undefined && !this.attached) {
       this.attached = true;
-      return previous.lease.cdpEndpoint;
+      return { endpoint: previous.lease.cdpEndpoint, headers: previous.lease.cdpHeaders };
     }
     const { tenure } = this;
     const lease = await this.acquire({ runId: run.runId, targetName: run.targetName, slot: run.slot, slots: run.slots, env: run.env, signal, log: run.log });
@@ -525,7 +521,7 @@ export class LeasedBrowsers {
     this.current = { lease, owned: true };
     this.attached = true;
     if (previous?.owned === true) await this.provider.release(previous.lease, this.releaseContext(run, signal)).catch(discard);
-    return lease.cdpEndpoint;
+    return { endpoint: lease.cdpEndpoint, headers: lease.cdpHeaders };
   }
 
   /**

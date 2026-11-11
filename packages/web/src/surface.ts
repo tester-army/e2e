@@ -129,7 +129,7 @@ export interface WebConnectOptions {
    * cancelled or exceeds its budget: a resolver that provisions a session
    * should stop and release it, since a browser that arrives late is detached.
    */
-  readonly cdpEndpoint: (signal: AbortSignal) => string | Promise<string>;
+  readonly cdpEndpoint: CdpEndpointResolver;
   /**
    * Opts into a dedicated persistent remote context. `cdpEndpoint` provisions
    * a fresh browser at each attempt start; this resolver reconnects to that
@@ -138,7 +138,7 @@ export interface WebConnectOptions {
    * Dispatched operations are never retried. The host owns browser cleanup.
    * Context replacement, headers, basicAuth, userAgent, locale, and timezoneId are unavailable in this mode.
    */
-  readonly reconnectEndpoint?: (signal: AbortSignal) => string | Promise<string>;
+  readonly reconnectEndpoint?: CdpEndpointResolver;
 }
 
 /** HTTP basic authentication the browser answers a `401` challenge from the app's origin with. */
@@ -446,17 +446,15 @@ export class PlaywrightSurface {
     const source = this.endpointSource();
     if (source === undefined) return undefined;
     return async () => {
-      const endpoint = await source.resolve(signal);
+      const resolved = await source.resolve(signal);
+      const target = typeof resolved === 'string' ? { endpoint: resolved } : resolved;
       if (signal.aborted) throw cancelled('browser connect cancelled');
-      if (typeof endpoint !== 'string' || endpoint.trim() === '') {
+      if (typeof target?.endpoint !== 'string' || target.endpoint.trim() === '') {
         throw new EngineError('ENGINE_FAILURE', `${source.name} resolved to an empty CDP endpoint`, {
           retryable: false,
         });
       }
-
-      const headers = this.leases?.cdpHeaders();
-
-      const browser = await connectCdp(endpoint, BROWSER_LAUNCH_TIMEOUT_MS, headers);
+      const browser = await connectCdp(target, BROWSER_LAUNCH_TIMEOUT_MS);
 
       if (signal.aborted) {
         await browser.close().catch(() => undefined);
@@ -478,7 +476,7 @@ export class PlaywrightSurface {
   }
 
   /** The endpoint of the lease the worker holds; only reached with a provider. */
-  private leaseEndpoint(signal: AbortSignal): Promise<string> {
+  private leaseEndpoint(signal: AbortSignal): ReturnType<LeasedBrowsers['endpoint']> {
     if (this.leases === undefined) throw invalidState('no browser provider is configured');
     return this.leases.endpoint(signal);
   }
@@ -492,7 +490,7 @@ export class PlaywrightSurface {
    */
   private async persistentBinding(
     context: EngineAttemptContext,
-  ): Promise<{ provision: CdpEndpointResolver; reconnect: CdpEndpointResolver; usedContexts?: Set<string>; headers?: Readonly<Record<string, string>> | undefined } | undefined> {
+  ): Promise<{ provision: CdpEndpointResolver; reconnect: CdpEndpointResolver; usedContexts?: Set<string> } | undefined> {
     const { connect, usedContexts } = this;
     if (connect?.reconnectEndpoint !== undefined) {
       return { provision: connect.cdpEndpoint, reconnect: connect.reconnectEndpoint, usedContexts };
@@ -500,7 +498,7 @@ export class PlaywrightSurface {
     if (this.leases?.scope !== 'attempt') return undefined;
     const lease = await this.leases.startAttempt(context);
 
-    return { provision: () => lease.cdpEndpoint, reconnect: () => lease.reconnectEndpoint ?? lease.cdpEndpoint, headers: lease.cdpHeaders };
+    return { provision: () => ({ endpoint: lease.cdpEndpoint, headers: lease.cdpHeaders }), reconnect: () => ({ endpoint: lease.reconnectEndpoint ?? lease.cdpEndpoint, headers: lease.cdpHeaders }) };
   }
 
   /** Opens one attempt owner before setup starts, so cleanup can cancel pending attachment. */

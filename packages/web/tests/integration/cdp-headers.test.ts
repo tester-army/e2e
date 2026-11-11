@@ -45,7 +45,7 @@ it('sends authorization during CDP discovery without adding it to page requests'
 
   try {
     const url = await listen(server);
-    const browser = await connectCdp(`${url}/devtools`, 5_000, { Authorization: 'Bearer synthetic-token' });
+    const browser = await connectCdp({ endpoint: `${url}/devtools`, headers: { Authorization: 'Bearer synthetic-token' } }, 5_000);
 
     try {
       const page = await (await browser.newContext()).newPage();
@@ -76,7 +76,7 @@ it.each([
     const endpoint = (await listen(server)).replace('http:', 'ws:');
 
     try {
-      await connectCdp(endpoint, 5_000, { Authorization: 'Bearer synthetic-token' });
+      await connectCdp({ endpoint, headers: { Authorization: 'Bearer synthetic-token' } }, 5_000);
       expect.unreachable('the server rejected the WebSocket upgrade');
     } catch (cause) {
       if (!(cause instanceof Error)) throw cause;

@@ -91,6 +91,8 @@ web({ browser: 'firefox' }); // default: 'chromium'
   server such as [Lightpanda](/integrations/lightpanda).
 - A provider with `scope: 'attempt'` rides a persistent context, with the
   limits under [Recovering a CDP transport](#recovering-a-cdp-transport).
+
+Either resolver can return `{ endpoint, headers }` as a `CdpTarget` to authenticate the CDP handshake. These headers are separate from `web({ headers })`, which sends headers to the app.
 - [Hosted browsers](/browser#hosted-browsers) has the `BrowserProvider`
   contract and an example provider.
 
@@ -147,10 +149,12 @@ web({ connect: { cdpEndpoint: async () => 'ws://127.0.0.1:9222' } });
 `reconnectEndpoint` opts into a persistent context; see
 [Recovering a CDP transport](#recovering-a-cdp-transport).
 
+Either resolver can return `{ endpoint, headers }` as a `CdpTarget` to authenticate the CDP handshake. These headers are separate from `web({ headers })`, which sends headers to the app.
+
 ```ts
 interface WebConnectOptions {
-  cdpEndpoint(signal: AbortSignal): string | Promise<string>;
-  reconnectEndpoint?(signal: AbortSignal): string | Promise<string>;
+  cdpEndpoint(signal: AbortSignal): string | CdpTarget | Promise<string | CdpTarget>;
+  reconnectEndpoint?(signal: AbortSignal): string | CdpTarget | Promise<string | CdpTarget>;
 }
 ```
 

@@ -1,6 +1,6 @@
 /** Compile-time assertions for endpoint provisioning, transport recovery, and the browser provider seam. */
 import { secrets } from 'e2e';
-import type { BrowserLease, BrowserProvider, WebConnectOptions, WebInitScript, WebOptions } from '../../src/index.ts';
+import type { BrowserLease, BrowserProvider, CdpTarget, WebConnectOptions, WebInitScript, WebOptions } from '../../src/index.ts';
 
 ({ cdpEndpoint: () => 'ws://localhost:9222', reconnectEndpoint: async (signal) => {
   signal.throwIfAborted();
@@ -78,3 +78,10 @@ import type { BrowserLease, BrowserProvider, WebConnectOptions, WebInitScript, W
 ({ screencast: { size: { width: 1280, height: 720 }, quality: 80 } }) satisfies WebOptions;
 // @ts-expect-error web({ video }) was renamed web({ screencast }).
 ({ video: { quality: 80 } }) satisfies WebOptions;
+
+({ endpoint: 'wss://browser.example', headers: { Authorization: 'token' } }) satisfies CdpTarget;
+({ cdpEndpoint: () => ({ endpoint: 'wss://browser.example', headers: { Authorization: 'token' } }), reconnectEndpoint: async () => ({ endpoint: 'wss://browser.example' }) }) satisfies WebConnectOptions;
+// @ts-expect-error CDP headers must contain strings.
+({ endpoint: 'wss://browser.example', headers: { Authorization: 42 } }) satisfies CdpTarget;
+// @ts-expect-error a CDP target must name its endpoint.
+({ cdpEndpoint: () => ({ headers: {} }) }) satisfies WebConnectOptions;

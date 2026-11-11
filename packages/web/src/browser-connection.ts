@@ -15,6 +15,12 @@ export const BROWSER_NAMES = ['chromium', 'firefox', 'webkit'] as const;
 
 export type BrowserName = (typeof BROWSER_NAMES)[number];
 
+/** A CDP connection endpoint and its handshake headers, resolved together. */
+export interface CdpTarget {
+  readonly endpoint: string;
+  readonly headers?: Readonly<Record<string, string>> | undefined;
+}
+
 /** Whether `name` is a browser the engine launches. */
 export function isBrowserName(name: string): name is BrowserName {
   return (BROWSER_NAMES as readonly string[]).includes(name);
@@ -105,7 +111,7 @@ export async function browserType(name: BrowserName): Promise<BrowserType> {
  * the endpoint itself and hands it here. `browser.close()` on the result
  * detaches the CDP session without killing the remote process the host owns.
  */
-export async function connectCdp(endpoint: string, timeoutMs: number, headers?: Readonly<Record<string, string>>): Promise<Browser> {
+export async function connectCdp({ endpoint, headers }: CdpTarget, timeoutMs: number): Promise<Browser> {
   await registerSelectorEngines();
   const { chromium } = await loadPlaywright();
   const options: ConnectOverCDPOptions = { timeout: timeoutMs };
