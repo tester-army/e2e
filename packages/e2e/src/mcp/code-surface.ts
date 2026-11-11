@@ -63,6 +63,7 @@ const QUERIES = {
 
 const SCREEN_ACTIONS = {
   tapAt: action(1, 2),
+  doubleTapAt: action(1, 2),
   swipe: action(1, 1),
   scrollUntilVisible: action(1, 2),
 } as const satisfies { readonly [K in keyof Screen]?: Member };

@@ -15,7 +15,7 @@ const ARGUMENTS =
   "an argument is a string, number, boolean, null, regular expression, array, or object, a locator on screen, credentials.user('name').username, or a secret as fill's value";
 const STATEMENTS = 'a statement starts with screen, app, or expect(...)';
 const LOCATOR_MEMBERS =
-  'getByRole, getByLabel, getByPlaceholder, getByText, getByDisplayValue, getByTestId, tapAt, swipe, scrollUntilVisible, filter, or, first, last, nth, tap, click, doubleTap, dblclick, secondaryTap, longPress, fill, pressSequentially, clear, press, check, uncheck, selectOption, focus, hover, dragTo, scrollIntoView, waitFor, textContent, inputValue, getAttribute, isVisible, isHidden, isEnabled, isDisabled, isChecked, boundingBox, count, allTextContents';
+  'getByRole, getByLabel, getByPlaceholder, getByText, getByDisplayValue, getByTestId, tapAt, doubleTapAt, swipe, scrollUntilVisible, filter, or, first, last, nth, tap, click, doubleTap, dblclick, secondaryTap, longPress, fill, pressSequentially, clear, press, check, uncheck, selectOption, focus, hover, dragTo, scrollIntoView, waitFor, textContent, inputValue, getAttribute, isVisible, isHidden, isEnabled, isDisabled, isChecked, boundingBox, count, allTextContents';
 const SECRET_PLACE = "is accepted only as fill's value, such as screen.getByLabel('Password').fill(credentials.user('admin').password)";
 
 /** The message `run_code` refuses `code` with. */
@@ -30,6 +30,17 @@ function refusal(code: string, options: { readonly fixtures: readonly string[] }
 }
 
 describe('parseCode accepts', () => {
+  it('accepts a viewport double tap with an optional timeout', () => {
+    const statements = parseCode(
+      'await screen.doubleTapAt({ x: 12, y: 40 }); await screen.doubleTapAt({ x: 12, y: 40 }, { timeout: 1000 });',
+      WEB,
+    );
+    expect(statements.map(({ body }) => body)).toMatchObject([
+      { kind: 'call', read: false, chain: { root: 'screen', calls: [{ name: 'doubleTapAt', args: [{ kind: 'object' }] }] } },
+      { kind: 'call', read: false, chain: { root: 'screen', calls: [{ name: 'doubleTapAt', args: [{ kind: 'object' }, { kind: 'object' }] }] } },
+    ]);
+  });
+
   it('the statements of a test body, each as written and as data', () => {
     const statements = parseCode(
       `await screen.getByLabel('Full name').fill('Grace Hopper');

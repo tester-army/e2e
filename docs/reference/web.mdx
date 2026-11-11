@@ -206,8 +206,8 @@ What survives:
 - Recovery keeps the page's unsaved state, storage, and the agent ledger. Dialog and route handlers are reattached.
 - Video recording resumes. A segment lost during the disconnect is gone.
 - Operations already dispatched are never retried.
-- Recovery clears old node references. Observation-derived `tapAt` calls,
-  observation-root swipes, and focused engine keyboard input need a fresh
+- Recovery clears old node references. Observation-derived `tapAt` and
+  `doubleTapAt` calls, observation-root swipes, and focused engine keyboard input need a fresh
   engine observation before they resume.
 - An observation or locator read started before recovery cannot publish
   references after the connection changes. Each attempt owns its binding and
