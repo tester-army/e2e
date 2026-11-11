@@ -228,6 +228,11 @@ workers: 4, // default: 1 in CI, else half the cores
 - Locally the default is `max(1, floor(availableParallelism() / 2))`.
 - An engine may cap it lower: `workers` never exceeds what a target's engine
   declares.
+- With more than one worker, each target's files start longest first by the
+  [timings history](/ci#cache-the-timings-history). A file with no time starts
+  before the timed ones. With `--changed-since`, the likeliest files start
+  before that, as
+  [Start the likeliest first](/filters#start-the-likeliest-first) says.
 
 #### `reporters`
 
@@ -1756,7 +1761,7 @@ interface TestFilter {
 }
 
 interface TestFilterCandidate {
-  /** The report's `testId`, and the key `exclude` takes. */
+  /** The report's `testId`, and the key `exclude` and `relevance` take. */
   readonly id: string;
   /** Project-relative path of the test file. */
   readonly file: string;
@@ -1795,6 +1800,8 @@ interface TestFilterChanges {
 interface TestFilterResult {
   /** The tests to leave out, by `id`, each with a non-empty reason the report shows. An `id` of a collected test this filter wasn't given is ignored; any other fails the filter. */
   readonly exclude: Readonly<Record<string, string>>;
+  /** How likely each test is to fail on this change, by `id` as for `exclude`, from 0 to 1; any other score fails the filter. Each target starts the files of the likeliest first, in bands at 75%, 50%, and 25%, and targets go by the band of their best file, ties in config order. A test no filter scores counts as 0, and a test several filters score keeps its highest. */
+  readonly relevance?: Readonly<Record<string, number>>;
   /** One line about the whole decision. */
   readonly note?: string;
 }
@@ -1802,6 +1809,11 @@ interface TestFilterResult {
 
 `TestFilter`, `TestFilterCandidate`, `TestFilterContext`,
 `TestFilterChanges`, and `TestFilterResult` are exported from `e2e`.
+
+A filter that throws, returns an invalid result, or runs past 5 minutes
+leaves nothing out, and a warning says so. An error it throws can carry
+`relevance`, shaped as in `TestFilterResult`: the run still starts the
+likeliest first. See [Test filters](/filters#write-your-own).
 
 ### `CredentialConfig`
 

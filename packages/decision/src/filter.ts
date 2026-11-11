@@ -10,6 +10,10 @@ import type { DecisionFilterOptions } from './types.ts';
 const exec = promisify(execFile);
 /** A test the model rates less likely than this to be affected is left out. */
 const MIN_PROBABILITY = 0.2;
+/** The relevance of a test whose file, setup file, or stored screenshots the change touches: the likeliest to fail. */
+const TOUCHED_RELEVANCE = 1;
+/** The relevance of a test, or of the setup it uses, that the model did not judge: neither likely nor unlikely. */
+const UNJUDGED_RELEVANCE = 0.5;
 /** Most UTF-8 bytes of state, the diff and the files, one call sends: Jev takes 32k tokens of state and a question, and English text runs about 3.4 bytes a token, other scripts more. */
 const MAX_STATE_BYTES = 80_000;
 /** A longer diff is not sent, and the filter leaves nothing out: each call keeps room for the files. */
@@ -75,8 +79,12 @@ const EXAMPLE = "pass an AI SDK decision model, e.g. decisionFilter({ model: gat
  * file named like an e2e config, or a lockfile leaves nothing out, and a
  * test whose test file, setup file, or stored screenshots changed always
  * runs. A test the model does not judge runs,
- * and the note says why. When every call fails, as without a key, or git fails,
- * the filter throws, so the run warns and runs every test.
+ * and the note says why. It also scores every test it is handed, so the run
+ * starts the likeliest to fail first: 1 for a test the change touches, the
+ * model's probability for one it judged, and 0.5 for one it did not. When
+ * every call fails, as without a key, or git or a file read fails, the filter
+ * throws, so the run warns and runs every test; the error carries the scores
+ * the change alone gives, so the tests it touches still start first.
  */
 export function decisionFilter(options: DecisionFilterOptions): TestFilter {
   if (typeof options !== 'object' || options === null) {
@@ -93,7 +101,7 @@ export function decisionFilter(options: DecisionFilterOptions): TestFilter {
       judge(tests, context, settings).catch((error: unknown) => {
         // An abort ends with its reason, not the AbortError of a git or file read it cut short.
         context.signal.throwIfAborted();
-        throw error;
+        throw withRelevance(error, unaskedRelevance(tests, touchedBy(context)));
       }),
   };
 }
@@ -132,43 +140,74 @@ interface Answers {
  * the redacted diff and the redacted files, in calls of at most
  * `MAX_QUESTIONS`, `CONCURRENCY` at a time. A test is left out when both
  * it and its setup are unlikely to be affected. A failed call leaves its
- * tests in, and after `MAX_FAILURES` no more calls are made. The note names
+ * tests in, and after `MAX_FAILURES` no more calls are made. Every test it
+ * is handed is scored for the run's order, however it ends: 1 for a test the
+ * change touches, the model's answer for one it judged, 0.5 for one it did
+ * not. The note names
  * the tests that ran without asking, what the model did not judge, and
  * what the calls spent. Throws when git or a file read fails, the first
- * failure's first line when calls fail and none answers, and on an abort.
+ * failure's first line when calls fail and none answers, and on an abort;
+ * `decisionFilter` puts the scores of the change alone on any throw but the
+ * abort.
  */
 async function judge(given: readonly TestFilterCandidate[], context: TestFilterContext, options: DecisionFilterOptions): Promise<TestFilterResult> {
   const { changes, signal, log, redact } = context;
-  const everything = runAllFile(context);
-  if (everything !== undefined) return { exclude: {}, note: `${everything} changed, so the decision filter left nothing out` };
   const touched = touchedBy(context);
   const tests = given.filter((test) => !touched(test.file) && !touched(test.setupFile));
+  const relevance = unaskedRelevance(given, touched);
+  const everything = runAllFile(context);
+  if (everything !== undefined) return result({}, relevance, `${everything} changed, so the decision filter left nothing out`);
   const unasked = tests.length === given.length ? undefined : `${counted(given.length - tests.length, 'test')} ran without asking: the test file, setup file, or stored screenshots changed`;
   // A wrapper may hand on no tests, or the change touched them all: nothing to ask, and no diff to read.
-  if (tests.length === 0) return unasked === undefined ? { exclude: {} } : { exclude: {}, note: unasked };
+  if (tests.length === 0) return result({}, relevance, unasked);
   const { modelId } = options.model;
   log(`asking ${modelId} about ${testsIn(tests)}`);
   const raw = await changeDiff(changes, signal);
-  if (raw === '') return { exclude: {}, note: 'git printed no diff of the changed files, so the decision filter left nothing out' };
-  if (Buffer.byteLength(raw) > MAX_DIFF_BYTES) return { exclude: {}, note: `the diff is over ${MAX_DIFF_BYTES / 1000} kB, so the decision filter left nothing out` };
+  if (raw === '') return result({}, relevance, 'git printed no diff of the changed files, so the decision filter left nothing out');
+  if (Buffer.byteLength(raw) > MAX_DIFF_BYTES) return result({}, relevance, `the diff is over ${MAX_DIFF_BYTES / 1000} kB, so the decision filter left nothing out`);
   const diff = redact(raw);
   const { batches, tooLarge } = pack(await subjects(tests, context), Buffer.byteLength(diff));
   const { answers, spend, failures } = await askAll(batches, diff, options, signal);
   if (spend.calls === 0 && failures.length > 0) throw new Error(firstLine(failures[0]), { cause: failures[0] });
-  const { exclude, missed } = verdicts(tests, answers);
-  return answered(exclude, [unasked, missed.length === 0 ? undefined : `${modelId} did not judge ${testsIn(missed)}: ${unjudgedBecause(failures, tooLarge)}`], spend);
+  const verdict = verdicts(tests, answers);
+  const unjudged = verdict.missed.length === 0 ? undefined : `${modelId} did not judge ${testsIn(verdict.missed)}: ${unjudgedBecause(failures, tooLarge)}`;
+  return answered(verdict.exclude, { ...relevance, ...verdict.relevance }, [unasked, unjudged], spend);
 }
-/** The tests to leave out, each with its reason, and the tests the model did not answer for, itself or its setup. */
-function verdicts(tests: readonly TestFilterCandidate[], answers: Answers): { readonly exclude: Record<string, string>; readonly missed: readonly TestFilterCandidate[] } {
+/** How likely each of `given` is to fail before the model says anything: `TOUCHED_RELEVANCE` for a test the change touches, `UNJUDGED_RELEVANCE` for the rest. */
+function unaskedRelevance(given: readonly TestFilterCandidate[], touched: (file: string | undefined) => boolean): Record<string, number> {
+  return Object.fromEntries(given.map((test) => [test.id, touched(test.file) || touched(test.setupFile) ? TOUCHED_RELEVANCE : UNJUDGED_RELEVANCE]));
+}
+/**
+ * `error` with `relevance` on it, which the run reads off a filter that
+ * throws. The property is not enumerable, so printing or serializing the
+ * error does not list every test; a throw that cannot carry it, such as text
+ * or a frozen object, goes on as it was.
+ */
+function withRelevance(error: unknown, relevance: Record<string, number>): unknown {
+  if (!(error instanceof Error) || !Object.isExtensible(error)) return error;
+  return Object.defineProperty(error, 'relevance', { value: relevance, enumerable: false, writable: true, configurable: true });
+}
+/**
+ * The tests to leave out, each with its reason; how likely each test is to
+ * fail, the higher of the model's two answers, with a missing one counting as
+ * `UNJUDGED_RELEVANCE`; and the tests the model did not answer for, itself
+ * or its setup.
+ */
+function verdicts(
+  tests: readonly TestFilterCandidate[],
+  answers: Answers,
+): { readonly exclude: Record<string, string>; readonly relevance: Record<string, number>; readonly missed: readonly TestFilterCandidate[] } {
   const exclude: Record<string, string> = {};
+  const relevance: Record<string, number> = {};
   const missed: TestFilterCandidate[] = [];
   for (const test of tests) {
     const own = answers.tests.get(test.id);
     const setup = test.setupFile === undefined ? 0 : answers.setups.get(test.setupFile);
     if (own === undefined || setup === undefined) missed.push(test);
     else if (Math.max(own, setup) < MIN_PROBABILITY) exclude[test.id] = `${Math.round(Math.max(own, setup) * 100)}% likely affected`;
+    relevance[test.id] = Math.max(own ?? UNJUDGED_RELEVANCE, setup ?? UNJUDGED_RELEVANCE);
   }
-  return { exclude, missed };
+  return { exclude, relevance, missed };
 }
 /** Why some tests went unjudged: the first failed call's first line, and the files too large to send with the diff. */
 function unjudgedBecause(failures: readonly unknown[], tooLarge: readonly Subject[]): string {
@@ -323,12 +362,20 @@ async function askAll(
   await Promise.all(Array.from({ length: Math.min(CONCURRENCY, batches.length) }, work));
   return { answers, spend, failures };
 }
-/** The filter's answer: `exclude`, and a note of each of `problems` given, then what the calls spent, such as `11 calls, 307.6k tokens, $0.0129`, its cost only when every call reported one. */
-function answered(exclude: Record<string, string>, problems: readonly (string | undefined)[], { calls, tokens, costUsd, uncosted }: Spend): TestFilterResult {
+/** The filter's answer: `exclude`, the scores, and a note of each of `problems` given, then what the calls spent, such as `11 calls, 307.6k tokens, $0.0129`, its cost only when every call reported one. */
+function answered(
+  exclude: Record<string, string>,
+  relevance: Record<string, number>,
+  problems: readonly (string | undefined)[],
+  { calls, tokens, costUsd, uncosted }: Spend,
+): TestFilterResult {
   const cost = costUsd === undefined || uncosted ? '' : `, ${formatCost(costUsd)}`;
   const spent = calls === 0 ? undefined : `${counted(calls, 'call')}, ${formatTokens(tokens)} tokens${cost}`;
-  const note = [...problems, spent].filter((part) => part !== undefined).join('; ');
-  return note === '' ? { exclude } : { exclude, note };
+  return result(exclude, relevance, [...problems, spent].filter((part) => part !== undefined).join('; '));
+}
+/** The filter's answer from its parts, leaving out the scores when no test has one and the note when it is empty or absent. */
+function result(exclude: Record<string, string>, relevance: Record<string, number>, note: string | undefined): TestFilterResult {
+  return { exclude, ...(Object.keys(relevance).length === 0 ? {} : { relevance }), ...(note === undefined || note === '' ? {} : { note }) };
 }
 /**
  * One call's cost in USD, where the provider reports it. The Vercel AI

@@ -116,7 +116,7 @@ export type ReportChanges =
       files?: undefined;
     };
 
-/** Why a filter left nothing out without answering: it threw or answered with something other than `{ exclude, note? }`, or ran past 5 minutes. */
+/** Why a filter left nothing out without answering: it threw or answered with something other than `{ exclude, relevance?, note? }`, or ran past 5 minutes. */
 export type FilterOutcome = 'failed' | 'timed-out';
 
 /** One test filter the run applied, in order. */
@@ -132,7 +132,7 @@ export interface ReportFilter {
   /**
    * Set when the filter left nothing out because the call did not answer:
    * `failed` when it threw or answered with something other than
-   * `{ exclude, note? }`, `timed-out` when it ran past 5 minutes and the run
+   * `{ exclude, relevance?, note? }`, `timed-out` when it ran past 5 minutes and the run
    * stopped waiting. Absent when it answered.
    */
   outcome?: FilterOutcome | undefined;
