@@ -258,10 +258,13 @@ lines you changed:
   outcomes are two goals in two `act` calls (topic `agent`), never `'add a
   todo and mark it done'`. Judge meaning, not phrasing: `toContain('Pro')`,
   not an exact sentence a model produced.
-- End every test that runs an agent goal with a locator check or
-  `agent.assert`. A passing one confirms every `act` before it, so they can
-  be cached and replayed without model calls; `expect.poll` and plain-value
-  `expect` confirm nothing (topic `agent`).
+- End every test that runs an agent goal with a verifying check: a
+  locator matcher (`expect(locator)`), an engine matcher
+  (`expect(browser).toHaveURL`), or `agent.assert`. A passing one confirms
+  every `act` before it, so they can be cached and replayed without model
+  calls, and so do `locator.waitFor`, `browser.waitForURL`, and
+  `agent.waitFor`. Reads, `expect.poll`, and plain-value `expect` confirm
+  nothing (topic `agent`, "The replay cache").
 - Shape the agent for this app: `context` for vocabulary the screens use,
   `system` for how it works, tools for a test API, named personas under
   `agents`. When a step fails, tighten the goal first, then the context, then

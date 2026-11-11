@@ -126,7 +126,8 @@ Resources: `e2e://guide` and `e2e://guide/<topic>` hold this skill.
    `writing-tests`, "Structure") with its imports, the feature's
    `describe(...)`, a `test(...)` titled with the one behavior it verifies,
    and the call that opens the screen it covers, such as
-   `app.open('/settings/members')`.
+   `app.open('/settings/members')`. A setup test (`test.setup`) goes
+   top-level instead, outside any `describe`.
    Then `open_session`, which opens the app, and go to that screen: on the
    web, `call {tool: "navigate", args: {url: "<the path app.open names>"}}`;
    on a device, the shortest path from the launch screen. Actions that only

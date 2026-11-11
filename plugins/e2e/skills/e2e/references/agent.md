@@ -324,7 +324,7 @@ assert, one behavior each (topic `writing-tests`, "Structure").
 - Use the words on screen: `'open the Billing tab'`, not `'upgrade'`.
 - Values go in `params`, never expanded: `act('rename to {name}', { params })`.
 - Do not describe mechanics the runner handles: waiting, scrolling, retries.
-- End the test with a locator check of the outcome. A passing locator
+- End the test with a check of the outcome. A passing locator or engine
   matcher, `agent.assert`, or wait confirms every `act` before it, which
   lets the cache record them; close an arrange block of `act` goals with a
   wait for its state, so a failure later in the test keeps them recorded:
