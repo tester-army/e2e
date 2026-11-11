@@ -16,19 +16,20 @@ export interface DeclaredCommand {
   readonly readyUrl: string;
   /** The command's identity: how it spawns, not where it is probed. A URL declared with port 0 spawns with its allocated port, so each allocation is its own. */
   readonly key: string;
+  /** Every target whose work depends on this command. */
+  readonly targetNames: readonly string[];
 }
 
 /** Every distinct app command in target order; identity is the command alone, not where it is probed. */
 export function declaredCommands(targets: readonly ResolvedTarget[]): readonly DeclaredCommand[] {
-  const commands: DeclaredCommand[] = [];
-  const keys = new Set<string>();
+  const commands = new Map<string, DeclaredCommand & { targetNames: string[] }>();
   for (const target of targets) {
     const { command, readyUrl } = target.app;
     if (command === undefined || readyUrl === undefined) continue;
     const key = canonicalDigest(command);
-    if (keys.has(key)) continue;
-    keys.add(key);
-    commands.push({ label: `target "${target.name}" command`, command, readyUrl, key });
+    const existing = commands.get(key);
+    if (existing !== undefined) existing.targetNames.push(target.name);
+    else commands.set(key, { label: `target "${target.name}" command`, command, readyUrl, key, targetNames: [target.name] });
   }
-  return commands;
+  return [...commands.values()];
 }

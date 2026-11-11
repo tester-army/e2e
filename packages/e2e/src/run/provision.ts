@@ -216,7 +216,10 @@ export class PreparedEngines {
 }
 
 /** The hooks the app commands report through; a run narrates each as a setup step. */
-export type ProcessHooks = () => ManagedProcessHooks;
+export interface ProcessHooks extends Omit<ManagedProcessHooks, 'unexpectedExit'> {
+  /** An owned app command exited; every declaring target depends on it. */
+  readonly commandExited?: (targetNames: readonly string[], cause: InfrastructureError) => void;
+}
 
 /**
  * Starts every distinct app command the targets declare, in target order,
@@ -240,12 +243,15 @@ export async function startDeclaredProcesses(
     },
   };
   // A cleanup failure after a failed start is a notice at most: the startup failure is the one reported.
-  const onCleanupFailure = (failure: unknown): void => hooks().notice?.(`cleanup after a failed start: ${String(failure)}`);
+  const onCleanupFailure = (failure: unknown): void => hooks.notice?.(`cleanup after a failed start: ${String(failure)}`);
   try {
-    for (const { label, command, readyUrl, key } of declaredCommands(targets)) {
+    for (const { label, command, readyUrl, key, targetNames } of declaredCommands(targets)) {
       if (signal.aborted) return processes;
       const start = async (scope: AbortSignal): Promise<AppProcesses> => {
-        const app = new ManagedProcess(label, command, projectRoot, { readyUrl }, hooks());
+        const app = new ManagedProcess(label, command, projectRoot, { readyUrl }, {
+          ...hooks,
+          unexpectedExit: (cause) => hooks.commandExited?.(targetNames, cause),
+        });
         const stop: AppProcesses['stop'] = async (onFailure) => {
           try {
             await app.stop();

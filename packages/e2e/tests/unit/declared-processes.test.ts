@@ -34,8 +34,8 @@ describe('declaredCommands', () => {
       ).targets,
     );
     expect(commands).toEqual([
-      { label: 'target "t0" command', command: dev, readyUrl: 'http://localhost:3000/', key: expect.any(String) },
-      { label: 'target "t2" command', command: { executable: 'pnpm', args: ['api'] }, readyUrl: 'http://localhost:4000/', key: expect.any(String) },
+      { label: 'target "t0" command', command: dev, readyUrl: 'http://localhost:3000/', key: expect.any(String), targetNames: ['t0', 't1'] },
+      { label: 'target "t2" command', command: { executable: 'pnpm', args: ['api'] }, readyUrl: 'http://localhost:4000/', key: expect.any(String), targetNames: ['t2'] },
     ]);
     expect(declaredCommands(configOf({ url: 'http://localhost:3000' }, {}).targets)).toEqual([]);
   });
@@ -52,11 +52,13 @@ describe('declaredCommands', () => {
         command: { executable: 'pnpm', args: ['dev', '--port', '4321'], env: { PORT: '4321' } },
         readyUrl: 'http://127.0.0.1:4321/',
         key: expect.any(String),
+        targetNames: ['t0', 't1'],
       },
     ]);
     // Two ports are two servers, each probed where it listens.
     const twoPorts = declaredCommands(assignPorts(configOf(shared, shared), { t0: 4321, t1: 4322 }).targets);
     expect(twoPorts.map((command) => command.readyUrl)).toEqual(['http://127.0.0.1:4321/', 'http://127.0.0.1:4322/']);
+    expect(twoPorts.map((command) => command.targetNames)).toEqual([['t0'], ['t1']]);
   });
 
   it('gives a command whose port 0 was allocated per run a key of its own', () => {

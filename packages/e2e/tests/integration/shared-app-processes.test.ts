@@ -98,7 +98,7 @@ describe('SharedAppProcesses', { timeout: 30_000 }, () => {
     const opening = startDeclaredProcesses(
       config.targets.filter((target) => target.name === name),
       config.projectRoot,
-      () => ({ ci: false }),
+      { ci: false },
       AbortSignal.any([signal, teardown.signal]),
       new DebugTrace(false),
       trackStarts(pool),

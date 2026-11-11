@@ -17,7 +17,7 @@ import type { ResolvedTarget } from '../../src/config/resolve.ts';
 import { defineEngine, type EngineHandle } from '../../src/engine/index.ts';
 import { classifyError, serializeError } from '../../src/internal/errors.ts';
 import type { AttemptRecord, ResultRecord, RunError, SerialAttemptRecord, SerialGroupRecord, SerialMemberRecord } from '../../src/run/records.ts';
-import { runUnits } from '../../src/run/scheduler.ts';
+import { runUnits, type RunUnitsOptions, type TargetFailure } from '../../src/run/scheduler.ts';
 import { serialGroupId } from '../../src/run/serial.ts';
 import { buildWorkPlans, type TargetWorkPlan, type TimeLimit } from '../../src/run/units.ts';
 import type { SpawnUnitRunner, UnitRunner, UnitRunnerEvents } from '../../src/run/unit-runner.ts';
@@ -154,6 +154,7 @@ interface FakeBehaviour {
   readonly attemptsBeforeHang?: readonly AttemptRecord[];
   /** The hung pair starts its next attempt after `attemptsBeforeHang`, and the worker exits on its own once interrupted. */
   readonly exitDuringNextAttemptOnInterrupt?: boolean;
+  readonly exitSynchronouslyOnInterrupt?: boolean;
   /** The hung pair starts its next attempt after `attemptsBeforeHang` and keeps running through an interrupt. */
   readonly startAttemptBeforeHang?: boolean;
   /** Serial group attempts the unit's pairs (one group) finish before the worker hangs. */
@@ -289,6 +290,10 @@ class FakeRunner implements UnitRunner {
       this.behaviour.onControl?.(message);
     }
     if (message.type === 'interrupt') this.fleet.interruptSkips.push(message.skip);
+    if (message.type === 'interrupt' && this.behaviour.exitSynchronouslyOnInterrupt === true) {
+      this.end('interrupted');
+      return;
+    }
     if (message.type === 'interrupt' && this.behaviour.exitDuringNextAttemptOnInterrupt === true) {
       setTimeout(() => this.end('code 7, signal null'), 0);
       return;
@@ -388,6 +393,7 @@ class FakeRunner implements UnitRunner {
       const overrun = this.behaviour.overrun?.[pair.test.id];
       if (overrun !== undefined) {
         const key = { testId: pair.test.id, agent: pair.agent, repeat: pair.repeat };
+        this.events.onMessage({ type: 'pair-start', ...key, title: pair.test.id, file: pair.test.file, serialId: pair.test.serialId });
         const finished = this.behaviour.attemptsBeforeOverrun ?? [];
         for (const attempt of finished) {
           this.events.onMessage({ type: 'attempt-start', ...key, index: attempt.index });
@@ -445,12 +451,14 @@ async function run(
     forceGraceMs?: number;
     maxFailures?: number;
     timeLimit?: TimeLimit;
+    subscribeTargetFailures?: RunUnitsOptions['subscribeTargetFailures'];
   } = {},
 ): Promise<Collected> {
   const collected: Collected = { results: [], serialGroups: [], runErrors: [], failureLimits: [], timeLimits: 0 };
   await runUnits({
     ...(overrides.maxFailures === undefined ? {} : { maxFailures: overrides.maxFailures }),
     ...(overrides.timeLimit === undefined ? {} : { timeLimit: overrides.timeLimit }),
+    ...(overrides.subscribeTargetFailures === undefined ? {} : { subscribeTargetFailures: overrides.subscribeTargetFailures }),
     plans: buildWorkPlans(selection, collection, '/project').map((plan): TargetWorkPlan => {
       const workers = overrides.preparedWorkers?.[plan.target.name];
       return workers === undefined ? plan : { ...plan, workers };
@@ -474,6 +482,227 @@ async function run(
   });
   return collected;
 }
+
+describe('app command failures', () => {
+  afterEach(() => vi.useRealTimers());
+
+  const failure: TargetFailure = {
+    targetNames: ['a', 'b'],
+    error: { category: 'infrastructure', code: 'APP_UNREACHABLE', message: 'target "a" command exited with code 1 after becoming ready', retryable: false },
+  };
+
+  it('delivers a buffered shared command failure before dispatch and runs healthy targets', async () => {
+    const perTarget = ['a', 'b', 'healthy'].map((name, index) => {
+      const target = makeTarget(name, index);
+      return { target, pairs: [makePair(makeTest('tests/a.e2e.ts', 'test'), target)] };
+    });
+    const fleet = new FakeFleet();
+    const unsubscribe = vi.fn();
+    const collected = await run(makeSelection(perTarget), makeCollection(['tests/a.e2e.ts'], perTarget.flatMap((entry) => entry.pairs)), fleet, {
+      subscribeTargetFailures(receive) {
+        receive(failure);
+        return unsubscribe;
+      },
+    });
+    expect(collected.results.map((result) => [result.target.name, result.status])).toEqual([
+      ['a', 'skipped'], ['b', 'skipped'], ['healthy', 'passed'],
+    ]);
+    expect(collected.results[0]?.skip?.reason).toBe(failure.error.message);
+    expect(collected.runErrors).toEqual([{ error: failure.error }]);
+    expect(fleet.spawned.map((worker) => worker.targetName)).toEqual(['healthy']);
+    expect(unsubscribe).toHaveBeenCalledOnce();
+  });
+
+  it('does not dispatch a queued unit when a failed target worker reports ready late', async () => {
+    const target = makeTarget('a', 0);
+    const pairs = [makePair(makeTest('tests/a.e2e.ts', 'test'), target)];
+    const fleet = new FakeFleet();
+    vi.useFakeTimers();
+    const running = run(makeSelection([{ target, pairs }]), makeCollection(['tests/a.e2e.ts'], pairs), fleet, {
+      subscribeTargetFailures(receive) {
+        setTimeout(() => receive(failure), 0);
+        return () => undefined;
+      },
+    });
+    await vi.runAllTimersAsync();
+    const collected = await running;
+    expect(collected.results.map((result) => result.status)).toEqual(['skipped']);
+    expect(collected.runErrors).toEqual([{ error: failure.error }]);
+    expect(fleet.unitsByWorker.flat()).toEqual([]);
+  });
+
+  it('does not restore resource reuse when a retired starting worker reports ready', async () => {
+    const perTarget = ['a', 'healthy'].map((name, index) => {
+      const target = makeTarget(name, index);
+      return { target, pairs: [makePair(makeTest('tests/a.e2e.ts', 'test'), target)] };
+    });
+    const fleet = new FakeFleet({ shutdownUntil: 'terminate' });
+    vi.useFakeTimers();
+    const running = run(makeSelection(perTarget), makeCollection(['tests/a.e2e.ts'], perTarget.flatMap((entry) => entry.pairs)), fleet, {
+      workers: 1,
+      subscribeTargetFailures(receive) {
+        setTimeout(() => receive(failure), 0);
+        return () => undefined;
+      },
+    });
+    await vi.runAllTimersAsync();
+    const collected = await running;
+    expect(collected.results.map((result) => [result.target.name, result.status])).toEqual([
+      ['a', 'skipped'], ['healthy', 'passed'],
+    ]);
+    expect(collected.runErrors).toEqual([{ error: failure.error }]);
+    expect(fleet.controls.filter(({ worker, message }) => worker === 0 && message.type === 'shutdown').map(({ message }) => message)).toEqual([
+      { type: 'shutdown' },
+    ]);
+  });
+
+  it('gracefully disposes an app-failed worker after unit-done while healthy work continues', async () => {
+    const target = makeTarget('a', 0, boundedEngine(1));
+    const healthy = makeTarget('healthy', 1, boundedEngine(1));
+    const pairs = [makePair(makeTest('tests/a.e2e.ts', 'finishes'), target)];
+    const healthyPairs = ['first', 'second'].map((title) => makePair(makeTest(`tests/${title}.e2e.ts`, title), healthy));
+    const fleet = new FakeFleet({ overrun: Object.fromEntries([...pairs, ...healthyPairs].map((pair) => [pair.test.id, 'slow-teardown' as const])) });
+    vi.useFakeTimers();
+    const running = run(
+      makeSelection([{ target, pairs }, { target: healthy, pairs: healthyPairs }]),
+      makeCollection([...pairs, ...healthyPairs].map((pair) => pair.test.file), [...pairs, ...healthyPairs]),
+      fleet,
+      {
+        workers: 2,
+        interruptGraceMs: 15000,
+        subscribeTargetFailures(receive) {
+          setTimeout(() => receive(failure), 10);
+          return () => undefined;
+        },
+      },
+    );
+    await vi.runAllTimersAsync();
+    const collected = await running;
+    expect(collected.results.map((result) => [result.target.name, result.test.title, result.status])).toEqual([
+      ['a', 'finishes', 'passed'], ['healthy', 'first', 'passed'], ['healthy', 'second', 'passed'],
+    ]);
+    expect(collected.runErrors).toEqual([{ error: failure.error }]);
+    expect(fleet.controls.filter(({ worker, message }) => worker === 0 && message.type === 'shutdown').map(({ message }) => message)).toEqual([
+      { type: 'shutdown' },
+    ]);
+    expect(fleet.killed).toEqual([]);
+  });
+
+  it('does not report WORKER_EXIT when an app-interrupted worker exits before its grace expires', async () => {
+    const target = makeTarget('a', 0);
+    const pairs = ['active', 'queued'].map((title) => makePair(makeTest(`tests/${title}.e2e.ts`, title), target));
+    const fleet = new FakeFleet({ hangOn: ['file::a::tests/active.e2e.ts'], exitDuringNextAttemptOnInterrupt: true });
+    vi.useFakeTimers();
+    const running = run(makeSelection([{ target, pairs }]), makeCollection(pairs.map((pair) => pair.test.file), pairs), fleet, {
+      workers: 1,
+      subscribeTargetFailures(receive) {
+        setTimeout(() => receive(failure), 10);
+        return () => undefined;
+      },
+    });
+    await vi.runAllTimersAsync();
+    const collected = await running;
+    expect(collected.results.map((result) => [result.test.title, result.status])).toEqual([
+      ['queued', 'skipped'], ['active', 'interrupted'],
+    ]);
+    expect(collected.results.find((result) => result.test.title === 'queued')?.skip?.reason).toBe(failure.error.message);
+    expect(collected.runErrors).toEqual([{ error: failure.error }]);
+    expect(fleet.killed).toEqual([]);
+  });
+
+  it('reports an active attempt as interrupted when its worker ignores the app exit and is killed', async () => {
+    const target = makeTarget('a', 0);
+    const pairs = ['spins', 'queued'].map((name, index) => makePair(makeTest('tests/a.e2e.ts', name, { declarationIndex: index }), target));
+    const fleet = new FakeFleet({ overrun: { [pairs[0]!.test.id]: 'blocked' } });
+    vi.useFakeTimers();
+    const running = run(makeSelection([{ target, pairs }]), makeCollection(['tests/a.e2e.ts'], pairs), fleet, {
+      workers: 1,
+      interruptGraceMs: 50,
+      subscribeTargetFailures(receive) {
+        setTimeout(() => receive(failure), 10);
+        return () => undefined;
+      },
+    });
+    await vi.runAllTimersAsync();
+    const collected = await running;
+    expect(collected.results.map((result) => [result.test.title, result.status])).toEqual([
+      ['spins', 'interrupted'], ['queued', 'skipped'],
+    ]);
+    expect(collected.results[0]?.attempts).toEqual([expect.objectContaining({ id: 'attempt-0', index: 0, status: 'interrupted', cleanup: 'forced' })]);
+    expect(collected.results[1]?.skip?.reason).toBe(failure.error.message);
+    expect(collected.runErrors).toEqual([{ error: failure.error }]);
+    expect(fleet.killed).toEqual([0]);
+  });
+
+  it('interrupts every starting worker and keeps the app-exit reason when transports exit synchronously', async () => {
+    const target = makeTarget('a', 0);
+    const pairs = ['first', 'second'].map((name) => makePair(makeTest(`tests/${name}.e2e.ts`, name), target));
+    const fleet = new FakeFleet({ neverReady: ['a'], exitSynchronouslyOnInterrupt: true });
+    vi.useFakeTimers();
+    const running = run(makeSelection([{ target, pairs }]), makeCollection(pairs.map((pair) => pair.test.file), pairs), fleet, {
+      workers: 2,
+      subscribeTargetFailures(receive) {
+        setTimeout(() => receive(failure), 10);
+        return () => undefined;
+      },
+    });
+    await vi.runAllTimersAsync();
+    const collected = await running;
+    expect(fleet.spawned).toHaveLength(2);
+    expect(fleet.interruptSkips).toEqual([failure.error.message, failure.error.message].map((reason) => ({ cause: 'infrastructure-unavailable', reason })));
+    expect(collected.results.map((result) => [result.test.title, result.status, result.skip?.reason])).toEqual([
+      ['first', 'skipped', failure.error.message], ['second', 'skipped', failure.error.message],
+    ]);
+    expect(collected.runErrors).toEqual([{ error: failure.error }]);
+  });
+
+  it.each([false, true])('keeps app interruption when the watchdog kills first, without stopping healthy work at maxFailures (serial: %s)', async (serial) => {
+    const target = makeTarget('a', 0, boundedEngine(1));
+    const healthy = makeTarget('healthy', 1, boundedEngine(1));
+    const pairs = ['spins', 'queued'].map((title, index) => makePair(makeTest('tests/a.e2e.ts', title, {
+      declarationIndex: index,
+      serialId: serial ? 'tests/a.e2e.ts::group' : undefined,
+    }), target));
+    const healthyPairs = ['active', 'queued'].map((title) => makePair(makeTest(`tests/${title}.e2e.ts`, title), healthy));
+    const fleet = new FakeFleet({ overrun: {
+      [pairs[0]!.test.id]: 'blocked',
+      [healthyPairs[0]!.test.id]: 'slow-teardown',
+    } });
+    vi.useFakeTimers();
+    const running = run(
+      makeSelection([{ target, pairs }, { target: healthy, pairs: healthyPairs }]),
+      makeCollection(['tests/a.e2e.ts', ...healthyPairs.map((pair) => pair.test.file)], [...pairs, ...healthyPairs]),
+      fleet,
+      {
+        workers: 2,
+        maxFailures: 1,
+        interruptGraceMs: 10000,
+        subscribeTargetFailures(receive) {
+          setTimeout(() => receive(failure), 10);
+          return () => undefined;
+        },
+      },
+    );
+    await vi.runAllTimersAsync();
+    const collected = await running;
+    expect(collected.results.filter((result) => result.target.name === 'healthy').map((result) => [result.test.title, result.status])).toEqual([
+      ['active', 'passed'], ['queued', 'passed'],
+    ]);
+    expect(collected.failureLimits).toEqual([]);
+    expect(collected.runErrors).toEqual([{ error: failure.error }]);
+    expect(fleet.controls.filter(({ worker, message }) => fleet.spawned[worker]?.targetName === 'healthy' && message.type === 'interrupt')).toEqual([]);
+    expect(fleet.controlMessages).toContain('ping');
+    expect(fleet.killed).toEqual([0]);
+    if (serial) {
+      expect(collected.serialGroups.map((group) => group.status)).toEqual(['interrupted']);
+      expect(collected.serialGroups[0]?.attempts[0]?.error).toBeUndefined();
+    } else {
+      const active = collected.results.find((result) => result.test.title === 'spins');
+      expect(active?.status).toBe('interrupted');
+      expect(active?.attempts[0]?.error).toBeUndefined();
+    }
+  });
+});
 
 describe('failure limit', () => {
   it('stops dispatching at the limit, skips every queued pair with the reason, and interrupts the workers with it', async () => {
