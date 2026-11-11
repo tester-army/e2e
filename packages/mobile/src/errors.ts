@@ -10,6 +10,7 @@
  * | "not supported on this device" under any code                | UNSUPPORTED_CAPABILITY       |
  * | a stale-ref refusal by `details.reason` (action paths only)  | NODE_STALE (retryable)        |
  * | target_still_moving with `details.dispatched: no`            | NODE_STALE (retryable)        |
+ * | a covered or keyboard-occluded target, `dispatched: no`      | NOT_ACTIONABLE, with the hint |
  * | the iOS runner busy, wedged, or past its watchdog           | ENGINE_FAILURE, naming the   |
  * | a snapshot the iOS runner acquired but could not present    |   runner and the recovery    |
  * | anything else, agent-device's own timeouts included         | ENGINE_FAILURE with the text |
@@ -91,6 +92,15 @@ const STALE_REF_REASONS: ReadonlySet<string> = new Set([
   'plain_ref_requires_complete_frame',
   'ref_not_issued',
 ]);
+
+/**
+ * The `details.reason` values agent-device refuses an action with when
+ * something else is drawn where the touch would land: an overlay its
+ * occlusion scan found over the target (`coveredBy` names it), or the soft
+ * keyboard over the target's touch point. Nothing was sent, and the app is
+ * fine; the test has to move the cover or the target first.
+ */
+const OCCLUDED_REASONS: ReadonlySet<string> = new Set(['target_covered', 'tap_keyboard_occludes_target']);
 
 /**
  * What the iOS automation runner reported about itself, by the code
@@ -285,6 +295,9 @@ export async function runCommand<T>(label: string, work: () => Promise<T>, signa
  * stale-ref reasons are sufficient on their own: Android dialog recovery can
  * mark a refused drag as `dispatched: unknown`. A `target_still_moving` refusal
  * additionally requires `dispatched: no`; missing or unknown dispatch is not retryable.
+ * A target agent-device refused as covered (`OCCLUDED_REASONS`) with nothing
+ * dispatched is `NOT_ACTIONABLE`: the test's own failure, with the hint that
+ * names the cover, never an infrastructure one.
  */
 export function staleOr(cause: unknown, operation: string, where?: string): Error {
   if (isClassified(cause)) return cause;
@@ -292,6 +305,9 @@ export function staleOr(cause: unknown, operation: string, where?: string): Erro
   if ((typeof reason === 'string' && STALE_REF_REASONS.has(reason)) ||
       (reason === 'target_still_moving' && dispatched === 'no')) {
     return new EngineError('NODE_STALE', `${operation}: ${message(cause)}`, { retryable: true, cause });
+  }
+  if (typeof reason === 'string' && OCCLUDED_REASONS.has(reason) && dispatched === 'no') {
+    return new EngineError('NOT_ACTIONABLE', `${operation} failed: ${withHint(cause, message(cause))}`, { retryable: false, cause });
   }
   return translateError(cause, operation, where);
 }

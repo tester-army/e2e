@@ -51,6 +51,8 @@ import { pointerInteraction, DEFAULT_LONG_PRESS_MS } from './actions.ts';
 import { resolveExpression } from './locate.ts';
 import {
   isWithin,
+  KEYBOARD_KINDS,
+  keyboardBand,
   mayTakeText,
   normalizeKind,
   projectSnapshot,
@@ -139,9 +141,6 @@ export interface OpenAppOptions {
  */
 type RawSnapshot = Partial<Pick<CaptureSnapshotResult, 'nodes' | 'viewport' | 'truncated' | 'appName' | 'appBundleId' | 'snapshotQuality' | 'keyboard' | 'refsGeneration'>>;
 
-/** Platform element types that are the soft keyboard or one of its keys, as agent-device names them. */
-const KEYBOARD_TYPES: ReadonlySet<string> = new Set(['keyboard', 'key']);
-
 /**
  * How far the dismissing drag travels, as a share of the viewport: short
  * enough that a list under the finger barely moves, long enough for a scroll
@@ -160,7 +159,7 @@ const KEYBOARD_ALTERNATIVES = 'Tap the app\'s own Done or close control, or pres
  */
 function keyboardTop(raw: RawSnapshot, viewport: ViewportSize): number {
   if (raw.keyboard?.kind === 'visible' || raw.keyboard?.kind === 'derived') return raw.keyboard.frame.y;
-  const keys = (raw.nodes ?? []).filter((node) => node.rect !== undefined && KEYBOARD_TYPES.has(normalizeKind(node.type ?? '')));
+  const keys = (raw.nodes ?? []).filter((node) => node.rect !== undefined && KEYBOARD_KINDS.has(normalizeKind(node.type ?? '')));
   return Math.min(viewport.height, ...keys.map((node) => node.rect!.y));
 }
 
@@ -185,7 +184,7 @@ function measuredKeyboard(raw: RawSnapshot): boolean | undefined {
  * tap refuses against by name.
  */
 function keyboardShowing(raw: RawSnapshot): boolean {
-  return measuredKeyboard(raw) ?? (raw.nodes ?? []).some((node) => KEYBOARD_TYPES.has(normalizeKind(node.type ?? '')));
+  return measuredKeyboard(raw) ?? (raw.nodes ?? []).some((node) => KEYBOARD_KINDS.has(normalizeKind(node.type ?? '')));
 }
 
 /**
@@ -1096,6 +1095,7 @@ export class AgentDeviceSurface {
         },
         viewport: raw.viewport,
         refsGeneration: raw.refsGeneration,
+        keyboard: keyboardBand(raw.nodes ?? [], raw.keyboard, raw.viewport),
       }),
       keyboardVisible: keyboardShowing(raw),
     };

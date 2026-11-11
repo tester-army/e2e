@@ -10,8 +10,9 @@
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import type { SemanticNode, ViewportSize } from 'e2e/engine';
-import { projectSnapshot, screenRoot, screenTitle, type RawNode } from '../../src/nodes.ts';
+import type { CaptureSnapshotResult } from 'agent-device';
+import type { SemanticNode } from 'e2e/engine';
+import { keyboardBand, projectSnapshot, screenRoot, screenTitle } from '../../src/nodes.ts';
 
 const ROOT = path.join(import.meta.dirname, '../fixtures/snapshots');
 const UPDATE = process.env['E2E_GOLDEN_UPDATE'] === '1';
@@ -77,9 +78,16 @@ const IOS_TITLES: Record<string, string | undefined> = {
 
 /** A captured snapshot projected the way `observe` projects it. */
 function project(file: string) {
-  const raw = JSON.parse(readFileSync(file, 'utf8')) as { nodes: RawNode[]; viewport?: ViewportSize; truncated?: boolean };
+  const raw = JSON.parse(readFileSync(file, 'utf8')) as Pick<CaptureSnapshotResult, 'nodes' | 'viewport' | 'truncated' | 'keyboard'>;
   let counter = 0;
-  return { raw, projected: projectSnapshot(raw.nodes, { mintId: () => `n${(counter += 1)}`, viewport: raw.viewport }) };
+  return {
+    raw,
+    projected: projectSnapshot(raw.nodes, {
+      mintId: () => `n${(counter += 1)}`,
+      viewport: raw.viewport,
+      keyboard: keyboardBand(raw.nodes, raw.keyboard, raw.viewport),
+    }),
+  };
 }
 
 /** The tree `observe` would report for a captured snapshot. */

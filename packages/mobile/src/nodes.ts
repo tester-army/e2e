@@ -7,8 +7,9 @@
  * ids the surface owns.
  */
 
-import type { SnapshotNode } from 'agent-device';
+import type { CaptureSnapshotResult, SnapshotNode } from 'agent-device';
 import type { SemanticNode, ViewportSize } from 'e2e/engine';
+import type { Rect } from './support.ts';
 
 /**
  * One agent-device snapshot node as this engine reads it: agent-device's own
@@ -119,6 +120,47 @@ export function mayTakeText(node: SemanticNode): boolean {
 const CHECKABLE_ROLES = new Set(['switch', 'checkbox']);
 const CHECKED_VALUES = new Set(['1', 'on', 'true', 'checked', 'selected']);
 const UNCHECKED_VALUES = new Set(['0', 'off', 'false', 'unchecked']);
+/** Platform element types that are the soft keyboard or one of its keys, as agent-device names them. */
+export const KEYBOARD_KINDS: ReadonlySet<string> = new Set(['keyboard', 'key']);
+
+/**
+ * Whether a raw node is the soft keyboard: the keyboard element, or the
+ * suggestion strip UIKit draws along its top edge (`UISystemInputAssistantView`),
+ * which XCTest lists beside the keyboard, not inside it.
+ */
+function isKeyboardElement(node: RawNode): boolean {
+  return kindOf(node) === 'keyboard' || node.identifier === 'SystemInputAssistantView';
+}
+
+/**
+ * The band the soft keyboard covers: the frame the capture's producer
+ * measured or derived, else the keyboard elements in the tree (the keys and
+ * the suggestion strip above them), from the highest one's top edge to the
+ * bottom of the screen, since the dock under the keys is the keyboard's too.
+ * agent-device's iOS simulator capture publishes no frame, only the elements.
+ * A producer that saw no docked keyboard (`absent`, a rejected tree, a probe
+ * that says hidden) leaves no band, whatever the tree holds.
+ */
+export function keyboardBand(
+  nodes: readonly RawNode[],
+  fact: CaptureSnapshotResult['keyboard'],
+  viewport: ViewportSize | undefined,
+): Rect | undefined {
+  if (fact?.kind === 'visible' || fact?.kind === 'derived') return fact.frame;
+  if (fact?.kind === 'absent' || fact?.kind === 'tree-rejected' || (fact?.kind === 'visibility-only' && !fact.visible)) return undefined;
+  const boards = nodes.flatMap((node) =>
+    node.rect !== undefined && node.rect.width > 0 && node.rect.height > 0 && node.visibleToUser !== false && isKeyboardElement(node)
+      ? [node.rect]
+      : [],
+  );
+  if (boards.length === 0) return undefined;
+  const left = Math.min(...boards.map((rect) => rect.x));
+  const right = Math.max(...boards.map((rect) => rect.x + rect.width));
+  const top = Math.min(...boards.map((rect) => rect.y));
+  const bottom = Math.max((viewport ?? viewportOf(nodes))?.height ?? 0, ...boards.map((rect) => rect.y + rect.height));
+  return { x: left, y: top, width: right - left, height: bottom - top };
+}
+
 /** Kinds that span the screen and hold everything else. */
 export const SCREEN_KINDS: ReadonlySet<string> = new Set(['application', 'app', 'window']);
 
@@ -444,15 +486,39 @@ function isSystemBar(node: RawNode, screen: ViewportSize | undefined, displayOnl
 }
 
 /**
+ * Whether the soft keyboard draws over the point a touch on `rect` aims at,
+ * its centre: the keyboard sits above every app window, so a touch there
+ * lands on a key, and the user sees the keyboard, not the node.
+ */
+function underKeyboard(rect: Rect | undefined, keyboard: Rect | undefined): boolean {
+  if (rect === undefined || keyboard === undefined) return false;
+  const x = rect.x + rect.width / 2;
+  const y = rect.y + rect.height / 2;
+  return x >= keyboard.x && x <= keyboard.x + keyboard.width && y >= keyboard.y && y <= keyboard.y + keyboard.height;
+}
+
+/**
  * Projects one snapshot. `mintId` is called once per node in document order,
  * so the surface's id space stays unique across observations. `viewport` is
  * the one agent-device published with the snapshot; a producer that measured
  * none leaves it to `viewportOf`. Android's system bars are left out with
  * their children, see `isSystemBar`.
+ *
+ * `keyboard` is the band the soft keyboard covers. A node the keyboard draws
+ * over is hidden, as one scrolled off screen is: its centre is in the band
+ * and none of its children shows. Exempt are the keyboard's own nodes (see
+ * `keyboardSide`) and the focused node, the field the keyboard types into:
+ * the platform keeps it above the keyboard, and on iOS its reported frame can
+ * lag behind where it moved to.
  */
 export function projectSnapshot(
   raw: readonly RawNode[],
-  options: { readonly mintId: () => string; readonly viewport?: ViewportSize | undefined; readonly refsGeneration?: number | undefined },
+  options: {
+    readonly mintId: () => string;
+    readonly viewport?: ViewportSize | undefined;
+    readonly refsGeneration?: number | undefined;
+    readonly keyboard?: Rect | undefined;
+  },
 ): ProjectedSnapshot {
   const viewport = options.viewport ?? viewportOf(raw);
   const parents = parentPositions(raw);
@@ -468,11 +534,14 @@ export function projectSnapshot(
     else siblings.push(position);
   });
 
+  const keyboard = options.keyboard === undefined ? new Set<number>() : keyboardSide(raw, parents, roots, children, options.keyboard);
   const index: ProjectedNode[] = [];
-  const build = (position: number, parent: ProjectedNode | undefined): SemanticNode => {
+  const build = (position: number, parent: ProjectedNode | undefined, parentOnKeyboard: boolean): SemanticNode => {
     const source = raw[position] as RawNode;
     const id = options.mintId();
     const kind = kindOf(source);
+    const onKeyboard =
+      parentOnKeyboard || keyboard.has(position) || source.keyboardOwned === true || KEYBOARD_KINDS.has(kind) || isKeyboardElement(source);
     const android = isAndroidClass(source.type);
     // The role React Native spelled into the value outranks the platform's
     // `Other`: it is the role the app declared, and iOS had no trait for it.
@@ -485,15 +554,6 @@ export function projectSnapshot(
     // `EditText` by attribute, the class being the plain one.
     const secure = SECURE_KINDS.has(kind) || source.password === true;
     const checked = spelled?.states.checked ?? source.checked ?? checkedOf(role, value);
-    const states = {
-      ...(source.enabled === false ? { disabled: true } : {}),
-      ...(source.selected === true ? { selected: true } : {}),
-      ...(source.focused === true ? { focused: true } : {}),
-      ...(source.visibleToUser === false ? { hidden: true } : {}),
-      ...(secure ? { secure: true } : {}),
-      ...(checked === undefined ? {} : { checked }),
-      ...(spelled?.states.expanded === undefined ? {} : { expanded: spelled.states.expanded }),
-    };
     const identifier = nonEmpty(source.identifier);
     const kids = children.get(position) ?? [];
     const blank = editable && !secure && (value === undefined || value === '') && nonEmpty(source.placeholder) === undefined;
@@ -513,7 +573,17 @@ export function projectSnapshot(
       },
     };
     index.push(entry);
-    const childNodes = kids.filter((child) => child !== folded?.child).map((child) => build(child, entry));
+    const childNodes = kids.filter((child) => child !== folded?.child).map((child) => build(child, entry, onKeyboard));
+    const covered = !onKeyboard && source.focused !== true && underKeyboard(source.rect, options.keyboard) && childNodes.every((child) => child.states?.hidden === true);
+    const states = {
+      ...(source.enabled === false ? { disabled: true } : {}),
+      ...(source.selected === true ? { selected: true } : {}),
+      ...(source.focused === true ? { focused: true } : {}),
+      ...(source.visibleToUser === false || covered ? { hidden: true } : {}),
+      ...(secure ? { secure: true } : {}),
+      ...(checked === undefined ? {} : { checked }),
+      ...(spelled?.states.expanded === undefined ? {} : { expanded: spelled.states.expanded }),
+    };
     const node: SemanticNode = {
       ref: { id, revision: '' },
       ...(role === undefined ? {} : { role }),
@@ -554,8 +624,44 @@ export function projectSnapshot(
   };
   const rootNodes = roots
     .filter((position) => !isSystemBar(raw[position] as RawNode, viewport, () => displayOnly(position)))
-    .map((position) => build(position, undefined));
+    .map((position) => build(position, undefined, false));
   return { roots: rootNodes, index, viewport, refsGeneration: options.refsGeneration };
+}
+
+/**
+ * The positions whose subtrees belong to the keyboard, beyond the keyboard
+ * element itself: the window that holds it, and the nodes after it under
+ * the same parent that lie inside the band. Both platforms put the
+ * keyboard's dock (the globe and dictation buttons) and suggestion bar there,
+ * outside the keyboard element, and agent-device marks them `keyboardOwned`
+ * only on some captures. A later sibling that starts above the band is app
+ * content, not dock: XCTest lists the keyboard either before the app or after
+ * it, so document order alone cannot say which side of the keyboard a node
+ * is on.
+ */
+function keyboardSide(
+  raw: readonly RawNode[],
+  parents: readonly (number | undefined)[],
+  roots: readonly number[],
+  children: ReadonlyMap<number, readonly number[]>,
+  band: Rect,
+): Set<number> {
+  const side = new Set<number>();
+  raw.forEach((node, position) => {
+    if (kindOf(node) !== 'keyboard') return;
+    const parent = parents[position];
+    for (const sibling of parent === undefined ? roots : (children.get(parent) ?? [])) {
+      const rect = (raw[sibling] as RawNode).rect;
+      if (sibling > position && rect !== undefined && rect.y >= band.y) side.add(sibling);
+    }
+    for (let ancestor = parent; ancestor !== undefined; ancestor = parents[ancestor]) {
+      if (kindOf(raw[ancestor] as RawNode) === 'window') {
+        side.add(ancestor);
+        break;
+      }
+    }
+  });
+  return side;
 }
 
 /** Quotes one selector term value the way agent-device's parser reads it back. */

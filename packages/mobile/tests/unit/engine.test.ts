@@ -1692,6 +1692,49 @@ describe('device fixture', () => {
       h.fake.respond('capture.snapshot', () => snapshots[Math.min(taken++, snapshots.length - 1)]);
     };
 
+    it('reports a field under the measured keyboard as hidden, and the same field as visible once the keyboard is gone', async () => {
+      const h = harness();
+      await openAttempt(h);
+      const below = [...FORM_NODES, { ref: '@e5', index: 4, parentIndex: 1, depth: 2, type: 'text-field', label: 'Brand', rect: { x: 20, y: 650, width: 350, height: 44 } }];
+      const brand = { kind: 'query', query: { kind: 'role', value: { kind: 'string', value: 'textbox', exact: true }, name: { kind: 'string', value: 'Brand', exact: true } } } as const;
+      const brandByText = { kind: 'query', query: { kind: 'text', value: { kind: 'string', value: 'Brand', exact: true } } } as const;
+      h.fake.respond('capture.snapshot', () => ({ ...KEYBOARD_UP, nodes: below }));
+      // A role query never matches a hidden node; a text query still finds it, hidden.
+      expect(await h.engine.locate!(brand, operation())).toEqual([]);
+      expect((await h.engine.locate!(brandByText, operation()))[0]?.states).toEqual({ hidden: true });
+      h.fake.respond('capture.snapshot', () => ({ ...KEYBOARD_GONE, nodes: below }));
+      expect((await h.engine.locate!(brand, operation()))[0]?.states).toBeUndefined();
+    });
+
+    it('reads the keyboard band off the keyboard element when the capture measured no frame, and not once the producer saw it gone', async () => {
+      const h = harness();
+      await openAttempt(h);
+      const keyboard = { ref: '@e9', index: 8, parentIndex: 0, depth: 1, type: 'Keyboard', rect: { x: 0, y: 600, width: 390, height: 216 } };
+      const below = [...FORM_NODES, { ref: '@e5', index: 4, parentIndex: 1, depth: 2, type: 'text-field', label: 'Brand', rect: { x: 20, y: 820, width: 350, height: 20 } }, keyboard];
+      const brand = { kind: 'query', query: { kind: 'text', value: { kind: 'string', value: 'Brand', exact: true } } } as const;
+      // Brand's centre is under the dock below the keys, which the band reaches down to the bottom of the screen.
+      h.fake.respond('capture.snapshot', () => ({ ...SETTINGS_SNAPSHOT, viewport: { width: 390, height: 844 }, nodes: below }));
+      expect((await h.engine.locate!(brand, operation()))[0]?.states).toEqual({ hidden: true });
+      h.fake.respond('capture.snapshot', () => ({ ...KEYBOARD_GONE, viewport: { width: 390, height: 844 }, nodes: below }));
+      expect((await h.engine.locate!(brand, operation()))[0]?.states).toBeUndefined();
+    });
+
+    it('counts the suggestion strip XCTest lists beside the keyboard as the keyboard, and keeps its own buttons', async () => {
+      const h = harness();
+      await openAttempt(h);
+      const nodes = [
+        ...FORM_NODES,
+        { ref: '@e5', index: 4, parentIndex: 1, depth: 2, type: 'text-field', label: 'Phone', rect: { x: 20, y: 560, width: 350, height: 30 } },
+        { ref: '@e6', index: 5, parentIndex: 0, depth: 1, type: 'other', identifier: 'SystemInputAssistantView', rect: { x: 0, y: 546, width: 390, height: 44 } },
+        { ref: '@e7', index: 6, parentIndex: 5, depth: 2, type: 'button', label: 'Suggestion', rect: { x: 0, y: 546, width: 130, height: 44 } },
+        { ref: '@e8', index: 7, parentIndex: 0, depth: 1, type: 'Keyboard', rect: { x: 0, y: 590, width: 390, height: 216 } },
+      ];
+      const byText = (value: string) => ({ kind: 'query', query: { kind: 'text', value: { kind: 'string', value, exact: true } } }) as const;
+      h.fake.respond('capture.snapshot', () => ({ ...SETTINGS_SNAPSHOT, viewport: { width: 390, height: 844 }, nodes }));
+      expect((await h.engine.locate!(byText('Phone'), operation()))[0]?.states).toEqual({ hidden: true });
+      expect((await h.engine.locate!(byText('Suggestion'), operation()))[0]?.states).toBeUndefined();
+    });
+
     it('drags from the point nearest the centre that no control covers, and stops once the keyboard is gone', async () => {
       const h = harness();
       await openAttempt(h);

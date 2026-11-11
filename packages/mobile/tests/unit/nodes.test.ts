@@ -593,3 +593,94 @@ describe('snapshot projection', () => {
     expect(screenTitle(untitled)).toBeUndefined();
   });
 });
+
+describe('nodes under the soft keyboard', () => {
+  const KEYBOARD = { x: 0, y: 566, width: 402, height: 308 };
+  /**
+   * The shape XCTest reports for a form with the keyboard up: the keyboard's
+   * window first, then the app. The Brand field and the Continue row sit under
+   * the keyboard; the Product name field, the form, and the suggestion bar
+   * agent-device marks keyboard-owned do not.
+   */
+  const FORM: readonly RawNode[] = [
+    { ref: '@e0', index: 0, depth: 0, type: 'Application', label: 'Shop', rect: { x: 0, y: 0, width: 402, height: 874 } },
+    { ref: '@e1', index: 1, parentIndex: 0, depth: 1, type: 'Window', rect: { x: 0, y: 0, width: 402, height: 874 } },
+    { ref: '@e2', index: 2, parentIndex: 1, depth: 2, type: 'Other', rect: { x: 0, y: 566, width: 402, height: 308 } },
+    { ref: '@e3', index: 3, parentIndex: 2, depth: 3, type: 'Keyboard', rect: { x: 0, y: 583, width: 402, height: 233 } },
+    { ref: '@e4', index: 4, parentIndex: 3, depth: 4, type: 'Key', label: 'q', rect: { x: 4, y: 590, width: 39, height: 54 } },
+    { ref: '@e5', index: 5, parentIndex: 3, depth: 4, type: 'Button', label: 'return', rect: { x: 300, y: 752, width: 99, height: 54 } },
+    { ref: '@e6', index: 6, parentIndex: 2, depth: 3, type: 'Button', label: 'Dictate', keyboardOwned: true, rect: { x: 325, y: 805, width: 68, height: 68 } },
+    // The keyboard's window holds its dock; agent-device does not always mark the dock keyboard-owned.
+    { ref: '@e14', index: 14, parentIndex: 2, depth: 3, type: 'Button', label: 'Next keyboard', rect: { x: 8, y: 805, width: 68, height: 68 } },
+    { ref: '@e7', index: 7, parentIndex: 0, depth: 1, type: 'Other', label: 'Form', rect: { x: 0, y: 116, width: 402, height: 758 } },
+    { ref: '@e8', index: 8, parentIndex: 7, depth: 2, type: 'TextField', label: 'Product name', rect: { x: 24, y: 200, width: 354, height: 44 } },
+    { ref: '@e9', index: 9, parentIndex: 7, depth: 2, type: 'TextField', label: 'Brand', identifier: 'brand', rect: { x: 24, y: 600, width: 354, height: 44 } },
+    { ref: '@e10', index: 10, parentIndex: 7, depth: 2, type: 'Other', label: 'Continue', rect: { x: 24, y: 806, width: 354, height: 44 } },
+    { ref: '@e11', index: 11, parentIndex: 10, depth: 3, type: 'StaticText', label: 'Continue', rect: { x: 160, y: 818, width: 80, height: 20 } },
+    // A row whose top shows above the keyboard while its centre is under it: the label child shows, so the row does.
+    { ref: '@e12', index: 12, parentIndex: 7, depth: 2, type: 'Cell', label: 'Notes', rect: { x: 0, y: 520, width: 402, height: 120 } },
+    { ref: '@e13', index: 13, parentIndex: 12, depth: 3, type: 'StaticText', label: 'Notes', rect: { x: 24, y: 528, width: 80, height: 20 } },
+  ];
+  const projectWith = (keyboard: { x: number; y: number; width: number; height: number } | undefined) => {
+    let counter = 0;
+    return projectSnapshot(FORM, { mintId: () => `n${(counter += 1)}`, keyboard });
+  };
+  const hiddenNames = (keyboard: Parameters<typeof projectWith>[0]) =>
+    projectWith(keyboard)
+      .index.filter((entry) => entry.node.states?.hidden === true)
+      .map((entry) => entry.node.name);
+
+  it('hides a node whose centre the keyboard covers and none of whose children shows', () => {
+    expect(hiddenNames(KEYBOARD)).toEqual(['Brand', 'Continue', 'Continue']);
+  });
+
+  it("keeps the keyboard's own nodes, a straddling row with a label above the keyboard, and everything above it", () => {
+    const { index } = projectWith(KEYBOARD);
+    const byName = (name: string) => index.find((entry) => entry.node.name === name)!.node;
+    for (const name of ['q', 'return', 'Dictate', 'Next keyboard', 'Product name', 'Form', 'Notes', 'Shop']) {
+      expect(byName(name).states?.hidden, name).toBeUndefined();
+    }
+  });
+
+  it('keeps the dock that follows the keyboard element under the same parent, and the focused field', () => {
+    // The shape agent-device's iOS 27 simulator capture reports: no window, the app first, then the
+    // keyboard and its dock as siblings. The focused search field reports a frame from before the
+    // keyboard came up, under the keyboard, while the screen draws it above.
+    let counter = 0;
+    const { index } = projectSnapshot(
+      [
+        { ref: '@e0', index: 0, depth: 0, type: 'Application', label: 'Settings', rect: { x: 0, y: 0, width: 402, height: 874 } },
+        { ref: '@e1', index: 1, parentIndex: 0, depth: 1, type: 'Button', label: 'Passwords', rect: { x: 16, y: 718, width: 370, height: 52 } },
+        { ref: '@e2', index: 2, parentIndex: 0, depth: 1, type: 'SearchField', label: 'Search', focused: true, rect: { x: 26, y: 789, width: 344, height: 28 } },
+        { ref: '@e3', index: 3, parentIndex: 0, depth: 1, type: 'Keyboard', rect: { x: 0, y: 590, width: 402, height: 226 } },
+        { ref: '@e4', index: 4, parentIndex: 0, depth: 1, type: 'Button', label: 'Next keyboard', rect: { x: 8, y: 805, width: 68, height: 68 } },
+      ],
+      { mintId: () => `n${(counter += 1)}`, keyboard: { x: 0, y: 590, width: 402, height: 284 } },
+    );
+    expect(index.filter((entry) => entry.node.states?.hidden === true).map((entry) => entry.node.name)).toEqual(['Passwords']);
+  });
+
+  it('hides app content listed after a keyboard that has no window, above the dock', () => {
+    // Keyboard first, then the app: a later sibling that starts above the band is app content.
+    let counter = 0;
+    const { index } = projectSnapshot(
+      [
+        { ref: '@e0', index: 0, depth: 0, type: 'Application', label: 'Shop', rect: { x: 0, y: 0, width: 402, height: 874 } },
+        { ref: '@e1', index: 1, parentIndex: 0, depth: 1, type: 'Keyboard', rect: { x: 0, y: 500, width: 402, height: 300 } },
+        { ref: '@e2', index: 2, parentIndex: 0, depth: 1, type: 'Button', label: 'Next keyboard', rect: { x: 8, y: 805, width: 68, height: 68 } },
+        { ref: '@e3', index: 3, parentIndex: 0, depth: 1, type: 'Other', label: 'Form', rect: { x: 0, y: 116, width: 402, height: 758 } },
+        { ref: '@e4', index: 4, parentIndex: 3, depth: 2, type: 'Button', label: 'Continue', rect: { x: 24, y: 650, width: 354, height: 40 } },
+      ],
+      { mintId: () => `n${(counter += 1)}`, keyboard: { x: 0, y: 500, width: 402, height: 374 } },
+    );
+    expect(index.filter((entry) => entry.node.states?.hidden === true).map((entry) => entry.node.name)).toEqual(['Continue']);
+  });
+
+  it('hides nothing when the producer measured no keyboard frame', () => {
+    expect(hiddenNames(undefined)).toEqual([]);
+  });
+
+  it('keeps a node beside a keyboard that does not span the screen', () => {
+    expect(hiddenNames({ x: 0, y: 566, width: 150, height: 308 })).toEqual([]);
+  });
+});
