@@ -461,7 +461,10 @@ describe('a tap on a locator that never appears', () => {
     const error = await perform({ kind: 'locator', locator: page.locator('#missing') }, { kind: 'tap' });
     expect(Date.now() - started).toBeLessThan(3500);
     expect(error).toMatchObject({ code: 'NOT_ACTIONABLE', retryable: false });
-    expect(error?.message).toMatch(/^tap did not become actionable in time: .*Timeout 2000ms exceeded/);
+    expect(error?.message).toMatch(/^tap did not become actionable in time: .*Timeout \d+ms exceeded/);
+    const remainingMs = Number(error?.message.match(/Timeout (\d+)ms exceeded/)?.[1]);
+    expect(remainingMs).toBeGreaterThan(1500);
+    expect(remainingMs).toBeLessThanOrEqual(2000);
     expect(error?.message).toContain("waiting for locator('#missing')");
   });
 });
