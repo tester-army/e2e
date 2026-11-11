@@ -517,8 +517,8 @@ await browser.goto('/dashboard', { waitUntil: 'networkidle' }); // default: 'loa
 #### `reload`, `back`, `forward`
 
 `reload` reloads the current document. `back` and `forward` navigate browser
-history once. They finish when the navigation commits, including a page restored from the back/forward cache.
-Use locators and assertions to wait for app content. `reload` waits for the document load.
+history once. All three wait for the document load. A back/forward-cache restore can reuse an already-loaded document.
+Use locators and assertions to wait for app content.
 
 ```ts
 await browser.reload();
