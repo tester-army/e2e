@@ -8,8 +8,6 @@ import { capturePixels } from './observe.ts';
 import { RefRegistry, type CapturedObservation, type ListedTarget } from './refs.ts';
 import { cancelled, currentViewport } from './support.ts';
 
-/** Shared node budget across the main document and its frames. */
-const MAX_OBSERVED_NODES = 3_000;
 /** Settling is best-effort and spends from the observation's total budget. */
 const SETTLE_TIMEOUT_MS = 5_000;
 /** Leave time for a fresh masked screenshot after semantic capture expires. */
@@ -18,6 +16,8 @@ const PIXEL_FALLBACK_RESERVE_MS = 2_000;
 export interface CaptureSettings {
   readonly testIdAttribute: string;
   readonly site: string | undefined;
+  /** Shared node budget across the main document and its frames. */
+  readonly nodeBudget: number;
 }
 
 /** Captures under one deadline, retaining no refs from a failed or abandoned document. */
@@ -56,7 +56,7 @@ export async function captureObservation(
             else target.list.dispose();
           },
         }, page, {
-          framePath: [], budget: MAX_OBSERVED_NODES,
+          framePath: [], budget: settings.nodeBudget,
           deadline: semanticDeadline, signal: operation.signal,
         }),
         pixelCapture,

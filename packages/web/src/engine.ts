@@ -85,6 +85,7 @@ export function web(options: WebOptions = {}): EngineHandle {
   if (options.headers !== undefined) validateHeaders(options.headers);
   if (options.basicAuth !== undefined) validateBasicAuth(options.basicAuth);
   if (options.testIdAttribute !== undefined) validateTestIdAttribute(options.testIdAttribute);
+  if (options.observationNodeBudget !== undefined) validateObservationNodeBudget(options.observationNodeBudget);
   if (options.userAgent !== undefined) validateUserAgent(options.userAgent, options.headers);
   if (options.locale !== undefined) validateLocale(options.locale, options.headers);
   if (options.timezoneId !== undefined) validateTimezoneId(options.timezoneId);
@@ -170,6 +171,7 @@ const WEB_OPTION_KEYS: readonly string[] = Object.keys({
   headers: true,
   basicAuth: true,
   testIdAttribute: true,
+  observationNodeBudget: true,
   userAgent: true,
   locale: true,
   timezoneId: true,
@@ -402,6 +404,26 @@ function validateTestIdAttribute(attribute: unknown): void {
     throw new ConfigurationError(
       'INVALID_CONFIG',
       `web({ testIdAttribute }) must be an attribute name such as "data-testid", got ${JSON.stringify(attribute)}`,
+    );
+  }
+}
+
+/**
+ * The largest observation node budget `web()` accepts. Each capture reserves
+ * ref ids up to the budget through `RefRegistry.reserveIds`, and the counter
+ * stays an exact integer only while its running total remains below 2^53:
+ * at this cap a run would need over nine billion full-budget captures to
+ * approach that.
+ */
+const MAX_OBSERVATION_NODE_BUDGET = 1_000_000;
+
+/** Refuses an observation node budget outside 1 to 1,000,000, at config load. */
+function validateObservationNodeBudget(budget: unknown): void {
+  if (typeof budget !== 'number' || !Number.isSafeInteger(budget) || budget <= 0 || budget > MAX_OBSERVATION_NODE_BUDGET) {
+    const shown = typeof budget === 'number' ? String(budget) : kindOf(budget);
+    throw new ConfigurationError(
+      'INVALID_CONFIG',
+      `web({ observationNodeBudget }) must be a positive safe integer up to ${MAX_OBSERVATION_NODE_BUDGET.toLocaleString('en-US')}, got ${shown}`,
     );
   }
 }

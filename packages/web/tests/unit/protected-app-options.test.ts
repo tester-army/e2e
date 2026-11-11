@@ -1,5 +1,5 @@
 /**
- * The `headers`, `basicAuth`, `testIdAttribute`, `userAgent`, `locale`, `timezoneId`, `colorScheme`, `reducedMotion`, `initScripts`, and `screencast` options are checked at
+ * The `headers`, `basicAuth`, `testIdAttribute`, `observationNodeBudget`, `userAgent`, `locale`, `timezoneId`, `colorScheme`, `reducedMotion`, `initScripts`, and `screencast` options are checked at
  * config load, so a header the browser could never send or an attribute no
  * element could carry fails the run before a browser launches. What the
  * browser does with valid ones is in tests/integration.
@@ -63,6 +63,25 @@ describe('web({ basicAuth })', () => {
     expect(() =>
       web({ basicAuth: { username: 'ada', password: { name: 'stagingPassword' } as unknown as string } }),
     ).toThrowError(/password string or secrets\.get\(name\)/);
+  });
+});
+
+describe('web({ observationNodeBudget })', () => {
+  it('rejects anything but a positive safe integer as INVALID_CONFIG', () => {
+    for (const budget of [0, -1, 1.5, Number.NaN, '8000', Number.MAX_SAFE_INTEGER] as unknown[]) {
+      expect(() => web({ observationNodeBudget: budget as number })).toThrowError(/observationNodeBudget.*positive safe integer/);
+    }
+    expect(() => web({ observationNodeBudget: 8_000 })).not.toThrow();
+  });
+
+  it('rejects non-number values as INVALID_CONFIG, not a stringify TypeError', () => {
+    const circular: Record<string, unknown> = {};
+    circular.self = circular;
+    for (const budget of [10n, circular, ['x']]) {
+      expect(() => web({ observationNodeBudget: budget as unknown as number })).toThrowError(
+        expect.objectContaining({ code: 'INVALID_CONFIG' }),
+      );
+    }
   });
 });
 
@@ -190,7 +209,7 @@ describe('web() option keys', () => {
       refused('web() has unknown key "viewprt"; did you mean "viewport"?'),
     );
     expect(() => web({ launchOptions: {} } as unknown as Parameters<typeof web>[0])).toThrow(
-      refused('web() has unknown key "launchOptions"; expected one of browser, viewport, screencast, connect, headers, basicAuth, testIdAttribute, userAgent, locale, timezoneId, colorScheme, reducedMotion, initScripts'),
+      refused('web() has unknown key "launchOptions"; expected one of browser, viewport, screencast, connect, headers, basicAuth, testIdAttribute, observationNodeBudget, userAgent, locale, timezoneId, colorScheme, reducedMotion, initScripts'),
     );
   });
 

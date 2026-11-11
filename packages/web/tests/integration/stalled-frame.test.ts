@@ -69,7 +69,7 @@ describe('a frame whose navigation is held', () => {
   it('leaves the observation whole and its pixels proven masked', async () => {
     const page = await pageWithHeldFrame();
 
-    const { snapshot } = await captureObservation(page, new RefRegistry(), { testIdAttribute: 'data-testid', site: app.url }, operation, { pixels: true });
+    const { snapshot } = await captureObservation(page, new RefRegistry(), { testIdAttribute: 'data-testid', site: app.url, nodeBudget: 3_000 }, operation, { pixels: true });
 
     expect(snapshot.pixels?.width).toBe(320);
     expect(snapshot.truncated).toBeUndefined();
