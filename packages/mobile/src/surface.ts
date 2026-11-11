@@ -66,7 +66,7 @@ import { maskPng } from './png.ts';
 import { mobileDoctor } from './doctor.ts';
 import { deviceLabel, pinnedApp, type SlotBinding } from './bindings.ts';
 import { assertAppId } from './links.ts';
-import { DevicePool, deviceSelection, type DeviceSelection } from './pool.ts';
+import { bootRequest, DevicePool, deviceSelection, type DeviceSelection } from './pool.ts';
 import { recordLease, travelledLease, type DeviceLease, type RecordingDeviceProvider } from './provider.ts';
 import {
   invalidState,
@@ -625,7 +625,7 @@ export class AgentDeviceSurface {
       provider === undefined || lease === undefined
         ? undefined
         : { provider, lease, runId: info.runId, targetName: info.targetName, env: info.env };
-    const booted = await this.command('boot', (client) => client.devices.boot(this.selection()), info.signal);
+    const booted = await this.command('boot', (client) => client.devices.boot(bootRequest(this.selection())), info.signal);
     this.bound = { session, deviceId: booted.id, deviceName: booted.device };
     // Nothing is installed here: a device provider that installed the build
     // from `appPath` says so on the binding, and otherwise the suite installs

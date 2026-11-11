@@ -456,10 +456,10 @@ describe('device provider', () => {
     const h = harness({ device: cloud.impl });
     await boot(h, 'ios', 0);
     expect(h.connections).toEqual([undefined]);
-    expect(h.fake.lastArgs('devices.boot')).toEqual({ platform: 'ios' });
+    expect(h.fake.lastArgs('devices.boot')).toEqual({ platform: 'ios', pick: 'newest' });
     await h.engine.dispose!({ signal: new AbortController().signal, timeoutMs: 5_000 });
     expect(h.fake.calls).toEqual([
-      { method: 'devices.boot', args: { platform: 'ios' } },
+      { method: 'devices.boot', args: { platform: 'ios', pick: 'newest' } },
       { method: 'sessions.close', args: undefined },
     ]);
     await h.engine.finish!(finishInfo());

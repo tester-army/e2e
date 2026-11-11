@@ -222,7 +222,7 @@
       "source": "official",
       "repository": "https://github.com/e2e-inc/e2e/tree/main/examples/with-vite",
       "author": {
-        "name": "TesterArmy",
+        "name": "e2e",
         "github": "e2e-inc"
       },
       "license": "Apache-2.0",
@@ -249,7 +249,7 @@
       "source": "official",
       "repository": "https://github.com/e2e-inc/e2e/tree/main/examples/with-next",
       "author": {
-        "name": "TesterArmy",
+        "name": "e2e",
         "github": "e2e-inc"
       },
       "license": "Apache-2.0",
@@ -276,7 +276,7 @@
       "source": "official",
       "repository": "https://github.com/e2e-inc/e2e/tree/main/examples/with-astro",
       "author": {
-        "name": "TesterArmy",
+        "name": "e2e",
         "github": "e2e-inc"
       },
       "license": "Apache-2.0",
@@ -301,7 +301,7 @@
       "source": "official",
       "repository": "https://github.com/e2e-inc/e2e/tree/main/examples/with-angular",
       "author": {
-        "name": "TesterArmy",
+        "name": "e2e",
         "github": "e2e-inc"
       },
       "license": "Apache-2.0",
@@ -327,7 +327,7 @@
       "source": "official",
       "repository": "https://github.com/e2e-inc/e2e/tree/main/examples/with-expo",
       "author": {
-        "name": "TesterArmy",
+        "name": "e2e",
         "github": "e2e-inc"
       },
       "license": "Apache-2.0",
@@ -355,7 +355,7 @@
       "source": "official",
       "repository": "https://github.com/e2e-inc/e2e/tree/main/examples/with-swiftui",
       "author": {
-        "name": "TesterArmy",
+        "name": "e2e",
         "github": "e2e-inc"
       },
       "license": "Apache-2.0",
@@ -380,7 +380,7 @@
       "source": "official",
       "repository": "https://github.com/e2e-inc/e2e/tree/main/examples/with-compose",
       "author": {
-        "name": "TesterArmy",
+        "name": "e2e",
         "github": "e2e-inc"
       },
       "license": "Apache-2.0",
@@ -405,7 +405,7 @@
       "source": "official",
       "repository": "https://github.com/e2e-inc/e2e/tree/main/examples/with-kotlin-multiplatform",
       "author": {
-        "name": "TesterArmy",
+        "name": "e2e",
         "github": "e2e-inc"
       },
       "license": "Apache-2.0",
@@ -431,7 +431,7 @@
       "source": "official",
       "repository": "https://github.com/e2e-inc/e2e/tree/main/examples/with-flutter",
       "author": {
-        "name": "TesterArmy",
+        "name": "e2e",
         "github": "e2e-inc"
       },
       "license": "Apache-2.0",
@@ -457,7 +457,7 @@
       "source": "official",
       "repository": "https://github.com/e2e-inc/e2e/tree/main/examples/with-maui",
       "author": {
-        "name": "TesterArmy",
+        "name": "e2e",
         "github": "e2e-inc"
       },
       "license": "Apache-2.0",
@@ -482,7 +482,7 @@
       "source": "official",
       "repository": "https://github.com/e2e-inc/e2e-ai-chat",
       "author": {
-        "name": "TesterArmy",
+        "name": "e2e",
         "github": "e2e-inc"
       },
       "license": "MIT",
@@ -509,7 +509,7 @@
       "source": "official",
       "repository": "https://github.com/e2e-inc/e2e-stripe",
       "author": {
-        "name": "TesterArmy",
+        "name": "e2e",
         "github": "e2e-inc"
       },
       "license": "MIT",
@@ -536,7 +536,7 @@
       "source": "official",
       "repository": "https://github.com/e2e-inc/e2e-paypal",
       "author": {
-        "name": "TesterArmy",
+        "name": "e2e",
         "github": "e2e-inc"
       },
       "license": "MIT",
@@ -563,7 +563,7 @@
       "source": "official",
       "repository": "https://github.com/e2e-inc/e2e-paddle",
       "author": {
-        "name": "TesterArmy",
+        "name": "e2e",
         "github": "e2e-inc"
       },
       "license": "MIT",
@@ -591,7 +591,7 @@
       "source": "official",
       "repository": "https://github.com/e2e-inc/e2e-revenuecat",
       "author": {
-        "name": "TesterArmy",
+        "name": "e2e",
         "github": "e2e-inc"
       },
       "license": "MIT",
@@ -620,7 +620,7 @@
       "source": "official",
       "repository": "https://github.com/e2e-inc/e2e-clerk",
       "author": {
-        "name": "TesterArmy",
+        "name": "e2e",
         "github": "e2e-inc"
       },
       "license": "MIT",
@@ -646,7 +646,7 @@
       "source": "official",
       "repository": "https://github.com/e2e-inc/e2e-iframes",
       "author": {
-        "name": "TesterArmy",
+        "name": "e2e",
         "github": "e2e-inc"
       },
       "license": "MIT",
@@ -673,7 +673,7 @@
       "source": "official",
       "repository": "https://github.com/e2e-inc/e2e-calendar",
       "author": {
-        "name": "TesterArmy",
+        "name": "e2e",
         "github": "e2e-inc"
       },
       "license": "MIT",
@@ -699,7 +699,7 @@
       "source": "official",
       "repository": "https://github.com/e2e-inc/e2e-onboarding",
       "author": {
-        "name": "TesterArmy",
+        "name": "e2e",
         "github": "e2e-inc"
       },
       "license": "MIT",
@@ -728,7 +728,7 @@
       "source": "official",
       "repository": "https://github.com/e2e-inc/e2e-shopify",
       "author": {
-        "name": "TesterArmy",
+        "name": "e2e",
         "github": "e2e-inc"
       },
       "license": "MIT",
@@ -756,7 +756,7 @@
       "source": "official",
       "repository": "https://github.com/e2e-inc/e2e-i18n",
       "author": {
-        "name": "TesterArmy",
+        "name": "e2e",
         "github": "e2e-inc"
       },
       "license": "MIT",
@@ -782,7 +782,7 @@
       "source": "official",
       "repository": "https://github.com/e2e-inc/e2e-file-upload",
       "author": {
-        "name": "TesterArmy",
+        "name": "e2e",
         "github": "e2e-inc"
       },
       "license": "MIT",
@@ -808,7 +808,7 @@
       "source": "official",
       "repository": "https://github.com/e2e-inc/e2e-location",
       "author": {
-        "name": "TesterArmy",
+        "name": "e2e",
         "github": "e2e-inc"
       },
       "license": "MIT",
@@ -835,7 +835,7 @@
       "source": "official",
       "repository": "https://github.com/e2e-inc/e2e-biometrics",
       "author": {
-        "name": "TesterArmy",
+        "name": "e2e",
         "github": "e2e-inc"
       },
       "license": "MIT",
@@ -863,7 +863,7 @@
       "source": "official",
       "repository": "https://github.com/e2e-inc/e2e-deep-links",
       "author": {
-        "name": "TesterArmy",
+        "name": "e2e",
         "github": "e2e-inc"
       },
       "license": "MIT",
@@ -883,6 +883,34 @@
       }
     },
     {
+      "slug": "react-native",
+      "title": "Testing a React Native podcast app with e2e",
+      "shortTitle": "React Native",
+      "description": "A mock podcast app built with Expo: its player, search, library, playlists, and settings tested by one suite on iOS, Android, and web, with agent steps replayed from a committed cache.",
+      "source": "official",
+      "repository": "https://github.com/e2e-inc/e2e-react-native",
+      "author": {
+        "name": "e2e",
+        "github": "e2e-inc"
+      },
+      "license": "MIT",
+      "licenseUrl": "https://github.com/e2e-inc/e2e-react-native/blob/main/LICENSE",
+      "tags": {
+        "framework": [
+          "expo",
+          "react-native"
+        ],
+        "useCase": [
+          "replay-cache"
+        ],
+        "platform": [
+          "web",
+          "ios",
+          "android"
+        ]
+      }
+    },
+    {
       "slug": "github-actions",
       "title": "Running e2e in GitHub Actions",
       "shortTitle": "GitHub Actions",
@@ -890,7 +918,7 @@
       "source": "official",
       "repository": "https://github.com/e2e-inc/e2e-github-actions",
       "author": {
-        "name": "TesterArmy",
+        "name": "e2e",
         "github": "e2e-inc"
       },
       "license": "MIT",
@@ -916,7 +944,7 @@
       "source": "official",
       "repository": "https://gitlab.com/e2e_inc/e2e-gitlab-ci",
       "author": {
-        "name": "TesterArmy",
+        "name": "e2e",
         "github": "e2e-inc"
       },
       "license": "MIT",

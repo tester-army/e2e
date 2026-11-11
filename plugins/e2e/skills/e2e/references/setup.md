@@ -271,6 +271,12 @@ app: {
   ready is `APP_UNREACHABLE`; the run stops before its tests and leaves the
   last run's report and results as they were (`command.log` still gets this
   boot's output).
+- In `e2e run`, a command that exits after readiness fails the run with `APP_UNREACHABLE` if a dependent target has unfinished work.
+  This includes exit code 0 and termination by a signal.
+  The runner interrupts active tests and skips queued tests only for those targets.
+  Targets that have finished their work ignore the exit.
+  The error labels the command with the first target that declared it, which may have finished already, and reports the command's exit code or signal.
+  See the [command reference](https://e2e.tester.army/reference/config#command) for log excerpts and redaction limits.
 - The child gets only `PATH`, `HOME`, the temp-directory variables,
   `SystemRoot` and `COMSPEC` on Windows, and `command.env`. Pass the rest
   through `env`, or name host variables in `inheritEnv` (`['DATABASE_URL',
@@ -355,7 +361,7 @@ export default {
 - One worker per device. No `device`: every booted simulator or emulator of
   the platform, and every connected phone, is the pool, up to `workers`,
   minus devices another agent-device session holds (none booted: agent-device boots
-  one; all held: `prepare` fails); one `device`: one worker whatever `workers` says; a list (`device:
+  a shut-down one, newest OS first, then name order; all held: `prepare` fails); one `device`: one worker whatever `workers` says; a list (`device:
   ['iPhone 17', 'iPhone 17 Pro']`): an explicit pool. Devices boot in
   `prepare`, before the run's clock. Two sessions on one device fight over
   it: for parallel MCP sessions or bug-bash explorers, declare one target per

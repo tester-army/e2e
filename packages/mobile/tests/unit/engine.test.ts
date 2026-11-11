@@ -160,7 +160,7 @@ describe('lifecycle', () => {
     await openAttempt(h);
     expect(h.sessions).toEqual(['e2e-ios-simulator-0']);
     expect(h.fake.methods()).toEqual(['devices.boot', 'apps.open']);
-    expect(h.fake.lastArgs('devices.boot')).toEqual({ platform: 'ios' });
+    expect(h.fake.lastArgs('devices.boot')).toEqual({ platform: 'ios', pick: 'newest' });
     expect(h.fake.lastArgs('apps.open')).toEqual({ app: 'Settings', platform: 'ios', relaunch: true });
 
     await h.engine.endAttempt!(cleanup());
@@ -381,7 +381,7 @@ describe('lifecycle', () => {
     expect(worker.sessions).toEqual(['e2e-ios-1']);
   });
 
-  it('with fewer slots than booted devices drives only that many; with none booted, one slot boots what agent-device picks', async () => {
+  it('with fewer slots than booted devices drives only that many; with none booted, one slot boots a shut-down device agent-device picks', async () => {
     const h = harness({ device: undefined });
     h.fake.respond('devices.list', () => [
       { platform: 'ios', id: 'A', name: 'A', booted: true },
@@ -410,9 +410,10 @@ describe('lifecycle', () => {
     const coldEnv: NodeJS.ProcessEnv = {};
     const coldResult = await cold.prepare({ ...info, env: coldEnv });
     expect(coldResult).toMatchObject({ workers: 1 });
-    expect(cold.fake.lastArgs('devices.boot')).toEqual({ platform: 'ios' });
+    // Several shut-down simulators tie on a stock Xcode install; `pick` breaks the tie instead of failing with AMBIGUOUS_MATCH.
+    expect(cold.fake.lastArgs('devices.boot')).toEqual({ platform: 'ios', pick: 'newest' });
     const coldHanded = coldResult?.env ?? {};
-    // One slot bound to no device in particular: the daemon picks.
+    // One slot bound to no device in particular: agent-device picks.
     expect(coldHanded[poolVariableIn(coldHanded, 'IOS')]).toBe(JSON.stringify([{}]));
     expect(coldEnv).toEqual({});
   });
@@ -548,7 +549,7 @@ describe('lifecycle', () => {
     await openAttempt(h);
     expect(h.sessions).toEqual(['e2e-ios-simulator-0']);
     expect(h.fake.methods()).toEqual(['devices.boot']);
-    expect(h.fake.lastArgs('devices.boot')).toEqual({ platform: 'ios' });
+    expect(h.fake.lastArgs('devices.boot')).toEqual({ platform: 'ios', pick: 'newest' });
   });
 
   it('installs nothing on its own; device.installApp() with no path installs the engine build and pins what it installed', async () => {
