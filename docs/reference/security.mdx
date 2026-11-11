@@ -282,8 +282,8 @@ the [session errors](/reference/errors).
 
 Code recordings (`.replay.ts`) are parsed as literal declarations with oxc, never
 imported or evaluated. Extra statements, expressions, callbacks, spreads and
-duplicate object keys are rejected. Both formats use the same bounded trace
-validation and runtime replay safeguards.
+duplicate object keys are rejected. Every declaration passes bounded trace validation and runtime replay safeguards.
+Legacy JSON files are ignored and never read.
 
 
 Cache entries replay actions without a model and aren't signed.

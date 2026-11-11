@@ -228,7 +228,7 @@ replay stopped and why (`at action 2 of 3, tap button "Apply": ...`). After
 an `end-mismatch` it names the recorded nodes that did not show, the ones
 that did not go away, and any alert the recording never saw, or says the
 outcome already showed before the replay acted.
-`step.cache.entry` is the entry's key and its file name (`<entry>.json`) in
+`step.cache.entry` is the entry's key and its file name (`<entry>.replay.ts`) in
 the file store.
 
 | Reason | What happened | What to do |
@@ -281,7 +281,7 @@ composed itself, replay.
 
 ## What a recording holds
 
-Each entry is a JSON or code file under `.e2e/cache/`, named by a hash of its key.
+Each entry is a `.replay.ts` file under `.e2e/cache/`, named by a hash of its key.
 It holds actions, target descriptions, typed text, a step summary, and the
 end checks: the route and up to eight controls that appeared and eight that
 went away. Entries hold no prompts, conversations, screenshots, observed
@@ -406,19 +406,19 @@ CI over `cache.strict` in the config. To fix a stale entry:
 
 <CodeGroup>
 ```bash npm
-npx e2e cache ls      # one row per entry: test, target, instruction digest, age, actions
+npx e2e cache ls      # one row per entry: test, target, instruction digest, actions
 npx e2e cache stats   # entry count and size
 npx e2e cache clear   # delete every entry
 ```
 
 ```bash pnpm
-pnpm exec e2e cache ls      # one row per entry: test, target, instruction digest, age, actions
+pnpm exec e2e cache ls      # one row per entry: test, target, instruction digest, actions
 pnpm exec e2e cache stats   # entry count and size
 pnpm exec e2e cache clear   # delete every entry
 ```
 
 ```bash bun
-bunx e2e cache ls      # one row per entry: test, target, instruction digest, age, actions
+bunx e2e cache ls      # one row per entry: test, target, instruction digest, actions
 bunx e2e cache stats   # entry count and size
 bunx e2e cache clear   # delete every entry
 ```
@@ -432,13 +432,16 @@ lowers the cost of a model call. The replay cache skips the call.
 
 ## Code recordings
 
-Set `cache: { format: 'code' }` to save reviewable `.replay.ts` files instead
-of JSON. Both formats replay on web and mobile with the same verification
-and agent fallback. Commit the generated files with your tests.
+The file cache stores typed `e2e/replay` declarations. Commit these files with
+your tests and review their actions and target evidence in the diff. Web and
+mobile use the same replay safeguards and confirmation boundary.
 
-```ts title="e2e.config.ts fragment"
-cache: { format: 'code', mode: 'read-write' },
-```
+<Warning>
+JSON replay caches are no longer supported. Delete old `.json` cache files,
+then run your tests with `cache: 'read-write'` to regenerate recordings.
+Old files are ignored, including in strict mode. There is no migration command
+or `cache.format` option.
+</Warning>
 
 <Accordion title="Example recording, with provenance omitted">
 ```ts
@@ -468,31 +471,23 @@ statements are rejected with a source location. Generated files have stable
 formatting and no creation timestamp or observation IDs. App values needed
 for matching stay intact; use `unique()` for run-specific test data.
 
-Stop active runs before migration. Run `e2e cache migrate`, inspect its output,
-then select `format: 'code'`. Migration preserves JSON by default and never
-replaces existing code. Add `--delete-json` to remove each original after a
-successful conversion. A skipped or failed entry produces exit code 1.
-Retained copies count as separate files in `ls` and `stats`; switching back to
-JSON would replay those older copies.
-
-Strict mode reports recordings in the other format as stale rather than
-silently calling the model. Runtime-derived values remain agent handoffs;
-migration cannot reconstruct the read expression that produced them.
+Runtime-derived values remain explicit agent handoffs. A recording cannot
+reconstruct a computation the agent read from the app.
 
 A confirmed repair updates the source atomically. Run `e2e cache diff` for
 changes against Git's index, or use your usual Git tools. Stage new files
 with `git add -N` to include them in that diff. No diff sidecars are written.
 An unchanged replay leaves the file untouched. Custom stores continue to use
-the trace contract and cannot set `format`.
+the typed trace contract.
 
 
 ## Next
 
 <CardGroup cols={2}>
   <Card title="Config reference" icon="sliders" href="/reference/config#cache">
-    `mode`, `format`, `store`, `dir`, `strict`.
+    `mode`, `store`, `dir`, `strict`.
   </Card>
   <Card title="CLI reference" icon="terminal" href="/reference/cli#e2e-cache">
-    `e2e cache ls`, `stats`, `clear`, `migrate`, `diff`.
+    `e2e cache ls`, `stats`, `clear`, `diff`.
   </Card>
 </CardGroup>

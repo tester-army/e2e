@@ -1272,7 +1272,6 @@ cache: { mode: 'read-write', dir: '.e2e/cache', strict: true },
 | [`store`](#store) | `CacheStore` | the file store at `dir` |
 | [`dir`](#dir) | `string` | `'.e2e/cache'` |
 | [`strict`](#strict) | `boolean` | `false` |
-| [`format`](#format) | `'json' \| 'code'` | `'json'` |
 
 A bare string is shorthand for `{ mode }`: `cache: 'read-only'`. See
 [Caching](/cache). The declarations are under [`CacheConfig`](#cacheconfig).
@@ -1295,16 +1294,9 @@ cache: 'read-write', // default: 'read-write' locally, 'read-only' in CI
   CI restores the cache from its own cache service.
 - `--no-cache` wins over both and disables caching for the run.
 
-#### `format`
-
-The file store representation: `'json'` by default or `'code'` for typed
-`e2e/replay` declarations in `.replay.ts` files. Both use the same replay
-policy and confirmation boundary. Cannot be combined with `cache.store`.
-See [Code recordings](/cache#code-recordings) for migration and diffs.
-
-```ts
-cache: { format: 'code' },
-```
+The file store writes only `.replay.ts` declarations. The removed `format`
+option is rejected. Old JSON cache files are ignored; delete them and run
+with `cache: 'read-write'` to regenerate. See [Code recordings](/cache#code-recordings).
 
 #### `store`
 
@@ -1859,7 +1851,6 @@ export interface Secret {
 /** Replay cache options. */
 export interface CacheConfig {
   /** File store representation. Default json. */
-  format?: 'json' | 'code';
   /** Default `read-write`; `read-only` in CI when unset. */
   mode?: CacheMode;
   /** Custom entry store; omit it to use the file store at `dir`. */

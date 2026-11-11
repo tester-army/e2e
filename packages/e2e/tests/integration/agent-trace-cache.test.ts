@@ -16,12 +16,13 @@ import { createScriptedInstance } from '../helpers/scripted-model.ts';
 import { createFakeEngine, FAKE_APP_URL } from '../helpers/fake-engine.ts';
 import {
   createProject,
+  runExisting,
   resultByTitle,
   webTarget,
   type FixtureProject,
   type RunOutcome,
 } from '../helpers/run-project.ts';
-import { cacheRunner, writeEntry, readEntries } from '../helpers/trace-cache.ts';
+import { writeEntry, readEntries } from '../helpers/trace-cache.ts';
 import { findNode } from '../helpers/executor-tree.ts';
 import type {
   ExecutorNode,
@@ -32,8 +33,6 @@ import type {
 } from '../../src/agent/executor.ts';
 import type { ActionTrace, TraceEntry } from '../../src/cache/trace.ts';
 
-const format = process.env.E2E_TEST_CACHE_FORMAT === 'code' ? 'code' : 'json';
-const runExisting = cacheRunner(format);
 
 const SUITE = `import { test, expect } from 'e2e';
 
@@ -105,8 +104,7 @@ function entryFileState(project: FixtureProject): { bytes: string; mtimeMs: numb
   return { bytes: readFileSync(file, 'utf8'), mtimeMs: statSync(file).mtimeMs };
 }
 
-describe.each(format === 'json' ? ['json', 'code'] as const : ['code'] as const)('trace cache: divergence hands the step over mid-step (%s)', (selectedFormat) => {
-  const runSelected = cacheRunner(selectedFormat);
+describe('trace cache: divergence hands the step over mid-step', () => {
   let app: FixtureApp;
   let project: FixtureProject;
   let secondRun: RunOutcome;
@@ -124,7 +122,7 @@ describe.each(format === 'json' ? ['json', 'code'] as const : ['code'] as const)
         cache: 'read-write' as const,
       },
     });
-    await runSelected(project, options(first));
+    await runExisting(project, options(first));
     // Sabotage the second recorded action's descriptor: relocation must fail
     // there, after the first action already replayed against the live page.
     rewriteOnlyEntry(project, (payload) => {
@@ -132,7 +130,7 @@ describe.each(format === 'json' ? ['json', 'code'] as const : ['code'] as const)
       if (firstTap === undefined || secondTap?.name !== 'tap') throw new Error(`expected two taps, got ${JSON.stringify(payload.actions)}`);
       return { ...payload, actions: [firstTap, { ...secondTap, target: { ...secondTap.target, name: 'No Such Button' } }] };
     });
-    secondRun = await runSelected(project, options(second));
+    secondRun = await runExisting(project, options(second));
   }, 240_000);
 
   afterAll(async () => {
@@ -604,7 +602,7 @@ describe('trace cache: --strict-cache never writes the cache', () => {
       const recording = await runExisting(project, options({ calls: 0, prefixes: [] }, false));
       expect(recording.exitCode).toBe(0);
       const recorded = entryFileState(project);
-      const entry = path.basename(readOnlyEntry(project).file, format === 'code' ? '.replay.ts' : '.json');
+      const entry = path.basename(readOnlyEntry(project).file, '.replay.ts');
 
       writeFileSync(path.join(project.dir, 'fail-once'), '', 'utf8');
       const strict: ExecutorRecord = { calls: 0, prefixes: [] };

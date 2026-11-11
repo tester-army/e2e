@@ -207,7 +207,7 @@ describe('REPLAY_STALE advice', () => {
 describe('settleStagedTraces', () => {
   function contextWith(store: CacheStore) {
     const context = createAgentCacheContext({
-      cache: { format: 'json', mode: 'read-write', store, dir: '/unused', strict: false },
+      cache: { mode: 'read-write', store, dir: '/unused', strict: false },
       projectRoot: ROOT,
       projectId: 'p',
       testId: 't',
@@ -278,7 +278,7 @@ describe('settleStagedTraces', () => {
     try {
       const store = new FileCacheStore({ directory, maxBytes: 1_048_576, writable: true });
       await store.write(KEY_B, trace('stale trailing flow'));
-      const entryPath = path.join(directory, `${KEY_B}.json`);
+      const entryPath = path.join(directory, `${KEY_B}.replay.ts`);
       const before = await readFile(entryPath, 'utf8');
       await chmod(directory, 0o500);
       const context = contextWith(store);
@@ -399,10 +399,7 @@ describe('settleStagedTraces', () => {
   });
 });
 
-it('selects code format without changing CI defaults or accepting it on custom stores', () => {
-  expect(resolve({ cache: { format: 'code' } }, { CI: '1' }).cache).toMatchObject({ format: 'code', mode: 'read-only' });
-  expect(resolve({ cache: { format: 'code', mode: 'read-write', strict: true } }).cache).toMatchObject({ format: 'code', mode: 'read-write', strict: { config: true } });
-  expect(() => resolve({ cache: { format: 'code', store: memoryStore() } })).toThrow('only to the file store');
-  // @ts-expect-error Validate untyped configuration at runtime too.
-  expect(() => resolve({ cache: { format: 'javascript' } })).toThrow('cache.format');
+it('rejects the removed cache.format option', () => {
+  // @ts-expect-error The file store has one representation.
+  expect(() => resolve({ cache: { format: 'code' } })).toThrow('unknown cache config key "format"');
 });

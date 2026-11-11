@@ -12,7 +12,6 @@ import type { ActionTrace, RecordedAction } from '../../src/cache/trace.ts';
 import type { SemanticNode } from '../../src/engine/surface.ts';
 import { redactedNodes } from '../helpers/redacted.ts';
 
-describe.each(['json', 'code'] as const)('%s replay parity', (format) => {
 beforeEach(() => {
   vi.useFakeTimers();
   vi.setTimerTickMode('nextTimerAsync');
@@ -26,7 +25,7 @@ const email: SemanticNode = { ref: { id: 'n2', revision: 'r1' }, role: 'textbox'
 
 function trace(actions: RecordedAction[]): ActionTrace {
   const payload = { actions, executor: { name: 'test' }, summary: 'done' };
-  return format === 'code' ? readReplayCode(emitReplayCode(payload))!.payload : payload;
+  return readReplayCode(emitReplayCode(payload)).payload;
 }
 
 const tapUpgrade: RecordedAction = {
@@ -686,6 +685,4 @@ describe('replayTrace: bare-point drags', () => {
     expect(await replayTrace(gone, trace([{ ...moved, to: { point: { x: 300, y: 150 }, within: tray } }]))).toMatchObject({ completed: false, executed: 0, stopReason: 'target-not-found' });
     expect(gone.calls).not.toContain('dragAt');
   });
-});
-
 });

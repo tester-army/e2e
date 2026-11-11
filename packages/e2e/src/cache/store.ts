@@ -19,7 +19,7 @@ import { join } from 'node:path';
 import { writeFileAtomic } from '../internal/atomic-write.ts';
 import { errorMessage } from '../internal/errors.ts';
 import type { ActionTrace, TraceEntry } from './trace.ts';
-import { CACHE_CODECS, cacheFileName, cacheFileIdentity, type CacheFormat } from './codec.ts';
+import { encodeReplayCode, readReplayCode, cacheFileName, cacheFileKey } from './code.ts';
 
 /** Hard wire ceiling on one entry, on both the read and the write path. */
 export const MAX_CACHE_WIRE_BYTES = 1_048_576;
@@ -49,7 +49,6 @@ export interface CacheStore {
 }
 
 export interface FileCacheStoreOptions {
-  readonly format?: 'json' | 'code';
   readonly directory: string;
   /** Entry size cap for tests; production passes the wire ceiling, which clamps it. */
   readonly maxBytes: number;
@@ -59,15 +58,11 @@ export interface FileCacheStoreOptions {
 export class FileCacheStore implements CacheStore {
   readonly writable: boolean;
 
-  readonly format: CacheFormat;
-  private readonly codec: (typeof CACHE_CODECS)[CacheFormat];
   private readonly directory: string;
   private readonly maxBytes: number;
 
   constructor(options: FileCacheStoreOptions) {
     this.directory = options.directory;
-    this.format = options.format ?? 'json';
-    this.codec = CACHE_CODECS[this.format];
     this.maxBytes = Math.min(options.maxBytes, MAX_CACHE_WIRE_BYTES);
     this.writable = options.writable;
   }
@@ -94,7 +89,7 @@ export class FileCacheStore implements CacheStore {
     let entry: TraceEntry | undefined;
     try {
       const source = await readFile(path, 'utf8');
-      entry = this.codec.decode(source);
+      entry = readReplayCode(source);
     } catch (cause) {
       return { status: 'invalid', reason: `cache entry is unreadable: ${errorMessage(cause)}`, bytes };
     }
@@ -110,12 +105,12 @@ export class FileCacheStore implements CacheStore {
     if (path === undefined) return undefined;
 
     let serialized: string;
-    try { serialized = this.codec.encode(payload); } catch { return undefined; }
+    try { serialized = encodeReplayCode(payload); } catch { return undefined; }
     const bytes = Buffer.byteLength(serialized, 'utf8');
     if (bytes > this.maxBytes) return undefined;
 
     const previous = await this.read(keyHash);
-    if (previous.status === 'hit' && this.codec.encode(previous.entry.payload) === serialized) return { bytes };
+    if (previous.status === 'hit' && encodeReplayCode(previous.entry.payload) === serialized) return { bytes };
     await mkdir(this.directory, { recursive: true });
     await writeFileAtomic(path, serialized, { mode: 0o600 });
     return { bytes };
@@ -146,8 +141,8 @@ export class FileCacheStore implements CacheStore {
       throw cause;
     }
     return names.flatMap((name) => {
-      const entry = cacheFileIdentity(name);
-      return entry?.format === this.format ? [entry.keyHash] : [];
+      const key = cacheFileKey(name);
+      return key === undefined ? [] : [key];
     });
   }
 
@@ -157,6 +152,6 @@ export class FileCacheStore implements CacheStore {
    * construction rather than by canonicalization after the fact.
    */
   private entryPath(keyHash: string): string | undefined {
-    return KEY_HASH.test(keyHash) ? join(this.directory, cacheFileName(keyHash, this.format)) : undefined;
+    return KEY_HASH.test(keyHash) ? join(this.directory, cacheFileName(keyHash)) : undefined;
   }
 }

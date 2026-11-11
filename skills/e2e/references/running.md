@@ -304,15 +304,14 @@ jobs:
 
 ## Code recordings
 
-Use `cache: { format: 'code' }` for reviewable `.replay.ts` declarations.
+The file cache always writes reviewable `.replay.ts` declarations.
 Formatting changes and comments are accepted; executable expressions are not.
-The runner never imports these files. Web and mobile share JSON's matching,
+The runner never imports these files. Web and mobile share target matching,
 outcome checks, confirmation and agent fallback. Runtime-derived values remain
 explicit agent handoffs.
 
-Stop runs, then use `e2e cache migrate`. It preserves JSON unless you pass
-`--delete-json`, never replaces code, and exits 1 on skipped or failed entries.
-Inspect retained copies before switching formats. Strict mode rejects an entry
-found only in the other format. Use `e2e cache diff` for changes against Git's
-index; `git add -N` includes new files. No diff sidecars are stored. Custom stores
-do not accept `format`.
+JSON replay caches are no longer supported. Delete old `.json` cache files and
+run with `cache: 'read-write'` to regenerate. Old files are ignored, including
+in strict mode. There is no `cache.format` option or cache migration command.
+Use `e2e cache diff` for changes against Git's index; `git add -N` includes new
+files. No diff sidecars are stored. Custom stores use the typed trace contract.

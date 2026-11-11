@@ -732,7 +732,6 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
       return await writeTracePages(document, tracedResultIds(results, serialGroups), {
         projectRoot: config.projectRoot,
         resultsRoot: outputLayout(config.output).results,
-        cacheFormat: config.cache.format,
         cacheDir: config.cache.store === undefined ? config.cache.dir : undefined,
       });
     } catch (cause) {

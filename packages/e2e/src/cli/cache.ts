@@ -2,9 +2,9 @@
  * `e2e cache`: what is in the replay cache, and how to get rid of it.
  *
  * The store is a directory of digest-named files, so a committed cache is
- * unreadable without a reader: `ls` prints each entry's provenance — the test,
- * the target, the instruction digest, its age, and how many actions it would
- * replay — `stats` sizes the store, and `clear` empties it.
+ * unreadable without a reader: `ls` prints each entry's provenance: the test,
+ * the target, the instruction digest, how many actions it would
+ * replay; `stats` sizes the store, and `clear` empties it.
  *
  * Every command works on files only. A project that configures `cache.store`
  * replaced the filesystem with its own store, and this CLI has no way to
@@ -16,8 +16,7 @@ import path from 'node:path';
 import type { Command } from 'commander';
 import picocolors from 'picocolors';
 import { cacheDiff } from './cache-diff.ts';
-import { cacheFileIdentity } from '../cache/codec.ts';
-import { migrateReplayCache } from '../cache/migrate.ts';
+import { cacheFileKey } from '../cache/code.ts';
 import { FileCacheStore, MAX_CACHE_WIRE_BYTES } from '../cache/store.ts';
 import { discoverConfig, loadConfigModule, missingConfigError } from '../config/load.ts';
 import { resolveConfig } from '../config/resolve.ts';
@@ -25,7 +24,7 @@ import { errorMessage } from '../internal/errors.ts';
 import { visibleWidth } from '../report/format.ts';
 import { docsLine, examples } from './help.ts';
 
-type CacheCommand = 'ls' | 'clear' | 'stats' | 'migrate' | 'diff';
+type CacheCommand = 'ls' | 'clear' | 'stats' | 'diff';
 
 /** The `--cache-dir` help line `e2e run` and every `e2e cache` command share. */
 export const CACHE_DIR_DESCRIPTION =
@@ -37,7 +36,6 @@ interface CacheOptions {
   /** `--cache-dir`: the store directory, over `E2E_CACHE_DIR` and `cache.dir`. */
   readonly cacheDir?: string;
   readonly cwd?: string;
-  readonly deleteJson?: boolean;
 }
 
 /** One entry as `ls` prints it, or a file that is not a readable entry. */
@@ -45,7 +43,6 @@ interface CacheEntrySummary {
   readonly name: string;
   readonly keyHash: string;
   readonly bytes: number;
-  readonly createdAt: string;
   readonly actions: number;
   readonly truncated: boolean;
   readonly testId: string | undefined;
@@ -63,7 +60,7 @@ interface CacheContents {
 }
 
 /** Only files the atomic writer creates qualify for cleanup. */
-const TEMPORARY_FILE = /^[a-f0-9]{64}\.(?:json|replay\.ts)\.[a-f0-9]{16}\.tmp$/u;
+const TEMPORARY_FILE = /^[a-f0-9]{64}\.replay\.ts\.[a-f0-9]{16}\.tmp$/u;
 
 /** Digest prefix printed instead of the full 64 hex characters. */
 const DIGEST_PREFIX_CHARS = 12;
@@ -71,7 +68,7 @@ const DIGEST_PREFIX_CHARS = 12;
 /**
  * Runs one `e2e cache` command against the configured store directory.
  * Returns the process exit code: 2 for a config or filesystem error, 0
- * otherwise — an empty or absent cache is a fact, not a failure.
+ * otherwise; an empty or absent cache is a fact, not a failure.
  */
 async function cache(command: CacheCommand, options: CacheOptions = {}): Promise<number> {
   let directory: string;
@@ -83,11 +80,6 @@ async function cache(command: CacheCommand, options: CacheOptions = {}): Promise
   }
 
   try {
-    if (command === 'migrate') {
-      const outcomes = await migrateReplayCache(directory, options.deleteJson);
-      for (const result of outcomes) process.stdout.write(`${result.key} ${JSON.stringify(result.test ?? '')}: ${result.status}: ${result.detail}\n`);
-      return outcomes.some((result) => result.status !== 'converted') ? 1 : 0;
-    }
     if (command === 'diff') {
       process.stdout.write(await cacheDiff(directory));
       return 0;
@@ -107,7 +99,7 @@ async function cache(command: CacheCommand, options: CacheOptions = {}): Promise
   }
 }
 
-/** Registers cache inspection, migration and Git diff commands. */
+/** Registers cache inspection and Git diff commands. */
 export function registerCacheCommand(program: Command): void {
   const cacheCommand = program
     .command('cache')
@@ -121,25 +113,23 @@ export function registerCacheCommand(program: Command): void {
     );
 
   const cacheSubcommand = (name: CacheCommand, summary: string, description: string): void => {
-    const subcommand = cacheCommand
+    cacheCommand
       .command(name)
       .summary(summary)
       .description(description)
       .option('--config <path>', 'config file (default: the nearest e2e.config.ts, .mts, .js, or .mjs)')
       .option('--cache-dir <dir>', CACHE_DIR_DESCRIPTION)
-      .action(async (options: { config?: string; cacheDir?: string; deleteJson?: boolean }) => {
+      .action(async (options: { config?: string; cacheDir?: string }) => {
         process.exitCode = await cache(name, options);
       });
-    if (name === 'migrate') subcommand.option('--delete-json', 'remove each JSON entry after successful conversion; stop runs before migrating');
   };
 
   cacheSubcommand(
     'ls',
     'list the cached traces',
-    'Print one row per cached trace: the test and target it was recorded for, the digest of its instruction, its age, and how many actions a replay would run.',
+    'Print one row per cached trace: the test and target it was recorded for, the digest of its instruction, how many actions a replay would run.',
   );
   cacheSubcommand('clear', 'delete every cached trace', 'Delete the cache files and the directory itself; files the runner never wrote are left alone.');
-  cacheSubcommand('migrate', 'convert JSON recordings to code', 'Convert JSON recordings without replacing existing code. Exit 1 when any entry is skipped or fails. Stop runs before using --delete-json.');
   cacheSubcommand('diff', 'show regenerated recording diffs', 'Show current tracked cache changes against the Git index. Stage new files with git add -N to include them.');
   cacheSubcommand('stats', 'print the entry count and size', 'Print the store directory, how many readable entries it holds, and how many bytes they take.');
 }
@@ -175,7 +165,6 @@ async function resolveCacheDirectory(options: CacheOptions): Promise<string> {
  */
 async function readContents(directory: string): Promise<CacheContents> {
   const store = new FileCacheStore({ directory, maxBytes: MAX_CACHE_WIRE_BYTES, writable: false });
-  const codeStore = new FileCacheStore({ directory, maxBytes: MAX_CACHE_WIRE_BYTES, writable: false, format: 'code' });
   const entries: CacheEntrySummary[] = [];
   const unreadable: { name: string; bytes: number }[] = [];
   const foreign: string[] = [];
@@ -191,13 +180,12 @@ async function readContents(directory: string): Promise<CacheContents> {
   }
 
   for (const name of names.toSorted()) {
-    const identity = cacheFileIdentity(name);
-    if (identity === undefined) {
+    const keyHash = cacheFileKey(name);
+    if (keyHash === undefined) {
       if (!TEMPORARY_FILE.test(name)) foreign.push(name);
       continue;
     }
-    const { keyHash, format } = identity;
-    const read = await (format === 'code' ? codeStore : store).read(keyHash);
+    const read = await store.read(keyHash);
     if (read.status !== 'hit') {
       unreadable.push({ name, bytes: read.status === 'invalid' ? (read.bytes ?? 0) : 0 });
       continue;
@@ -207,7 +195,6 @@ async function readContents(directory: string): Promise<CacheContents> {
       name,
       keyHash,
       bytes: read.bytes,
-      createdAt: read.entry.createdAt,
       actions: trace.actions.length,
       truncated: trace.truncated === true,
       testId: trace.recordedFor?.testId,
@@ -219,9 +206,9 @@ async function readContents(directory: string): Promise<CacheContents> {
 }
 
 /**
- * Prints one row per entry, newest last within a test, so a reviewer reads a
- * committed cache test by test. Provenance an entry does not carry — one
- * recorded before entries described themselves — prints as `-`.
+ * Prints one row per entry, ordered by test, target and key, so a reviewer reads a
+ * committed cache test by test. Provenance an entry does not carry, one
+ * recorded before entries described themselves, prints as `-`.
  */
 function list(contents: CacheContents): number {
   if (contents.entries.length === 0) {
@@ -229,22 +216,20 @@ function list(contents: CacheContents): number {
     warnAboutSkipped(contents);
     return 0;
   }
-  const now = Date.now();
   const rows = contents.entries
     .toSorted(
       (left, right) =>
         (left.testId ?? '').localeCompare(right.testId ?? '') ||
         (left.targetId ?? '').localeCompare(right.targetId ?? '') ||
-        left.createdAt.localeCompare(right.createdAt),
+        left.keyHash.localeCompare(right.keyHash),
     )
     .map((entry) => [
       entry.testId ?? '-',
       entry.targetId ?? '-',
       entry.instructionDigest?.slice(0, DIGEST_PREFIX_CHARS) ?? '-',
-      entry.name.endsWith('.replay.ts') ? '-' : formatAge(entry.createdAt, now),
       `${entry.actions}${entry.truncated ? ' (truncated)' : ''}`,
     ]);
-  const header = ['TEST', 'TARGET', 'INSTRUCTION', 'AGE', 'ACTIONS'];
+  const header = ['TEST', 'TARGET', 'INSTRUCTION', 'ACTIONS'];
   const widths = header.map((title, column) =>
     Math.max(visibleWidth(title), ...rows.map((row) => visibleWidth(row[column]!))),
   );
@@ -330,19 +315,6 @@ function warnAboutSkipped(contents: CacheContents): void {
       `${contents.foreign.length} file(s) in ${contents.directory} are not cache files and were left alone: ${contents.foreign.join(', ')}\n`,
     );
   }
-}
-
-/** Coarse age of one entry: the unit a reviewer cares about, nothing finer. */
-function formatAge(createdAt: string, now: number): string {
-  const ms = now - Date.parse(createdAt);
-  if (!Number.isFinite(ms)) return '-';
-  // A future timestamp is a clock difference between two machines, not an age.
-  if (ms < 60_000) return ms < 0 ? '0m' : '<1m';
-  const minutes = Math.floor(ms / 60_000);
-  if (minutes < 60) return `${minutes}m`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h`;
-  return `${Math.floor(hours / 24)}d`;
 }
 
 function formatBytes(bytes: number): string {

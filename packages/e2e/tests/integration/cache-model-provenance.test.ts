@@ -1,3 +1,5 @@
+import { emitReplayCode } from '../../src/cache/code.ts';
+import type { ActionTrace } from '../../src/cache/trace.ts';
 import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { expect, it } from 'vitest';
@@ -50,7 +52,7 @@ it.each(['same', 'different', 'legacy', 'null', 'invalid-model', 'missing-provid
         null: null, 'invalid-model': { provider: 'test', model: 1 }, 'missing-provider': { model: 'test' },
         'blank-model': { provider: 'test', model: ' ' }, 'oversized-provider': { provider: 'x'.repeat(301), model: 'A' }, 'oversized-model': { provider: 'test', model: 'x'.repeat(301) },
       };
-      writeFileSync(entry!.file, JSON.stringify({ ...entry!.entry, payload: { ...payload, ...(mode === 'legacy' ? {} : { recordedBy: invalid[mode] }) } }));
+      writeFileSync(entry!.file, emitReplayCode({ ...payload, ...(mode === 'legacy' ? {} : { recordedBy: invalid[mode] }) } as ActionTrace));
     }
     const before = readFileSync(entry!.file, 'utf8');
     const lines: string[] = [];

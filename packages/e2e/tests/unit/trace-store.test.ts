@@ -41,7 +41,7 @@ describe('FileCacheStore', () => {
     const { directory, store } = await makeStore();
     const written = await store.write(KEY, payload);
     expect(written?.bytes).toBeGreaterThan(0);
-    expect(await readdir(directory)).toEqual([`${KEY}.json`]);
+    expect(await readdir(directory)).toEqual([`${KEY}.replay.ts`]);
     const read = await store.read(KEY);
     expect(read.status).toBe('hit');
     expect(read.status === 'hit' && read.entry.payload).toEqual(payload);
@@ -56,9 +56,9 @@ describe('FileCacheStore', () => {
 
   it('fails closed on unreadable and oversized entries', async () => {
     const { directory, store } = await makeStore({ maxBytes: 4_096 });
-    await writeFile(path.join(directory, `${KEY}.json`), '{ torn', 'utf8');
+    await writeFile(path.join(directory, `${KEY}.replay.ts`), '{ torn', 'utf8');
     expect((await store.read(KEY)).status).toBe('invalid');
-    await writeFile(path.join(directory, `${KEY}.json`), `{"pad":"${'x'.repeat(8_192)}"}`, 'utf8');
+    await writeFile(path.join(directory, `${KEY}.replay.ts`), `{"pad":"${'x'.repeat(8_192)}"}`, 'utf8');
     expect((await store.read(KEY)).status).toBe('invalid');
   });
 
@@ -83,6 +83,6 @@ describe('FileCacheStore', () => {
     const readOnly = new FileCacheStore({ directory, maxBytes: MAX_CACHE_WIRE_BYTES, writable: false });
     await store.write(KEY, payload);
     await readOnly.delete(KEY);
-    expect(await readdir(directory)).toEqual([`${KEY}.json`]);
+    expect(await readdir(directory)).toEqual([`${KEY}.replay.ts`]);
   });
 });

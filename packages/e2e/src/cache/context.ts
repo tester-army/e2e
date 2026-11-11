@@ -247,7 +247,6 @@ export function createAgentCacheContext(options: {
     options.cache.store ??
     new FileCacheStore({
       directory: options.cache.dir,
-      ...(options.cache.format === undefined ? {} : { format: options.cache.format }),
       maxBytes: MAX_CACHE_WIRE_BYTES,
       writable: mode === 'read-write',
     });

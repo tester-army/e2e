@@ -1026,9 +1026,13 @@ With `--json`, it prints the `doctor-1` report to stdout: `{ "schemaVersion": "d
 
 #### `e2e cache`
 
-Inspects, migrates, diffs or clears the replay cache. Each subcommand loads the discovered
+Inspects, diffs or clears the replay cache. Each subcommand loads the discovered
 config or `--config <path>`, reads the directory a run would, and exits 0 on
 an empty store.
+
+Only `.replay.ts` recordings are read. Legacy `.json` files are left alone by
+all cache commands. Delete them and regenerate with `cache: 'read-write'`.
+There is no cache migration command.
 
 <CodeGroup>
 ```bash npm
@@ -1055,9 +1059,8 @@ bunx e2e cache ls --config packages/web/e2e.config.ts
 
 | Command | Prints |
 | --- | --- |
-| `e2e cache ls` | One row per entry: the test and target it was recorded for, the first 12 characters of its instruction digest, its age, and how many actions a replay would run (`(truncated)` when recording hit the action cap). Rows are grouped by test, then target. JSON entries sort by age; code entries have no creation timestamp and show `-`. |
+| `e2e cache ls` | One row per entry: the test and target it was recorded for, the first 12 characters of its instruction digest, how many actions a replay would run (`(truncated)` when recording hit the action cap). Rows sort by test, target, then key. Recordings have no creation timestamp. |
 | `e2e cache stats` | The store directory, the number of readable entries, their total size, and the number of unreadable files when there are any. |
-| `e2e cache migrate [--delete-json]` | Converts JSON to code without overwriting existing code. Preserves originals unless `--delete-json` is passed. Stop active runs first. Exit 1 when any entry is skipped or fails. |
 | `e2e cache diff` | Shows changes against Git's index. Stage new files with `git add -N` to include them. Requires a Git checkout. |
 | `e2e cache clear` | Deletes every cache file, then the directory when nothing else is left in it, and reports how many files went. |
 

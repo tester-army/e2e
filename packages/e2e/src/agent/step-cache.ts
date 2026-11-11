@@ -12,6 +12,7 @@
  * when replay performed no action.
  */
 
+import { cacheFileName } from '../cache/code.ts';
 import { deltaEvidenced, deltaMismatch, describeDelta, type DeltaMismatch } from '../cache/anchors.ts';
 import type { AgentCacheContext, ClaimedKey } from '../cache/context.ts';
 import { decideTraceReplay, opensWithNavigate, type TraceReplayMissReason } from '../cache/decide.ts';
@@ -302,7 +303,7 @@ export class StepTraceSession {
     const why = changes.length === 0 ? "the runner, the engine, the app, or the agent's context changed after it was recorded" : `${changes.join(', ')} changed after it was recorded`;
     throw new AgentError(
       'REPLAY_STALE',
-      `the recording of this step no longer replays: the store holds it under another cache ${previous.otherFormat ? 'format' : 'key'} (${previous.fileName}), since ${previous.otherFormat ? 'the cache format changed; select the existing format or convert JSON with e2e cache migrate' : why}, and cache.strict hands no step to the agent; ${strict.advice}`,
+      `the recording of this step no longer replays: the store holds it under another cache key (${cacheFileName(previous.keyHash)}), since ${why}, and cache.strict hands no step to the agent; ${strict.advice}`,
     );
   }
 

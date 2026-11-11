@@ -13,7 +13,7 @@ import type { TraceEntry } from '../../src/cache/trace.ts';
 import type { E2EConfig, ModelInstance } from '../../src/index.ts';
 import type { StepCacheInfo, StepRecord } from '../../src/run/steps.ts';
 import { installFakeLoopModel, nodeIdFor, type LoopCall, type LoopToolCall } from './fake-loop-model.ts';
-import { runExisting, resultByTitle, type FixtureProject, type RunOutcome } from './run-project.ts';
+import { resultByTitle, type FixtureProject, type RunOutcome } from './run-project.ts';
 
 export type Variant = 'record' | 'replay';
 
@@ -289,11 +289,11 @@ export function readEntries(project: FixtureProject): { readonly file: string; r
   const dir = path.join(project.dir, '.e2e', 'cache');
   if (!existsSync(dir)) return [];
   return readdirSync(dir)
-    .filter((name) => name.endsWith('.json') || name.endsWith('.replay.ts'))
+    .filter((name) => name.endsWith('.replay.ts'))
     .toSorted()
     .map((name) => {
       const file = path.join(dir, name);
-      return { file, entry: name.endsWith('.replay.ts') ? readReplayCode(readFileSync(file, 'utf8')) : JSON.parse(readFileSync(file, 'utf8')) as TraceEntry };
+      return { file, entry: readReplayCode(readFileSync(file, 'utf8')) };
     });
 }
 
@@ -341,20 +341,7 @@ export function expectMissed(step: StepRecord, reason: NonNullable<StepCacheInfo
   expect(step.cache).toMatchObject({ mode: 'missed', reason, replayedActions: 0, totalActions });
 }
 
-/** Rewrites a fixture recording in its original storage format. */
+/** Rewrites a fixture recording as replay declarations. */
 export function writeEntry(file: string, entry: TraceEntry): void {
-  writeFileSync(file, file.endsWith('.replay.ts') ? emitReplayCode(entry.payload) : JSON.stringify(entry), 'utf8');
-}
-
-/** Runs one parity suite against the selected format and proves it actually wrote that format. */
-export function cacheRunner(format: 'json' | 'code') {
-  return async (project: FixtureProject, options: Parameters<typeof runExisting>[1]) => {
-    const cache = options.config?.cache;
-    const configured = typeof cache === 'object' ? cache : cache === undefined ? {} : { mode: cache };
-    const outcome = await runExisting(project, { ...options, config: { ...options.config, cache: configured.store === undefined ? { ...configured, format } : configured } });
-    if (configured.store === undefined) {
-      for (const { file } of readEntries(project)) expect(file.endsWith(format === 'code' ? '.replay.ts' : '.json'), file).toBe(true);
-    }
-    return outcome;
-  };
+  writeFileSync(file, emitReplayCode(entry.payload), 'utf8');
 }

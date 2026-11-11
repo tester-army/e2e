@@ -89,10 +89,10 @@ describe('e2e cache ls', () => {
     await invoke('cache', 'ls');
     const lines = written(stdoutSpy).trimEnd().split('\n');
     expect(process.exitCode).toBe(0);
-    expect(lines[0]).toMatch(/^TEST +TARGET +INSTRUCTION +AGE +ACTIONS$/);
+    expect(lines[0]).toMatch(/^TEST +TARGET +INSTRUCTION +ACTIONS$/);
     // Sorted by test, so billing precedes signup whatever the file order was.
-    expect(lines[1]).toMatch(/^tests\/billing\.e2e\.ts::upgrades +safari +eeeeeeeeeeee +<1m +1$/);
-    expect(lines[2]).toMatch(/^tests\/signup\.e2e\.ts::signs up +web +dddddddddddd +<1m +3$/);
+    expect(lines[1]).toMatch(/^tests\/billing\.e2e\.ts::upgrades +safari +eeeeeeeeeeee +1$/);
+    expect(lines[2]).toMatch(/^tests\/signup\.e2e\.ts::signs up +web +dddddddddddd +3$/);
   });
 
   it('marks a recording the action cap cut short', async () => {
@@ -116,10 +116,10 @@ describe('e2e cache ls', () => {
     expect(process.exitCode).toBe(0);
     expect(lines).toHaveLength(3);
     expect(lines.find((line) => line.startsWith(asciiId))).toBe(
-      `${asciiId}${' '.repeat(asciiPadding)}web     dddddddddddd  <1m  1`,
+      `${asciiId}${' '.repeat(asciiPadding)}web     dddddddddddd  1`,
     );
     expect(lines.find((line) => line.startsWith(testId))).toBe(
-      `${testId}${' '.repeat(padding)}web     eeeeeeeeeeee  <1m  1`,
+      `${testId}${' '.repeat(padding)}web     eeeeeeeeeeee  1`,
     );
   });
 
@@ -131,7 +131,7 @@ describe('e2e cache ls', () => {
 
   it('counts a file the store cannot read as unreadable, not as an entry', async () => {
     mkdirSync(path.join(root, CACHE_DIR), { recursive: true });
-    writeFileSync(path.join(root, CACHE_DIR, `${'c'.repeat(64)}.json`), '{ not json', 'utf8');
+    writeFileSync(path.join(root, CACHE_DIR, `${'c'.repeat(64)}.replay.ts`), '{ not json', 'utf8');
     await invoke('cache', 'ls');
     expect(written(stdoutSpy)).toContain('no replay cache entries in');
     expect(written(stderrSpy)).toContain('are not readable trace-1 entries');
@@ -180,8 +180,8 @@ describe('e2e cache clear', () => {
   it('removes an unreadable entry and a crashed writer\u2019s temporary file', async () => {
     const directory = path.join(root, CACHE_DIR);
     mkdirSync(directory, { recursive: true });
-    writeFileSync(path.join(directory, `${'c'.repeat(64)}.json`), 'torn', 'utf8');
-    writeFileSync(path.join(directory, `${'d'.repeat(64)}.json.0123456789abcdef.tmp`), '{}', 'utf8');
+    writeFileSync(path.join(directory, `${'c'.repeat(64)}.replay.ts`), 'torn', 'utf8');
+    writeFileSync(path.join(directory, `${'d'.repeat(64)}.replay.ts.0123456789abcdef.tmp`), '{}', 'utf8');
     await invoke('cache', 'clear');
     expect(written(stdoutSpy)).toContain('cleared 2 file(s)');
   });
@@ -224,11 +224,9 @@ describe('e2e cache configuration', () => {
   });
 });
 
-it('migrates code, lists both formats, displays diffs and clears both', async () => {
+it('lists code recordings, displays diffs and clears them', async () => {
   const keyHash = 'a'.repeat(64);
   await seed([{ keyHash, trace: trace(undefined, 1) }]);
-  await invoke('cache', 'migrate');
-  expect(written(stdoutSpy)).toContain('converted');
   expect(readdirSync(path.join(root, CACHE_DIR))).toContain(`${keyHash}.replay.ts`);
   execFileSync('git', ['init', root]);
   execFileSync('git', ['-C', root, 'add', '-N', '.']);
@@ -238,14 +236,19 @@ it('migrates code, lists both formats, displays diffs and clears both', async ()
   await invoke('cache', 'ls');
   expect(written(stdoutSpy)).toContain('ACTIONS');
   await invoke('cache', 'clear');
-  expect(written(stdoutSpy)).toContain('cleared 2 file(s)');
+  expect(written(stdoutSpy)).toContain('cleared 1 file(s)');
 });
 
-it('reports incomplete migration with exit 1 and leaves invalid originals intact', async () => {
-  await seed([{ keyHash: 'a'.repeat(64), trace: trace(undefined, 1) }]);
-  writeFileSync(path.join(root, CACHE_DIR, `${'b'.repeat(64)}.json`), '{}');
-  await invoke('cache', 'migrate', '--delete-json');
-  expect(process.exitCode).toBe(1);
-  expect(written(stdoutSpy)).toContain('failed');
-  expect(readdirSync(path.join(root, CACHE_DIR)).toSorted()).toEqual([`${'a'.repeat(64)}.replay.ts`, `${'b'.repeat(64)}.json`]);
+it('ignores legacy JSON without reading or clearing it', async () => {
+  const directory = path.join(root, CACHE_DIR);
+  mkdirSync(directory, { recursive: true });
+  const legacy = `${'a'.repeat(64)}.json`;
+  writeFileSync(path.join(directory, legacy), 'not valid JSON');
+  await invoke('cache', 'stats');
+  expect(process.exitCode).toBe(0);
+  expect(written(stdoutSpy)).toMatch(/entries\s+0/u);
+  expect(written(stderrSpy)).not.toContain('unreadable');
+  await invoke('cache', 'clear');
+  expect(process.exitCode).toBe(0);
+  expect(readdirSync(directory)).toEqual([legacy]);
 });

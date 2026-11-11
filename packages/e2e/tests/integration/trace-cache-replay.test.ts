@@ -17,11 +17,10 @@ import type { E2EConfig } from '../../src/index.ts';
 import { loopCalls } from '../helpers/fake-loop-model.ts';
 import { assertValidReport } from '../helpers/report-schema.ts';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
-import { createProject, runExisting as runRaw, webTarget, type FixtureProject, type RunOutcome } from '../helpers/run-project.ts';
+import { createProject, runExisting, webTarget, type FixtureProject, type RunOutcome } from '../helpers/run-project.ts';
 import {
   actSteps,
   cacheConfig,
-  cacheRunner,
   entriesFor,
   expectMissed,
   expectPassed,
@@ -37,8 +36,6 @@ import {
   type Flow,
 } from '../helpers/trace-cache.ts';
 
-const format = process.env.E2E_TEST_CACHE_FORMAT === 'code' ? 'code' : 'json';
-const runExisting = cacheRunner(format);
 
 const FLOWS_FILE = 'tests/flows.e2e.ts';
 
@@ -418,18 +415,3 @@ describe('trace cache: --repeat-each records on the first repeat and replays on 
     expect(readEntries(project)).toHaveLength(1);
   }, 120_000);
 });
-
-it('strict code mode rejects an unmigrated JSON recording without calling the model', async () => {
-  const app = await startFixtureApp();
-  const flow = flowByTitle('increments the counter');
-  const project = createProject({ [FLOWS_FILE]: flowsSuite([flow], 'record') });
-  try {
-    const options = { appUrl: app.url, config: cacheConfig(flowsModel()) };
-    expectPassed(await cacheRunner('json')(project, options));
-    const outcome = await runRaw(project, { ...options, config: { ...cacheConfig(flowsModel()), cache: { mode: 'read-only', format: 'code', strict: true } } });
-    expect(outcome.exitCode).not.toBe(0);
-    expect(onlyActStep(outcome, flow.title).error?.code).toBe('REPLAY_STALE');
-    expect(onlyActStep(outcome, flow.title).error?.message).toContain('cache format');
-    expect(loopCalls).toHaveLength(0);
-  } finally { project.cleanup(); await app.close(); }
-}, 120_000);

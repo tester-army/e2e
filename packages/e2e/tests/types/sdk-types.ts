@@ -196,6 +196,8 @@ customExecutorObservation.keyboardVisible satisfies boolean | undefined;
 // @ts-expect-error targets is required
 ({ cache: 'read-write' }) satisfies E2EConfig;
 ({ targets, cache: 'read-write' }) satisfies E2EConfig;
+// @ts-expect-error the file cache has no format switch
+({ targets, cache: { format: 'code' } }) satisfies E2EConfig;
 ({ targets, failOnSkippedFailure: true }) satisfies E2EConfig;
 ({ targets, maxDuration: 900_000 }) satisfies E2EConfig;
 ({ targets, cache: { mode: 'read-only', store: remoteStore, dir: 'shared-cache' } }) satisfies E2EConfig;
