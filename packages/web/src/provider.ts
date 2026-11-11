@@ -117,6 +117,8 @@ export interface BrowserProviderDownloads {
 
 /** Identifies the test's actual page, including pages in worker-scoped incognito contexts. */
 export interface BrowserPageContext extends BrowserReleaseContext {
+  /** Aborts when the attempt's page session closes. */
+  readonly signal: AbortSignal;
   readonly attemptId: string;
   /** CDP target ID of the page the attempt drives. */
   readonly targetId: string;
