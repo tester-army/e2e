@@ -351,7 +351,8 @@ so a cold boot on CI is never charged against `launchTimeout`.
 - On iOS, `prepare` starts the automation runner on every device with
   agent-device's `prepare ios-runner`, so its first launch is paid before the
   first test.
-- Then it opens the target's `app.bundleId` once per device. A build the
+- Then, on both platforms, it opens the target's `app.bundleId` once per
+  device. A build the
   suite installs itself comes up with the first `app.open()`, which
   relaunches it fresh whenever a test asks.
 - A device that cannot boot, or a runner that is busy, wedged, or past its
@@ -374,7 +375,8 @@ included. A cold iOS simulator:
   above.
 
 An ordinary app-open failure is logged on a line of its own, and the run goes
-on:
+on. That line prints before the device's timing line, which still lists the
+failed `open <app>` step:
 
 ```text
 ℹ E93FA5E5-1592-43C7-9149-F1B5FE0AD5F5: dev.e2e.not.installed did not open (open dev.e2e.not.installed failed: Simulator device failed to launch dev.e2e.not.installed. Hint: The app bundle is not installed on this simulator. Run install before open.); the first attempt opens it
