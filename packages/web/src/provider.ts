@@ -191,7 +191,6 @@ export function asBrowserProvider(browser: object): BrowserProvider {
       throw new ConfigurationError('INVALID_CONFIG', `web: browser provider "${candidate.name}" must implement ${member}()`);
     }
   }
-
   for (const member of ['record', 'sweep', 'cdpHeaders'] as const) {
     if (candidate[member] !== undefined && typeof candidate[member] !== 'function') {
       throw new ConfigurationError('INVALID_CONFIG', `web: browser provider "${candidate.name}" has a ${member} that is not a function`);

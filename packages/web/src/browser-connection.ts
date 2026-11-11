@@ -115,9 +115,7 @@ export async function connectCdp({ endpoint, headers }: CdpTarget, timeoutMs: nu
   await registerSelectorEngines();
   const { chromium } = await loadPlaywright();
   const options: ConnectOverCDPOptions = { timeout: timeoutMs };
-
   if (headers !== undefined) options.headers = { ...headers };
-
   try {
     return await chromium.connectOverCDP(endpoint, options);
   } catch (cause) {

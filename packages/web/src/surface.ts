@@ -455,7 +455,6 @@ export class PlaywrightSurface {
         });
       }
       const browser = await connectCdp(target, BROWSER_LAUNCH_TIMEOUT_MS);
-
       if (signal.aborted) {
         await browser.close().catch(() => undefined);
         throw cancelled('browser connect cancelled');

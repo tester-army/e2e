@@ -168,7 +168,6 @@ export class AttemptSession {
           const context = await browser.newContext(this.options.contextOptions);
           return { browser, context, page: null };
         }
-
         const binding = await attachPersistent(persistent.provision, remaining());
         const { usedContexts } = persistent;
         if (usedContexts === undefined) return binding;
@@ -208,7 +207,6 @@ export class AttemptSession {
         this.observed = false;
         await this.transition(previous, remaining(), async () => {
           await this.video.pageClosing();
-
           return attachPersistent(persistent.reconnect, remaining(), previous.identity);
         }, true);
       });
@@ -297,7 +295,6 @@ export class AttemptSession {
       this.check(token);
       await this.video.pageOpened(page);
       this.check(token);
-
       this.state = { kind: 'ready', binding: { ...binding, page, ...(identity === undefined ? {} : { identity }) } };
       this.adopt(page, undefined, identity?.target).shownAt = ++this.shown;
       return page;
