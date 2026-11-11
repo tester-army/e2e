@@ -115,13 +115,13 @@ export interface Device {
    * work on an iOS simulator; `fingerprint` works on an Android emulator and
    * on a phone that exposes `cmd fingerprint`. Any other pair is
    * `UNSUPPORTED_CAPABILITY`. An Android app's prompt reads the touch
-   * only once the emulator has a screen lock and an enrolled fingerprint,
+   * only once the device has a screen lock and an enrolled fingerprint,
    * which `enrollBiometrics` cannot set up.
    */
   setBiometrics(sensor: BiometricSensor, result: 'match' | 'nonmatch'): Promise<void>;
   /**
-   * Enrolls or unenrolls the simulator's Face ID or Touch ID. On Android it is
-   * `UNSUPPORTED_CAPABILITY`.
+   * Enrolls or unenrolls the simulator's Face ID or Touch ID. On Android or a
+   * physical iPhone it is `UNSUPPORTED_CAPABILITY`.
    */
   enrollBiometrics(sensor: 'faceid' | 'touchid', enrolled: boolean): Promise<void>;
   /**
