@@ -769,7 +769,7 @@ message and hint, never `LAUNCH_TIMEOUT`, `ACTION_FAILED`, or
 **An action that outlives its timeout.** A tap, fill, key, swipe, or
 `back` gets its `timeout` (default `actionTimeout`). If the device doesn't
 answer in time, the step fails with `ACTION_FAILED` and isn't retried: the
-input may have landed. A pending tap, double tap, focus or check is cancelled
+input may have landed. A pending tap, double tap, focus, check or uncheck is cancelled
 when its timeout expires or the run is interrupted. Input already sent to
 the device may still finish.
 A `longPress` that holds at least as long as the
