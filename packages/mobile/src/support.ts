@@ -1,6 +1,6 @@
 /** Shared helpers for the agent-device engine: error constructors, filenames, PNG headers, gestures, the screen location and size. */
 
-import type { CaptureScreenshotResult } from 'agent-device';
+import { isAgentDeviceError, type CaptureScreenshotResult } from 'agent-device';
 import { EngineError, withTimeout, type Momentum, type ScrollDirection, type ViewportSize } from 'e2e/engine';
 
 export interface Point {
@@ -54,8 +54,8 @@ export class InputBudget {
    * at least as long as the budget left could only be cut off mid-gesture, so
    * it is refused unsent. An input that does not answer in time may have
    * landed, so it is `ACTION_MAY_HAVE_COMMITTED` and the runner never repeats it.
-   * Press requests also receive the deadline and caller cancellation through
-   * the SDK signal, so readiness polling cannot dispatch after either ends.
+   * Press requests receive caller cancellation and are cancelled when this
+   * wait expires, including its existing acknowledgement allowance.
    */
   send<T>(dispatch: (signal: AbortSignal) => Promise<T>, holdMs = 0, signal?: AbortSignal): Promise<T> {
     const remaining = this.remainingMs();
@@ -72,21 +72,18 @@ export class InputBudget {
     if (signal?.aborted) return Promise.reject(cancelled(`${this.label} cancelled before it was sent`));
     const answerMs = Math.max(remaining, MIN_ANSWER_MS);
     const deadline = new AbortController();
-    // The answer allowance must not extend a pending press's dispatch deadline.
-    const timer = setTimeout(() => deadline.abort(), Math.ceil(remaining));
     const requestSignal = signal === undefined ? deadline.signal : AbortSignal.any([signal, deadline.signal]);
-    let pending: Promise<T>;
-    try {
-      pending = this.track(dispatch(requestSignal));
-    } catch (cause) {
-      clearTimeout(timer);
-      throw cause;
-    }
+    const pending = this.track(dispatch(requestSignal));
     this.sent = true;
-    return withTimeout(pending, answerMs, () => this.maybeCommitted()).catch((cause: unknown) => {
-      if (deadline.signal.aborted && signal?.aborted !== true) throw this.maybeCommitted();
+    return withTimeout(pending, answerMs, () => {
+      deadline.abort();
+      return this.maybeCommitted();
+    }).catch((cause: unknown) => {
+      if (deadline.signal.aborted && signal?.aborted !== true && isAgentDeviceError(cause) && cause.details?.reason === 'request_canceled') {
+        throw this.maybeCommitted();
+      }
       throw cause;
-    }).finally(() => clearTimeout(timer));
+    });
   }
 
   /**

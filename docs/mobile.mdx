@@ -769,8 +769,10 @@ message and hint, never `LAUNCH_TIMEOUT`, `ACTION_FAILED`, or
 **An action that outlives its timeout.** A tap, fill, key, swipe, or
 `back` gets its `timeout` (default `actionTimeout`). If the device doesn't
 answer in time, the step fails with `ACTION_FAILED` and isn't retried: the
-input may have landed. Presses still waiting for native readiness are
-cancelled at their timeout or on interruption. A `longPress` that holds at least as long as the
+input may have landed. Press requests are cancelled when the adapter stops
+waiting, including its minimum 250 ms acknowledgement allowance, or on interruption.
+This stops native readiness polling for an input that has not dispatched.
+A `longPress` that holds at least as long as the
 time left is refused before it's sent; raise its `timeout`. Snapshots and
 screenshots run within the timeout of the call that takes them, so a device
 that stops answering fails the step with `ACTION_FAILED` instead of holding

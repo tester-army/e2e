@@ -2,4 +2,4 @@
 "@e2e-dev/mobile": patch
 ---
 
-Cancel pending agent-device press requests when their caller is interrupted or their input budget expires. A press waiting for native readiness can no longer dispatch after the step has ended. Inputs that already dispatched keep their existing possibly-committed timeout behavior.
+Cancel pending agent-device press requests when their caller is interrupted or the adapter stops waiting for a response. This stops native readiness polling after a failed step while preserving the existing minimum 250 ms acknowledgement allowance and possibly-committed timeout behavior.
