@@ -953,3 +953,27 @@ it('accepts endpoint and handshake headers together from a connect resolver', as
   expect(connectCdp).toHaveBeenCalledWith(target, expect.any(Number));
   await worker.dispose(cleanup());
 });
+
+it.each([false, true])('retains attempt CDP credentials on reconnect, dedicated endpoint %s', async (reconnect) => {
+  const toy = provider({ scope: 'attempt', reconnect });
+  const headers = { Authorization: 'synthetic-reconnect-token' };
+  const cdpHeaders = vi.fn(async () => headers);
+  const cloud = { ...toy.impl, cdpHeaders };
+  const browsers: ReturnType<typeof fakeBrowser>[] = [];
+  vi.mocked(connectCdp).mockImplementation(async () => {
+    const browser = fakeBrowser('same-browser');
+    browsers.push(browser);
+    return browser.browser;
+  });
+  const { runner, env } = await prepared(cloud, 1);
+  const worker = new PlaywrightSurface({ browser: cloud });
+  await worker.init(initInfo(0, env));
+  await worker.startAttempt(attempt('a1'));
+  browsers[0]!.drop();
+  await expect(worker.guard(operation(), 'probe', async () => 'recovered')).resolves.toBe('recovered');
+  expect(connectCdp).toHaveBeenNthCalledWith(2, { endpoint: reconnect ? 'wss://0.example/reconnect' : 'wss://0.example', headers }, expect.any(Number));
+  expect(cdpHeaders).toHaveBeenCalledTimes(2);
+  expect(toy.acquired).toHaveLength(1);
+  await worker.dispose(cleanup());
+  await runner.finish(finishInfo());
+});
