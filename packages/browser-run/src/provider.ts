@@ -26,7 +26,7 @@ function credentials(env: BrowserRequest['env']) {
 
   if (/[\r\n]/.test(token)) throw new Error('CLOUDFLARE_API_TOKEN must not contain line breaks');
 
-  return { base: `${API}/accounts/${account}/browser-rendering/devtools/browser`, headers: { Authorization: `Bearer ${token}` } };
+  return { account, base: `${API}/accounts/${account}/browser-rendering/devtools/browser`, headers: { Authorization: `Bearer ${token}` } };
 }
 
 interface SessionResult {
@@ -40,16 +40,16 @@ function isSessionResult(value: unknown): value is SessionResult {
 }
 
 /** Resolves the same private journal independently in the parent and every worker. */
-function journal(context: BrowserReleaseContext): LeaseJournal {
-  return new LeaseJournal(context.env.CLOUDFLARE_ACCOUNT_ID!.trim(), context.runId, context.targetName);
+function journal(account: string, context: BrowserReleaseContext): LeaseJournal {
+  return new LeaseJournal(account, context.runId, context.targetName);
 }
 
 /** Closes only the requested session; an expired or already deleted session is already released. */
 async function release(lease: BrowserLease, context: BrowserReleaseContext): Promise<void> {
-  const { base, headers } = credentials(context.env);
+  const { account, base, headers } = credentials(context.env);
   const response = await request(`${base}/${encodeURIComponent(lease.id)}`, 'DELETE', headers, context.signal);
   await response.body?.cancel();
-  await journal(context).forget(lease.id);
+  await journal(account, context).forget(lease.id);
 }
 
 /**
@@ -70,7 +70,7 @@ export function browserRun(options: BrowserRunOptions = {}): BrowserProvider {
     name: 'browser-run',
     ...(scope === undefined ? {} : { scope }),
     async acquire(context): Promise<BrowserLease> {
-      const { base, headers } = credentials(context.env);
+      const { account, base, headers } = credentials(context.env);
       const url = new URL(base);
       url.searchParams.set('keep_alive', String(keepAlive));
 
@@ -80,7 +80,7 @@ export function browserRun(options: BrowserRunOptions = {}): BrowserProvider {
       const lease = { id: result.sessionId, cdpEndpoint: `${base.replace('https:', 'wss:')}/${result.sessionId}` };
 
       try {
-        await journal(context).remember(lease.id);
+        await journal(account, context).remember(lease.id);
       } catch (cause) {
         await release(lease, { ...context, signal: AbortSignal.timeout(10_000) });
         throw new Error('Cloudflare Browser Run could not journal the session; session released', { cause });
@@ -100,8 +100,8 @@ export function browserRun(options: BrowserRunOptions = {}): BrowserProvider {
       return credentials(context.env).headers;
     },
     async sweep(context) {
-      credentials(context.env);
-      const receipts = journal(context);
+      const { account } = credentials(context.env);
+      const receipts = journal(account, context);
       const ids = await receipts.outstanding();
       const deleted: string[] = [];
       const failed: string[] = [];
