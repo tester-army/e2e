@@ -206,9 +206,15 @@ To keep the checks predictable:
 ## Run only affected tests
 
 On a pull request, pass `--changed-since` so a [test filter](/filters) can
-leave out the tests the change is unlikely to affect. Without the flag, as
-on `main`, the whole suite runs. See
-[Add the decision filter](/filters#add-the-decision-filter).
+leave out the tests the change is unlikely to affect. When the filter scores
+tests, as the decision filter does, each target starts the files of the
+likeliest to fail first. Without the flag, as on `main`, the whole suite
+runs. See [Add the decision filter](/filters#add-the-decision-filter).
+
+With the CI default of one worker, only the relevance bands order files and
+collection order breaks ties: e2e reads the
+[timings history](#cache-the-timings-history) only with more than one worker.
+See [Start the likeliest first](/filters#start-the-likeliest-first).
 
 ## Cache the timings history
 

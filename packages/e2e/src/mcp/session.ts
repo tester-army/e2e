@@ -48,6 +48,8 @@ const SESSION_IDLE_MS = 30 * 60 * 1000;
 /** How long the attempt outlives its step, so a step that hit the TTL is still closed in order. */
 const CLOSE_GRACE_MS = 60 * 1000;
 const SESSION_INSTRUCTION = 'Interactive session: a coding agent drives the app over MCP.';
+/** Where an agent reads how to write a test, said in the server's instructions and every session's opening. */
+export const READ_WRITING_GUIDE = 'Before you write or edit a test, read the writing-tests guide: the resource e2e://guide/writing-tests, or npx e2e guide writing-tests in a shell.';
 
 interface LiveSession {
   readonly id: string;
@@ -516,6 +518,7 @@ export class SessionHost {
     lines.push(`Tools (run one with call {tool, args}; tools {tool} shows a tool's arguments):`, ...this.catalogLines(live));
     lines.push(
       'Node ids ("n42") are valid only for the newest observation; every action reports what changed on screen and the test line that repeats it (test_lines returns them all), and observe shows the whole screen. Call close_session when you are done.',
+      READ_WRITING_GUIDE,
     );
     return `${lines.join('\n')}\n\n${screen}`;
   }

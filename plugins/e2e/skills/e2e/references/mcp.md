@@ -122,12 +122,14 @@ Resources: `e2e://guide` and `e2e://guide/<topic>` hold this skill.
 
 ## Workflow
 
-1. Before `open_session`, create `tests/<feature>.e2e.ts` (topic
-   `writing-tests`, "Structure") with its imports, the feature's
-   `describe(...)`, a `test(...)` titled with the one behavior it verifies,
-   and the call that opens the screen it covers, such as
-   `app.open('/settings/members')`. A setup test (`test.setup`) goes
-   top-level instead, outside any `describe`.
+1. Read topic `writing-tests` before you write or edit any test
+   (`e2e://guide/writing-tests`, or `npx e2e guide writing-tests`); the
+   server's instructions and every `open_session` result say so too. Then,
+   before `open_session`, create `tests/<feature>.e2e.ts` (its "Structure"
+   section) with its imports, the feature's `describe(...)`, a `test(...)`
+   titled with the one behavior it verifies, and the call that opens the
+   screen it covers, such as `app.open('/settings/members')`. A setup test
+   (`test.setup`) goes top-level instead, outside any `describe`.
    Then `open_session`, which opens the app, and go to that screen: on the
    web, `call {tool: "navigate", args: {url: "<the path app.open names>"}}`;
    on a device, the shortest path from the launch screen. Actions that only

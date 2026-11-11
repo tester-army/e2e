@@ -14,6 +14,7 @@ import { createFakeEngine, FAKE_APP, FAKE_APP_URL, type FakeEngineHandle } from 
 import { engineConfig } from '../helpers/fixture-config.ts';
 import { installFakeModel, judgment } from '../helpers/fake-model.ts';
 import { assertValidReport } from '../helpers/report-schema.ts';
+import { freePort } from '../helpers/free-port.ts';
 import { resultByTitle, runProject } from '../helpers/run-project.ts';
 import type { E2EConfig } from '../../src/index.ts';
 import { TestError } from '../../src/engine/index.ts';
@@ -463,6 +464,48 @@ test.describe('wizard', { serial: true, retries: 1 }, () => {
     },
     60_000,
   );
+
+  it.each([
+    {
+      name: 'the configured command',
+      reuseExisting: false,
+      says: ["check the target's app.command output and app.url", 'Set app.command.log if output is not captured'],
+    },
+    {
+      name: 'a process it may not have started under reuseExisting',
+      reuseExisting: true,
+      says: ['With reuseExisting the runner may use a process it did not start', 'app.command.log captures only a command the runner started'],
+    },
+  ])('points at $name when a managed app navigation is refused', async ({ reuseExisting, says }) => {
+    const port = await freePort();
+    const url = `http://127.0.0.1:${port}`;
+    const refused = createFakeEngine({
+      onNavigate() {
+        throw engineFailure('ENGINE_FAILURE', 'navigation failed: net::ERR_CONNECTION_REFUSED');
+      },
+    });
+    const { outcome, project } = await runProject({ 'tests/refused.e2e.ts': PASSING_TEST }, {
+      appUrl: url,
+      config: engineConfig(refused.engine, {
+        targets: [{ name: 'managed', platform: 'fake', engine: refused.engine,
+          app: { url, command: {
+            executable: process.execPath,
+            args: ['-e', `require('node:http').createServer((_request, response) => response.end('ready')).listen(${port}, '127.0.0.1');`],
+            shutdownTimeout: 1000,
+            ...(reuseExisting ? { reuseExisting } : {}),
+          } },
+        }],
+      }),
+    });
+    try {
+      const error = resultByTitle(outcome, 'taps a node').attempts[0]?.error;
+      expect(error?.code).toBe('APP_UNREACHABLE');
+      for (const text of says) expect(error?.message).toContain(text);
+      expect(error?.message).not.toContain('give the target an app.command');
+    } finally {
+      project.cleanup();
+    }
+  }, 60_000);
 
   it(
     'maps a hung startAttempt to an infrastructure LAUNCH_TIMEOUT',
