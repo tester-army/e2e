@@ -46,13 +46,13 @@ export async function request(url: string, method: 'POST' | 'DELETE', headers: R
 
     if (response.status === 429 && retry < 3) {
       const delay = retryDelay(response.headers.get('Retry-After'), retry);
-      await response.body?.cancel();
+      await response.body?.cancel().catch(() => undefined);
       await pause(delay, signal);
       continue;
     }
 
     if (!response.ok && !(method === 'DELETE' && response.status === 404)) {
-      await response.body?.cancel();
+      await response.body?.cancel().catch(() => undefined);
 
       const hint = response.status === 401 || response.status === 403
         ? '; check the account and Browser Rendering - Edit token permission'

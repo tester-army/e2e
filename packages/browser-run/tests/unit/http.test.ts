@@ -63,3 +63,14 @@ it('does not reset the acquisition budget after a retry', async () => {
   await pending;
   expect(fetch).toHaveBeenCalledTimes(2);
 });
+
+it('retries a 429 even when its response stream has already failed', async () => {
+  const body = new ReadableStream({ start(controller) { controller.error(new Error('body stream failed')); } });
+  const fetch = vi.fn().mockResolvedValueOnce(new Response(body, { status: 429, headers: { 'Retry-After': '0' } }))
+    .mockResolvedValueOnce(Response.json({ sessionId: 'ok' }));
+  vi.stubGlobal('fetch', fetch);
+  const pending = call();
+  await vi.advanceTimersByTimeAsync(1);
+  expect((await pending).ok).toBe(true);
+  expect(fetch).toHaveBeenCalledTimes(2);
+});
