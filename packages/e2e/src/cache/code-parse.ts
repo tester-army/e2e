@@ -5,7 +5,7 @@ import { replay } from '../replay.ts';
 /** Rejects expressions outside the literal grammar before invoking the native parser. */
 function preflight(source: string): void {
   if (source.length > 1_048_576) throw new Error('replay source exceeds 1 MiB');
-  const token = /\s+|\/\/[^\n\r]*|\/\*[\s\S]*?\*\/|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|[A-Za-z_$][\w$]*|[{}()[\],.:;]/y;
+  const token = /\s+|\/\/[^\n\r\u2028\u2029]*|\/\*[\s\S]*?\*\/|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|[A-Za-z_$][\w$]*|[{}()[\],.:;]/y;
   let depth = 0;
   for (let offset = 0; offset < source.length;) {
     token.lastIndex = offset;

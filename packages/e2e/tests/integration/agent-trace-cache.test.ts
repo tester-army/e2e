@@ -106,7 +106,7 @@ function entryFileState(project: FixtureProject): { bytes: string; mtimeMs: numb
 }
 
 describe.each(format === 'json' ? ['json', 'code'] as const : ['code'] as const)('trace cache: divergence hands the step over mid-step (%s)', (selectedFormat) => {
-  const runExisting = cacheRunner(selectedFormat);
+  const runSelected = cacheRunner(selectedFormat);
   let app: FixtureApp;
   let project: FixtureProject;
   let secondRun: RunOutcome;
@@ -124,7 +124,7 @@ describe.each(format === 'json' ? ['json', 'code'] as const : ['code'] as const)
         cache: 'read-write' as const,
       },
     });
-    await runExisting(project, options(first));
+    await runSelected(project, options(first));
     // Sabotage the second recorded action's descriptor: relocation must fail
     // there, after the first action already replayed against the live page.
     rewriteOnlyEntry(project, (payload) => {
@@ -132,7 +132,7 @@ describe.each(format === 'json' ? ['json', 'code'] as const : ['code'] as const)
       if (firstTap === undefined || secondTap?.name !== 'tap') throw new Error(`expected two taps, got ${JSON.stringify(payload.actions)}`);
       return { ...payload, actions: [firstTap, { ...secondTap, target: { ...secondTap.target, name: 'No Such Button' } }] };
     });
-    secondRun = await runExisting(project, options(second));
+    secondRun = await runSelected(project, options(second));
   }, 240_000);
 
   afterAll(async () => {

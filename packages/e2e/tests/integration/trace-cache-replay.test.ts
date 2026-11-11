@@ -426,7 +426,7 @@ it('strict code mode rejects an unmigrated JSON recording without calling the mo
   try {
     const options = { appUrl: app.url, config: cacheConfig(flowsModel()) };
     expectPassed(await cacheRunner('json')(project, options));
-    const outcome = await runRaw(project, { ...options, config: { ...options.config, cache: { mode: 'read-only', format: 'code', strict: true } } });
+    const outcome = await runRaw(project, { ...options, config: { ...cacheConfig(flowsModel()), cache: { mode: 'read-only', format: 'code', strict: true } } });
     expect(outcome.exitCode).not.toBe(0);
     expect(onlyActStep(outcome, flow.title).error?.code).toBe('REPLAY_STALE');
     expect(onlyActStep(outcome, flow.title).error?.message).toContain('cache format');

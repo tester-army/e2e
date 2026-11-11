@@ -94,6 +94,7 @@ it('rejects prototype mutation, duplicate keys, spreads, getters and deep expres
     expect(() => readReplayCode(source.replace('"summary": "done"', replacement))).toThrow();
   }
   expect(() => readReplayCode('('.repeat(10000))).toThrow('64');
+  expect(() => readReplayCode('// comment\u2028' + '('.repeat(10000))).toThrow('64');
   expect(() => readReplayCode(source + '\nprocess.exit()')).toThrow();
   expect(Object.prototype).not.toHaveProperty('polluted');
 });
