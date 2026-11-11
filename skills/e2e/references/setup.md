@@ -482,6 +482,6 @@ installed CLI with `e2e init --yes --skills none --mcp .codex/config.toml`.
 
 
 For Cloudflare Browser Run, install `@e2e-dev/browser-run` and use
-`web({ browser: browserRun() })`. Read `docs/integrations/browser-run.mdx`
+`web({ browser: browserRun() })`. Read [the integration guide](https://e2e.com/docs/integrations/browser-run)
 for account credentials, scopes, and current limitations. Hosted browsers
 need a reachable app URL; the runner's localhost is not reachable remotely.
