@@ -248,6 +248,8 @@ export interface BrowserProvider {
   readonly scope?: 'worker' | 'attempt';
   acquire(request: BrowserRequest): Promise<BrowserLease>;
   release(lease: BrowserLease, context: BrowserReleaseContext): Promise<void>;
+  /** Optional: resolves CDP handshake headers from the worker's environment. */
+  cdpHeaders?(lease: BrowserLease, context: BrowserRequest): Readonly<Record<string, string>> | Promise<Readonly<Record<string, string>>>;
   /** Optional: the service's own recording of the browser, in the worker, for an attempt that records video. */
   record?(lease: BrowserLease, context: ProviderRecordContext): Promise<ProviderRecording>;
   /** Optional: serves `browser.waitForDownload` for a browser on another machine. */
@@ -268,8 +270,6 @@ export interface BrowserLease {
   readonly id: string;
   /** `ws://`, `wss://`, or `http://` DevTools endpoint to attach to over CDP. */
   readonly cdpEndpoint: string;
-  /** Headers for the CDP handshake only, separate from page request headers. */
-  readonly cdpHeaders?: Readonly<Record<string, string>>;
   /** Endpoint to reattach to the same browser after a transport drop; per-attempt leases only. */
   readonly reconnectEndpoint?: string;
 }
@@ -282,9 +282,13 @@ and a `log` that reaches the reporter. Read tokens from `request.env`, not
 `process.env`.
 
 A lease is JSON data. `release` gets back the object `acquire` returned, so
-a provider can keep its own fields on it. Only `id`, `cdpEndpoint`, `cdpHeaders`, and
+a provider can keep its own fields on it. Only `id`, `cdpEndpoint`, and
 `reconnectEndpoint` travel to the worker, so key anything a worker uses,
 such as a recording, on `lease.id`.
+
+For an authenticated CDP connection, implement `cdpHeaders(lease, request)`
+and read credentials from `request.env` in the worker. Headers never travel
+in lease JSON and do not become page request headers.
 
 
 Against a typical session API, a provider sends three requests: create a

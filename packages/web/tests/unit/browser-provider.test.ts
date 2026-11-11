@@ -929,29 +929,21 @@ describe('recording', () => {
 });
 
 
-it.each(['worker', 'attempt'] as const)('hands CDP headers through the worker boundary in %s scope', async (scope) => {
-  const headers = { Authorization: 'Bearer synthetic-cdp-token' };
+it.each(['worker', 'attempt'] as const)('resolves CDP credentials from the worker environment in %s scope', async (scope) => {
   const toy = provider({ scope });
-  const cloud = { ...toy.impl, acquire: async (request: BrowserRequest) => ({ ...await toy.impl.acquire(request), cdpHeaders: headers }) };
+  const cdpHeaders = vi.fn(async (_lease: BrowserLease, context: BrowserRequest) => ({ Authorization: context.env.WORKER_TOKEN! }));
+  const cloud = { ...toy.impl, cdpHeaders };
   const { runner, env } = await prepared(cloud, 1);
+  expect(cdpHeaders).not.toHaveBeenCalled();
+  expect(JSON.stringify(env)).not.toContain('worker-secret');
   const worker = new PlaywrightSurface({ browser: cloud });
-  await worker.init(initInfo(0, env));
+  await worker.init(initInfo(0, { ...env, WORKER_TOKEN: 'worker-secret' }));
   await worker.startAttempt(attempt('with-headers'));
-  expect(connectCdp).toHaveBeenCalledWith({ endpoint: 'wss://0.example', headers }, expect.any(Number));
+  expect(connectCdp).toHaveBeenCalledWith({ endpoint: 'wss://0.example', headers: { Authorization: 'worker-secret' } }, expect.any(Number));
+  expect(cdpHeaders).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ id: 'lease-0' }), expect.objectContaining({ env: expect.objectContaining({ WORKER_TOKEN: 'worker-secret' }) }));
   await worker.endAttempt(cleanup());
   await worker.dispose(cleanup());
   await runner.finish(finishInfo());
-});
-
-it('rejects malformed CDP headers in leases without printing the header value', async () => {
-  for (const cdpHeaders of [[], { Authorization: 42 }, { Authorization: 'secret\r\n' }]) {
-    const toy = provider();
-    // SAFETY: deliberately violates the provider contract to exercise lease validation at the engine boundary.
-    const cloud = { ...toy.impl, acquire: async (request: BrowserRequest) => ({ ...await toy.impl.acquire(request), cdpHeaders }) as BrowserLease };
-    const runner = new PlaywrightSurface({ browser: cloud });
-    await expect(runner.prepare(prepareInfo(1))).rejects.toMatchObject({ code: 'ENGINE_FAILURE', message: expect.not.stringContaining('secret') });
-    await runner.finish(finishInfo());
-  }
 });
 
 it('accepts endpoint and handshake headers together from a connect resolver', async () => {

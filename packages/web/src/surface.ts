@@ -496,9 +496,12 @@ export class PlaywrightSurface {
       return { provision: connect.cdpEndpoint, reconnect: connect.reconnectEndpoint, usedContexts };
     }
     if (this.leases?.scope !== 'attempt') return undefined;
-    const lease = await this.leases.startAttempt(context);
-
-    return { provision: () => ({ endpoint: lease.cdpEndpoint, headers: lease.cdpHeaders }), reconnect: () => ({ endpoint: lease.reconnectEndpoint ?? lease.cdpEndpoint, headers: lease.cdpHeaders }) };
+    const leases = this.leases;
+    const lease = await leases.startAttempt(context);
+    return {
+      provision: (signal) => leases.cdpTarget(lease, signal),
+      reconnect: (signal) => leases.cdpTarget(lease, signal, lease.reconnectEndpoint ?? lease.cdpEndpoint),
+    };
   }
 
   /** Opens one attempt owner before setup starts, so cleanup can cancel pending attachment. */

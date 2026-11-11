@@ -52,7 +52,7 @@ export interface BrowserRequest {
   readonly attemptId?: string | undefined;
   /** The run's environment: where a provider reads its token from, never `process.env`. */
   readonly env: Readonly<Record<string, string | undefined>>;
-  /** Aborts on interrupt, and when the attempt that needs the browser is cancelled or exceeds its budget. */
+  /** Aborts on interrupt, and when the init or attempt that needs the browser is cancelled or exceeds its budget. */
   readonly signal: AbortSignal;
   /** Reports one line of progress to the run's reporter (a session URL to watch), from the runner and from a worker alike. */
   readonly log: (line: string) => void;
@@ -73,8 +73,6 @@ export interface BrowserLease {
   readonly id: string;
   /** `ws://`, `wss://`, or `http://` DevTools endpoint to attach to over CDP. */
   readonly cdpEndpoint: string;
-  /** Headers for the CDP handshake only. Kept out of page requests and endpoint URLs. */
-  readonly cdpHeaders?: Readonly<Record<string, string>> | undefined;
   /**
    * Endpoint to reattach to the same browser after a transport drop, when it
    * differs from `cdpEndpoint`; only meaningful for a per-attempt lease.
@@ -150,6 +148,8 @@ export interface BrowserProvider {
   readonly scope?: BrowserProviderScope | undefined;
   acquire(request: BrowserRequest): Promise<BrowserLease>;
   release(lease: BrowserLease, context: BrowserReleaseContext): Promise<void>;
+  /** Resolves CDP handshake headers in the worker from its own environment; never serialized with the lease. */
+  cdpHeaders?(lease: BrowserLease, context: BrowserRequest): Readonly<Record<string, string>> | Promise<Readonly<Record<string, string>>>;
   /**
    * Records the leased browser for an attempt that records video, in place
    * of the engine's screencast of the page: the service's own recording of
@@ -192,7 +192,7 @@ export function asBrowserProvider(browser: object): BrowserProvider {
     }
   }
 
-  for (const member of ['record', 'sweep'] as const) {
+  for (const member of ['record', 'sweep', 'cdpHeaders'] as const) {
     if (candidate[member] !== undefined && typeof candidate[member] !== 'function') {
       throw new ConfigurationError('INVALID_CONFIG', `web: browser provider "${candidate.name}" has a ${member} that is not a function`);
     }
@@ -221,25 +221,11 @@ function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim() !== '';
 }
 
-/** Header values must be strings without line breaks before reaching the CDP handshake. */
-function isCdpHeader(value: unknown): value is string {
-  return typeof value === 'string' && !/[\r\n]/.test(value);
-}
-
-/** Checks provider headers without treating them as page request headers. */
-function isCdpHeaders(value: unknown): value is Readonly<Record<string, string>> {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
-
-  return Object.entries(value).every(([name, entry]) => name.trim() !== '' && !/[\r\n]/.test(name) && isCdpHeader(entry));
-}
-
 /** A lease as a provider returned it or as JSON parsed it back, checked field by field: the engine trusts nothing it did not write. */
 function isBrowserLease(value: unknown): value is BrowserLease {
   if (typeof value !== 'object' || value === null) return false;
-
-  return 'id' in value && isNonEmptyString(value.id) && 'cdpEndpoint' in value && isNonEmptyString(value.cdpEndpoint) &&
-    (!('reconnectEndpoint' in value) || value.reconnectEndpoint === undefined || isNonEmptyString(value.reconnectEndpoint)) &&
-    (!('cdpHeaders' in value) || value.cdpHeaders === undefined || isCdpHeaders(value.cdpHeaders));
+  const { id, cdpEndpoint, reconnectEndpoint } = value as Record<keyof BrowserLease, unknown>;
+  return isNonEmptyString(id) && isNonEmptyString(cdpEndpoint) && (reconnectEndpoint === undefined || isNonEmptyString(reconnectEndpoint));
 }
 
 /**
@@ -273,7 +259,7 @@ function handoffVariable(targetName: string): string {
 function encodeHandoff(handoff: Handoff): string {
   const encoded = JSON.stringify({
     slots: handoff.slots,
-    leases: handoff.leases.map((lease) => obj({ id: lease.id, cdpEndpoint: lease.cdpEndpoint, reconnectEndpoint: lease.reconnectEndpoint, cdpHeaders: lease.cdpHeaders })),
+    leases: handoff.leases.map((lease) => obj({ id: lease.id, cdpEndpoint: lease.cdpEndpoint, reconnectEndpoint: lease.reconnectEndpoint })),
   });
   const bytes = Buffer.byteLength(encoded);
   if (bytes > MAX_HANDOFF_ENV_BYTES) {
@@ -510,7 +496,7 @@ export class LeasedBrowsers {
     const previous = this.current;
     if (previous !== undefined && !this.attached) {
       this.attached = true;
-      return { endpoint: previous.lease.cdpEndpoint, headers: previous.lease.cdpHeaders };
+      return this.cdpTarget(previous.lease, signal);
     }
     const { tenure } = this;
     const lease = await this.acquire({ runId: run.runId, targetName: run.targetName, slot: run.slot, slots: run.slots, env: run.env, signal, log: run.log });
@@ -521,7 +507,14 @@ export class LeasedBrowsers {
     this.current = { lease, owned: true };
     this.attached = true;
     if (previous?.owned === true) await this.provider.release(previous.lease, this.releaseContext(run, signal)).catch(discard);
-    return { endpoint: lease.cdpEndpoint, headers: lease.cdpHeaders };
+    return this.cdpTarget(lease, signal);
+  }
+
+  /** Resolves connection credentials inside the worker, separately from the lease handoff. */
+  async cdpTarget(lease: BrowserLease, signal: AbortSignal, endpoint = lease.cdpEndpoint): Promise<CdpTarget> {
+    const run = this.requireRun();
+    const headers = await this.provider.cdpHeaders?.(lease, { ...run, signal });
+    return { endpoint, ...(headers === undefined ? {} : { headers }) };
   }
 
   /**

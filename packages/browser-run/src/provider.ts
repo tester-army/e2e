@@ -77,7 +77,7 @@ export function browserRun(options: BrowserRunOptions = {}): BrowserProvider {
       const response = await request(url.href, 'POST', headers, context.signal);
       const result = await resultOf(response, isSessionResult, 'Cloudflare Browser Run returned no valid sessionId');
       // Construct the endpoint ourselves so a response cannot send the token to another origin.
-      const lease = { id: result.sessionId, cdpEndpoint: `${base.replace('https:', 'wss:')}/${result.sessionId}`, cdpHeaders: headers };
+      const lease = { id: result.sessionId, cdpEndpoint: `${base.replace('https:', 'wss:')}/${result.sessionId}` };
 
       try {
         await journal(context).remember(lease.id);
@@ -96,6 +96,9 @@ export function browserRun(options: BrowserRunOptions = {}): BrowserProvider {
       return lease;
     },
     release,
+    cdpHeaders(_lease, context) {
+      return credentials(context.env).headers;
+    },
     async sweep(context) {
       credentials(context.env);
       const receipts = journal(context);

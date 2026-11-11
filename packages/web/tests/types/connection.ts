@@ -15,12 +15,11 @@ import type { BrowserLease, BrowserProvider, CdpTarget, WebConnectOptions, WebIn
 ({ name: 'hosted', scope: 'attempt', acquire: async () => ({ id: 's', cdpEndpoint: 'ws://localhost:9222' }), release: async () => undefined }) satisfies BrowserProvider;
 ({ id: 's', cdpEndpoint: 'ws://localhost:9222', reconnectEndpoint: undefined }) satisfies BrowserLease;
 
-({ id: 's', cdpEndpoint: 'ws://localhost:9222', cdpHeaders: { Authorization: 'Bearer token' } }) satisfies BrowserLease;
-
-({ id: 's', cdpEndpoint: 'ws://localhost:9222', cdpHeaders: undefined }) satisfies BrowserLease;
-
+({ name: 'hosted', acquire: async () => ({ id: 's', cdpEndpoint: 'ws://localhost:9222' }), release: async () => undefined, cdpHeaders: async (_lease, context) => ({ Authorization: context.env.TOKEN ?? '' }) }) satisfies BrowserProvider;
+// @ts-expect-error CDP headers do not travel in lease JSON.
+({ id: 's', cdpEndpoint: 'ws://localhost:9222', cdpHeaders: {} }) satisfies BrowserLease;
 // @ts-expect-error CDP handshake headers carry string values.
-({ id: 's', cdpEndpoint: 'ws://localhost:9222', cdpHeaders: { Authorization: 42 } }) satisfies BrowserLease;
+({ name: 'hosted', acquire: async () => ({ id: 's', cdpEndpoint: 'ws://localhost:9222' }), release: async () => undefined, cdpHeaders: async () => ({ Authorization: 42 }) }) satisfies BrowserProvider;
 
 ({ browser: { name: 'hosted', acquire: async () => ({ id: 's', cdpEndpoint: 'ws://localhost:9222' }), release: async () => undefined } }) satisfies WebOptions;
 

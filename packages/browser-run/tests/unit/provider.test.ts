@@ -33,9 +33,11 @@ describe('browserRun', () => {
     const request = context();
     const lease = await provider.acquire(request);
     expect(lease.cdpEndpoint).toBe(`wss://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/browser-rendering/devtools/browser/${id}`);
-    expect(lease.cdpHeaders).toEqual({ Authorization: 'Bearer synthetic-secret' });
+    expect(lease).not.toHaveProperty('cdpHeaders');
+    expect(JSON.stringify(lease)).not.toContain('synthetic-secret');
+    expect(await provider.cdpHeaders!(lease, request)).toEqual({ Authorization: 'Bearer synthetic-secret' });
     expect(fetch).toHaveBeenCalledWith(expect.stringContaining('keep_alive=100000'), expect.objectContaining({
-      method: 'POST', redirect: 'error', headers: lease.cdpHeaders, signal: expect.any(AbortSignal),
+      method: 'POST', redirect: 'error', headers: { Authorization: 'Bearer synthetic-secret' }, signal: expect.any(AbortSignal),
     }));
     expect(request.log).toHaveBeenCalledWith(`browser ${id}`);
     expect(JSON.stringify(vi.mocked(request.log).mock.calls)).not.toContain(env.CLOUDFLARE_API_TOKEN);
