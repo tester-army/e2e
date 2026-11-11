@@ -45,6 +45,7 @@ function run(cwd: string, command: string, args: readonly string[]): { status: n
   return { status: result.status ?? 1, output: `${result.stdout}${result.stderr}` };
 }
 
+const driverVersion = process.env['AGENT_DEVICE_VERSION'];
 const pnpm = (args: readonly string[]) => run(project, 'npx', ['--yes', `pnpm@${pnpmVersion}`, ...args]);
 
 const mobileManifest = JSON.parse(readFileSync(join(REPO_ROOT, 'packages/mobile/package.json'), 'utf8')) as {
@@ -52,6 +53,8 @@ const mobileManifest = JSON.parse(readFileSync(join(REPO_ROOT, 'packages/mobile/
   devDependencies: Record<string, string>;
 };
 const problems: string[] = [];
+const driverWorkspace = driverVersion ? `overrides:\n  agent-device: ${JSON.stringify(driverVersion)}\n` : undefined;
+if (driverWorkspace) writeFileSync(join(project, 'pnpm-workspace.yaml'), driverWorkspace);
 try {
   for (const name of PACKAGES) {
     const packed = run(join(REPO_ROOT, 'packages', name), 'pnpm', ['pack', '--pack-destination', tarballs]);
@@ -127,8 +130,26 @@ export async function checkFixture(device: Device) {
     process.stdout.write(`$ ${step}: exit ${status}\n`);
     if (status !== 0) problems.push(`${step} exited ${status}:\n${output}`);
     if (output.includes('ERR_PNPM_IGNORED_BUILDS')) problems.push(`${step} reported ERR_PNPM_IGNORED_BUILDS:\n${output}`);
-    if (existsSync(join(project, 'pnpm-workspace.yaml'))) problems.push(`${step} wrote a pnpm-workspace.yaml`);
+    if (existsSync(join(project, 'pnpm-workspace.yaml')) && readFileSync(join(project, 'pnpm-workspace.yaml'), 'utf8') !== driverWorkspace) {
+      problems.push(`${step} wrote or changed pnpm-workspace.yaml`);
+    }
     if (problems.length > 0) break;
+    if (driverVersion && args[0] === 'install') {
+      const graph = pnpm(['list', 'agent-device', '--depth', 'Infinity', '--json']);
+      const versions: string[] = [];
+      /** Collects driver copies without confusing their parents' versions. */
+      function collect(value: unknown): void {
+        if (!value || typeof value !== 'object') return;
+        for (const [key, child] of Object.entries(value)) {
+          if (key === 'agent-device') versions.push(child.version);
+          collect(child);
+        }
+      }
+      collect(JSON.parse(graph.output));
+      if (graph.status !== 0 || versions.length === 0 || versions.some((version) => version !== driverVersion)) {
+        throw new Error(`Expected agent-device ${driverVersion}: ${graph.output}`);
+      }
+    }
   }
 } finally {
   rmSync(root, { recursive: true, force: true });
