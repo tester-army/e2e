@@ -110,9 +110,19 @@ export interface Device {
    * reads a new screen. Any device without a hinge is `UNSUPPORTED_CAPABILITY`.
    */
   fold(pose: FoldPose): Promise<void>;
-  /** Simulates one biometric attempt on the open app. */
+  /**
+   * Simulates one biometric attempt on the open app. `faceid` and `touchid`
+   * work on an iOS simulator; `fingerprint` works on an Android emulator and
+   * on a phone that exposes `cmd fingerprint`. Any other pair is
+   * `UNSUPPORTED_CAPABILITY`. An Android app's prompt reads the touch
+   * only once the emulator has a screen lock and an enrolled fingerprint,
+   * which `enrollBiometrics` cannot set up.
+   */
   setBiometrics(sensor: BiometricSensor, result: 'match' | 'nonmatch'): Promise<void>;
-  /** Enrolls or unenrolls the simulator's Face ID or Touch ID. */
+  /**
+   * Enrolls or unenrolls the simulator's Face ID or Touch ID. On Android it is
+   * `UNSUPPORTED_CAPABILITY`.
+   */
   enrollBiometrics(sensor: 'faceid' | 'touchid', enrolled: boolean): Promise<void>;
   /**
    * Installs a build (an iOS `.app` bundle or an Android `.apk`, resolved

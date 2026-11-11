@@ -659,7 +659,14 @@ await device.fold('half-open');
 #### `setBiometrics`
 
 ```ts
-/** Simulates one biometric attempt on the open app. */
+/**
+ * Simulates one biometric attempt on the open app. `faceid` and `touchid`
+ * work on an iOS simulator; `fingerprint` works on an Android emulator and
+ * on a phone that exposes `cmd fingerprint`. Any other pair is
+ * `UNSUPPORTED_CAPABILITY`. An Android app's prompt reads the touch
+ * only once the emulator has a screen lock and an enrolled fingerprint,
+ * which `enrollBiometrics` cannot set up.
+ */
 setBiometrics(sensor: BiometricSensor, result: 'match' | 'nonmatch'): Promise<void>;
 ```
 
@@ -669,16 +676,27 @@ await device.setBiometrics('faceid', 'nonmatch');
 
 - `sensor` is `'faceid'`, `'touchid'`, or `'fingerprint'`.
 
+| Throws | When |
+| --- | --- |
+| `UNSUPPORTED_CAPABILITY` | `fingerprint` on iOS, `faceid` or `touchid` on Android, or `fingerprint` on an Android phone without `cmd fingerprint`. |
+
 #### `enrollBiometrics`
 
 ```ts
-/** Enrolls or unenrolls the simulator's Face ID or Touch ID. */
+/**
+ * Enrolls or unenrolls the simulator's Face ID or Touch ID. On Android it is
+ * `UNSUPPORTED_CAPABILITY`.
+ */
 enrollBiometrics(sensor: 'faceid' | 'touchid', enrolled: boolean): Promise<void>;
 ```
 
 ```ts
 await device.enrollBiometrics('touchid', true);
 ```
+
+| Throws | When |
+| --- | --- |
+| `UNSUPPORTED_CAPABILITY` | Any call on Android. |
 
 #### `installApp`
 
