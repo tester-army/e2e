@@ -470,10 +470,9 @@ export class AgentDeviceSurface {
   /** How this worker's device records through its provider: set in init when the pool's provider records and the slot rides one of its leases. */
   private leaseRecorder: LeaseRecorder | undefined;
   /**
-   * Commands still running on the device. agent-device takes no abort
-   * signal, so a cancelled or timed-out call is only abandoned by its
-   * caller; it keeps executing. The next attempt waits for these to settle
-   * before it opens anything, so a ghost tap can never land in a retry.
+   * SDK requests still pending, including uncancelled commands abandoned
+   * by their caller. Cancelled press promises can settle before native
+   * work ends; agent-device owns its bounded drain and device-request ordering.
    */
   private readonly inflight = new Set<Promise<unknown>>();
 
