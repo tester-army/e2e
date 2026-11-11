@@ -80,7 +80,8 @@ export function validateActOptions(options: ActOptions | undefined, extraArgumen
     throw new TestError('INVALID_ARGUMENT', 'agent.act options.onAction must be a function');
   }
   const steps: unknown = options.steps;
-  if (steps !== undefined && (!Array.isArray(steps) || !steps.every((step) => typeof step === 'object' && step !== null && !Array.isArray(step)))) {
+  // Spread first: `every` skips the holes of a sparse array such as `[,]`.
+  if (steps !== undefined && (!Array.isArray(steps) || ![...steps].every((step) => typeof step === 'object' && step !== null && !Array.isArray(step)))) {
     throw new TestError('INVALID_ARGUMENT', 'agent.act options.steps must be an array of recorded actions, or [] to record them');
   }
   const unknown = Object.keys(options).filter((key) => !ACT_OPTION_KEYS.has(key));

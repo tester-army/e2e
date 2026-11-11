@@ -28,6 +28,15 @@ describe('validateActOptions', () => {
     expect(() => validateActOptions({ onAction: 'screenshot' } as never, 0)).toThrow('options.onAction must be a function');
   });
 
+  it('takes a list of recorded actions as steps, and refuses anything else, a sparse list included', () => {
+    expect(() => validateActOptions({ steps: [] }, 0)).not.toThrow();
+    expect(() => validateActOptions({ steps: [{ name: 'back' }] }, 0)).not.toThrow();
+    // oxlint-disable-next-line no-sparse-arrays
+    for (const steps of [[,], 'tap', [null], [['tap']]]) {
+      expect(() => validateActOptions({ steps } as never, 0)).toThrow(expect.objectContaining({ code: 'INVALID_ARGUMENT' }));
+    }
+  });
+
   it('takes an onBeforeAction function and refuses any other value', () => {
     expect(() => validateActOptions({ onBeforeAction: async () => undefined }, 0)).not.toThrow();
     expect(() => validateActOptions({ onBeforeAction: 'screenshot' } as never, 0)).toThrow('options.onBeforeAction must be a function');

@@ -15,6 +15,7 @@ import {
   readInlineSteps,
   readPinsBook,
   unpinnableReason,
+  type PinnedStep,
   type PinnedStepId,
 } from '../../src/cache/pins.ts';
 import type { ActionTrace, TraceKeyContext } from '../../src/cache/trace.ts';
@@ -78,6 +79,14 @@ describe('steps-1 file', () => {
     const step = JSON.parse(JSON.stringify(pinnedStep(id, context, trace, false))) as unknown;
     const book = readPinsBook(JSON.stringify({ schemaVersion: 'steps-1', steps: [step, step] }));
     expect(book).toEqual({ status: 'unreadable', reason: 'steps[1] pins a step an earlier entry already pins' });
+  });
+
+  it('refuses an entry whose params are missing or null, which would match a call with none', () => {
+    const step = JSON.parse(JSON.stringify(pinnedStep(id, context, trace, false))) as Record<string, unknown>;
+    for (const params of [undefined, null]) {
+      const book = readPinsBook(JSON.stringify({ schemaVersion: 'steps-1', steps: [{ ...step, params }] }));
+      expect(book).toMatchObject({ status: 'unreadable', reason: expect.stringContaining('does not say which step it pins') });
+    }
   });
 
   it('keeps an entry whose recording cannot replay as pinned, never as absent', () => {
@@ -261,6 +270,36 @@ describe('writing a run\'s pins', () => {
     const again = await writePins(root, [{ writes: [{ file: 'a.e2e.ts', step, inline: { file: 'a.e2e.ts', line: 2, column: 15 } }], skipped: [] }]);
     expect(again.lines).toEqual(['a.e2e.ts: 1 call pinned inline', 'a.e2e.steps.json: 1 step pinned']);
     expect(readFileSync(path.join(root, 'a.e2e.ts'), 'utf8')).toContain("{ name: 'tap', target: { role: 'button', name: 'greet' } },");
+  });
+
+  it('leaves the test file alone when its steps file cannot be written', async () => {
+    const root = scratch();
+    const test = "test('greets', async ({ agent }) => {\n  await agent.act('greet {name}', { steps: [] });\n});\n";
+    writeFileSync(path.join(root, 'a.e2e.ts'), test);
+    writeFileSync(path.join(root, 'a.e2e.steps.json'), '[]');
+    const { lines } = await writePins(root, [{ writes: [{ file: 'a.e2e.ts', step: pinnedStep(id, context, trace, true), inline: { file: 'a.e2e.ts', line: 2, column: 15 } }], skipped: [] }]);
+    expect(lines).toEqual([
+      'a.e2e.ts: not written: the steps file that keeps the rest of its recording was not written',
+      expect.stringMatching(/^a\.e2e\.steps\.json: not written: it is not a steps-1 document/),
+    ]);
+    expect(readFileSync(path.join(root, 'a.e2e.ts'), 'utf8')).toBe(test);
+  });
+
+  it('writes a step its repeats recorded alike once, and none whose repeats disagree', async () => {
+    const root = scratch();
+    const write = (step: PinnedStep) => ({ writes: [{ file: 'a.e2e.ts', step }], skipped: [] });
+    const other = { ...id, instruction: 'wave' };
+    const { lines } = await writePins(root, [
+      write(pinnedStep(id, context, trace, false)),
+      write(pinnedStep(id, context, trace, false)),
+      write(pinnedStep(other, context, trace, false)),
+      write(pinnedStep(other, context, { ...trace, actions: trace.actions.slice(1) }, false)),
+    ]);
+    expect(lines).toEqual([
+      'a.e2e.steps.json: not written for "wave" in greets: its 2 runs recorded different flows; pin it in a run that runs it once',
+      'a.e2e.steps.json: 1 step pinned',
+    ]);
+    expect(JSON.parse(readFileSync(path.join(root, 'a.e2e.steps.json'), 'utf8')).steps).toHaveLength(1);
   });
 });
 

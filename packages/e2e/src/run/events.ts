@@ -272,11 +272,24 @@ interface RunEventSubscriber {
   readonly onEvent: RunEventSink;
 }
 
-/** Strips the live target from a result, keeping its stable identity. */
+/**
+ * Strips the live target from a result, keeping its stable identity, and
+ * the pins its attempts carry to the runner: only the runner writes them.
+ */
 export function toEventResult(record: ResultRecord): RunEventResult {
+  const result = encodeResult(record);
   return {
-    ...encodeResult(record),
+    ...result,
+    attempts: result.attempts.map(({ pins: _pins, ...attempt }) => attempt),
     target: { name: record.target.name, platform: record.target.platform },
+  };
+}
+
+/** A serial group without the pins its members carry to the runner. */
+export function toEventSerialGroup(group: SerialGroupRecord): SerialGroupRecord {
+  return {
+    ...group,
+    attempts: group.attempts.map((attempt) => ({ ...attempt, members: attempt.members.map(({ pins: _pins, ...member }) => member) })),
   };
 }
 

@@ -53,12 +53,20 @@ describe.each(schemas)('%s schema', (name) => {
         { name: 'select', summary: 'select', target, value: '' },
         { name: 'scroll', summary: 'scroll', direction: 'down', key: 'Enter' },
         { name: 'typeText', summary: 'type', value: 'x' },
+        { name: 'tap', summary: 'tap', target: {} },
+        { name: 'tap', summary: 'tap', target: { name: '' } },
+        { name: 'resize', summary: 'resize', size: { width: 100, height: 800 } },
       ]) {
         actions[0] = action;
         expect(validate(document), JSON.stringify(action)).toBe(false);
       }
       actions[0] = { name: 'scroll', summary: 'scroll', direction: 'down', target, times: 3 };
       expect(validate(document)).toBe(true);
+      const step = document.steps[0] as unknown as Record<string, unknown>;
+      step['params'] = null;
+      expect(validate(document)).toBe(false);
+      delete step['params'];
+      expect(validate(document)).toBe(false);
     });
   }
 

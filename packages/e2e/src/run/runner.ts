@@ -47,7 +47,7 @@ import { STATELESS_REPORTERS } from '../report/builtin.ts';
 import { failureLine } from '../report/format.ts';
 import { ListReporter } from '../report/list.ts';
 import { writeJsonReport } from '../report/write.ts';
-import { createRunEventEmitter, toEventResult, type RunEventSink, type RunExitCode, type RunStatus, type RunEventFact, type SetupOutcome, type SetupStep } from './events.ts';
+import { createRunEventEmitter, toEventResult, toEventSerialGroup, type RunEventSink, type RunExitCode, type RunStatus, type RunEventFact, type SetupOutcome, type SetupStep } from './events.ts';
 import { allocateAppPorts } from './app-ports.ts';
 import { inProcessSpawner } from './in-process.ts';
 import { cleanupErrorsOf, someSkippedAfterFailure, tracedResultIds, type ResultRecord, type RunError, type SerialGroupRecord } from './records.ts';
@@ -1168,7 +1168,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
           onResult: recordResult,
           onSerialGroup: (group) => {
             serialGroups.push(group);
-            emit({ type: 'serial-group', group });
+            emit({ type: 'serial-group', group: toEventSerialGroup(group) });
           },
           onRunError: recordRunError,
           onRunAbort: abortRun,

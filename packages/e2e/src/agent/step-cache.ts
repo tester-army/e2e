@@ -379,6 +379,7 @@ export class StepTraceSession {
         return;
       case 'failed':
         if (this.consumedReplay) await this.evict();
+        this.stagePin({ skipped: 'the step did not pass' });
         return;
       case 'passed':
         if (this.repairedAfterEndMismatch(recorder)) {

@@ -1,7 +1,8 @@
 /** The host event emitter: sink quarantine. */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createRunEventEmitter, type RunEvent } from '../../src/run/events.ts';
+import { createRunEventEmitter, toEventResult, toEventSerialGroup, type RunEvent } from '../../src/run/events.ts';
+import type { ResultRecord, SerialGroupRecord } from '../../src/run/records.ts';
 
 function fact(total: number): { type: 'plan'; total: number; files: [] } {
   return { type: 'plan', total, files: [] };
@@ -94,5 +95,15 @@ describe('createRunEventEmitter', () => {
     expect(stderr.mock.calls.map((call) => String(call[0]))).toEqual([
       'e2e: reporter "slow" threw on plan: late; ignoring it for the rest of the run\n',
     ]);
+  });
+});
+
+describe('event payloads', () => {
+  it('leave out the pins attempts carry to the runner', () => {
+    const pins = { writes: [], skipped: [] };
+    const result = { id: 't', target: { name: 'web', platform: 'web' }, attempts: [{ attempt: 1, pins }] } as unknown as ResultRecord;
+    expect(toEventResult(result).attempts[0]).not.toHaveProperty('pins');
+    const group = { id: 'g', attempts: [{ attempt: 1, members: [{ testId: 't', pins }] }] } as unknown as SerialGroupRecord;
+    expect(toEventSerialGroup(group).attempts[0]!.members[0]).not.toHaveProperty('pins');
   });
 });

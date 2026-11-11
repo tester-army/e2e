@@ -24,7 +24,7 @@
  * placeholder the current call fills.
  */
 
-import { readFile } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import { canonicalJson, timestamp } from '../internal/ids.ts';
 import { errorMessage } from '../internal/errors.ts';
 import { writeFileAtomic } from '../internal/atomic-write.ts';
@@ -115,6 +115,8 @@ export function pinIdKey(id: PinnedStepId): string {
 export async function loadPinsBook(file: string): Promise<PinsBook> {
   let text: string;
   try {
+    // Sized before it is read, so an oversized file is refused without loading it.
+    if ((await stat(file)).size > MAX_PINS_FILE_BYTES) return { status: 'unreadable', reason: `it is over the ${MAX_PINS_FILE_BYTES}-byte limit` };
     text = await readFile(file, 'utf8');
   } catch (cause) {
     if ((cause as NodeJS.ErrnoException).code === 'ENOENT') return { status: 'absent' };
@@ -156,7 +158,7 @@ function readPinnedStepId(document: unknown): PinnedStepId | undefined {
   const target = readBoundedText(document['target'], MAX_TRACE_DESCRIPTOR_CHARS);
   const agent = readBoundedText(document['agent'], MAX_TRACE_DESCRIPTOR_CHARS);
   const instruction = typeof document['instruction'] === 'string' && document['instruction'].trim() !== '' ? document['instruction'] : undefined;
-  const params = document['params'] ?? {};
+  const params = document['params'];
   const callIndex = document['callIndex'];
   if (target === undefined || agent === undefined || instruction === undefined || !isObject(params)) return undefined;
   if (typeof callIndex !== 'number' || !Number.isSafeInteger(callIndex) || callIndex < 0) return undefined;
@@ -262,7 +264,7 @@ export interface AttemptPinWrites {
  * two pins that agree here need no rewrite, so re-pinning a step whose flow
  * did not change leaves its file alone.
  */
-function pinnedFlow(step: Pick<PinnedStep, 'recordedWith' | 'inline' | 'trace'>): string {
+export function pinnedFlow(step: Pick<PinnedStep, 'recordedWith' | 'inline' | 'trace'>): string {
   // An inline entry's actions are the test file's; its steps file entry holds none.
   const { summary: _summary, endWaitMs: _endWaitMs, recordedBy: _recordedBy, actions, ...flow } = step.trace;
   return canonicalJson({ recordedWith: step.recordedWith, inline: step.inline === true, ...flow, actions: step.inline === true ? [] : actions });

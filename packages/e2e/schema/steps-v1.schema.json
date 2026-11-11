@@ -11,7 +11,7 @@
     "step": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["test", "target", "agent", "instruction", "callIndex", "recordedAt", "recordedWith", "trace"],
+      "required": ["test", "target", "agent", "instruction", "params", "callIndex", "recordedAt", "recordedWith", "trace"],
       "description": "One pinned step. `test`, `target`, `agent`, `instruction`, `params`, and `callIndex` find it; at most one entry may name one step. `recordedWith` is checked once it is found: another value of any field fails the step as stale.",
       "properties": {
         "test": { "description": "The test's title path, outermost describe first.", "type": "array", "minItems": 1, "items": { "type": "string" } },
@@ -23,7 +23,7 @@
           "pattern": "\\S"
         },
         "params": {
-          "description": "The params as the replay cache key spells them: a `{{param:<pointer>}}` placeholder for each unique() value, a Secret as { kind, name, purpose }. Absent reads as {}.",
+          "description": "The params as the replay cache key spells them: a `{{param:<pointer>}}` placeholder for each unique() value, a Secret as { kind, name, purpose }.",
           "type": "object"
         },
         "callIndex": {
@@ -84,7 +84,7 @@
       }
     },
     "target": {
-      "description": "How a recorded action addressed its node; replay re-finds it by these fields on a fresh screen.",
+      "description": "How a recorded action addressed its node; replay re-finds it by these fields on a fresh screen. At least one of the text fields is non-empty.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -107,7 +107,18 @@
         },
         "states": { "type": "array", "items": { "enum": ["checked", "expanded", "pressed", "selected"] } },
         "value": { "type": "string", "maxLength": 300 }
-      }
+      },
+      "anyOf": [
+        { "required": ["role"], "properties": { "role": { "minLength": 1 } } },
+        { "required": ["name"], "properties": { "name": { "minLength": 1 } } },
+        { "required": ["text"], "properties": { "text": { "minLength": 1 } } },
+        { "required": ["testId"], "properties": { "testId": { "minLength": 1 } } },
+        { "required": ["placeholder"], "properties": { "placeholder": { "minLength": 1 } } },
+        { "required": ["selector"], "properties": { "selector": { "minLength": 1 } } },
+        { "required": ["inputPurpose"], "properties": { "inputPurpose": { "minLength": 1 } } },
+        { "required": ["within"], "properties": { "within": { "minLength": 1 } } },
+        { "required": ["value"], "properties": { "value": { "minLength": 1 } } }
+      ]
     },
     "point": {
       "type": "object",
@@ -248,7 +259,11 @@
         { "if": { "properties": { "name": { "enum": ["back", "dismissKeyboard"] } } }, "then": { "propertyNames": { "enum": ["name", "summary"] } } },
         {
           "if": { "properties": { "name": { "enum": ["resize"] } } },
-          "then": { "required": ["size"], "propertyNames": { "enum": ["name", "summary", "size"] } }
+          "then": {
+            "required": ["size"],
+            "propertyNames": { "enum": ["name", "summary", "size"] },
+            "properties": { "size": { "properties": { "width": { "minimum": 200, "maximum": 4096 }, "height": { "minimum": 200, "maximum": 4096 } } } }
+          }
         },
         {
           "if": { "properties": { "name": { "enum": ["typeText"] } } },

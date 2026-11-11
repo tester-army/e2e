@@ -1382,8 +1382,9 @@ export class TargetExecutor implements SerialHost {
     // workers may run the tests of one file, and one file holds their pins.
     if (pins !== undefined && record.status !== 'interrupted') {
       const pinned = settleStagedPins(pins, {
-        passed: record.status === 'passed',
-        lastVerifiedStepIndex: steps.lastVerifiedStepIndex,
+        // An expected failure passes the attempt; a test that failed confirms nothing.
+        passed: record.status === 'passed' && failure === undefined,
+        lastVerifiedStepIndex: failure === undefined ? steps.lastVerifiedStepIndex : lastVerifiedAtFailure,
         sources: new Map(record.steps.flatMap((step) => (step.source === undefined ? [] : [[step.index, step.source] as const]))),
         testFile: pair.test.file,
       });

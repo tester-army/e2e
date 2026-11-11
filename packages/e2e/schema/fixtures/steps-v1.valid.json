@@ -59,7 +59,7 @@
         "executor": { "name": "default" },
         "summary": "Paid; the order confirmation shows",
         "startPath": "/cart",
-        "endPath": "/orders/{{param:/order}}",
+        "endPath": "/orders/confirmation",
         "endAnchors": [{ "role": "status", "text": "Order placed" }],
         "endWaitMs": 10400
       }

@@ -72,7 +72,7 @@ const { summary, cache } = await agent.act('Sign in', {
 | `agent` | `string` | the test's agent |
 | `onAction` | [`ActionHook`](#types) | none |
 | `onBeforeAction` | [`BeforeActionHook`](#types) | none |
-| `steps` | `PinnedAction[]` | none |
+| `steps` | `readonly PinnedAction[]` | none |
 
 `params` values come from your code, never from the model. Wrap a value that
 differs on every run in [`unique()`](#unique). The model sees a `Secret` as
@@ -763,6 +763,12 @@ export interface StepCacheInfo {
   detail?: string;
   /** Configured model when the consulted entry was recorded; absent on older entries. */
   recordedBy?: { readonly provider: string; readonly model: string };
+  /**
+   * The step is pinned: its recording is in the test's steps file
+   * (`sidecar`) or its actions in the call's `steps` option (`inline`). A
+   * pinned step replays or fails; it never hands off.
+   */
+  pinned?: 'sidecar' | 'inline';
 }
 
 type TraceReplayMissReason = 'retry' | 'no-entry' | 'invalid-entry' | 'truncated' | 'wrong-context';

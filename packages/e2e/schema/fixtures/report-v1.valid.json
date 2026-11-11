@@ -431,8 +431,7 @@
                   "derived": "minted-token",
                   "notRecorded": "param-collision",
                   "replayedActions": 0,
-                  "totalActions": 2,
-                  "pinned": "inline"
+                  "totalActions": 2
                 },
                 "artifacts": [],
                 "turns": [
