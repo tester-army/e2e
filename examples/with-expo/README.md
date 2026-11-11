@@ -22,6 +22,16 @@ For native builds, follow [Expo's setup guide](https://docs.expo.dev/get-started
 Start a simulator or emulator before building. Rebuild after app changes.
 After config changes, run `npx expo prebuild` to update existing native projects.
 
+Before a native run, check the setup for that platform:
+
+```bash
+npx e2e doctor --target ios
+```
+
+`e2e doctor` checks Node, the config, agent-device, the platform's toolchain,
+and the devices. With one booted simulator, emulator, or device, it also checks
+that the app is installed. Use `--target android` for Android.
+
 ## Agent tests
 
 Set a [Vercel AI Gateway](https://vercel.com/docs/ai-gateway) key:
@@ -37,5 +47,7 @@ model calls. Results are in `.e2e/report.json`.
 See [e2e.config.ts](e2e.config.ts) and [tests/](tests/) for the setup.
 For your own app, follow the [Quickstart](https://e2e.com/docs/quickstart).
 
-Last checked on 2026-11-04 with Expo SDK 57, e2e 0.22.0,
-@e2e-dev/web 0.15.4 and @e2e-dev/mobile 0.12.5.
+Last checked on 2026-11-11 with Expo SDK 57, e2e 0.23.0, @e2e-dev/web 0.15.5,
+@e2e-dev/mobile 0.12.6, and Xcode 26.3 on an iOS 26.3 simulator.
+`npx e2e doctor --target ios` passed, and the three locator tests passed on
+iOS and web. The agent tests and Android were not run.
