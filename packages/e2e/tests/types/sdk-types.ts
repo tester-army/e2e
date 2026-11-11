@@ -197,6 +197,9 @@ customExecutorObservation.keyboardVisible satisfies boolean | undefined;
 ({ targets, cache: 'read-write' }) satisfies E2EConfig;
 ({ targets, failOnSkippedFailure: true }) satisfies E2EConfig;
 ({ targets, maxDuration: 900_000 }) satisfies E2EConfig;
+({ targets, pins: 'required' }) satisfies E2EConfig;
+// @ts-expect-error pins is a mode, not a switch
+({ targets, pins: true }) satisfies E2EConfig;
 ({ targets, cache: { mode: 'read-only', store: remoteStore, dir: 'shared-cache' } }) satisfies E2EConfig;
 ({ targets: [{ platform: 'ios' }] }) satisfies E2EConfig;
 // @ts-expect-error specVersion is gone; the runner version is the format version
@@ -623,6 +626,9 @@ await agent.act('greet', { steps: [{ target: { role: 'button' } }] });
 await agent.act('greet', { steps: [{ name: 'tap', run: () => undefined }] });
 // @ts-expect-error assertions are never pinned
 await agent.assert('ready', { steps: [] });
+await agent.act('sync the account', { pin: false });
+// @ts-expect-error pin only opts a step out; leaving it out pins
+await agent.act('sync the account', { pin: true });
 'inline' satisfies NonNullable<typeof actResult.cache>['pinned'];
 actResult.summary satisfies string;
 actResult.modelCalls satisfies number;

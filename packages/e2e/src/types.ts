@@ -232,7 +232,17 @@ export interface ActOptions extends AgentOption {
    * again.
    */
   steps?: readonly PinnedAction[];
+  /**
+   * `false` keeps the step out of pinning: it runs as an unpinned step,
+   * through the replay cache and the agent, even when `pins` is
+   * `'required'`, and `--pin` never pins it. For a step that cannot be
+   * pinned, such as one that calls a project tool. Not with `steps`.
+   */
+  pin?: false;
 }
+
+/** Whether `e2e run` requires every `agent.act()` step to be pinned; see `E2EConfig.pins`. */
+export type PinsMode = 'optional' | 'required';
 
 /**
  * One recorded action of a pinned step, as `agent.act`'s `steps` option
@@ -1801,6 +1811,14 @@ export interface E2EConfig {
    * of trust in the cache it restores.
    */
   cache?: CacheMode | CacheConfig;
+  /**
+   * Whether every `agent.act()` step `e2e run` runs from a test file must
+   * be pinned. `'required'` fails a step with no pin with `REPLAY_STALE`
+   * instead of running the agent; a call opts out with `pin: false`. A run
+   * with `--pin` records instead, and judgments are never pinned.
+   * `--pins` replaces it for one run. Default `'optional'`.
+   */
+  pins?: PinsMode;
   /**
    * Named accounts. `credentials.user(name).password` is the handle of a
    * credential's password, a secret named `<name>.password`; `secrets.get()`

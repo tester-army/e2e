@@ -17,7 +17,7 @@ import type { AgentCacheContext, ClaimedKey } from '../cache/context.ts';
 import { decideTraceReplay, opensWithNavigate, type TraceReplayMissReason } from '../cache/decide.ts';
 import { sameRoute } from '../cache/route.ts';
 import { keyContextChanges, type CacheAgentIdentity } from '../cache/identity.ts';
-import type { AttemptPins, PinClaim, PinPlan } from '../cache/pin-context.ts';
+import { unpinnedStepMessage, type AttemptPins, type PinClaim, type PinPlan } from '../cache/pin-context.ts';
 import { unpinnableReason } from '../cache/pins.ts';
 import { recordedProvenance, TraceRecorder } from '../cache/recorder.ts';
 import { expandTrace, templateParams, templatesCollide, templateTrace, type ParamTemplate } from '../cache/template.ts';
@@ -263,6 +263,7 @@ export class StepTraceSession {
     this.startedMs = Date.now();
     if (this.pinClaim !== undefined) this.pinPlan = await this.options.pins!.plan(this.pinClaim, this.options.inlineSteps);
     if (this.pinPlan.kind === 'replay' || this.pinPlan.kind === 'stale') return this.replayPinned(this.pinPlan);
+    if (this.pinPlan.kind === 'unpinned') this.failUnpinned();
     if (this.writesCache || this.pinPlan.kind === 'record') {
       this.recorder = new TraceRecorder({ ...this.redaction, maxActions: this.options.maxActions });
     }
@@ -576,6 +577,12 @@ export class StepTraceSession {
     }
     this.info = { mode: 'self-finalized', replayedActions: outcome.executed, totalActions: outcome.total, pinned };
     return { status: 'passed', summary: `replayed ${String(outcome.executed)} pinned action(s)${RECORDED_VERDICT_SEPARATOR}${trace.summary}` };
+  }
+
+  /** Fails a step with no pin in a run that requires pins, before anything runs. */
+  private failUnpinned(): never {
+    this.info = this.missed('no-entry', 0, undefined, 'the step is not pinned, and the run requires pins');
+    throw new AgentError('REPLAY_STALE', unpinnedStepMessage(this.options.pins!));
   }
 
   /** Fails a pinned step whose recording does not replay, saying why and how to record it again. */

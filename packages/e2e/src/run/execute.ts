@@ -1024,6 +1024,7 @@ export class TargetExecutor implements SerialHost {
             target: this.sessionIdentity,
             update: this.config.pin,
             inlineWrites: !this.config.ci,
+            required: this.config.pinsRequired,
             redact: staticSecretLedger(this.config.allSecrets).redact,
           })
         : undefined;

@@ -418,6 +418,13 @@ matches. Misses and hand-offs use the model; `agent.assert`,
   makes the next local run write the actions into the call (CI fails an
   empty list). `--pin all` re-records. A step that calls a project tool or
   types a value read off the screen does not pin.
+- `pins: 'required'` in the config (or `--pins required`) fails an
+  `agent.act()` step with no pin with `REPLAY_STALE` instead of running the
+  agent, so CI runs only reviewed steps; set it for CI only with
+  `pins: process.env.CI ? 'required' : 'optional'`. A call opts out with
+  `pin: false` (not with `steps`), which also keeps `--pin` from pinning it.
+  A `--pin` run records instead of failing, and an empty `steps: []` records
+  only under `--pin`; judgments are never pinned.
 - `e2e init` gitignores `.e2e/cache/`; remove that line to commit entries
   and share replays with CI and teammates (CI stays `read-only` unless
   `cache: 'read-write'` is set).

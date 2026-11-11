@@ -37,6 +37,13 @@ describe('validateActOptions', () => {
     }
   });
 
+  it('takes pin: false alone, and refuses any other pin or pin: false with steps', () => {
+    expect(() => validateActOptions({ pin: false }, 0)).not.toThrow();
+    for (const options of [{ pin: true }, { pin: 'off' }, { pin: false, steps: [] }]) {
+      expect(() => validateActOptions(options as never, 0)).toThrow(expect.objectContaining({ code: 'INVALID_ARGUMENT' }));
+    }
+  });
+
   it('takes an onBeforeAction function and refuses any other value', () => {
     expect(() => validateActOptions({ onBeforeAction: async () => undefined }, 0)).not.toThrow();
     expect(() => validateActOptions({ onBeforeAction: 'screenshot' } as never, 0)).toThrow('options.onBeforeAction must be a function');

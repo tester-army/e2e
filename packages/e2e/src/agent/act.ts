@@ -41,6 +41,7 @@ import { OperationQueue } from './operation-queue.ts';
 import { StepAccounting } from './step-accounting.ts';
 import { failedStepOutcome, StepTraceSession, type StepCacheHost, type StepOutcome } from './step-cache.ts';
 import type { ParamTemplate } from '../cache/template.ts';
+import { unpinnedStepMessage } from '../cache/pin-context.ts';
 
 /** Default exploration ceilings, capped by the configured agent limits. */
 const EXPLORATION_MAX_ACTIONS = 10;
@@ -77,6 +78,8 @@ export interface DispatchSpec {
   readonly onBeforeAction?: BeforeActionHook | undefined;
   /** Act only: the call's `steps` option, the pinned actions it holds or `[]` to record them. */
   readonly inlineSteps?: readonly unknown[] | undefined;
+  /** Act only: `false` when the call opts out of pinning (`pin: false`). */
+  readonly pin?: false | undefined;
 }
 
 /** Runs one `agent.act()` call as a harness-dispatched executor step. */
@@ -104,6 +107,7 @@ export async function runActStep(
     onAction: options?.onAction,
     onBeforeAction: options?.onBeforeAction,
     inlineSteps: options?.steps,
+    pin: options?.pin,
   });
 }
 
@@ -277,7 +281,9 @@ class ActDispatch {
       );
     }
     const cache = recordable ? runtime.cache : undefined;
-    const pins = recordable ? runtime.pins : undefined;
+    // A call that opts out claims no pin: it runs as a step with none, and
+    // `pins: 'required'` lets it.
+    const pins = recordable && spec.pin !== false ? runtime.pins : undefined;
     // Without pins nothing would replay the actions or record an empty
     // list, and the executor would run the step live in their place.
     if (spec.inlineSteps !== undefined && pins === undefined) {
@@ -285,6 +291,9 @@ class ActDispatch {
         'UNSUPPORTED_CAPABILITY',
         'agent.act steps (options.steps) needs a test file the runner runs; this session (openHost, a session with no test, or a test registered in memory) has none to pin steps beside',
       );
+    }
+    if (spec.kind === 'act' && !recordable && spec.pin !== false && runtime.pins?.required === true) {
+      throw new AgentError('REPLAY_STALE', unpinnedStepMessage(runtime.pins, `${JSON.stringify(agent.executor.name)} declares cache: 'off'`));
     }
     this.stepCache =
       cache === undefined && pins === undefined

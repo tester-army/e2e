@@ -53,6 +53,7 @@ export default {
 | [`agents`](#agents) | `Record<string, AgentConfig>` | `default`, no model |
 | [`filters`](#filters) | `TestFilter[]` | - |
 | [`cache`](#cache) | `CacheMode \| CacheConfig` | `'read-write'`, `'read-only'` in CI |
+| [`pins`](#pins) | `'optional' \| 'required'` | `'optional'` |
 | [`credentials`](#credentials) | `Record<string, CredentialConfig>` | - |
 | [`secrets`](#secrets) | `Record<string, SecretConfig>` | - |
 
@@ -1341,6 +1342,26 @@ opt-in. Remove that line to share replays with CI and teammates. CI stays
 `read-only` unless `cache: 'read-write'` is set. See
 [Caching](/cache#commit-the-replay-cache).
 
+### pins
+
+Whether every `agent.act()` step must be [pinned](/pinned-steps).
+`'required'` fails a step with no pin with `REPLAY_STALE` instead of
+running the agent.
+
+```ts
+pins: process.env.CI ? 'required' : 'optional', // default: 'optional'
+```
+
+- `--pins` replaces it for one run.
+- A call opts out with `pin: false`.
+- A run with `--pin` records the steps instead of failing them. An empty
+  `steps: []` records only under `--pin`.
+- It applies to the steps `e2e run` runs from a test file. Judgments
+  (`assert`, `waitFor`, `extract`) are never pinned.
+- It doesn't change the [cache key](/cache#what-must-match).
+
+See [Require pins in CI](/pinned-steps#require-pins-in-ci).
+
 ## Run limits
 
 The report's `run.limits` block records the ceilings a run enforced. There is
@@ -1565,6 +1586,8 @@ export interface E2EConfig {
   filters?: readonly TestFilter[];
   /** Replay cache mode or options; default `read-write`, `read-only` in CI. */
   cache?: CacheMode | CacheConfig;
+  /** Whether every `agent.act()` step `e2e run` runs must be pinned; default `'optional'`. */
+  pins?: 'optional' | 'required';
   /** Named accounts: a username and a password the model never sees. */
   credentials?: Readonly<Record<string, CredentialConfig>>;
   /** Named values the model must never see: API keys, tokens, anything sourced from the environment. */

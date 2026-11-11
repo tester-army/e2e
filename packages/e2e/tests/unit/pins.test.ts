@@ -185,9 +185,9 @@ describe('inline steps', () => {
 describe('a step meets its pin', () => {
   const target = { targetId: 'web', platform: 'web', engineName: 'web', spiVersion: 3, appIdentity: 'http://127.0.0.1:4173' };
 
-  function pins(root: string, update: 'none' | 'new' | 'all', inlineWrites = true, titlePath = ['greets']) {
+  function pins(root: string, update: 'none' | 'new' | 'all', inlineWrites = true, titlePath = ['greets'], required = false) {
     return createAttemptPins({
-      projectRoot: root, projectId: 'p', testFile: 'a.e2e.ts', testId: 'a.e2e.ts::greets', titlePath, target, update, inlineWrites,
+      projectRoot: root, projectId: 'p', testFile: 'a.e2e.ts', testId: 'a.e2e.ts::greets', titlePath, target, update, inlineWrites, required,
       redact: (text) => text.replaceAll('hunter2', '[secret]'),
     });
   }
@@ -210,6 +210,30 @@ describe('a step meets its pin', () => {
     const plan = await fresh.plan(fresh.claim('greet {name}', { name: 'Grace' }, { name: 'default', context: undefined }), undefined);
     expect(plan).toMatchObject({ kind: 'replay', source: 'sidecar', recordedWith: claim.context });
     expect(await pins(root, 'all').plan(claim, undefined)).toEqual({ kind: 'record', inline: false });
+  });
+
+  it('fails a step with no pin when pins are required, unless --pin records it', async () => {
+    const root = scratch();
+    const required = pins(root, 'none', true, ['greets'], true);
+    const claim = required.claim('greet', {}, { name: 'default', context: undefined });
+    expect(await required.plan(claim, undefined)).toEqual({ kind: 'unpinned' });
+    expect(await pins(root, 'new', true, ['greets'], true).plan(claim, undefined)).toEqual({ kind: 'record', inline: false });
+    expect(pins(root, 'new', true, ['greets'], true).required).toBe(false);
+
+    await mergePinsFile(path.join(root, 'a.e2e.steps.json'), [pinnedStep(claim.id, claim.context, trace, false)]);
+    const fresh = pins(root, 'none', true, ['greets'], true);
+    expect(await fresh.plan(fresh.claim('greet', {}, { name: 'default', context: undefined }), undefined)).toMatchObject({ kind: 'replay' });
+  });
+
+  it('records an empty steps option only under --pin when pins are required, and still fails it in CI', async () => {
+    const root = scratch();
+    const plan = (update: 'none' | 'new', inlineWrites: boolean) => {
+      const attempt = pins(root, update, inlineWrites, ['greets'], true);
+      return attempt.plan(attempt.claim('greet', {}, { name: 'default', context: undefined }), []);
+    };
+    expect(await plan('none', true)).toEqual({ kind: 'unpinned' });
+    expect(await plan('new', true)).toEqual({ kind: 'record', inline: true });
+    expect(await plan('none', false)).toMatchObject({ kind: 'stale', reason: expect.stringContaining('its steps option is empty') });
   });
 
   it('counts repeats of one call, and keeps them apart', () => {

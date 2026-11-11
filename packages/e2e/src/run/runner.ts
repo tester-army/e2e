@@ -176,6 +176,8 @@ export interface RunOptions {
    * in CI.
    */
   pin?: 'new' | 'all' | undefined;
+  /** Whether an `agent.act()` step with no pin fails (`--pins <mode>`), over the config's `pins`. */
+  pins?: 'optional' | 'required' | undefined;
   /**
    * The configured agents unpinned tests run as (`--agent`), instead of
    * `agents.default`. Several names run every such test once per agent.
@@ -484,6 +486,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   if (options.strictCache === true) cli.cacheStrict = true;
   if (options.updateSnapshots === true) cli.updateSnapshots = true;
   if (options.pin !== undefined) cli.pin = options.pin;
+  if (options.pins !== undefined) cli.pins = options.pins;
   if (options.output !== undefined) cli.output = options.output;
   if (options.cacheDir !== undefined) cli.cacheDir = options.cacheDir;
   if (options.trace !== undefined) cli.trace = options.trace;

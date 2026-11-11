@@ -96,6 +96,80 @@ describe('pinned steps', () => {
   }, 120_000);
 });
 
+describe("pins: 'required'", () => {
+  let app: FixtureApp;
+  let project: FixtureProject;
+
+  beforeAll(async () => {
+    app = await startFixtureApp();
+    // The company flow opts out of pinning; the counter flow does not.
+    const suite = flowsSuite(FLOWS, 'record').replace('{ params: { name: unique(name) } }', '{ params: { name: unique(name) }, pin: false }');
+    project = createProject({ [FLOWS_FILE]: suite });
+  });
+
+  afterAll(async () => {
+    project?.cleanup();
+    await app?.close();
+  });
+
+  function attemptError(outcome: RunOutcome, title: string): unknown {
+    return outcome.report.run.results.find((candidate) => candidate.titlePath.at(-1) === title)?.attempts.at(-1)?.error;
+  }
+
+  it('fails a step with no pin instead of calling the model, and runs one that opts out', async () => {
+    const required = await runExisting(project, { appUrl: app.url, config: { ...config(flowsModel()), pins: 'required' } });
+    assertValidReport(required.report);
+    expect(attemptError(required, 'increments the counter')).toMatchObject({ code: 'REPLAY_STALE', message: expect.stringContaining("this run requires pins (pins: 'required')") });
+    expect(actSteps(required, 'increments the counter')[0]?.cache).toMatchObject({ mode: 'missed', reason: 'no-entry' });
+    expect(attemptError(required, 'creates a company')).toBeUndefined();
+    expect(loopCalls.length).toBeGreaterThan(0);
+    expect(loopCalls.every((call) => !JSON.stringify(call).includes('increment the counter twice'))).toBe(true);
+  }, 120_000);
+
+  it('records under --pin whatever pins says, leaves out a step that opts out, and replays the pin', async () => {
+    const pinned = await runExisting(project, { appUrl: app.url, config: { ...config(flowsModel()), pins: 'required' }, runOptions: { pin: 'new' } });
+    expectPassed(pinned);
+    expect(stepsFile(project).steps.map((step) => step.test)).toEqual([['increments the counter']]);
+
+    const replayed = await runExisting(project, { appUrl: app.url, config: config(flowsModel()), runOptions: { pins: 'required' } });
+    expectPassed(replayed);
+    expect(actSteps(replayed, 'increments the counter')[0]?.cache).toMatchObject({ mode: 'self-finalized', pinned: 'sidecar' });
+  }, 240_000);
+
+  it("fails a step an executor with cache: 'off' runs, unless the call opts out", async () => {
+    let reached = 0;
+    const live = {
+      name: 'live',
+      cache: 'off' as const,
+      async runStep() {
+        reached += 1;
+        return { status: 'passed' as const, summary: 'ran live' };
+      },
+    };
+    const suite = `import { test } from 'e2e';
+
+test('pinned', async ({ app, agent }) => {
+  await app.open();
+  await agent.act('look around');
+});
+
+test('opted out', async ({ app, agent }) => {
+  await app.open();
+  await agent.act('look around', { pin: false });
+});
+`;
+    const liveProject = createProject({ [FLOWS_FILE]: suite });
+    try {
+      const outcome = await runExisting(liveProject, { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agents: { default: { executor: live } }, pins: 'required' } });
+      expect(attemptError(outcome, 'pinned')).toMatchObject({ code: 'REPLAY_STALE', message: expect.stringContaining(`"live" declares cache: 'off', so nothing can pin it`) });
+      expect(attemptError(outcome, 'opted out')).toBeUndefined();
+      expect(reached).toBe(1);
+    } finally {
+      liveProject.cleanup();
+    }
+  }, 120_000);
+});
+
 /** The built CLI: only a plain Node process maps a test's stack to its source lines, which the inline write needs. */
 const CLI = fileURLToPath(new URL('../../dist/cli/bin.js', import.meta.url));
 

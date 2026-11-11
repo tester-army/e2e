@@ -152,6 +152,19 @@ describe('cache config resolution', () => {
     expect(() => resolve({ cache: { strict: 'yes' as unknown as boolean } })).toThrow(/cache\.strict must be a boolean/);
   });
 
+  it('requires pins when pins or --pins says required, the flag first, and rejects any other mode', () => {
+    expect(resolve(APP).pinsRequired).toBe(false);
+    expect(resolve({ pins: 'required' }).pinsRequired).toBe(true);
+    expect(resolve({ pins: 'required' }, BASE_ENV, { pins: 'optional' }).pinsRequired).toBe(false);
+    expect(resolve(APP, BASE_ENV, { pins: 'required' }).pinsRequired).toBe(true);
+    expect(() => resolve({ pins: true as never })).toThrow("pins must be 'optional' or 'required', not true");
+    expect(() => resolve(APP, BASE_ENV, { pins: 'strict' as never })).toThrow("--pins must be 'optional' or 'required'");
+  });
+
+  it('leaves the config digest alone when pins changes, since it never changes what a step does', () => {
+    expect(resolve({ pins: 'required' }).configDigest).toBe(resolve(APP).configDigest);
+  });
+
   it('rejects unknown modes, unknown keys, and non-store store values', () => {
     expect(() => resolve({ ...APP, cache: 'aggressive' as never })).toThrow(/cache mode/);
     expect(() => resolve({ ...APP, cache: { mode: 'off', ttl: 5 } as never })).toThrow(

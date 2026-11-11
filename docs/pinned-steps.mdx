@@ -76,6 +76,29 @@ A call that runs more than once with different actions, in a loop or in a
 helper several tests share, cannot hold one list. The run leaves it alone
 and says so. Keep such a step in the steps file.
 
+## Require pins in CI
+
+Set `pins: 'required'` so CI runs only reviewed steps. A step with no pin
+then fails with `REPLAY_STALE` instead of running the agent. Without it, a
+step with no pin runs live, in CI too. That includes a step whose test you
+renamed.
+
+```ts title="e2e.config.ts"
+pins: process.env.CI ? 'required' : 'optional',
+```
+
+`--pins required` and `--pins optional` set it for one run. A run with
+`--pin` records instead of failing, and an empty `steps: []` records only
+under `--pin`. Judgments (`assert`, `waitFor`,
+`extract`) are never pinned and always run.
+
+A step that can't pin, such as one that calls a project tool, opts out with
+`pin: false`. It runs like any step with no pin, and `--pin` skips it.
+
+```ts
+await agent.act('sync the account', { pin: false });
+```
+
 ## When a pinned step fails
 
 The `REPLAY_STALE` message says why:
@@ -110,6 +133,6 @@ the runner never overwrites a file it cannot read.
     Replay without pinning, with the agent taking over when the app changes.
   </Card>
   <Card title="CLI reference" icon="terminal" href="/reference/cli#e2e-run">
-    `--pin`, `--no-cache`, `--strict-cache`.
+    `--pin`, `--pins`, `--no-cache`, `--strict-cache`.
   </Card>
 </CardGroup>

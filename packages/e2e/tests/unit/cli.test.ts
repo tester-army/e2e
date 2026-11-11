@@ -900,6 +900,7 @@ describe('e2e --version and --help', () => {
       '--strict-cache',
       '-u',
       '--pin',
+      '--pins',
       '-w',
       '--step',
       '--reporter',

@@ -204,10 +204,11 @@ export async function launchAttempt(
         cache: config.cache, projectRoot: config.projectRoot, projectId: config.projectId, testId: test.pair.test.id,
         target: targetIdentity(target), attemptIndex: 0, recordings: storedRecordingsFor(config.cache),
       });
-      // Pinned steps replay as in a run; nothing here records a pin.
+      // Pinned steps replay as in a run; nothing here records a pin, and a
+      // session's steps run unpinned whatever the config's `pins` says.
       const pins = createAttemptPins({
         projectRoot: config.projectRoot, projectId: config.projectId, testFile: test.pair.test.file, testId: test.pair.test.id,
-        titlePath: test.pair.test.titlePath, target: targetIdentity(target), update: 'none', inlineWrites: false,
+        titlePath: test.pair.test.titlePath, target: targetIdentity(target), update: 'none', inlineWrites: false, required: false,
         redact: staticSecretLedger(config.allSecrets).redact,
       });
       const { fixtures } = createFixtures({

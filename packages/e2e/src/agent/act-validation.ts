@@ -39,7 +39,7 @@ export function validateInstruction(instruction: string, api: string): string {
   return normalized;
 }
 
-const ACT_OPTION_KEYS: ReadonlySet<string> = new Set(['params', 'timeout', 'maxSteps', 'maxModelCalls', 'agent', 'onAction', 'onBeforeAction', 'steps']);
+const ACT_OPTION_KEYS: ReadonlySet<string> = new Set(['params', 'timeout', 'maxSteps', 'maxModelCalls', 'agent', 'onAction', 'onBeforeAction', 'steps', 'pin']);
 
 /**
  * The `act` type has no `schema` and no `vision`, and no key outside
@@ -86,6 +86,13 @@ export function validateActOptions(options: ActOptions | undefined, extraArgumen
     if (!Array.isArray(steps) || steps.length > MAX_TRACE_ACTIONS || ![...steps].every((step) => typeof step === 'object' && step !== null && !Array.isArray(step))) {
       throw new TestError('INVALID_ARGUMENT', `agent.act options.steps must be an array of at most ${MAX_TRACE_ACTIONS} recorded actions, or [] to record them`);
     }
+  }
+  const pin: unknown = options.pin;
+  if (pin !== undefined && pin !== false) {
+    throw new TestError('INVALID_ARGUMENT', 'agent.act options.pin takes only false, which keeps the step out of pinning; leave it out to pin the step');
+  }
+  if (pin === false && steps !== undefined) {
+    throw new TestError('INVALID_ARGUMENT', 'agent.act options.pin: false keeps the step out of pinning, and options.steps pins it; drop one');
   }
   const unknown = Object.keys(options).filter((key) => !ACT_OPTION_KEYS.has(key));
   if (unknown.length > 0) {

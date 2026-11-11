@@ -187,6 +187,12 @@ function parsePinMode(value: string): 'new' | 'all' {
   return value;
 }
 
+/** `--pins`'s mode: `optional` or `required`. */
+function parsePinsMode(value: string): 'optional' | 'required' {
+  if (value !== 'optional' && value !== 'required') throw new InvalidArgumentError(`expected optional or required, got "${value}"`);
+  return value;
+}
+
 /**
  * The removed `--artifacts <dir>`, kept hidden so a script that still passes
  * it fails with the new spelling: the directory's parent held the report
@@ -674,6 +680,7 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
     .option('--strict-cache', 'fail a step whose recording no longer replays (REPLAY_STALE) instead of handing it to the agent; never writes the cache')
     .option('-u, --update-snapshots', 'write the stored screenshots toHaveScreenshot finds missing or different, and pass')
     .option('--pin [mode]', 'pin the selected agent.act() steps to their recordings, written to <test>.steps.json when the run ends: new (bare) pins the steps not pinned yet, all records every one again; not in CI', parsePinMode)
+    .option('--pins <mode>', "required fails an agent.act() step with no pin (REPLAY_STALE) instead of running the agent, unless the call says pin: false; optional runs it; over the config's pins", parsePinsMode)
     .option('-w, --watch', 'run, then run again whenever a test or source file or the config changes or a key asks: a (all), r (current), f (failed), u, p, t, q; not in CI')
     .option('--step', 'run the first step, then hold each later one until a key: enter runs it, n runs to the next test, a runs all, h lists the keys, q stops; one worker, a terminal, not in CI')
     .optionsGroup('Output:')
@@ -747,6 +754,7 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
           strictCache?: boolean;
           updateSnapshots?: boolean;
           pin?: 'new' | 'all' | true;
+          pins?: 'optional' | 'required';
           watch?: boolean;
           step?: boolean;
           debug?: boolean;
@@ -780,6 +788,7 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
           strictCache: options.strictCache,
           updateSnapshots: options.updateSnapshots,
           pin: options.pin === true ? 'new' : options.pin,
+          pins: options.pins,
           debug: options.debug,
           aiTrace: options.aiTrace,
           trace: recordingOption(options.trace),

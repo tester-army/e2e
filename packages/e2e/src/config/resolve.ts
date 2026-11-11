@@ -20,6 +20,7 @@ import type {
   ArtifactsConfig,
   BuiltinReporter,
   CacheMode,
+  PinsMode,
   E2EConfig,
   ModelInstance,
   Reporter,
@@ -96,6 +97,8 @@ export interface ResolvedConfig {
   readonly updateSnapshots: boolean;
   /** `--pin [mode]`: which steps the run pins; `none` without the flag. */
   readonly pin: 'none' | 'new' | 'all';
+  /** `pins` or `--pins`: whether an `agent.act()` step with no pin fails instead of running the agent. */
+  readonly pinsRequired: boolean;
   readonly limits: ResolvedLimits;
   readonly credentials: ReadonlyMap<string, ResolvedCredential>;
   /** The `config.secrets` entries by name: what `secrets.get()` and an engine option take. */
@@ -154,6 +157,8 @@ export interface CliOverrides {
   updateSnapshots?: boolean;
   /** `--pin [mode]`: pin the steps not pinned yet (`new`), or record every selected step again (`all`). */
   pin?: 'new' | 'all';
+  /** `--pins <mode>`: over the config's `pins`. */
+  pins?: PinsMode;
   /** `--output <dir>`: the results directory for this run, over the config's `output`. */
   output?: string;
   /** `--cache-dir <dir>`: the replay cache directory for this run, over `E2E_CACHE_DIR` and `cache.dir`. */
@@ -187,6 +192,7 @@ const TOP_LEVEL_KEYS = new Set([
   'agents',
   'filters',
   'cache',
+  'pins',
   'credentials',
   'secrets',
 ]);
@@ -236,6 +242,15 @@ function resolvePin(pin: CliOverrides['pin'], ci: boolean): ResolvedConfig['pin'
   if (pin !== 'new' && pin !== 'all') throw new ConfigurationError('INVALID_CONFIG', `--pin takes new or all, not ${JSON.stringify(pin)}`);
   if (ci) throw new ConfigurationError('INVALID_CONFIG', '--pin writes steps files and test files, and a run in CI writes neither (CI is set); pin in a local run and commit the change');
   return pin;
+}
+
+/** Whether the run requires pins: `--pins` over the config's `pins`, default `optional`. */
+function resolvePinsRequired(configured: unknown, flag: CliOverrides['pins']): boolean {
+  const mode = flag ?? configured ?? 'optional';
+  if (mode !== 'optional' && mode !== 'required') {
+    throw new ConfigurationError('INVALID_CONFIG', `${flag === undefined ? 'pins' : '--pins'} must be 'optional' or 'required', not ${JSON.stringify(mode)}`);
+  }
+  return mode === 'required';
 }
 
 /** True when CI mode is active. */
@@ -353,6 +368,7 @@ export function resolveConfig(
     cache,
     updateSnapshots: cli.updateSnapshots === true,
     pin: resolvePin(cli.pin, ci),
+    pinsRequired: resolvePinsRequired(raw.pins, cli.pins),
     limits,
     credentials,
     secrets,
@@ -1111,13 +1127,15 @@ function computeConfigDigest(
   // `failOnSkippedFailure` decides only the exit code, never what runs, and
   // `maxDuration` only when the run stops. A test filter decides what runs
   // before any worker starts and never changes what a test does, so adding
-  // one leaves the replays valid, like a reporter.
+  // one leaves the replays valid, like a reporter. Nor does `pins`, which
+  // decides whether a step with no pin may run, never what a pinned one does.
   // `targets` digest by declaration below and never enter the clone: an
   // engine holds `secrets.get()` handles, which refuse to serialize.
   const {
     failOnSkippedFailure: _failOnSkippedFailure,
     maxDuration: _maxDuration,
     filters: _filters,
+    pins: _pins,
     artifacts: _artifacts,
     output: _output,
     trace: _trace,

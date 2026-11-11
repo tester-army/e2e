@@ -73,6 +73,7 @@ const { summary, cache } = await agent.act('Sign in', {
 | `onAction` | [`ActionHook`](#types) | none |
 | `onBeforeAction` | [`BeforeActionHook`](#types) | none |
 | `steps` | `readonly PinnedAction[]` | none |
+| `pin` | `false` | none |
 
 `params` values come from your code, never from the model. Wrap a value that
 differs on every run in [`unique()`](#unique). The model sees a `Secret` as
@@ -127,6 +128,11 @@ fails. An executor with `cache: 'off'` takes no `steps`, and neither does
 a session with no test file to pin beside, such as one from `openHost`
 (`UNSUPPORTED_CAPABILITY`). See [Pinned steps](/pinned-steps).
 
+`pin: false` keeps the step out of pinning. It runs as a step with no pin,
+through the replay cache and the agent, even under
+[`pins: 'required'`](/reference/config#pins), and `--pin` skips it. It
+doesn't go with `steps`.
+
 A failed verdict is `ACTION_FAILED` unless the executor names a more specific
 code, such as `LOCATOR_NOT_FOUND` or `AUTHENTICATION_FAILED`. A blocked
 verdict means the step could not reach a product verdict. It carries one of
@@ -151,8 +157,8 @@ The runner's own stops, and the checks on the call itself:
 | `MODEL_REFUSED` | The model refused the request. |
 | `MODEL_PROVIDER_FAILED` | The provider's transport failed after its retries. |
 | `MODEL_OUTPUT_INVALID` | A verdict outside the grammar. |
-| `REPLAY_STALE` | Under a strict cache, the step's recording no longer replays, or the step is [pinned](/pinned-steps) and its recording does not replay. |
-| `INVALID_ARGUMENT` | A malformed instruction, oversized `params`, an unknown option, an `onAction` or `onBeforeAction` that is not a function, a `steps` that is not an array of objects, or a budget above the configured limit. An unknown `agent` name fails before the step opens. |
+| `REPLAY_STALE` | Under a strict cache, the step's recording no longer replays, the step is [pinned](/pinned-steps) and its recording does not replay, or the step has no pin under `pins: 'required'`. |
+| `INVALID_ARGUMENT` | A malformed instruction, oversized `params`, an unknown option, an `onAction` or `onBeforeAction` that is not a function, a `steps` that is not an array of objects, a `pin` other than `false` or with `steps`, or a budget above the configured limit. An unknown `agent` name fails before the step opens. |
 | `UNSUPPORTED_CAPABILITY` | `schema` or `vision`, which `act` does not take, or `steps` with an executor that declares `cache: 'off'` or in a session with no test file (`openHost`, a test registered in memory). |
 
 ### agent.assert
@@ -588,6 +594,8 @@ export interface ActOptions extends AgentOption {
    * to record the step and write its actions here.
    */
   steps?: readonly PinnedAction[];
+  /** `false` keeps the step out of pinning, even under `pins: 'required'`. Not with `steps`. */
+  pin?: false;
 }
 
 /** One recorded action of a pinned step: a `trace-1` action without its `summary`. */

@@ -59,7 +59,9 @@ export type PinPlan =
   /** Pinned to something that cannot replay: the step fails with `reason`. */
   | { readonly kind: 'stale'; readonly source: 'sidecar' | 'inline'; readonly reason: string }
   /** The step runs as any other, and its confirmed recording is pinned. */
-  | { readonly kind: 'record'; readonly inline: boolean };
+  | { readonly kind: 'record'; readonly inline: boolean }
+  /** Not pinned in a run that requires pins (`pins: 'required'`): the step fails without running. */
+  | { readonly kind: 'unpinned' };
 
 /** One step's claim: who it is, as its pin is looked up and written. */
 export interface PinClaim {
@@ -86,6 +88,12 @@ export interface AttemptPins {
   /** Whether an empty `steps: []` records (false in CI, which writes nothing). */
   readonly inlineWrites: boolean;
   /**
+   * Whether a step with no pin fails instead of running (`pins:
+   * 'required'`). Never while `--pin` records: a step it asks for runs to
+   * be pinned.
+   */
+  readonly required: boolean;
+  /**
    * Claims one step's identity, advancing the occurrence count of its
    * instruction and params for its agent, as the cache key does. One claim
    * per dispatched act step, in order.
@@ -111,6 +119,8 @@ export function createAttemptPins(options: {
   readonly target: CacheTargetIdentity;
   readonly update: PinUpdate;
   readonly inlineWrites: boolean;
+  /** `pins: 'required'`: a step with no pin fails, unless `update` records it. */
+  readonly required: boolean;
   /** Masks registered secret values in the labels a steps file spells out: a title may interpolate one. The same on every run, so a lookup finds what a run wrote. */
   readonly redact: (text: string) => string;
 }): AttemptPins {
@@ -121,11 +131,13 @@ export function createAttemptPins(options: {
   const indexers = new Map<string, ReturnType<typeof createCallIndexer>>();
   const test = options.titlePath.map((title) => options.redact(title));
   const targetLabel = options.redact(options.target.targetId);
+  const required = options.required && options.update === 'none';
   return {
     update: options.update,
     testFile: options.testFile,
     file,
     inlineWrites: options.inlineWrites,
+    required,
     claim: (instruction, params, agent) => {
       const signature = traceCallSignature('act', instruction, params);
       const agentKey = canonicalJson([agent.name, agent.context ?? '']);
@@ -148,19 +160,29 @@ export function createAttemptPins(options: {
     },
     plan: async (claim, inline) => {
       book ??= loadPinsBook(absolute);
-      return planPin(await book, claim, inline, options.update, options.inlineWrites, file);
+      return planPin(await book, claim, inline, options.update, options.inlineWrites, file, required);
     },
     staged: [],
   };
 }
 
-function planPin(book: PinsBook, claim: PinClaim, inline: readonly unknown[] | undefined, update: PinUpdate, inlineWrites: boolean, file: string): PinPlan {
+function planPin(
+  book: PinsBook,
+  claim: PinClaim,
+  inline: readonly unknown[] | undefined,
+  update: PinUpdate,
+  inlineWrites: boolean,
+  file: string,
+  required: boolean,
+): PinPlan {
   const source = inline === undefined ? 'sidecar' : 'inline';
   if (book.status === 'unreadable') return { kind: 'stale', source, reason: `the steps file ${file} cannot be read: ${book.reason}` };
   const entry = book.status === 'read' ? book.entries.get(pinIdKey(claim.id)) : undefined;
   if (inline !== undefined) {
     if (inline.length === 0 || (update === 'all' && inlineWrites)) {
-      return inlineWrites ? { kind: 'record', inline: true } : { kind: 'stale', source, reason: 'its steps option is empty, and this run records nothing (CI, or a session outside e2e run)' };
+      if (!inlineWrites) return { kind: 'stale', source, reason: 'its steps option is empty, and this run records nothing (CI, or a session outside e2e run)' };
+      // Recording runs the agent, which a run that requires pins leaves to `--pin`.
+      return required ? { kind: 'unpinned' } : { kind: 'record', inline: true };
     }
     const actions = readInlineSteps(inline);
     if (actions === undefined) return { kind: 'stale', source, reason: 'its steps option is not a list of recorded actions this runner can replay' };
@@ -178,7 +200,18 @@ function planPin(book: PinsBook, claim: PinClaim, inline: readonly unknown[] | u
     return { kind: 'replay', source, trace: entry.step.trace, recordedWith: entry.step.recordedWith };
   }
   // An inline entry whose call no longer holds `steps` pins nothing: its actions went with the option.
-  return update === 'new' ? { kind: 'record', inline: false } : { kind: 'none' };
+  if (update === 'new') return { kind: 'record', inline: false };
+  return required ? { kind: 'unpinned' } : { kind: 'none' };
+}
+
+/**
+ * Why a step with no pin fails in a run that requires pins, and the ways
+ * out. `unpinnable` says why no run could pin it, when none could.
+ */
+export function unpinnedStepMessage(pins: AttemptPins, unpinnable?: string): string {
+  const pin = pins.inlineWrites ? `pin it with e2e run ${pins.testFile} --pin` : `pin it with e2e run ${pins.testFile} --pin outside CI and commit the change`;
+  const out = unpinnable === undefined ? `${pin}, or opt the call out with { pin: false }` : `${unpinnable}, so nothing can pin it; opt the call out with { pin: false }`;
+  return `this step is not pinned, and this run requires pins (pins: 'required'), so it does not run the agent; ${out}`;
 }
 
 /** How an attempt ended, as its pins read it. */
