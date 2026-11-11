@@ -9,7 +9,7 @@ const API = 'https://api.cloudflare.com/client/v4';
 export interface BrowserRunOptions {
   /** One browser per worker slot by default; `attempt` acquires a fresh browser for every attempt. */
   readonly scope?: BrowserProviderScope | undefined;
-  /** Inactivity timeout in milliseconds, from 10,000 to 1,200,000. Default: 60,000. */
+  /** Inactivity timeout in milliseconds, from 10,000 to 1,200,000. Default: 600,000. */
   readonly keepAlive?: number | undefined;
 }
 
@@ -58,7 +58,7 @@ async function release(lease: BrowserLease, context: BrowserReleaseContext): Pro
  * The engine owns isolation, screenshots, and per-attempt screencast video.
  */
 export function browserRun(options: BrowserRunOptions = {}): BrowserProvider {
-  const { scope, keepAlive = 60_000 } = options;
+  const { scope, keepAlive = 600_000 } = options;
 
   if (!Number.isInteger(keepAlive) || keepAlive < 10_000 || keepAlive > 1_200_000) {
     throw new Error('browserRun keepAlive must be an integer from 10000 to 1200000 milliseconds');

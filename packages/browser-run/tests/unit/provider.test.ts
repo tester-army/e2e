@@ -49,6 +49,7 @@ describe('browserRun', () => {
     const provider = browserRun({ scope: 'attempt' });
     expect(provider.scope).toBe('attempt');
     expect((await provider.acquire(context())).id).toBe(id);
+    expect(vi.mocked(fetch).mock.calls[0]?.[0]).toContain('keep_alive=600000');
   });
 
   it('validates options without credentials or network access', () => {

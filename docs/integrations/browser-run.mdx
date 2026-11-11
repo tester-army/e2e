@@ -52,7 +52,9 @@ Use a public HTTPS app URL. A hosted browser cannot reach the runner's `localhos
 | Option | Default | Meaning |
 | --- | --- | --- |
 | `scope` | `'worker'` | One browser per worker slot. `'attempt'` leases a fresh browser for every attempt and retry. |
-| `keepAlive` | `60000` | Inactivity timeout in milliseconds, from `10000` to `1200000`. |
+| `keepAlive` | `600000` | Inactivity timeout in milliseconds, from `10000` to `1200000`. |
+
+The timeout counts time without CDP commands, even while connected. Increase `keepAlive` when a test can pause longer than ten minutes.
 
 Worker scope creates an isolated context for every attempt.
 Attempt scope uses the fresh browser's default context and supports reconnecting to that browser after a transport drop.
@@ -71,6 +73,7 @@ When [video](/reference/config#video) is enabled, the web engine records a per-a
 
 Keep `workers` within your account's [concurrency and acquisition limits](https://developers.cloudflare.com/browser-run/limits/).
 An HTTP `401` or `403` names the token permission to check.
+
 ## Next
 
 <CardGroup cols={2}>
