@@ -1780,13 +1780,13 @@
       "shortTitle": "OmaDeck",
       "description": "A Python-served phone deck tested in a phone-sized browser, with fake hyprctl and wtype recording what each tap sends to the desktop.",
       "source": "community",
-      "repository": "https://github.com/Mohsintl/omadeck/tree/071846876606e2bd9ae13b9e4cb445be271ca471/e2e",
+      "repository": "https://github.com/Mohsintl/omadeck/tree/a022008c60f6d2689e3283d33a099755b4090b87/e2e",
       "author": {
         "name": "Mohsin Mohammed T L",
         "github": "Mohsintl"
       },
       "license": "Apache-2.0",
-      "licenseUrl": "https://github.com/Mohsintl/omadeck/blob/071846876606e2bd9ae13b9e4cb445be271ca471/LICENSE",
+      "licenseUrl": "https://github.com/Mohsintl/omadeck/blob/a022008c60f6d2689e3283d33a099755b4090b87/LICENSE",
       "tags": {
         "framework": [
           "python"
