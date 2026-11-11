@@ -678,14 +678,14 @@ await device.setBiometrics('faceid', 'nonmatch');
 
 | Throws | When |
 | --- | --- |
-| `UNSUPPORTED_CAPABILITY` | `fingerprint` on iOS, `faceid` or `touchid` on Android or on a physical iPhone, or `fingerprint` on an Android phone without `cmd fingerprint`. |
+| `UNSUPPORTED_CAPABILITY` | `fingerprint` on iOS, `faceid` or `touchid` on Android or on a physical iOS device, or `fingerprint` on an Android phone without `cmd fingerprint`. |
 
 #### `enrollBiometrics`
 
 ```ts
 /**
  * Enrolls or unenrolls the simulator's Face ID or Touch ID. On Android or a
- * physical iPhone it is `UNSUPPORTED_CAPABILITY`.
+ * physical iOS device it is `UNSUPPORTED_CAPABILITY`.
  */
 enrollBiometrics(sensor: 'faceid' | 'touchid', enrolled: boolean): Promise<void>;
 ```
@@ -696,7 +696,7 @@ await device.enrollBiometrics('touchid', true);
 
 | Throws | When |
 | --- | --- |
-| `UNSUPPORTED_CAPABILITY` | Any call on Android or a physical iPhone. |
+| `UNSUPPORTED_CAPABILITY` | Any call on Android or a physical iOS device. |
 
 #### `installApp`
 

@@ -121,7 +121,7 @@ export interface Device {
   setBiometrics(sensor: BiometricSensor, result: 'match' | 'nonmatch'): Promise<void>;
   /**
    * Enrolls or unenrolls the simulator's Face ID or Touch ID. On Android or a
-   * physical iPhone it is `UNSUPPORTED_CAPABILITY`.
+   * physical iOS device it is `UNSUPPORTED_CAPABILITY`.
    */
   enrollBiometrics(sensor: 'faceid' | 'touchid', enrolled: boolean): Promise<void>;
   /**
