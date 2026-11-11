@@ -32,6 +32,7 @@ function retryDelay(value: string | null, retry: number): number {
 
 /** A single 30-second budget covers all four possible requests and their waits. */
 export async function request(url: string, method: 'POST' | 'DELETE', headers: Record<string, string>, caller: AbortSignal, body?: string): Promise<Response> {
+  const deadline = Date.now() + 30_000;
   const signal = AbortSignal.any([caller, AbortSignal.timeout(30_000)]);
   const init: RequestInit = { method, headers: { ...headers }, signal, redirect: 'error' };
 
@@ -46,9 +47,11 @@ export async function request(url: string, method: 'POST' | 'DELETE', headers: R
 
     if (response.status === 429 && retry < 3) {
       const delay = retryDelay(response.headers.get('Retry-After'), retry);
-      await response.body?.cancel().catch(() => undefined);
-      await pause(delay, signal);
-      continue;
+      if (delay < deadline - Date.now()) {
+        await response.body?.cancel().catch(() => undefined);
+        await pause(delay, signal);
+        continue;
+      }
     }
 
     if (!response.ok && !(method === 'DELETE' && response.status === 404)) {
@@ -56,7 +59,7 @@ export async function request(url: string, method: 'POST' | 'DELETE', headers: R
 
       const hint = response.status === 401 || response.status === 403
         ? '; check the account and Browser Rendering - Edit token permission'
-        : response.status === 429 ? '; browser acquisition rate or concurrency limit reached after retries, lower workers or retry later' : '';
+        : response.status === 429 ? '; browser acquisition rate or concurrency limit reached, lower workers or retry later' : '';
 
       throw new Error(`Cloudflare Browser Run ${method} failed (HTTP ${response.status})${hint}`);
     }

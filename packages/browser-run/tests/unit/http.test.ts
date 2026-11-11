@@ -24,7 +24,7 @@ it.each(['2', 'Sun, 08 Nov 2026 12:00:02 GMT'])('honors Retry-After %s before re
 it('uses bounded backoff when Retry-After is absent or invalid', async () => {
   const fetch = vi.fn().mockImplementation(async () => new Response(null, { status: 429, headers: { 'Retry-After': 'invalid' } }));
   vi.stubGlobal('fetch', fetch);
-  const pending = expect(call()).rejects.toThrow(/HTTP 429.*after retries/);
+  const pending = expect(call()).rejects.toThrow(/HTTP 429.*limit reached/);
   await vi.advanceTimersByTimeAsync(8_000);
   await pending;
   expect(fetch).toHaveBeenCalledTimes(4);
@@ -32,7 +32,7 @@ it('uses bounded backoff when Retry-After is absent or invalid', async () => {
 
 it('cancels a Retry-After wait without issuing another request', async () => {
   const controller = new AbortController();
-  const fetch = vi.fn().mockResolvedValue(new Response(null, { status: 429, headers: { 'Retry-After': '3600' } }));
+  const fetch = vi.fn().mockResolvedValue(new Response(null, { status: 429, headers: { 'Retry-After': '20' } }));
   vi.stubGlobal('fetch', fetch);
   const pending = expect(call(controller.signal)).rejects.toThrow('cancel acquisition');
   await vi.advanceTimersByTimeAsync(5);
@@ -58,7 +58,7 @@ it('does not reset the acquisition budget after a retry', async () => {
   });
   const fetch = vi.fn().mockImplementation(async () => new Response(null, { status: 429, headers: { 'Retry-After': '20' } }));
   vi.stubGlobal('fetch', fetch);
-  const pending = expect(call()).rejects.toThrow('acquisition budget expired');
+  const pending = expect(call()).rejects.toThrow(/HTTP 429.*limit reached/);
   await vi.advanceTimersByTimeAsync(30_000);
   await pending;
   expect(fetch).toHaveBeenCalledTimes(2);
@@ -73,4 +73,12 @@ it('retries a 429 even when its response stream has already failed', async () =>
   await vi.advanceTimersByTimeAsync(1);
   expect((await pending).ok).toBe(true);
   expect(fetch).toHaveBeenCalledTimes(2);
+});
+
+it.each(['30', '3600'])('reports HTTP 429 immediately when Retry-After %s exceeds the budget', async (retryAfter) => {
+  const fetch = vi.fn().mockResolvedValue(new Response(null, { status: 429, headers: { 'Retry-After': retryAfter } }));
+  vi.stubGlobal('fetch', fetch);
+  await expect(call()).rejects.toThrow(/HTTP 429.*lower workers/);
+  expect(fetch).toHaveBeenCalledOnce();
+  expect(vi.getTimerCount()).toBe(0);
 });
