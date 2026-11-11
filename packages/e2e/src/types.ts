@@ -443,7 +443,7 @@ export interface ActionOptions {
 }
 
 /**
- * A point in CSS pixels. For `screen.tapAt` and `screen.swipe` the origin is
+ * A point in CSS pixels. For `screen.tapAt`, `screen.doubleTapAt`, and `screen.swipe` the origin is
  * the viewport's top-left corner, the space `boundingBox()` reports in; for
  * `tap({ position })` it is the node's own top-left corner, inside its
  * border on a document platform.
@@ -525,6 +525,8 @@ export interface Screen {
   getByTestId(id: TextMatch, options?: { visible?: boolean }): Locator;
   /** Taps a viewport point, with no node behind it. */
   tapAt(point: Point, options?: ActionOptions): Promise<void>;
+  /** Double-taps a viewport point, with no node behind it. */
+  doubleTapAt(point: Point, options?: ActionOptions): Promise<void>;
   /** Performs a viewport-level swipe: in a direction, or along a path from one point to another. */
   swipe(options: SwipeOptions | SwipePathOptions): Promise<void>;
   /**
@@ -1626,7 +1628,12 @@ export interface Reporter {
  * once, in the runner process; workers load the config too and never call
  * it, so constructing one must have no side effects: read git, the
  * environment, or the network inside `filter`. A call that throws, returns
- * an invalid result, or runs past 5 minutes leaves nothing out.
+ * an invalid result, or runs past 5 minutes leaves nothing out. A failed call
+ * scores nothing either, unless the error it throws has a `relevance`
+ * property shaped like `TestFilterResult.relevance`: the run checks it as it
+ * checks a result's, starts the likeliest tests first, and still warns of the
+ * failure. A call past 5 minutes is abandoned, and nothing it throws after
+ * that is read.
  */
 export interface TestFilter {
   /** Names the filter in the report and in errors: ASCII letters, numbers, `_`, `-`, and `.`, not only dots, at most 256 characters, unique among `filters`. */
@@ -1637,7 +1644,7 @@ export interface TestFilter {
 
 /** One test a filter may leave out: what names it, never its body. */
 export interface TestFilterCandidate {
-  /** Stable test id (`<file>::<titles>`), the report's `testId`, and the key `exclude` takes. */
+  /** Stable test id (`<file>::<titles>`), the report's `testId`, and the key `exclude` and `relevance` take. */
   readonly id: string;
   /** Project-relative POSIX path of the test file. */
   readonly file: string;
@@ -1693,6 +1700,15 @@ export interface TestFilterContext {
 export interface TestFilterResult {
   /** The tests to leave out, by `TestFilterCandidate.id`, each with the reason the report shows; a test of a serial group still runs when another test of its group does. */
   readonly exclude: Readonly<Record<string, string>>;
+  /**
+   * How likely each test is to fail on this change, from 0 to 1, by
+   * `TestFilterCandidate.id`. Each target starts the files of the likeliest
+   * tests first, in bands at 75%, 50%, and 25%, and targets go by the band of
+   * their best file, ties in config order. A test no filter scores counts as
+   * 0, and one several filters score keeps its highest. It never leaves a
+   * test out.
+   */
+  readonly relevance?: Readonly<Record<string, number>>;
   /** One line about the whole decision, such as `the diff is too large to judge`. */
   readonly note?: string;
 }

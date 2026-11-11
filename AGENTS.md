@@ -90,6 +90,9 @@ suites that consume the built packages the way a user would.
   The `@e2e-dev/mobile/tools` subpath holds the agent-side `open_app`, `swipe`,
   and `alert` tools; focused-field typing uses the engine's keyboard grammar.
   The main entry never loads the AI SDK.
+  `unstable_deviceSession()` on `./tools` gives custom tools the running
+  attempt's raw driver session, like `device.unstable_raw`. The client is typed as
+  `DeviceSessionClient`, exported from the main entry.
   The `@e2e-dev/mobile/lease` subpath holds the agent-device lease plumbing
   device-cloud providers (`testmu`, `browserstack`) share: one daemon per
   slot, heartbeat, and a release that fails unless the session end is
@@ -148,10 +151,14 @@ suites that consume the built packages the way a user would.
   can affect each test, packing test files into calls under the model's
   size limit, 8 calls at a time, and leaves out the unlikely ones. It runs
   every test on an `e2e.config` or lockfile change, and asks nothing about a
-  test whose test file, setup file, or stored screenshots changed. A failed
+  test whose test file, setup file, or stored screenshots changed. It scores
+  each test it keeps through `relevance` (1 for a touched test, the model's
+  probability for a judged one, 0.5 for one it did not judge), and the
+  runner starts each target's likeliest files first. A failed
   call leaves its tests in and the rest are still judged; after 3 failed
   calls it stops asking. When every call fails, or git or a file read
-  fails, it throws, and the run warns and runs every test.
+  fails, it throws, and the run warns and runs every test, the touched
+  ones first, since the error carries their scores in `relevance`.
 - `packages/acp` — the published `@e2e-dev/acp` package: a `StepExecutor`
   (`acp()`, with `claudeCode()` and `codex()` presets) that runs
   `agent.act` and `agent.assert` on a coding agent over the Agent Client
@@ -259,6 +266,10 @@ suites that consume the built packages the way a user would.
   pages to `packages/e2e/docs/` (gitignored,
   `packages/e2e/scripts/prepare-build.ts`) so the published package ships
   them for agents to read offline.
+  e2e.com builds the docs from the newest `e2e@X.Y.Z` tag, not `main`: a docs
+  change goes live when the next e2e release publishes (`release.yml` calls
+  `site.yml`), and there is no docs versioning. The examples registry still
+  goes live from `main`.
 - `skills/e2e/` — the agent skill for consumers: `SKILL.md` plus
   `references/<topic>.md`, one per `e2e guide` topic. It lives at the repo
   root because `npx skills add e2e-inc/e2e` only looks in well-known

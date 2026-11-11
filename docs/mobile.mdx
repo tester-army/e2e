@@ -98,6 +98,28 @@ it doesn't pass keep the target's values:
 await device.openApp('com.example.app', { relaunch: true, permissions: { camera: 'deny' } });
 ```
 
+### Run the app in another language
+
+On iOS, launch arguments set the app's language and region for that launch.
+The device keeps its own language. Add one target per language:
+
+```ts
+{
+  name: 'ios-fr',
+  engine: mobile({ platform: 'ios' }),
+  app: {
+    bundleId: 'com.example.app',
+    launchArguments: ['-AppleLanguages', '(fr)', '-AppleLocale', 'fr_FR'],
+  },
+}
+```
+
+- The app must ship the language. If it doesn't, iOS shows its development
+  language.
+- Android has no launch argument for the language. On a hosted device, set
+  `language` and `locale` on `browserstack()` or `testmu()`. On a local
+  device, set the device's language before the run.
+
 ### Expo development builds
 
 A development build (`expo-dev-client`) opens on the dev launcher and loads
@@ -383,7 +405,8 @@ mobile({ platform: 'ios', device: ['iPhone 17', 'iPhone 17 Pro'] })
 ```
 
 Without `device`, the engine uses booted devices, up to the worker limit.
-If none are booted, it boots one. Two workers never drive the same device.
+If none are booted, it boots a shut-down one: newest OS first, then name
+order. Two workers never drive the same device.
 
 ## Agent tools
 

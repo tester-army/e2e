@@ -4,7 +4,8 @@
  * (e2e-inc/e2e-site) downloads the file at build time and renders a page
  * per entry from it and the README at its `repository` (or its `readme`);
  * `site.yml` redeploys
- * the site when the file changes on `main`.
+ * the site when the file changes on `main` (the docs, unlike the registry,
+ * come from the newest `e2e@X.Y.Z` tag).
  *
  * `examples.schema.json` pins the shape; `registryProblems` checks what a
  * schema cannot: unique slugs and tags, tags an example names but the
