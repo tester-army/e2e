@@ -5,10 +5,18 @@ description: Run only the tests a pull request can affect.
 "twitter:image": "https://e2e.com/docs/images/og/filters.png?v=2de53e0ea4"
 ---
 
+import { Video } from './snippets/video.jsx';
+
 With `--changed-since <ref>`, a test filter leaves out the tests the change
 since that ref can't affect, and starts the files of the likeliest to fail first. The
 decision filter asks a [decision model](/decision-models), such as Jev, about
 each test. Without the flag, as on `main` and locally, every test runs.
+
+<Video>
+  <video src="/images/filters.mp4" aria-label="Two runs side by side. With --changed-since, the decision filter leaves out 25 of 27 tests and the run passes in 12 seconds. The full run is still going after 30 seconds." muted loop playsInline controls />
+
+  With `--changed-since origin/main`, the decision filter leaves out 25 of 27 tests.
+</Video>
 
 ## Add the decision filter
 
