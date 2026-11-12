@@ -1,0 +1,112 @@
+---
+title: Notte browsers
+sidebarTitle: Notte
+description: Run web targets in Notte's cloud browsers with the notte() browser provider from @e2e-dev/notte.
+---
+
+`notte()` from `@e2e-dev/notte` is a
+[browser provider](/browser#hosted-browsers) for [Notte](https://notte.cc).
+Each test attempt gets its own cloud browser session. Tests stay the same.
+Only the target's `browser` changes.
+
+## Setup
+
+Install the provider and the Notte SDK:
+
+<CodeGroup>
+```bash npm
+npm install --save-dev @e2e-dev/notte notte-sdk
+```
+
+```bash pnpm
+pnpm add -D @e2e-dev/notte notte-sdk
+```
+
+```bash bun
+bun add -d @e2e-dev/notte notte-sdk
+```
+</CodeGroup>
+
+Set the target's `browser` to `notte()`:
+
+```ts title="e2e.config.ts"
+import type { E2EConfig } from 'e2e';
+import { web } from '@e2e-dev/web';
+import { notte } from '@e2e-dev/notte';
+
+export default {
+  targets: [
+    {
+      name: 'notte',
+      engine: web({ browser: notte() }),
+      app: { url: 'https://staging.example.com' },
+    },
+  ],
+} satisfies E2EConfig;
+```
+
+Set `NOTTE_API_KEY` in the environment that `e2e run` starts in, such as a
+CI secret. Copy the key from the [Notte console](https://console.notte.cc/apikeys).
+`workers` sets how many sessions run at the same time. The app must be
+reachable from the cloud browser, so point `app.url` at a deployed or
+tunneled URL, not `localhost`.
+
+Without the key, or on a Notte error, the attempt fails with that message.
+
+## Options
+
+`notte(options)` takes Notte's start-session body as it is:
+`solve_captchas`, `proxies`, `browser_type`, `idle_timeout_minutes`,
+`max_duration_minutes`, `viewport_width` and `viewport_height`, `profile`,
+`user_agent`, `extra_http_headers`, `block_ads`, and the rest of
+`ApiSessionStartRequest` in your `notte-sdk`:
+
+```ts
+web({
+  browser: notte({ solve_captchas: true, proxies: true, idle_timeout_minutes: 5 }),
+})
+```
+
+`cdp_url` and the managed authentication fields (`auth_ids`, `auth_retry`,
+`wait_for_authentication`) are left out: the first names a browser from
+another provider, and the others return a session before it can be
+attached to.
+
+## One session per attempt
+
+The provider leases in `attempt` scope only. A Notte session owns its one
+browser context and refuses new ones, which `worker` scope needs to keep
+tests apart. Each attempt, retries included, runs in a fresh session's
+default context, on its first tab. Each test pays for a session start,
+and the [limits of a per-attempt lease](/browser#hosted-browsers) apply,
+sessions included.
+
+## Watch and clean up sessions
+
+The reporter logs `session <id>` for each new session. Open it from the
+sessions list in the Notte console to watch it live or replay it.
+
+When an attempt ends, on every exit path, the provider stops its session.
+If the worker dies first, Notte closes the session after
+`idle_timeout_minutes` without activity, 3 by default, and every session
+after `max_duration_minutes`, 15 by default. Raise `max_duration_minutes`
+for a test that runs longer.
+
+## Not supported yet
+
+- `browser.waitForDownload`: the file lands on the session's disk, which the
+  provider does not read back yet.
+- Notte's own session replay as the attempt's video. With
+  [video](/reference/config#video) on, the web engine records its
+  screencast of the page instead.
+
+## Next
+
+<CardGroup cols={2}>
+  <Card title="Hosted browsers" icon="globe" href="/browser#hosted-browsers">
+    How a browser provider leases browsers, and the limits of `'attempt'` scope.
+  </Card>
+  <Card title="Continuous integration" icon="rotate" href="/ci">
+    Run the suite on GitHub Actions or another CI service.
+  </Card>
+</CardGroup>
