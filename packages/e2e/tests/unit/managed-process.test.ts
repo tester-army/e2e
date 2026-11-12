@@ -11,6 +11,32 @@ import type { CommandConfig } from '../../src/types.ts';
 import { freePort } from '../helpers/free-port.ts';
 
 describe('ManagedProcess', () => {
+  it('does not report planned shutdown or a successful one-shot command as an unexpected exit', async () => {
+    const unexpectedExit = vi.fn();
+    const port = await freePort();
+    const app = new ManagedProcess('app.command', {
+      executable: process.execPath,
+      args: ['-e', `require('node:http').createServer((_request, response) => response.end('ready')).listen(${port}, '127.0.0.1');`],
+      shutdownTimeout: 1_000,
+    }, process.cwd(), { readyUrl: `http://127.0.0.1:${port}/` }, { unexpectedExit });
+    try {
+      await app.stop();
+      await app.start();
+    } finally {
+      await app.stop();
+    }
+    const oneShot = new ManagedProcess('setup', {
+      executable: process.execPath,
+      args: ['-e', 'process.exit(0)'],
+    }, process.cwd(), { waitForExit: true }, { unexpectedExit });
+    try {
+      await oneShot.start();
+    } finally {
+      await oneShot.stop();
+    }
+    expect(unexpectedExit).not.toHaveBeenCalled();
+  });
+
   it.each(['preflight', 'startup'] as const)('cancels an in-flight %s readiness probe', async (phase) => {
     let probing!: () => void;
     const probeStarted = new Promise<void>((resolve) => { probing = resolve; });

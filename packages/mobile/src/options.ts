@@ -60,8 +60,10 @@ export interface MobileOptions {
    * drives the `n`th, so `workers` at or above the pool size runs the target's
    * files across every device at once. Omitted, the pool is every booted device
    * of the platform at `prepare` that no other agent-device session holds, as
-   * many as the run has slots; with none booted, agent-device boots one, and
-   * with every booted one held, `prepare` fails. A `DeviceProvider` leases hosted devices
+   * many as the run has slots; with none booted, agent-device boots a shut-down
+   * one: a phone or tablet over a TV, then the newest OS, then name order (a
+   * stopped Android emulator reports no OS version, so the name decides). With
+   * every booted one held, `prepare` fails. A `DeviceProvider` leases hosted devices
    * instead: one per worker slot at `prepare`, each driven through the daemon
    * and client configuration the lease names. A replacement worker resumes a
    * healthy agent-device session on the same lease. Forced worker shutdown
@@ -88,14 +90,16 @@ export interface MobileOptions {
   readonly snapshot?: 'full' | 'interactive' | undefined;
   /**
    * How long the UI must hold still after a tap, fill, screen scroll, or
-   * back before the action counts as landed, in milliseconds; `false` skips
-   * the wait. The wait keeps the observation that follows an action off a
-   * transition frame; the runner's own polling (`expect`, actions waiting
-   * for their node) covers the rest, so a short window suffices. Default
-   * 150. Every frame of a running animation changes the tree, so a 150 ms
+   * back before the agent observes again, in milliseconds; `false` skips the
+   * wait. The wait keeps that observation off a transition frame; the runner's
+   * own polling (`expect`, actions waiting for their node) covers the rest,
+   * so a short window suffices. Default 150.
+   * Every frame of a running animation changes the tree, so a 150 ms
    * window still catches a transition in flight; raise it for slow devices
    * or apps that settle in stages, or lower it to 0 to keep only the first
-   * re-observation.
+   * re-observation. A test's steps do not settle, except `device.back()`:
+   * `expect` verifies their outcome, and `transition` covers a control that is
+   * still arriving.
    */
   readonly settle?: number | false | undefined;
   /**

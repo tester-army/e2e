@@ -75,6 +75,19 @@ A session starts the target's app command, if it has one, and names it
 with its URL and port. The config reads the server's environment, not the
 agent's shell.
 
+## Try it without a config
+
+In a directory with no e2e config file, the agent names the engine when it
+opens a session:
+
+```txt
+open_session {engine: "@e2e-dev/web", app: {url: "http://localhost:3000"}}
+```
+
+`run_tests` still needs a config. For engine options, device providers, and
+installing an engine, see
+[Without a config](/reference/mcp#without-a-config).
+
 ## Ask the agent
 
 - "Add a Remember me checkbox to the login form. Check it in the app with e2e."

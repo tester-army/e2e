@@ -228,6 +228,11 @@ workers: 4, // default: 1 in CI, else half the cores
 - Locally the default is `max(1, floor(availableParallelism() / 2))`.
 - An engine may cap it lower: `workers` never exceeds what a target's engine
   declares.
+- With more than one worker, each target's files start longest first by the
+  [timings history](/ci#cache-the-timings-history). A file with no time starts
+  before the timed ones. With `--changed-since`, the likeliest files start
+  before that, as
+  [Start the likeliest first](/filters#start-the-likeliest-first) says.
 
 #### `reporters`
 
@@ -382,8 +387,8 @@ url: 'http://localhost:3000',
 - A missing scheme becomes `https://`, or `http://` for a loopback host.
 - Plain HTTP is accepted for loopback hosts only.
 - Port `0` on `127.0.0.1` or `[::1]` asks for a [free port](#free-ports).
-- Its site scopes engine headers and observed frames: see
-  [the app's site](#the-apps-site).
+- Its origin scopes engine request credentials, and its site scopes observed
+  frames: see [the app's site](#the-apps-site).
 
 | Throws | When |
 | --- | --- |
@@ -518,14 +523,22 @@ command: {
   is dropped.
 - `startupTimeout` is the budget of the [`readyUrl`](#readyurl) probe.
 - `shutdownTimeout` is the grace period before force-kill.
+- In `e2e run`, a command that exits after readiness fails the run with `APP_UNREACHABLE` if a dependent target has unfinished work.
+  This includes exit code 0 and termination by a signal.
+  The runner interrupts active tests and skips queued tests only for those targets.
+  Targets that have finished their work ignore the exit.
 - `log` receives the process's stdout and stderr, appended, resolved from the
   project root. It must stay inside the project root.
-- With a `log`, a failure after the command started quotes the lines any
-  process appended since then, with `command.env` and `inheritEnv` values of
-  at least four characters replaced by `<secret:NAME>` markers. A log of up to
-  40 lines inside 8 KiB is quoted whole. Otherwise the quote keeps up to 20
-  lines from each end, with `[startup output omitted]` between them, and for a
-  log past 8 KiB those lines come from its first and last 4 KiB.
+- With a `log`, startup timeouts and command exits quote the lines appended
+  since the command started. A log of up to 40 lines inside 8 KiB is quoted
+  whole. Otherwise the quote keeps up to 20 lines from each end, with
+  `[startup output omitted]` between them, and for a log past 8 KiB those
+  lines come from its first and last 4 KiB.
+  An empty or unreadable log produces `no output in <log>`.
+  A shared log can include lines from other processes.
+  The quote replaces `command.env` and `inheritEnv` values of at least 4 characters with `<secret:NAME>` markers.
+  Without `log`, these errors ask you to set one.
+  A command that fails to spawn reports the spawn error instead.
 - `reuseExisting`: when the readiness URL already answers before the command
   starts, the runner uses that process. It starts nothing and stops nothing.
   CI ignores it, with a notice, and always starts the command.
@@ -540,7 +553,7 @@ command: {
 | `INVALID_CONFIG` | `reuseExisting` on an app whose `url` asks for port 0: a process already running cannot serve the port the run assigns. |
 | `APP_URL_REQUIRED` | An `app.command` with neither `app.url` nor `app.readyUrl`, at config load. |
 | `APP_ALREADY_RUNNING` | Without `reuseExisting`, a `readyUrl` that already answers. |
-| `APP_UNREACHABLE` | `startupTimeout` expires. |
+| `APP_UNREACHABLE` | The command fails to spawn, its `log` cannot be opened, `startupTimeout` expires, the command exits before readiness, or it exits unexpectedly during `e2e run`. |
 
 <Warning>
 `log` holds the raw, unredacted output. Keep it in an ignored directory.
@@ -564,11 +577,14 @@ readyUrl: 'http://localhost:3000/health', // default: url
 A test or the agent may open any http(s) URL, and `about:blank`. Every other
 scheme (`file:`, `data:`, `javascript:`, `view-source:`, `blob:`) is
 `POLICY_DENIED`. The site of `url` is its registrable domain:
-`app.example.com` and `auth.example.com` are one site. It scopes two things:
+`app.example.com` and `auth.example.com` are one site. Child frames off the
+site stay out of observations.
 
-- The browser engine's [`headers`](/reference/web#options) reach the site and
-  no other host.
-- Child frames off the site stay out of observations.
+The browser engine's [`headers`](/reference/web#headers) and
+[`basicAuth`](/reference/web#basicauth) are scoped tighter, to the origin of
+`url` (scheme, host, and port, the run's free port included) plus the
+origins you list. See
+[request credentials](/reference/security#request-credentials).
 
 #### Free ports
 
@@ -620,6 +636,7 @@ overrides it for one run.
 | `report.json` | The canonical report; `--last-failed` reads the one here |
 | `junit.xml`, `summary.md` | The `junit` and `markdown` reporters' files |
 | `ai-trace.json` | `--ai-trace` |
+| `timings.json` | How long each file took, smoothed over recent runs. A run with more than one worker starts the longest files first by it; see [Cache the timings history](/ci#cache-the-timings-history) |
 | `results/` | One directory per test: its [trace page](/debugging#traces), `trace.md`, when the [`trace`](#trace) mode keeps one, and its screenshots, videos, downloads, and logs, one `attempt-<n>/` per attempt. Cleared once a run's tests start, so it holds the latest run's evidence and nothing its report no longer names. A `--last-failed` rerun keeps the files the report it reruns names and writes its own attempts under each test's `rerun-<n>/` |
 | `sessions/` | The run's encrypted `test.setup` sessions, deleted when it ends |
 | `videos/<session>/` | [`e2e mcp`](/reference/mcp#recording) session recordings |
@@ -953,7 +970,8 @@ See [Models](/models) and [`ModelInstance`](#modelinstance).
 
 #### `judge`
 
-The model for `assert`, `waitFor`, and `extract`.
+The model for non-exploring `assert`, `waitFor`, and `extract`. Built-in
+exploring assertions use `agents.<name>.model`, even when `judge` is set.
 
 ```ts
 judge: gateway('anthropic/claude-opus-5'), // default: model
@@ -1746,7 +1764,7 @@ interface TestFilter {
 }
 
 interface TestFilterCandidate {
-  /** The report's `testId`, and the key `exclude` takes. */
+  /** The report's `testId`, and the key `exclude` and `relevance` take. */
   readonly id: string;
   /** Project-relative path of the test file. */
   readonly file: string;
@@ -1785,6 +1803,8 @@ interface TestFilterChanges {
 interface TestFilterResult {
   /** The tests to leave out, by `id`, each with a non-empty reason the report shows. An `id` of a collected test this filter wasn't given is ignored; any other fails the filter. */
   readonly exclude: Readonly<Record<string, string>>;
+  /** How likely each test is to fail on this change, by `id` as for `exclude`, from 0 to 1; any other score fails the filter. Each target starts the files of the likeliest first, in bands at 75%, 50%, and 25%, and targets go by the band of their best file, ties in config order. A test no filter scores counts as 0, and a test several filters score keeps its highest. */
+  readonly relevance?: Readonly<Record<string, number>>;
   /** One line about the whole decision. */
   readonly note?: string;
 }
@@ -1792,6 +1812,11 @@ interface TestFilterResult {
 
 `TestFilter`, `TestFilterCandidate`, `TestFilterContext`,
 `TestFilterChanges`, and `TestFilterResult` are exported from `e2e`.
+
+A filter that throws, returns an invalid result, or runs past 5 minutes
+leaves nothing out, and a warning says so. An error it throws can carry
+`relevance`, shaped as in `TestFilterResult`: the run still starts the
+likeliest first. See [Custom test filters](/custom-test-filters#score-tests-by-relevance).
 
 ### `CredentialConfig`
 

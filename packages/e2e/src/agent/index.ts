@@ -68,7 +68,7 @@ const VISION_HINT_UNPROVEN =
 
 const WAIT_FOR_KEYS = ['params', 'timeout', 'interval', 'maxModelCalls', 'vision', 'agent'] as const;
 const EXTRACT_KEYS = ['schema', 'timeout', 'vision', 'agent'] as const;
-const ASSERT_KEYS = ['params', 'timeout', 'screenshot', 'vision', 'agent'] as const;
+const ASSERT_KEYS = ['params', 'timeout', 'screenshot', 'vision', 'agent', 'explore', 'maxSteps', 'maxModelCalls'] as const;
 
 /** Builds the agent fixture for one attempt. */
 export function createAgentFixture(runtime: AgentContext): Agent {
@@ -258,12 +258,18 @@ export function createAgentFixture(runtime: AgentContext): Agent {
 
     assert(assertion, options) {
       rejectUnknownOptions('agent.assert', options, ASSERT_KEYS);
+      if (options?.explore !== undefined && typeof options.explore !== 'boolean') {
+        throw new TestError('INVALID_ARGUMENT', 'explore must be a boolean');
+      }
+      if (options?.explore !== true && (options?.maxSteps !== undefined || options?.maxModelCalls !== undefined)) {
+        throw new TestError('INVALID_ARGUMENT', 'assert budgets require explore: true');
+      }
       // A custom executor judges assertions through the socket: swapping
       // brains swaps all the thinking. The built-in path keeps the optimized
       // judgment tier below: one call, plus one repair round for a response
       // that missed the grammar, vision-capable.
       const { config, customExecutor } = runtime.select(options?.agent);
-      if (customExecutor) {
+      if (customExecutor || options?.explore === true) {
         return runAssertStep(runtime, assertion, options);
       }
       const params = judgmentParams(options?.params, 'agent.assert');

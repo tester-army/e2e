@@ -1,0 +1,75 @@
+{
+  "name": "@e2e-dev/html-reporter",
+  "version": "0.0.0",
+  "description": "HTML reporter for e2e: one self-contained page per run, steps, screenshots, and video",
+  "keywords": [
+    "e2e",
+    "end-to-end",
+    "testing",
+    "test-reporter",
+    "html-report"
+  ],
+  "license": "Apache-2.0",
+  "contributors": [
+    "Oskar Kwaśniewski <oskar@tester.army>",
+    "Szymon Rybczak <szymon@tester.army>"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/e2e-inc/e2e.git",
+    "directory": "packages/html-reporter"
+  },
+  "bugs": {
+    "url": "https://github.com/e2e-inc/e2e/issues"
+  },
+  "homepage": "https://github.com/e2e-inc/e2e/tree/main/packages/html-reporter#readme",
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "public",
+    "tag": "latest"
+  },
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "NOTICE",
+    "app/fonts/*-OFL.txt",
+    "app/Lucide-LICENSE.txt"
+  ],
+  "scripts": {
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && vite build && tsc --project tsconfig.build.json && node ../../scripts/stamp-dist.ts",
+    "dev": "vite",
+    "prepublishOnly": "node ../../scripts/check-dist.ts",
+    "typecheck": "tsc --noEmit && tsc --noEmit --project app/tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:unit": "vitest run tests/unit"
+  },
+  "peerDependencies": {
+    "e2e": ">=0.23.1 <1"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "4.3.5",
+    "@types/node": "26.6.6",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.3.0",
+    "e2e": "workspace:*",
+    "lucide-react": "1.72.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "tailwindcss": "4.3.5",
+    "typescript": "7.0.2",
+    "vite": "8.3.8",
+    "vite-plugin-singlefile": "2.3.4",
+    "vitest": "5.1.0"
+  },
+  "engines": {
+    "node": "^22.22.3 || >=24.8.0"
+  }
+}

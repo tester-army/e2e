@@ -20,13 +20,13 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/tester-army/e2e.git",
+    "url": "git+https://github.com/e2e-inc/e2e.git",
     "directory": "packages/kernel"
   },
   "bugs": {
-    "url": "https://github.com/tester-army/e2e/issues"
+    "url": "https://github.com/e2e-inc/e2e/issues"
   },
-  "homepage": "https://github.com/tester-army/e2e/tree/main/packages/kernel#readme",
+  "homepage": "https://github.com/e2e-inc/e2e/tree/main/packages/kernel#readme",
   "publishConfig": {
     "registry": "https://registry.npmjs.org/",
     "access": "public",
@@ -58,7 +58,7 @@
   },
   "devDependencies": {
     "@e2e-dev/web": "workspace:*",
-    "@onkernel/sdk": "0.144.0",
+    "@onkernel/sdk": "0.147.0",
     "@types/node": "26.6.6",
     "e2e": "workspace:*",
     "typescript": "7.0.2",

@@ -58,7 +58,7 @@ A Playwright key such as `testDir`, `baseURL`, `use`, `webServer`, or
 | `maxFailures` | `--max-failures <n>`; no config key | renamed |
 | `globalTimeout` | `maxDuration`, or `--max-duration <ms>`; the clock starts with the tests, not app startup | renamed |
 | `reporter` | `reporters: ['list', 'junit']`; also `json` and `markdown` | renamed |
-| `reporter: 'html'` | the `markdown` reporter writes `.e2e/summary.md` | missing |
+| `reporter: 'html'` | `htmlReporter()` from `@e2e-dev/html-reporter` writes `.e2e/report.html` | renamed |
 | `outputDir` | `output`, default `.e2e`, holding `results/` (cleared when a run starts, like `outputDir`) beside the report | renamed |
 | `metadata` | not yet | missing |
 
@@ -68,8 +68,8 @@ A Playwright key such as `testDir`, `baseURL`, `use`, `webServer`, or
 | --- | --- | --- |
 | `use.viewport`, `use.browserName` | `web({ viewport, browser })` | renamed |
 | `use.testIdAttribute` | `web({ testIdAttribute })` | renamed |
-| `use.httpCredentials` | `web({ basicAuth })` | renamed |
-| `use.extraHTTPHeaders` | `web({ headers })`, sent to the app's site only | renamed |
+| `use.httpCredentials` | `web({ basicAuth })`, answered for the app's origin only; `credentialOrigins` adds more | renamed |
+| `use.extraHTTPHeaders` | `web({ headers })`, sent on requests that start at the app's origin; `credentialOrigins` adds more | renamed |
 | `chromium.connectOverCDP(url)` | `web({ connect: { cdpEndpoint: () => url } })`, chromium only | renamed |
 | `use.connectOptions` (`wsEndpoint`) | `web({ connect })` attaches over CDP only | missing |
 | `retries`, `workers`, `timeout` | the same names at the top level. `workers` takes an integer from 1 to 1024, not `'50%'`; `retries` stops at 10. The defaults differ, see [below](#defaults-that-differ) | renamed |
@@ -190,6 +190,7 @@ uses it declares `requires: ['browser']` and other targets skip it. Calls on
 | `page.mouse.click(x, y)` | `screen.tapAt({ x, y })`, viewport coordinates | renamed |
 | `mouse.move`, `down`, `up` as a drag | `screen.swipe({ from, to })` | renamed |
 | `page.dragAndDrop(source, target, { sourcePosition, targetPosition })` | `source.dragTo(target)`, which takes no positions; for `sourcePosition` or `targetPosition`, `screen.swipe({ from, to })` with each `boundingBox()` origin plus its offset | renamed |
+| `page.mouse.dblclick(x, y)` | `screen.doubleTapAt({ x, y })`, viewport coordinates | renamed |
 | `page.mouse.move`, `wheel`, `down`, `up` | `browser.mouse.*` | web only |
 
 </Accordion>
@@ -256,7 +257,7 @@ uses it declares `requires: ['browser']` and other targets skip it. Calls on
 | --- | --- | --- |
 | `page.route(pattern, handler)` | `browser.route(pattern, handler)`; a string or `RegExp` pattern, no predicate function; the handler decides exactly once. A string is a glob on the full URL, never resolved against `app.url`. `?` matches any one character on purpose, where Playwright reads it literally; `{a,b}` is literal, and `**/` needs at least one segment | web only |
 | `route.fulfill({ json, body, path, status, headers, contentType })` | the same; one of `json`, `body`, or `path`, and `path` is relative to the project root. `body` is a string, `Buffer`, or `Uint8Array`, and a `\n`-joined `set-cookie` sets each cookie | web only |
-| `route.continue({ url, method, headers, postData })`, `route.fallback()` | the same; a `url` resolves against `app.url` and keeps the request's `http` or `https` scheme. A header set to `undefined` is dropped; configured site headers still apply. `fallback()` takes no overrides | web only |
+| `route.continue({ url, method, headers, postData })`, `route.fallback()` | the same; a `url` resolves against `app.url` and keeps the request's `http` or `https` scheme. A header set to `undefined` is dropped; configured headers still apply to an allowed origin. `fallback()` takes no overrides | web only |
 | `route.fetch()` | argument-free: no `timeout`, `headers`, or `maxRedirects` options, and redirects return unfollowed; returns `{ url, status, headers, body(), text(), json() }` without deciding the route | web only |
 | `route.abort(code)`, `route.fallback(overrides)` | none yet; `abort()` takes no error code | missing |
 | `page.unroute()` | `browser.unroute()` | web only |

@@ -89,6 +89,25 @@ describe('reporter objects', () => {
     }
   }, 120_000);
 
+  it('redacts the configured secrets, and fragments of them, in text a reporter brings from elsewhere', async () => {
+    const token = 'reporter-redact-token-42';
+    let redacted: string | undefined;
+    const outcome = await runExisting(project, {
+      config: {
+        ...engineConfig(createFakeEngine().engine),
+        tests: 'tests/**/*.e2e.ts',
+        secrets: { apiToken: token },
+        reporters: [{ name: 'reading', onRunFinished: async (run) => void (redacted = run.redact(`fill('${token}') then '${token.slice(3, 15)}'`)) }],
+        cache: 'off' as const,
+      },
+    });
+
+    expect(outcome.exitCode).toBe(0);
+    expect(redacted).toBeDefined();
+    expect(redacted).not.toContain(token.slice(3, 15));
+    expect(redacted).toContain('apiToken');
+  }, 120_000);
+
   it('never calls a reporter when the run was forced to stop before reporting, so it leaves no work behind', async () => {
     const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
     const force = new AbortController();

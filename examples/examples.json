@@ -77,6 +77,10 @@
       {
         "id": "nodejs",
         "label": "Node.js"
+      },
+      {
+        "id": "python",
+        "label": "Python"
       }
     ],
     "useCase": [
@@ -220,10 +224,10 @@
       "description": "React with Vite, tested in Chromium.",
       "icon": "vite.svg",
       "source": "official",
-      "repository": "https://github.com/tester-army/e2e/tree/main/examples/with-vite",
+      "repository": "https://github.com/e2e-inc/e2e/tree/main/examples/with-vite",
       "author": {
-        "name": "TesterArmy",
-        "github": "tester-army"
+        "name": "e2e",
+        "github": "e2e-inc"
       },
       "license": "Apache-2.0",
       "tags": {
@@ -247,10 +251,10 @@
       "icon": "nextjs.svg",
       "invertIcon": true,
       "source": "official",
-      "repository": "https://github.com/tester-army/e2e/tree/main/examples/with-next",
+      "repository": "https://github.com/e2e-inc/e2e/tree/main/examples/with-next",
       "author": {
-        "name": "TesterArmy",
-        "github": "tester-army"
+        "name": "e2e",
+        "github": "e2e-inc"
       },
       "license": "Apache-2.0",
       "tags": {
@@ -274,10 +278,10 @@
       "icon": "astro.svg",
       "invertIcon": true,
       "source": "official",
-      "repository": "https://github.com/tester-army/e2e/tree/main/examples/with-astro",
+      "repository": "https://github.com/e2e-inc/e2e/tree/main/examples/with-astro",
       "author": {
-        "name": "TesterArmy",
-        "github": "tester-army"
+        "name": "e2e",
+        "github": "e2e-inc"
       },
       "license": "Apache-2.0",
       "tags": {
@@ -299,10 +303,10 @@
       "description": "A standalone Angular component, started by the runner and tested in Chromium.",
       "icon": "angular.svg",
       "source": "official",
-      "repository": "https://github.com/tester-army/e2e/tree/main/examples/with-angular",
+      "repository": "https://github.com/e2e-inc/e2e/tree/main/examples/with-angular",
       "author": {
-        "name": "TesterArmy",
-        "github": "tester-army"
+        "name": "e2e",
+        "github": "e2e-inc"
       },
       "license": "Apache-2.0",
       "tags": {
@@ -325,10 +329,10 @@
       "icon": "expo.svg",
       "invertIcon": true,
       "source": "official",
-      "repository": "https://github.com/tester-army/e2e/tree/main/examples/with-expo",
+      "repository": "https://github.com/e2e-inc/e2e/tree/main/examples/with-expo",
       "author": {
-        "name": "TesterArmy",
-        "github": "tester-army"
+        "name": "e2e",
+        "github": "e2e-inc"
       },
       "license": "Apache-2.0",
       "tags": {
@@ -353,10 +357,10 @@
       "description": "A native iOS app, tested on an iPhone simulator.",
       "icon": "swiftui.png",
       "source": "official",
-      "repository": "https://github.com/tester-army/e2e/tree/main/examples/with-swiftui",
+      "repository": "https://github.com/e2e-inc/e2e/tree/main/examples/with-swiftui",
       "author": {
-        "name": "TesterArmy",
-        "github": "tester-army"
+        "name": "e2e",
+        "github": "e2e-inc"
       },
       "license": "Apache-2.0",
       "tags": {
@@ -378,10 +382,10 @@
       "description": "A native Android app, tested on an emulator.",
       "icon": "jetpack-compose.svg",
       "source": "official",
-      "repository": "https://github.com/tester-army/e2e/tree/main/examples/with-compose",
+      "repository": "https://github.com/e2e-inc/e2e/tree/main/examples/with-compose",
       "author": {
-        "name": "TesterArmy",
-        "github": "tester-army"
+        "name": "e2e",
+        "github": "e2e-inc"
       },
       "license": "Apache-2.0",
       "tags": {
@@ -403,10 +407,10 @@
       "description": "One Compose Multiplatform screen, tested on Android and iOS.",
       "icon": "kotlin.svg",
       "source": "official",
-      "repository": "https://github.com/tester-army/e2e/tree/main/examples/with-kotlin-multiplatform",
+      "repository": "https://github.com/e2e-inc/e2e/tree/main/examples/with-kotlin-multiplatform",
       "author": {
-        "name": "TesterArmy",
-        "github": "tester-army"
+        "name": "e2e",
+        "github": "e2e-inc"
       },
       "license": "Apache-2.0",
       "tags": {
@@ -429,10 +433,10 @@
       "description": "A Flutter app, tested on Android and iOS.",
       "icon": "flutter.svg",
       "source": "official",
-      "repository": "https://github.com/tester-army/e2e/tree/main/examples/with-flutter",
+      "repository": "https://github.com/e2e-inc/e2e/tree/main/examples/with-flutter",
       "author": {
-        "name": "TesterArmy",
-        "github": "tester-army"
+        "name": "e2e",
+        "github": "e2e-inc"
       },
       "license": "Apache-2.0",
       "tags": {
@@ -455,10 +459,10 @@
       "description": "A .NET MAUI app, tested on Android and iOS.",
       "icon": "dotnet.svg",
       "source": "official",
-      "repository": "https://github.com/tester-army/e2e/tree/main/examples/with-maui",
+      "repository": "https://github.com/e2e-inc/e2e/tree/main/examples/with-maui",
       "author": {
-        "name": "TesterArmy",
-        "github": "tester-army"
+        "name": "e2e",
+        "github": "e2e-inc"
       },
       "license": "Apache-2.0",
       "tags": {
@@ -480,13 +484,13 @@
       "shortTitle": "AI chat",
       "description": "A support chat answering with a real model through the AI SDK and AI Gateway, checked by what each reply means.",
       "source": "official",
-      "repository": "https://github.com/tester-army/e2e-ai-chat",
+      "repository": "https://github.com/e2e-inc/e2e-ai-chat",
       "author": {
-        "name": "TesterArmy",
-        "github": "tester-army"
+        "name": "e2e",
+        "github": "e2e-inc"
       },
       "license": "MIT",
-      "licenseUrl": "https://github.com/tester-army/e2e-ai-chat/blob/main/LICENSE",
+      "licenseUrl": "https://github.com/e2e-inc/e2e-ai-chat/blob/main/LICENSE",
       "tags": {
         "framework": [
           "nextjs",
@@ -507,13 +511,13 @@
       "description": "Stripe hosted checkout in a sandbox, with paid, declined, and 3D Secure cards.",
       "icon": "stripe.svg",
       "source": "official",
-      "repository": "https://github.com/tester-army/e2e-stripe",
+      "repository": "https://github.com/e2e-inc/e2e-stripe",
       "author": {
-        "name": "TesterArmy",
-        "github": "tester-army"
+        "name": "e2e",
+        "github": "e2e-inc"
       },
       "license": "MIT",
-      "licenseUrl": "https://github.com/tester-army/e2e-stripe/blob/main/LICENSE",
+      "licenseUrl": "https://github.com/e2e-inc/e2e-stripe/blob/main/LICENSE",
       "tags": {
         "framework": [
           "nextjs",
@@ -534,13 +538,13 @@
       "description": "PayPal redirect checkout in the sandbox, paid with a sandbox buyer or a card.",
       "icon": "paypal.svg",
       "source": "official",
-      "repository": "https://github.com/tester-army/e2e-paypal",
+      "repository": "https://github.com/e2e-inc/e2e-paypal",
       "author": {
-        "name": "TesterArmy",
-        "github": "tester-army"
+        "name": "e2e",
+        "github": "e2e-inc"
       },
       "license": "MIT",
-      "licenseUrl": "https://github.com/tester-army/e2e-paypal/blob/main/LICENSE",
+      "licenseUrl": "https://github.com/e2e-inc/e2e-paypal/blob/main/LICENSE",
       "tags": {
         "framework": [
           "nextjs",
@@ -561,13 +565,13 @@
       "description": "Paddle overlay checkout in a sandbox, with successful, declined, and 3D Secure cards.",
       "icon": "paddle.svg",
       "source": "official",
-      "repository": "https://github.com/tester-army/e2e-paddle",
+      "repository": "https://github.com/e2e-inc/e2e-paddle",
       "author": {
-        "name": "TesterArmy",
-        "github": "tester-army"
+        "name": "e2e",
+        "github": "e2e-inc"
       },
       "license": "MIT",
-      "licenseUrl": "https://github.com/tester-army/e2e-paddle/blob/main/LICENSE",
+      "licenseUrl": "https://github.com/e2e-inc/e2e-paddle/blob/main/LICENSE",
       "tags": {
         "framework": [
           "nextjs",
@@ -589,13 +593,13 @@
       "description": "Real purchases through the RevenueCat paywall and Test Store in an Expo app, on iOS and Android.",
       "icon": "revenuecat.svg",
       "source": "official",
-      "repository": "https://github.com/tester-army/e2e-revenuecat",
+      "repository": "https://github.com/e2e-inc/e2e-revenuecat",
       "author": {
-        "name": "TesterArmy",
-        "github": "tester-army"
+        "name": "e2e",
+        "github": "e2e-inc"
       },
       "license": "MIT",
-      "licenseUrl": "https://github.com/tester-army/e2e-revenuecat/blob/main/LICENSE",
+      "licenseUrl": "https://github.com/e2e-inc/e2e-revenuecat/blob/main/LICENSE",
       "tags": {
         "framework": [
           "expo",
@@ -618,13 +622,13 @@
       "description": "Sign-in on Clerk hosted pages with a password, an email code, and Google, plus sign-up and sign-out.",
       "icon": "clerk.svg",
       "source": "official",
-      "repository": "https://github.com/tester-army/e2e-clerk",
+      "repository": "https://github.com/e2e-inc/e2e-clerk",
       "author": {
-        "name": "TesterArmy",
-        "github": "tester-army"
+        "name": "e2e",
+        "github": "e2e-inc"
       },
       "license": "MIT",
-      "licenseUrl": "https://github.com/tester-army/e2e-clerk/blob/main/LICENSE",
+      "licenseUrl": "https://github.com/e2e-inc/e2e-clerk/blob/main/LICENSE",
       "tags": {
         "framework": [
           "nextjs",
@@ -644,13 +648,13 @@
       "shortTitle": "Iframes",
       "description": "A card checkout built from nested cross-origin iframes, like a hosted payment form.",
       "source": "official",
-      "repository": "https://github.com/tester-army/e2e-iframes",
+      "repository": "https://github.com/e2e-inc/e2e-iframes",
       "author": {
-        "name": "TesterArmy",
-        "github": "tester-army"
+        "name": "e2e",
+        "github": "e2e-inc"
       },
       "license": "MIT",
-      "licenseUrl": "https://github.com/tester-army/e2e-iframes/blob/main/LICENSE",
+      "licenseUrl": "https://github.com/e2e-inc/e2e-iframes/blob/main/LICENSE",
       "tags": {
         "framework": [
           "nextjs",
@@ -671,13 +675,13 @@
       "shortTitle": "Calendar",
       "description": "A date picker and a time list in a Next.js booking card, booked by the same tests as a visitor in London and one in New York.",
       "source": "official",
-      "repository": "https://github.com/tester-army/e2e-calendar",
+      "repository": "https://github.com/e2e-inc/e2e-calendar",
       "author": {
-        "name": "TesterArmy",
-        "github": "tester-army"
+        "name": "e2e",
+        "github": "e2e-inc"
       },
       "license": "MIT",
-      "licenseUrl": "https://github.com/tester-army/e2e-calendar/blob/main/LICENSE",
+      "licenseUrl": "https://github.com/e2e-inc/e2e-calendar/blob/main/LICENSE",
       "tags": {
         "framework": [
           "nextjs",
@@ -697,13 +701,13 @@
       "shortTitle": "Onboarding",
       "description": "An email code the agent reads from a local Mailpit inbox, then the OS notification prompt, in an Expo app on iOS and Android.",
       "source": "official",
-      "repository": "https://github.com/tester-army/e2e-onboarding",
+      "repository": "https://github.com/e2e-inc/e2e-onboarding",
       "author": {
-        "name": "TesterArmy",
-        "github": "tester-army"
+        "name": "e2e",
+        "github": "e2e-inc"
       },
       "license": "MIT",
-      "licenseUrl": "https://github.com/tester-army/e2e-onboarding/blob/main/LICENSE",
+      "licenseUrl": "https://github.com/e2e-inc/e2e-onboarding/blob/main/LICENSE",
       "tags": {
         "framework": [
           "expo",
@@ -726,13 +730,13 @@
       "description": "A Next.js storefront that sends shoppers to Shopify's own checkout in a dev store, with paid, declined, and discounted checkouts each checked through the Admin API.",
       "icon": "shopify.svg",
       "source": "official",
-      "repository": "https://github.com/tester-army/e2e-shopify",
+      "repository": "https://github.com/e2e-inc/e2e-shopify",
       "author": {
-        "name": "TesterArmy",
-        "github": "tester-army"
+        "name": "e2e",
+        "github": "e2e-inc"
       },
       "license": "MIT",
-      "licenseUrl": "https://github.com/tester-army/e2e-shopify/blob/main/LICENSE",
+      "licenseUrl": "https://github.com/e2e-inc/e2e-shopify/blob/main/LICENSE",
       "tags": {
         "framework": [
           "nextjs",
@@ -754,13 +758,13 @@
       "shortTitle": "i18n",
       "description": "A Nuxt contact form in English, German, and Spanish, with tests written once in English and each agent step handed to a persona who reads that language.",
       "source": "official",
-      "repository": "https://github.com/tester-army/e2e-i18n",
+      "repository": "https://github.com/e2e-inc/e2e-i18n",
       "author": {
-        "name": "TesterArmy",
-        "github": "tester-army"
+        "name": "e2e",
+        "github": "e2e-inc"
       },
       "license": "MIT",
-      "licenseUrl": "https://github.com/tester-army/e2e-i18n/blob/main/LICENSE",
+      "licenseUrl": "https://github.com/e2e-inc/e2e-i18n/blob/main/LICENSE",
       "tags": {
         "framework": [
           "nuxt",
@@ -780,13 +784,13 @@
       "shortTitle": "File upload",
       "description": "Image uploads from a Next.js page to a private Vercel Blob store: picking and dropping a file, refusing the wrong one, and a download checked byte for byte.",
       "source": "official",
-      "repository": "https://github.com/tester-army/e2e-file-upload",
+      "repository": "https://github.com/e2e-inc/e2e-file-upload",
       "author": {
-        "name": "TesterArmy",
-        "github": "tester-army"
+        "name": "e2e",
+        "github": "e2e-inc"
       },
       "license": "MIT",
-      "licenseUrl": "https://github.com/tester-army/e2e-file-upload/blob/main/LICENSE",
+      "licenseUrl": "https://github.com/e2e-inc/e2e-file-upload/blob/main/LICENSE",
       "tags": {
         "framework": [
           "nextjs",
@@ -806,13 +810,13 @@
       "shortTitle": "Location",
       "description": "The permission prompt, a moving device, going offline on Android, and turning location back on in Settings, in an Expo app on iOS and Android.",
       "source": "official",
-      "repository": "https://github.com/tester-army/e2e-location",
+      "repository": "https://github.com/e2e-inc/e2e-location",
       "author": {
-        "name": "TesterArmy",
-        "github": "tester-army"
+        "name": "e2e",
+        "github": "e2e-inc"
       },
       "license": "MIT",
-      "licenseUrl": "https://github.com/tester-army/e2e-location/blob/main/LICENSE",
+      "licenseUrl": "https://github.com/e2e-inc/e2e-location/blob/main/LICENSE",
       "tags": {
         "framework": [
           "expo",
@@ -833,13 +837,13 @@
       "shortTitle": "Biometrics",
       "description": "An Expo lock screen on iOS and Android: Face ID and fingerprint matches and misses, the PIN fallback, and relocking when the app goes to the background.",
       "source": "official",
-      "repository": "https://github.com/tester-army/e2e-biometrics",
+      "repository": "https://github.com/e2e-inc/e2e-biometrics",
       "author": {
-        "name": "TesterArmy",
-        "github": "tester-army"
+        "name": "e2e",
+        "github": "e2e-inc"
       },
       "license": "MIT",
-      "licenseUrl": "https://github.com/tester-army/e2e-biometrics/blob/main/LICENSE",
+      "licenseUrl": "https://github.com/e2e-inc/e2e-biometrics/blob/main/LICENSE",
       "tags": {
         "framework": [
           "expo",
@@ -861,13 +865,13 @@
       "shortTitle": "Deep links",
       "description": "Order links opened from a cold start and while the app runs, an unknown order, and a link to no screen, in an Expo app on iOS and Android.",
       "source": "official",
-      "repository": "https://github.com/tester-army/e2e-deep-links",
+      "repository": "https://github.com/e2e-inc/e2e-deep-links",
       "author": {
-        "name": "TesterArmy",
-        "github": "tester-army"
+        "name": "e2e",
+        "github": "e2e-inc"
       },
       "license": "MIT",
-      "licenseUrl": "https://github.com/tester-army/e2e-deep-links/blob/main/LICENSE",
+      "licenseUrl": "https://github.com/e2e-inc/e2e-deep-links/blob/main/LICENSE",
       "tags": {
         "framework": [
           "expo",
@@ -883,18 +887,46 @@
       }
     },
     {
+      "slug": "react-native",
+      "title": "Testing a React Native podcast app with e2e",
+      "shortTitle": "React Native",
+      "description": "A mock podcast app built with Expo: its player, search, library, playlists, and settings tested by one suite on iOS, Android, and web, with agent steps replayed from a committed cache.",
+      "source": "official",
+      "repository": "https://github.com/e2e-inc/e2e-react-native",
+      "author": {
+        "name": "e2e",
+        "github": "e2e-inc"
+      },
+      "license": "MIT",
+      "licenseUrl": "https://github.com/e2e-inc/e2e-react-native/blob/main/LICENSE",
+      "tags": {
+        "framework": [
+          "expo",
+          "react-native"
+        ],
+        "useCase": [
+          "replay-cache"
+        ],
+        "platform": [
+          "web",
+          "ios",
+          "android"
+        ]
+      }
+    },
+    {
       "slug": "github-actions",
       "title": "Running e2e in GitHub Actions",
       "shortTitle": "GitHub Actions",
       "description": "A Next.js app whose locator and agent tests run on every pull request in GitHub Actions, with the report uploaded as an artifact.",
       "source": "official",
-      "repository": "https://github.com/tester-army/e2e-github-actions",
+      "repository": "https://github.com/e2e-inc/e2e-github-actions",
       "author": {
-        "name": "TesterArmy",
-        "github": "tester-army"
+        "name": "e2e",
+        "github": "e2e-inc"
       },
       "license": "MIT",
-      "licenseUrl": "https://github.com/tester-army/e2e-github-actions/blob/main/LICENSE",
+      "licenseUrl": "https://github.com/e2e-inc/e2e-github-actions/blob/main/LICENSE",
       "tags": {
         "framework": [
           "nextjs",
@@ -916,8 +948,8 @@
       "source": "official",
       "repository": "https://gitlab.com/e2e_inc/e2e-gitlab-ci",
       "author": {
-        "name": "TesterArmy",
-        "github": "tester-army"
+        "name": "e2e",
+        "github": "e2e-inc"
       },
       "license": "MIT",
       "licenseUrl": "https://gitlab.com/e2e_inc/e2e-gitlab-ci/-/blob/main/LICENSE",
@@ -1736,6 +1768,53 @@
           "api-testing",
           "e-commerce",
           "authentication"
+        ],
+        "platform": [
+          "web"
+        ]
+      }
+    },
+    {
+      "slug": "omadeck",
+      "title": "Testing OmaDeck's phone deck with e2e",
+      "shortTitle": "OmaDeck",
+      "description": "A Python-served phone deck tested in a phone-sized browser, with fake hyprctl and wtype recording what each tap sends to the desktop.",
+      "source": "community",
+      "repository": "https://github.com/Mohsintl/omadeck/tree/a022008c60f6d2689e3283d33a099755b4090b87/e2e",
+      "author": {
+        "name": "Mohsin Mohammed T L",
+        "github": "Mohsintl"
+      },
+      "license": "Apache-2.0",
+      "licenseUrl": "https://github.com/Mohsintl/omadeck/blob/a022008c60f6d2689e3283d33a099755b4090b87/LICENSE",
+      "tags": {
+        "framework": [
+          "python"
+        ],
+        "platform": [
+          "web"
+        ]
+      }
+    },
+    {
+      "slug": "automation-exercise",
+      "title": "Testing e-commerce flows on Automation Exercise with e2e",
+      "shortTitle": "Automation Exercise",
+      "description": "Navigation, product catalog search, and cart validation journeys for the Automation Exercise store, tested with locators.",
+      "source": "community",
+      "repository": "https://github.com/Mohsintl/e2e-automation-exercise/tree/b75be5340bad9f6d9566523b0ac7a6bd55feba2e",
+      "author": {
+        "name": "Tingri Lohar Mohammed Mohsin",
+        "github": "Mohsintl"
+      },
+      "license": "MIT",
+      "licenseUrl": "https://github.com/Mohsintl/e2e-automation-exercise/blob/b75be5340bad9f6d9566523b0ac7a6bd55feba2e/LICENSE",
+      "tags": {
+        "framework": [
+          "nodejs"
+        ],
+        "useCase": [
+          "e-commerce"
         ],
         "platform": [
           "web"

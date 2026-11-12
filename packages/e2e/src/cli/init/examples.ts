@@ -45,7 +45,7 @@ export function findExample(name: string): ExamplePreset | undefined {
   return EXAMPLES.find((example) => example.id === id);
 }
 
-const REPOSITORY = 'tester-army/e2e';
+const REPOSITORY = 'e2e-inc/e2e';
 /** Entries a directory may hold and still count as empty for an example. */
 const IGNORED_ENTRIES = new Set(['.git', '.DS_Store', 'Thumbs.db']);
 /**

@@ -5,7 +5,7 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/tester-army/e2e.git",
+    "url": "git+https://github.com/e2e-inc/e2e.git",
     "directory": "packages/decision"
   },
   "publishConfig": {
@@ -36,14 +36,14 @@
   },
   "peerDependencies": {
     "ai": "^7.0.134",
-    "e2e": ">=0.21.3 <1"
+    "e2e": ">=0.23.1 <1"
   },
   "devDependencies": {
-    "@ai-sdk/openai": "4.0.111",
-    "@ai-sdk/typesafe-ai": "3.0.35",
+    "@ai-sdk/openai": "4.0.115",
+    "@ai-sdk/typesafe-ai": "3.0.38",
     "@e2e-dev/web": "workspace:*",
     "@types/node": "26.6.6",
-    "ai": "7.0.166",
+    "ai": "7.0.170",
     "ajv": "8.20.0",
     "ajv-formats": "3.0.1",
     "e2e": "workspace:*",

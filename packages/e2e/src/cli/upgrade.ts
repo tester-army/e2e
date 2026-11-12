@@ -41,7 +41,7 @@ interface SpawnOutcome {
 const RUNNER = 'e2e';
 const SCOPE = '@e2e-dev/';
 const DEFAULT_REGISTRY = 'https://registry.npmjs.org/';
-const RELEASES_URL = 'https://github.com/tester-army/e2e/releases/tag/';
+const RELEASES_URL = 'https://github.com/e2e-inc/e2e/releases/tag/';
 /** Each metadata request gets this long; a person waits on it. */
 const REGISTRY_TIMEOUT_MS = 15_000;
 /** The sections a package manager installs from, in the order a package is looked up. */

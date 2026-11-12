@@ -12,7 +12,8 @@ Return `{ exclude }`, keyed by test ID, from a `TestFilter` object's
 `filter` method. Unnamed tests stay in the selection.
 
 This filter maps repository-relative paths to tags. Unmapped paths keep
-every test, and tests without an area tag always stay in.
+every test, and tests without an area tag always stay in. Tests in an affected
+area receive the highest relevance score.
 
 <Accordion title="Path-to-tag filter example">
 ```ts title="areas-filter.ts"
@@ -31,17 +32,21 @@ export const areas = {
   name: 'areas',
   filter(tests, { changes }) {
     const reached = new Set<string>();
+    let unmapped: string | undefined;
     for (const file of changes.files) {
       const area = Object.keys(AREAS).find((prefix) => file.startsWith(prefix));
-      if (area === undefined) return { exclude: {}, note: `${file} is in no area, so areas leaves nothing out` };
-      for (const tag of AREAS[area] ?? []) reached.add(tag);
+      if (area === undefined) unmapped = file;
+      else for (const tag of AREAS[area] ?? []) reached.add(tag);
     }
     const exclude: Record<string, string> = {};
+    const relevance: Record<string, number> = {};
     for (const test of tests) {
       const tags = test.tags.filter((tag) => AREA_TAGS.has(tag));
-      if (tags.length > 0 && !tags.some((tag) => reached.has(tag))) exclude[test.id] = 'the change reaches none of its areas';
+      if (tags.some((tag) => reached.has(tag))) relevance[test.id] = 1;
+      else if (tags.length > 0 && unmapped === undefined) exclude[test.id] = 'the change reaches none of its areas';
     }
-    return { exclude };
+    if (unmapped === undefined) return { exclude, relevance };
+    return { exclude, relevance, note: `${unmapped} is in no area, so areas leaves nothing out` };
   },
 } satisfies TestFilter;
 ```
@@ -70,6 +75,25 @@ still runs if another test in its serial group runs.
 
 [Preview exclusions](/filters#preview-locally) and check
 [which tests always run](/filters#what-always-runs).
+
+## Score tests by relevance
+
+Return `relevance` alongside `exclude` to [start likely tests first](/filters#start-the-likeliest-first),
+as the path-to-tag example does. Map test IDs to numbers from 0 to 1.
+A test no filter scores gets 0; multiple filters' scores combine by taking the highest.
+
+Invalid scores fail the filter, just like invalid exclusions.
+See [`TestFilter`](/reference/config#testfilter) for the result types.
+
+<Accordion title="Keep scores when a filter fails">
+An error thrown by `filter` can carry a `relevance` property with the same
+shape as the result's. Valid scores still apply, while the failure warns
+and leaves all input tests for the next filter.
+
+The decision filter uses this to prioritize directly changed tests even
+without an API key. Invalid error scores are dropped with a warning.
+Errors thrown after the 5-minute deadline do not count.
+</Accordion>
 
 ## Adjust the decision filter
 

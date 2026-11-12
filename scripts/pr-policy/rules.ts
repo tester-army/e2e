@@ -18,7 +18,7 @@ export const COMPLIANCE_MARKER = '<!-- pr-policy -->';
 /** The account `GITHUB_TOKEN` comments as; only its marker comments count. */
 export const BOT_LOGIN = 'github-actions[bot]';
 
-const GUIDELINES = 'https://github.com/tester-army/e2e/blob/main/CONTRIBUTING.md#pull-requests';
+const GUIDELINES = 'https://github.com/e2e-inc/e2e/blob/main/CONTRIBUTING.md#pull-requests';
 
 export const GRACE_MS = 72 * 60 * 60 * 1000;
 

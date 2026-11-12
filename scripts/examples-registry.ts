@@ -1,15 +1,16 @@
 /**
  * The examples registry, `examples/examples.json`: every example on
  * https://e2e.com/examples, official, partner, and community. The site
- * (tester-army/e2e-site) downloads the file at build time and renders a page
+ * (e2e-inc/e2e-site) downloads the file at build time and renders a page
  * per entry from it and the README at its `repository` (or its `readme`);
  * `site.yml` redeploys
- * the site when the file changes on `main`.
+ * the site when the file changes on `main` (the docs, unlike the registry,
+ * come from the newest `e2e@X.Y.Z` tag).
  *
  * `examples.schema.json` pins the shape; `registryProblems` checks what a
  * schema cannot: unique slugs and tags, tags an example names but the
  * registry does not define, icons that are not in `examples/icons/`, official
- * examples living under the tester-army organization on GitHub or the e2e_inc
+ * examples living under the e2e-inc organization on GitHub or the e2e_inc
  * group on GitLab (and, in this
  * repository, matching the folders under `examples/` and the ones
  * `e2e init --example` can copy), partner and community examples living
@@ -35,15 +36,15 @@ const ICONS_DIR = join(EXAMPLES_DIR, 'icons');
 const INIT_EXAMPLES_PATH = join(REPO_ROOT, 'packages/e2e/src/cli/init/examples.ts');
 
 /** An official example in this repository: its folder under `examples/` on `main`. */
-const FOLDER_URL = /^https:\/\/github\.com\/tester-army\/e2e\/tree\/main\/examples\/([a-z0-9-]+)$/;
+const FOLDER_URL = /^https:\/\/github\.com\/(?:e2e-inc|tester-army)\/e2e\/tree\/main\/examples\/([a-z0-9-]+)$/;
 /** Any URL into this repository. */
-const THIS_REPO_URL = /^https:\/\/github\.com\/tester-army\/e2e(?:\/|$)/i;
+const THIS_REPO_URL = /^https:\/\/github\.com\/(?:e2e-inc|tester-army)\/e2e(?:\/|$)/i;
 /**
- * Any URL into the tester-army organization on GitHub or the e2e_inc group on
+ * Any URL into the e2e-inc organization on GitHub or the e2e_inc group on
  * GitLab: official examples live there, and only they do.
  */
-const ORG_URL = /^https:\/\/(?:github\.com\/tester-army|gitlab\.com\/e2e_inc)\//i;
-const ORG_NAMES = 'https://github.com/tester-army/ or https://gitlab.com/e2e_inc/';
+const ORG_URL = /^https:\/\/(?:github\.com\/(?:e2e-inc|tester-army)|gitlab\.com\/e2e_inc)\//i;
+const ORG_NAMES = 'https://github.com/e2e-inc/ or https://gitlab.com/e2e_inc/';
 /** The owner of a github.com URL, lowercased. A partner's repository must be on GitHub, under its `author.github`. */
 function ownerOf(repository: string): string | undefined {
   return repository.match(/^https:\/\/github\.com\/([^/]+)\//)?.[1]?.toLowerCase();
@@ -179,7 +180,7 @@ export function registryProblems(registry: Registry, env: RegistryEnvironment): 
       } else if (THIS_REPO_URL.test(example.repository)) {
         // In this repository, an official example is one of the folders under examples/.
         if (!folder) {
-          problems.push(`${name}: an official example in tester-army/e2e must point at its folder, https://github.com/tester-army/e2e/tree/main/examples/<folder>`);
+          problems.push(`${name}: an official example in e2e-inc/e2e must point at its folder, https://github.com/e2e-inc/e2e/tree/main/examples/<folder>`);
         } else if (!env.folders.includes(folder)) {
           problems.push(`${name}: examples/${folder} does not exist`);
         } else if (folder !== example.slug) {
@@ -189,7 +190,7 @@ export function registryProblems(registry: Registry, env: RegistryEnvironment): 
         }
       }
     } else if (ORG_URL.test(example.repository)) {
-      problems.push(`${name}: a ${example.source} example lives in its own repository, outside the tester-army organization and the e2e_inc group`);
+      problems.push(`${name}: a ${example.source} example lives in its own repository, outside the e2e-inc organization and the e2e_inc group`);
     } else if (example.source === 'partner' && ownerOf(example.repository) !== example.author.github.toLowerCase()) {
       // The site's partner seal credits author.name, so the partner must own the repository.
       problems.push(`${name}: a partner example lives in its author's repository, https://github.com/${example.author.github}/`);

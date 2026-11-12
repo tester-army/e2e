@@ -8,7 +8,7 @@ description: Run only the tests a pull request can affect.
 Test filters shorten pull request runs by leaving out tests before they start.
 The built-in decision filter sends your diff and test files to a small
 [decision model](/decision-models), such as Jev. It asks whether the change
-can affect each test.
+can affect each test, then [starts the likeliest files first](#start-the-likeliest-first).
 
 Filters run only with `--changed-since <ref>`. Without it, every selected test runs.
 
@@ -159,7 +159,41 @@ If every call fails, such as a fork pull request without an API key,
 the filter throws. A filter that throws, returns an invalid result, or
 exceeds 5 minutes leaves nothing out and produces a warning.
 Later filters still receive its input tests.
+
+If the decision filter fails, it still prioritizes tests whose test file,
+setup file, or stored screenshots changed. Custom filters can also
+[return scores on failure](/custom-test-filters#score-tests-by-relevance).
+A timed-out filter is abandoned; later results or errors do not count.
 </Accordion>
+
+## Start the likeliest first
+
+The decision filter scores each test it keeps. Each target starts the files
+with the highest scores first, helping failures surface earlier with
+`--max-failures` or one worker, the CI default.
+
+| Test | Score |
+| --- | --- |
+| Its test file, setup file, or stored screenshots changed | 100% |
+| Every other test | The higher of its rating and its setup's; a missing rating counts as 50%. |
+
+<Accordion title="How scores order files and targets">
+Files start in four bands: 75% and up, 50% up to 75%, 25% up to 50%,
+and under 25%. A file takes the band of its highest-scoring test.
+
+With multiple workers, the longest file by [timings history](/ci#cache-the-timings-history)
+starts first within a band. Files without timings start before timed files.
+
+Targets start by their highest file band, with ties in config order.
+Each target orders its own files; setup tests finish before its first test file starts.
+
+A short likely file can start before a long unlikely one, so a full run
+with multiple workers can finish later. Reports keep their order;
+`e2e list` does not show the scheduling order.
+</Accordion>
+
+To set scores in your own filter, return
+[`relevance`](/custom-test-filters#score-tests-by-relevance).
 
 <a id="what-you-see" />
 
@@ -174,6 +208,9 @@ decision kept 7 of 77 tests, left out 70 (1 call, 17.6k tokens, $0.0007)
 Spend includes model calls, tokens, and cost when the provider reports it.
 The summary has a `Left out` row. If filters leave no tests, the run passes
 without starting an app.
+
+When scores span multiple bands, the terminal also prints a line such as
+`ranked 7 of 7 tests by relevance, likeliest first`.
 
 | Output | Excluded tests |
 | --- | --- |

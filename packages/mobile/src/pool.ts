@@ -11,6 +11,7 @@
  * `init`, and `finish` releases what the source acquired.
  */
 
+import type { DeviceBootOptions } from 'agent-device';
 import {
   ConfigurationError,
   EngineError,
@@ -52,6 +53,17 @@ export function deviceSelection(
   const id = deviceId ?? (device !== undefined && (UDID.test(device) || EMULATOR_SERIAL.test(device)) ? device : undefined);
   if (id === undefined) return obj({ platform, device });
   return platform === 'android' ? { platform, serial: id } : { platform, udid: id };
+}
+
+/**
+ * The request `boot` takes for a selection. One that names no device asks
+ * agent-device to pick among several shut-down matches (mobile over TV, newest
+ * OS, then name order) instead of failing with `AMBIGUOUS_MATCH`; several
+ * booted matches still fail.
+ */
+export function bootRequest(selection: DeviceSelection): DeviceSelection & Pick<DeviceBootOptions, 'pick'> {
+  const named = selection.device ?? selection.udid ?? selection.serial;
+  return named === undefined ? { ...selection, pick: 'newest' } : selection;
 }
 
 /** The agent-device session slot `slot` of a target drives: the `session` option or `e2e-<target>`, then `-<slot>`. */
@@ -111,8 +123,9 @@ interface BootedDevice {
 
 /**
  * Every booted device of the platform no other agent-device session holds, as
- * many as the run has slots; with none booted, one slot the daemon fills. A
- * device held by one of this target's own slot sessions stays in the pool.
+ * many as the run has slots; with none booted, one slot that boots a shut-down
+ * simulator or emulator agent-device picks. A device held by one of this
+ * target's own slot sessions stays in the pool.
  */
 class BootedDevices implements DeviceSource {
   constructor(
@@ -135,7 +148,7 @@ class BootedDevices implements DeviceSource {
       );
     }
     if (chosen.length === 0) {
-      info.log(`no booted ${this.platform} device; agent-device boots one`);
+      info.log(`no booted ${this.platform} device; agent-device boots a shut-down one (newest OS, then name)`);
       return [{}];
     }
     const skipped = held.length === 0 ? '' : `, skipping ${held.length} held by another agent-device session (${heldBy})`;
@@ -293,7 +306,7 @@ export class DevicePool {
       info.log(`booting ${label} (${slot + 1} of ${bindings.length})`);
       const took: string[] = [];
       try {
-        await timed(took, 'boot', () => runCommand('boot', () => client.devices.boot(where), info.signal, at));
+        await timed(took, 'boot', () => runCommand('boot', () => client.devices.boot(bootRequest(where)), info.signal, at));
         const runnerUp = this.options.platform !== 'ios' || (await timed(took, 'iOS runner', () => prepareRunner(client, where, info, at)));
         const app = pinnedApp(info.app, binding.installedApp);
         if (app === undefined || !runnerUp) continue;

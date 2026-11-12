@@ -152,7 +152,7 @@ opens on its own, so each test starts with `app.open()`.
 | `login` step | a `test.setup` that signs in and calls `session.save()`, and `{ session }` on each test, see [Authentication](/authentication) |
 | `login` with `temporaryEmail` | Not yet |
 | `files` step, `@receipt.jpg` in a step, on web | the file's repository path in the goal: `agent.act('attach tests/fixtures/receipt.jpg')`, or `locator.setInputFiles()` |
-| `files` step on mobile (photo library) | Not yet |
+| `files` step on mobile (photo library) | Not yet as a native step. On an iOS simulator, add the photo with `xcrun simctl addmedia` before `app.open()`, then pick it in the system picker; Android is unchecked. See the "Photos for a picker test" accordion under [The device fixture](/mobile#the-device-fixture) |
 | `screenshot` step | `app.screenshot('label')` |
 | `javascript` step | `browser.evaluate()`. It fails only when the code throws, so check a `{ success: false }` return with `expect` |
 | `microphone` step | Not yet |

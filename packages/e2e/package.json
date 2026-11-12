@@ -2,7 +2,7 @@
   "name": "e2e",
   "version": "0.23.0",
   "description": "SDK, runner, and CLI for agentic end-to-end testing",
-  "mcpName": "io.github.tester-army/e2e",
+  "mcpName": "io.github.e2e-inc/e2e",
   "keywords": [
     "e2e",
     "end-to-end",
@@ -26,13 +26,13 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/tester-army/e2e.git",
+    "url": "git+https://github.com/e2e-inc/e2e.git",
     "directory": "packages/e2e"
   },
   "bugs": {
-    "url": "https://github.com/tester-army/e2e/issues"
+    "url": "https://github.com/e2e-inc/e2e/issues"
   },
-  "homepage": "https://github.com/tester-army/e2e#readme",
+  "homepage": "https://github.com/e2e-inc/e2e#readme",
   "publishConfig": {
     "registry": "https://registry.npmjs.org/",
     "access": "public",
@@ -137,16 +137,16 @@
     }
   },
   "devDependencies": {
-    "@ai-sdk/anthropic": "4.0.99",
-    "@ai-sdk/google": "4.0.114",
-    "@ai-sdk/openai": "4.0.111",
-    "@ai-sdk/openai-compatible": "3.0.87",
-    "@ai-sdk/xai": "5.0.40",
+    "@ai-sdk/anthropic": "4.0.102",
+    "@ai-sdk/google": "4.0.118",
+    "@ai-sdk/openai": "4.0.115",
+    "@ai-sdk/openai-compatible": "3.0.90",
+    "@ai-sdk/xai": "5.0.43",
     "@e2e-dev/web": "workspace:*",
     "@modelcontextprotocol/client": "2.4.0",
     "@openrouter/ai-sdk-provider": "3.1.0",
     "@types/node": "26.6.6",
-    "ai": "7.0.166",
+    "ai": "7.0.170",
     "ajv": "8.20.0",
     "ajv-formats": "3.0.1",
     "typescript": "7.0.2",

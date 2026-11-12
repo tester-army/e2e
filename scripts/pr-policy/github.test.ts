@@ -57,7 +57,7 @@ describe('pr-policy GitHub layer', () => {
     originalToken = process.env.GITHUB_TOKEN;
     originalRepository = process.env.GITHUB_REPOSITORY;
     process.env.GITHUB_TOKEN = TOKEN;
-    process.env.GITHUB_REPOSITORY = 'tester-army/e2e';
+    process.env.GITHUB_REPOSITORY = 'e2e-inc/e2e';
   });
 
   afterEach(() => {
@@ -80,7 +80,7 @@ describe('pr-policy GitHub layer', () => {
     assert.equal(first.url.pathname, '/graphql');
     assert.equal(first.url.hostname, 'api.github.com');
     const sent = first.body as { query: string; variables: Record<string, unknown> };
-    assert.deepEqual(sent.variables, { owner: 'tester-army', name: 'e2e', number: 7 });
+    assert.deepEqual(sent.variables, { owner: 'e2e-inc', name: 'e2e', number: 7 });
     assert.match(sent.query, /repository\(owner: \$owner, name: \$name\)/);
     assert.deepEqual(data, { title: 'x', body: 'y', closingIssues: 2, labels: ['l'] });
   });
@@ -116,7 +116,7 @@ describe('pr-policy GitHub layer', () => {
     await flag(9, ['a problem'], true, comment(55, 'github-actions[bot]', 'old body'));
     assert.deepEqual(
       calls.map(({ method, url }) => [method, url.pathname]),
-      [['PATCH', '/repos/tester-army/e2e/issues/comments/55']],
+      [['PATCH', '/repos/e2e-inc/e2e/issues/comments/55']],
     );
   });
 
@@ -132,9 +132,9 @@ describe('pr-policy GitHub layer', () => {
     assert.deepEqual(
       calls.map(({ method, url }) => [method, url.pathname]),
       [
-        ['DELETE', '/repos/tester-army/e2e/issues/comments/55'],
-        ['POST', '/repos/tester-army/e2e/issues/9/comments'],
-        ['POST', '/repos/tester-army/e2e/issues/9/labels'],
+        ['DELETE', '/repos/e2e-inc/e2e/issues/comments/55'],
+        ['POST', '/repos/e2e-inc/e2e/issues/9/comments'],
+        ['POST', '/repos/e2e-inc/e2e/issues/9/labels'],
       ],
     );
     assert.deepEqual(nth(calls, 2).body, { labels: [COMPLIANCE_LABEL] });
@@ -151,8 +151,8 @@ describe('pr-policy GitHub layer', () => {
     assert.deepEqual(
       calls.map(({ method, url }) => [method, url.pathname]),
       [
-        ['DELETE', '/repos/tester-army/e2e/issues/comments/55'],
-        ['DELETE', `/repos/tester-army/e2e/issues/9/labels/${encodeURIComponent(COMPLIANCE_LABEL)}`],
+        ['DELETE', '/repos/e2e-inc/e2e/issues/comments/55'],
+        ['DELETE', `/repos/e2e-inc/e2e/issues/9/labels/${encodeURIComponent(COMPLIANCE_LABEL)}`],
       ],
     );
   });
@@ -168,8 +168,8 @@ describe('pr-policy GitHub layer', () => {
     assert.deepEqual(
       calls.map(({ method, url }) => [method, url.pathname]),
       [
-        ['POST', '/repos/tester-army/e2e/issues/9/comments'],
-        ['PATCH', '/repos/tester-army/e2e/pulls/9'],
+        ['POST', '/repos/e2e-inc/e2e/issues/9/comments'],
+        ['PATCH', '/repos/e2e-inc/e2e/pulls/9'],
       ],
     );
     assert.deepEqual(nth(calls, 1).body, { state: 'closed' });
@@ -179,6 +179,6 @@ describe('pr-policy GitHub layer', () => {
     const calls = stubFetch(() => ({ status: 204, json: undefined }));
     await addLabel(9, COMPLIANCE_LABEL);
     assert.deepEqual(calls, [{ url: nth(calls, 0).url, method: 'POST', body: { labels: [COMPLIANCE_LABEL] } }]);
-    assert.equal(nth(calls, 0).url.pathname, '/repos/tester-army/e2e/issues/9/labels');
+    assert.equal(nth(calls, 0).url.pathname, '/repos/e2e-inc/e2e/issues/9/labels');
   });
 });
