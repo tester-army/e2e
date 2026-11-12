@@ -7,7 +7,7 @@ body:
       value: |
         Questions and help requests go to [Discord](https://tester.army/discord), not here.
 
-        Security problems go to [SECURITY.md](https://github.com/tester-army/e2e/blob/main/SECURITY.md), not here.
+        Security problems go to [SECURITY.md](https://github.com/e2e-inc/e2e/blob/main/SECURITY.md), not here.
 
         **A reproduction is required.** Bug reports without a link to a public repository or sandbox that shows the bug are closed.
   - type: textarea

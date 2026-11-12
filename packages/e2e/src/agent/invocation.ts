@@ -104,7 +104,8 @@ export interface AgentContext {
   /**
    * Completed steps quoted as prior context for `agent.act`; serial members
    * see the whole group. A judgment never reads them: the judge sees the
-   * instruction and the current screen, not the acting agent's account.
+   * instruction, its params, the agent's context, and the current screen with
+   * its location, not the acting agent's account.
    */
   readonly priorSteps: () => readonly StepRecord[];
   readonly secrets: SecretResolver;

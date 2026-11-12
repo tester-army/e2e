@@ -13,7 +13,9 @@
 
 ## Requirements
 
-- Node.js 24.8 or newer, or 22.22.3 or newer on Node.js 22.
+- Node.js 24.8 or newer, or 22.22.3 or newer on Node.js 22; or Bun 1.4.3 or
+  newer (`bunx --bun e2e`), with
+  [these limitations](https://e2e.com/docs/reference/cli#bun).
 - ES modules: `.ts` config, tests, helpers, and workspace packages exporting
   `.ts` source load as ESM regardless of the nearest `package.json` `type`
   (CommonJS packages need no change); never `require` or `module.exports`.
@@ -162,7 +164,7 @@ or `E2E_USER_ADMIN_PASSWORD` first, or defer to fill time with
 | `reporters` | `['list']` | `list`, `json`, `junit`, `markdown`, or `{ name, onEvent?, onRunFinished? }` objects; `json` excludes `list`, `--reporter` keeps the objects. |
 | `cache` | `'read-write'` | `'read-write'`, `'read-only'`, `'off'`, or `{ mode, store, dir, strict }`; CI demotes only a defaulted mode to `'read-only'`. `strict` (`--strict-cache`) fails a step whose recording no longer replays (`REPLAY_STALE`) instead of handing it to the agent; retries replay too, and the run never writes the cache. |
 | `agents` | `{ default: built-in }` | Tests run with `default`, `e2e run --agent <name>` picks another, entries never inherit from `default`. Options: topic `agent`. |
-| `filters` | `[]` | Test filters `{ name, filter(tests, context) }`, unique names, applied in order with `--changed-since <ref>`. Use `filters: [decisionFilter({ model: gateway.decisionModel('typesafe-ai/jev') })]`, with `decisionFilter` from `@e2e-dev/decision` and `gateway` from `ai` (install `@e2e-dev/decision ai`), to run only the tests a pull request can affect. `filter` gets candidates `{ id, file, titlePath, tags, setupFile? }` and a context `{ projectRoot, changes: { base, root, files }, configFile, signal, log, redact }` with repository-relative `files`, and returns `{ exclude: { [id]: reason }, note? }`; every test it does not name runs. Read files, the environment, or the network inside `filter`, never at config load: workers load the config too. When filters run: topic `running`. |
+| `filters` | `[]` | Test filters `{ name, filter(tests, context) }`, unique names, applied in order with `--changed-since <ref>`. Use `filters: [decisionFilter({ model: gateway.decisionModel('typesafe-ai/jev') })]`, with `decisionFilter` from `@e2e-dev/decision` and `gateway` from `ai` (install `@e2e-dev/decision ai`), to run only the tests a pull request can affect. `filter` gets candidates `{ id, file, titlePath, tags, setupFile? }` and a context `{ projectRoot, changes: { base, root, files }, configFile, signal, log, redact }` with repository-relative `files`, and returns `{ exclude: { [id]: reason }, relevance?: { [id]: 0 to 1 }, note? }`; every test it does not name runs, and `relevance` (how likely each test is to fail) makes each target start the likeliest files first. Read files, the environment, or the network inside `filter`, never at config load: workers load the config too. When filters run: topic `running`. |
 | `credentials` | `{}` | Named `{ username, password }`; `password` is a 6+ code point string or a function returning it. |
 | `secrets` | `{}` | Named values the model never sees (API keys, tokens), same value rule. A separate namespace: a credential's password is `credentials.user(name).password` (named `<name>.password`), never `secrets.get()`, so a name may be both. |
 | `output` | `'.e2e'` | Results directory; `--output <dir>` for one run. Inside the project root, not the root, not a tests glob's directory, never the cache dir (`cache.dir` stays `.e2e/cache`). |
@@ -211,11 +213,11 @@ start a script that brings them up and serves the app.
 
 | Option | Meaning |
 | --- | --- |
-| `browser` | `'chromium'` (default), `'firefox'`, `'webkit'`, or a `BrowserProvider` leasing hosted browsers over CDP (`kernel()` from `@e2e-dev/kernel`, `smol()` from `@e2e-dev/smol`, `lightpanda()` from `@e2e-dev/lightpanda`, `testmuBrowsers()` from `@e2e-dev/testmu/web`, or your own), which implies chromium and excludes `connect`. Scope `'worker'` (default): one browser per worker slot from `prepare` to `finish`; `'attempt'`: one per attempt, with `reconnectEndpoint`'s limits (`lightpanda()` and `testmuBrowsers()` are worker scope only). |
+| `browser` | `'chromium'` (default), `'firefox'`, `'webkit'`, or a `BrowserProvider` leasing hosted browsers over CDP (`kernel()` from `@e2e-dev/kernel`, `smol()` from `@e2e-dev/smol`, `lightpanda()` from `@e2e-dev/lightpanda`, `testmuBrowsers()` from `@e2e-dev/testmu/web`, `e2bBrowsers()` from `@e2e-dev/e2b/web`, or your own), which implies chromium and excludes `connect`. Scope `'worker'` (default): one browser per worker slot from `prepare` to `finish`; `'attempt'`: one per attempt, with `reconnectEndpoint`'s limits (`lightpanda()` and `testmuBrowsers()` are worker scope only). |
 | `viewport` | `{ width, height }`, default 1280x720; `null` follows the browser window (hosted live view, headed run). On a headed hosted browser (Kernel) use `null` and size the service's screen; a fixed size gives a smaller, unmaximized window. |
 | `connect` | `{ cdpEndpoint }` attaches to a remote Chromium over CDP; `cdpEndpoint` is required, and both it and `reconnectEndpoint` are resolvers `(signal) => url`, not strings, else `INVALID_CONFIG` at load. With `reconnectEndpoint` it rides one persistent default context, needs a fresh browser from `cdpEndpoint` every attempt, and reconnects only to the original browser and page. |
-| `headers` | Sent to the app's site only (Vercel's `x-vercel-protection-bypass`, ngrok's `ngrok-skip-browser-warning`), `agent.act` included; disables the browser HTTP cache and service workers. |
-| `basicAuth` | `{ username, password }` for a `401` challenge; `password` may be `secrets.get('name')`, resolved per attempt and redacted like any secret, the base64 `Authorization` credential too. |
+| `headers` | Sent to the app's origin only (scheme, host, and port of `app.url`; Vercel's `x-vercel-protection-bypass`, ngrok's `ngrok-skip-browser-warning`), `agent.act` included; `credentialOrigins: ['https://api.example.com']` adds exact origins for `headers` and `basicAuth`. A request keeps them through its redirects, to any origin. Disables the browser HTTP cache and service workers. |
+| `basicAuth` | `{ username, password }` for a `401` challenge from the app's origin, or one `credentialOrigins` lists (a redirect to `www` or `https:` is another origin; WebKit answers any origin when one is on a default port or an IPv6 host); `password` may be `secrets.get('name')`, resolved per attempt and redacted like any secret, the base64 `Authorization` credential too. |
 | `userAgent` | The `User-Agent` every attempt sends and `navigator.userAgent` reports. |
 | `locale`, `timezoneId` | The language (`'de-DE'`: `navigator.language`, `Intl`, `Accept-Language`) and IANA time zone (`'Europe/Berlin'`) every attempt runs in. |
 | `colorScheme`, `reducedMotion` | The `prefers-color-scheme` (`'light'`, `'dark'`, `'no-preference'`) and `prefers-reduced-motion` (`'reduce'`, `'no-preference'`) every page reports to its `@media` rules and `matchMedia`, from first paint. |
@@ -270,6 +272,12 @@ app: {
   ready is `APP_UNREACHABLE`; the run stops before its tests and leaves the
   last run's report and results as they were (`command.log` still gets this
   boot's output).
+- In `e2e run`, a command that exits after readiness fails the run with `APP_UNREACHABLE` if a dependent target has unfinished work.
+  This includes exit code 0 and termination by a signal.
+  The runner interrupts active tests and skips queued tests only for those targets.
+  Targets that have finished their work ignore the exit.
+  The error labels the command with the first target that declared it, which may have finished already, and reports the command's exit code or signal.
+  See the [command reference](https://e2e.tester.army/reference/config#command) for log excerpts and redaction limits.
 - The child gets only `PATH`, `HOME`, the temp-directory variables,
   `SystemRoot` and `COMSPEC` on Windows, and `command.env`. Pass the rest
   through `env`, or name host variables in `inheritEnv` (`['DATABASE_URL',
@@ -351,10 +359,15 @@ export default {
   'NO']` loads that dev server on every fresh launch, dev menu off;
   `app.command` (`npx expo start --port 8081`) with `readyUrl:
   'http://localhost:8081/status'` starts it.
+- Another language on iOS: `app.launchArguments: ['-AppleLanguages', '(fr)',
+  '-AppleLocale', 'fr_FR']`, one target per language; the app must ship
+  it. Android has no such argument: on a hosted device set `language` and
+  `locale` on `browserstack()` or `testmu()`, on a local one set the device's
+  language.
 - One worker per device. No `device`: every booted simulator or emulator of
   the platform, and every connected phone, is the pool, up to `workers`,
   minus devices another agent-device session holds (none booted: agent-device boots
-  one; all held: `prepare` fails); one `device`: one worker whatever `workers` says; a list (`device:
+  a shut-down one, newest OS first, then name order; all held: `prepare` fails); one `device`: one worker whatever `workers` says; a list (`device:
   ['iPhone 17', 'iPhone 17 Pro']`): an explicit pool. Devices boot in
   `prepare`, before the run's clock. Two sessions on one device fight over
   it: for parallel MCP sessions or bug-bash explorers, declare one target per
@@ -367,8 +380,8 @@ export default {
   absent, is the account's cap (40 on a standard plan). `videoTouches: false`
   on the engine for video there.
 - `limrun()` from `@e2e-dev/limrun` leases one device per worker and installs
-  `app.appPath` before tests. Set `LIMRUN_API_KEY`; install `@limrun/api` and
-  matching `agent-device` peers. Android needs `adb` on `PATH` for its tunnel.
+  `app.appPath` before tests. Set `LIMRUN_API_KEY` and install `@limrun/api`.
+  Android needs `adb` on `PATH` for its tunnel.
   iOS keyboard actions such as `locator.press('Enter')` return
   `UNSUPPORTED_CAPABILITY`; tap an app button when available.
   Limrun's `limrun-inc/testerarmy-e2e-limrun` repository runs the same form
@@ -387,26 +400,46 @@ export default {
   `appiumVersion` (such as `'3.2.0'`): BrowserStack's default Appium 1.x
   lacks `mobile:` commands. An attempt that records video links
   BrowserStack's recording of the whole session.
+- `e2b()` from `@e2e-dev/e2b` runs Android 16 in one E2B sandbox per worker
+  (Android only, x86_64, no Google Play) and installs the `.apk` at
+  `app.appPath` before tests. Set `E2B_API_KEY`; install the `e2b` peer. The
+  runner needs no `adb`.
 - A control that appeared or moved with the previous action waits out
   `transition` (default 500 ms). Opening or closing the keyboard also uses
-  the remaining budget. Agent actions settle `settle` ms (default
-  150) before the next observation, `settle: false` skips it.
+  the remaining budget. Screen swipes in tests wait out the remaining budget
+  before scrolling. Agent actions settle `settle` ms (default 150) before the
+  next observation, `settle: false` skips it.
 - Mobile `fill` and `clear` re-read the field before typing, replay included.
   Missing fields, changed security state, or incomplete captures return
   `NODE_STALE` before mutation, then retry after a fresh observation.
   Non-input targets return `UNSUPPORTED_CAPABILITY`; an iOS `other` that holds
   a value or only text is typed into, since a custom-drawn field (Compose
   Multiplatform, Flutter) can read that way.
+- A node whose centre the soft keyboard covers is hidden, so
+  `scrollUntilVisible` keeps scrolling and `toBeVisible()` fails. The
+  keyboard's own keys and dock, the focused field, and a container with a
+  child still showing stay visible. A tap on a
+  node agent-device finds covered (by an overlay or the keyboard) fails
+  `ACTION_FAILED` naming the cover; dismiss it or scroll the target clear.
 - `screen`, `expect`, `app`, `agent` work unchanged; `test` from
   `@e2e-dev/mobile` types the `device` fixture (`installApp`, `openLink`,
   `setPermission`, `setNetwork`, `setAppearance`, `clearKeychain`, `fold`
   for a foldable's hinge (iPhone Duo, Android foldable emulators), `locator`, more). Portable suites declare
   `requires: ['device']`.
 - `device.unstable_raw` gives the session name, device id and name, a
-  `selection` to spread into a call, and an
-  agent-device `client` bound to the test's session, for what `device`
+  `selection` to spread into a call, and a
+  raw driver `client` bound to the test's session, for what `device`
   lacks. Client calls are not steps: no report, trace, replay, or secret
   redaction. Unstable: may change or go away in any release.
+- A custom tool that needs capabilities e2e does not wrap yet gets the raw
+  driver session from `unstable_deviceSession(...engines)`
+  (`@e2e-dev/mobile/tools`). Its `client` is typed as
+  `DeviceSessionClient` from `@e2e-dev/mobile`. Do not build a client yourself: it would miss
+  the engine's daemon, lease, and session.
+  Its calls skip e2e's guards like `unstable_raw`: a snapshot or screenshot
+  a tool returns is not redacted or masked, even after a secret fill,
+  nothing waits for the screen to settle, and a tool that changes the
+  device needs `mutates: true`. Unstable like `unstable_raw`.
 - `setNetwork('offline')` and `setAirplaneMode(true)` are Android only: on
   iOS both are `UNSUPPORTED_CAPABILITY`, since a simulator shares the Mac's
   network, and `setNetwork('online')` / `setAirplaneMode(false)` do nothing.

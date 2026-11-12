@@ -8,7 +8,7 @@ rule and limit, as the code enforces it, is in
 ## Reporting a vulnerability
 
 Report privately through
-[GitHub security advisories](https://github.com/tester-army/e2e/security/advisories/new)
+[GitHub security advisories](https://github.com/e2e-inc/e2e/security/advisories/new)
 or by mail to security@e2e.com. Do not open a public issue for anything
 that lets a page, a model, or a committed file act with more authority than
 this document grants it.
@@ -76,9 +76,12 @@ elsewhere as one the agent may follow there, with the secrets the step was
 given. If a threat model ever calls for an origin allowlist again, it comes
 back as an opt-in.
 
-Two things still key on the site of the target's `url`, its registrable
-domain: the browser engine's `headers` reach the site and no other host, and
-child frames off the site are dropped from observations.
+Child frames off the site of the target's `url`, its registrable domain, are
+dropped from observations. The browser engine's `headers` and `basicAuth`
+are scoped tighter, to the exact origin of `url` plus the origins
+`credentialOrigins` lists. `headers` stay on a request's redirects to any
+origin, and WebKit answers a basic-auth challenge from any origin when an
+allowed origin is on a default port or an IPv6 host.
 
 ## Telemetry and outbound traffic
 

@@ -69,6 +69,11 @@ export function buildEngine(surface: AgentDeviceSurface): EngineHandle {
 
 /** Creates one agent-device engine: one device session per worker; a test launches the pinned app with `app.open()`. */
 export function mobile(options: MobileOptions): EngineHandle {
+  // The type requires it; `e2e mcp`'s `open_session {engine}` calls this with the JSON an agent wrote.
+  const platform: unknown = (options as Partial<MobileOptions> | undefined)?.platform;
+  if (platform !== 'ios' && platform !== 'android') {
+    throw new ConfigurationError('INVALID_CONFIG', `mobile() needs platform: 'ios' or 'android', got ${JSON.stringify(platform) ?? 'no platform'}`);
+  }
   const factory: ClientFactory = (session, connection) => {
     // A provider's local daemon must not inherit the user's remote-daemon connection.
     const local = connection?.client?.stateDir !== undefined && connection.daemon === undefined;

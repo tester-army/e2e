@@ -49,7 +49,8 @@ export const DEVICE_POINTER_ACTIONS: readonly PointerActionKind[] = ['tap', 'dou
 /**
  * Issues one pointer action at a screen point in logical pixels. `settle` is
  * the device's quiet-wait options, spread onto the interaction as the node
- * actions do. A double tap is two presses (`count: 2`), as it is on a node:
+ * actions do; `stabilization` is the post-gesture option a swipe carries.
+ * A double tap is two presses (`count: 2`), as it is on a node:
  * agent-device's own double-tap gesture reaches a React Native `Pressable`
  * on iOS as one press, while two presses in a row land about 285 ms apart.
  * The kinds outside `DEVICE_POINTER_ACTIONS` never arrive: the harness
@@ -61,6 +62,7 @@ export function pointerInteraction(
   point: ViewportPoint,
   action: PointerAction,
   settle: Record<string, unknown>,
+  stabilization: Record<string, unknown>,
 ): Promise<unknown> {
   const at = { x: point.x, y: point.y };
   switch (action.kind) {
@@ -81,7 +83,7 @@ export function pointerInteraction(
           durationMs: action.durationMs,
         });
       }
-      return client.interactions.swipe({ from: at, to });
+      return client.interactions.swipe({ from: at, to, ...stabilization });
     }
     case 'secondaryTap':
     case 'hover':

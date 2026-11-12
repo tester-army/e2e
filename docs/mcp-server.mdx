@@ -28,7 +28,7 @@ step with no recording.
 `e2e init` offers to register the server in `.mcp.json` (Claude Code),
 `.cursor/mcp.json` (Cursor), and `.codex/config.toml` (Codex). Install the
 project dependencies and start the MCP client in the project directory so
-`npx` uses the installed e2e version. By hand:
+`npx` (`bunx` in a Bun project) uses the installed e2e version. By hand:
 
 <Tabs>
   <Tab title="Claude Code">
@@ -74,6 +74,19 @@ project dependencies and start the MCP client in the project directory so
 A session starts the target's app command, if it has one, and names it
 with its URL and port. The config reads the server's environment, not the
 agent's shell.
+
+## Try it without a config
+
+In a directory with no e2e config file, the agent names the engine when it
+opens a session:
+
+```txt
+open_session {engine: "@e2e-dev/web", app: {url: "http://localhost:3000"}}
+```
+
+`run_tests` still needs a config. For engine options, device providers, and
+installing an engine, see
+[Without a config](/reference/mcp#without-a-config).
 
 ## Ask the agent
 

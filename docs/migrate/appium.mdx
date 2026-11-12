@@ -13,7 +13,7 @@ export const migrationPrompt = `Migrate this project's Appium tests to e2e, one 
 4. Read the e2e skill (\`npx e2e guide\` prints it, \`npx e2e guide <topic>\` prints a topic) and follow it for every step below.
 5. If you ran init, ask me which model to use for agent steps: a ChatGPT, GitHub Copilot, OpenCode Console, or SuperGrok subscription, an API key, or a local model. Configure it with its provider package. If it needs a sign-in, give me the \`npx e2e login\` command and wait until I confirm.
 6. Port the capabilities into the e2e config with the guide's table: one target per platform with \`mobile({ platform, device })\`, and \`app: { bundleId, appPath, launchArguments, permissions }\` on each target. Move passwords and tokens into \`credentials\` or \`secrets\`.
-7. Install dependencies, then run \`npx e2e doctor\` and fix what it reports.
+7. Install dependencies, then run \`npx e2e doctor\` (e2e 0.23.0 or newer) and fix what it reports.
 8. List the Appium tests and ask me which one to move first. Suggest one with XPath selectors or explicit waits that often break.
 9. Rewrite that test as a \`.e2e.ts\` file under \`tests/\` (e2e runs \`tests/**/*.e2e.ts\` by default). Start it with \`app.open()\`, since nothing launches on its own. Follow the guide's "Rewrite selectors" section: XPath has no port, and e2e fails on several matches. Where the guide says "Not yet" or "No equivalent", use the workaround it gives, or leave that test in Appium and tell me why.
 10. Keep the launch and the final assertions deterministic, with \`app.open()\` and locator assertions. Where a run of scripted taps breaks often, propose an \`agent.act\` goal for it instead.
@@ -76,7 +76,7 @@ today, and "No equivalent" one it leaves out on purpose.
 | `appium:noReset: false` | `app.clearState()` at the start of the test |
 | `appium:fullReset` | `device.installApp(path, { reinstall: true })` |
 | `appium:newCommandTimeout`, WebDriverAgent timeouts | Not needed. Actions use `actionTimeout`, assertions `assertionTimeout`, and tests `timeout` |
-| `appium:language`, `appium:locale` | Not yet |
+| `appium:language`, `appium:locale` | On iOS, `app.launchArguments: ['-AppleLanguages', '(fr)', '-AppleLocale', 'fr_FR']`; see [Run the app in another language](/mobile#run-the-app-in-another-language). On a hosted device, `language` and `locale` on [`browserstack()`](/integrations/browserstack) or [`testmu()`](/integrations/testmu). On a local Android device, set its language before the run |
 | `bstack:options`, `lt:options` | A device provider: [`browserstack()`](/integrations/browserstack) or [`testmu()`](/integrations/testmu) |
 | Several capabilities, `maxInstances` | One target per platform, `workers`, and a `device` pool |
 
@@ -253,8 +253,9 @@ declares `requires: ['device']` on those tests.
 | `terminateApp`, then `activateApp` | `app.restart()` |
 | `mobile: clearApp` | `app.clearState()` |
 | `driver.installApp(path)` | `device.installApp(path)` |
-| `driver.removeApp(id)` | Not yet. `device.installApp(path, { reinstall: true })` removes the app first |
-| `driver.isAppInstalled(id)`, `queryAppState(id)` | Not yet. On Android, `device.foregroundApp()` names the app on screen |
+| `driver.removeApp(id)` | Not yet. `device.unstable_raw.client.apps.uninstall({ ...device.unstable_raw.selection, app: 'com.example.app' })` removes it, see [`unstable_raw`](/reference/mobile#unstable_raw); `device.installApp(path, { reinstall: true })` installs with no data |
+| `driver.isAppInstalled(id)` | Not yet. `device.unstable_raw.client.apps.list(device.unstable_raw.selection)` lists the installed user apps as `Name (id)`; on Android, only apps with a launcher icon |
+| `queryAppState(id)` | Not yet. On Android, `device.foregroundApp()` names the app on screen |
 | `driver.background(seconds)` | `device.home()`, then `device.openApp(id)` |
 | `driver.url('myapp://x')`, `mobile: deepLink` | `device.openLink('myapp://x')` |
 | `driver.back()` | `app.back()` |
@@ -279,6 +280,7 @@ declares `requires: ['device']` on those tests.
 | `mobile: enrollBiometric` | `device.enrollBiometrics('faceid', true)` |
 | `mobile: sendBiometricMatch`, `driver.fingerPrint(1)` | `device.setBiometrics('faceid', 'match')`, `device.setBiometrics('fingerprint', 'match')` |
 | `pressKeyCode` for Home | `device.home()` |
+| `driver.lock()`, `pressKeyCode` for power or volume, `mobile: pressButton` for volume | Not yet. `device.unstable_raw.client.command.hardwareButton({ ...device.unstable_raw.selection, button })` presses one: `'power'`, `'volume-up'`, or `'volume-down'` on Android; on iOS only the volume keys, on a physical device, not a simulator |
 | `mobile: clearKeychains` | `device.clearKeychain()`; iOS simulator only |
 | `driver.isIOS`, `driver.isAndroid` | `{ platforms: ['ios'] }` on the test, or the `platform` fixture |
 
@@ -373,7 +375,7 @@ The tables above mark single commands. These gaps cut across a whole suite:
 - **Webview contexts.** Not yet. There is no `getContexts` or
   `switchContext`, and no script runs in a webview.
 - **Device shell and files.** Not yet. No `mobile: shell`, `pushFile`,
-  `pullFile`, `startActivity`, `lock`, or performance data. For what
+  `pullFile`, `startActivity`, or performance data. For what
   agent-device supports, `device.unstable_raw` exposes its client. Its calls
   aren't steps, so they skip the report and secret redaction.
 - **Sauce Labs and other Appium grids.** Not yet. BrowserStack, TestMu AI,

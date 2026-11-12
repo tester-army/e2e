@@ -1,0 +1,8 @@
+{
+  "schemaVersion": "timings-1",
+  "files": {
+    "web::tests/checkout.e2e.ts": 17042,
+    "web::tests/login.e2e.ts": 2310,
+    "mobile::tests/checkout.e2e.ts": 41877
+  }
+}

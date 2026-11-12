@@ -32,6 +32,9 @@
  * instance. The graph's tsconfig.json and file lookups are its own too
  * (`tsconfig.ts`).
  *
+ * Bun runs none of this: it compiles TypeScript and resolves the project's
+ * imports itself, and `bun-loader.ts` keeps its loads fresh.
+ *
  * This module, and everything it imports from e2e, is loaded by Node.js's
  * own type stripping when a worker runs from source (`register.ts`), so it
  * holds to erasable TypeScript: no enums, namespaces, or parameter
@@ -43,7 +46,7 @@ import nodeModule, { type LoadHookSync, type ResolveHookContext, type ResolveHoo
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { InfrastructureError } from '../internal/errors.ts';
-import { unsupportedRuntimeMessage } from '../internal/node-version.ts';
+import { onBun, unsupportedRuntimeMessage } from '../internal/runtime.ts';
 import { realmSlot } from '../internal/realm-slot.ts';
 import { compiledSource, HOOKED_REQUIRE_KEY, IMPLIED_EXTENSIONS, isProjectFile, writtenCandidates, type CompiledSource } from './compiled-files.ts';
 import { isPathSpecifier, pathTarget, type Target } from './specifiers.ts';
@@ -284,22 +287,25 @@ function hookedRequire(filename: string): NodeJS.Require {
   return Object.assign(hooked, base, { resolve: Object.assign(resolveRequest, { paths: base.resolve.paths }) });
 }
 
-/** Marks the process whose module loader already runs these hooks, whichever copy of e2e registered them. */
+/** Marks the process whose module loader is ready, whichever copy of e2e readied it: these hooks registered, or Bun checked. */
 const registration = realmSlot<true>('e2e.typescript-loader.v1');
 /** Where compiled CommonJS finds `hookedRequire`. */
 const hookedRequireSlot = realmSlot<(filename: string) => NodeJS.Require>(HOOKED_REQUIRE_KEY);
 
 /**
  * Registers the hooks once per process, and has stack traces follow the
- * source maps the compiled files carry. Refuses a Node.js whose module hooks
- * the loader cannot rely on (`node-version.ts`).
+ * source maps the compiled files carry. Refuses a runtime the loader cannot
+ * rely on (`runtime.ts`). Bun gets no hooks: it compiles the project's
+ * TypeScript itself (`bun-loader.ts`).
  */
 export function registerLoader(): void {
   if (registration.get(globalThis) === true) return;
   const unsupported = unsupportedRuntimeMessage();
   if (unsupported !== undefined) throw new InfrastructureError('NODE_UNSUPPORTED', unsupported);
-  nodeModule.registerHooks({ resolve, load });
+  if (!onBun) {
+    nodeModule.registerHooks({ resolve, load });
+    hookedRequireSlot.set(globalThis, hookedRequire);
+    process.setSourceMapsEnabled(true);
+  }
   registration.set(globalThis, true);
-  hookedRequireSlot.set(globalThis, hookedRequire);
-  process.setSourceMapsEnabled(true);
 }

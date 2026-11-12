@@ -1286,6 +1286,87 @@ describe('ListReporter', () => {
       expect(chunks.at(-1)).not.toContain('└──');
     });
 
+    it('shows the --step prompt under its paused test, after every step that ran, and takes it down', () => {
+      const restore = withTerminalSize({ columns: 120, rows: 40 });
+      try {
+        const { chunks, lines, output } = liveCapture();
+        const reporter = new ListReporter(output, { live: true, colors: false, stepping: true });
+        reporter.handle(runStarted());
+        reporter.handle(plan([{ file: 'tests/coffee.e2e.ts', tests: 1 }]));
+        reporter.handle(testStarted('t1', 'orders a drink', 'chromium', 'tests/coffee.e2e.ts'));
+        const step = (progress: object) => reporter.handle({ type: 'step', testId: 't1', agent: 'default', repeat: 0, target: 'chromium', progress } as never);
+        step({ phase: 'start', kind: 'locator', api: 'app.open', label: '/' });
+        step({ phase: 'end', kind: 'locator', api: 'app.open', label: '/', status: 'passed', durationMs: 85, modelCalls: 0 });
+        const held = { target: 'chromium', testId: 't1', agent: 'default', repeat: 0, title: 'orders a drink', api: 'locator.click', label: 'getByRole("radio", name: "Latte")', source: { file: 'tests/coffee.e2e.ts', line: 7, column: 3 } };
+        const shown = () => {
+          const window = chunks.at(-1)!.replace(ANSI_PATTERN, '').split('\n').filter((line) => line.trim() !== '');
+          const row = window.findIndex((line) => line.includes('orders a drink'));
+          return window.slice(row, window.findIndex((line) => line.includes('Test Files')));
+        };
+        reporter.showStepPrompt({ steps: [{ step: held, number: 2 }], help: false });
+        expect(shown()).toEqual([
+          '   └── orders a drink paused',
+          '       ✓ app.open "/" 85ms',
+          '       ▶ step 2  locator.click "getByRole("radio", name: "Latte")"  tests/coffee.e2e.ts:7',
+          '         press enter to run this step, press h to show help, press q to quit',
+        ]);
+        reporter.showStepPrompt({ steps: [{ step: held, number: 2 }], help: true });
+        expect(shown().slice(3)).toEqual([
+          '         press enter to run this step',
+          '         press n to run to the next test',
+          '         press a to run all without stopping',
+          '         press q to quit',
+          '         press h to hide help',
+        ]);
+        const pay = { ...held, api: 'locator.click', label: 'getByRole("button", name: "Pay")', source: { file: 'tests/coffee.e2e.ts', line: 8, column: 3 } };
+        reporter.showStepPrompt({ steps: [{ step: held, number: 2 }, { step: pay, number: 3 }], help: false });
+        expect(shown().slice(2)).toEqual([
+          '       ▶ step 2  locator.click "getByRole("radio", name: "Latte")"  tests/coffee.e2e.ts:7',
+          '       ▶ step 3  locator.click "getByRole("button", name: "Pay")"  tests/coffee.e2e.ts:8',
+          '         press enter to run these 2 steps, press h to show help, press q to quit',
+        ]);
+        reporter.showStepPrompt(undefined);
+        expect(chunks.at(-1)).not.toContain('step 2');
+        expect(lines.join('\n')).not.toContain('step 2');
+      } finally {
+        restore();
+      }
+    });
+
+    it('keeps the --step keys on a short terminal, cutting held steps first', () => {
+      const restore = withTerminalSize({ columns: 120, rows: 18 });
+      try {
+        const { chunks, output } = liveCapture();
+        const reporter = new ListReporter(output, { live: true, colors: false, stepping: true });
+        reporter.handle(runStarted());
+        reporter.handle(plan([{ file: 'tests/coffee.e2e.ts', tests: 1 }]));
+        reporter.handle(testStarted('t1', 'orders a drink', 'chromium', 'tests/coffee.e2e.ts'));
+        const held = (n: number) => ({ step: { target: 'chromium', testId: 't1', agent: 'default', repeat: 0, title: 'orders a drink', api: 'locator.click', label: `button ${n}` }, number: n });
+        reporter.showStepPrompt({ steps: [held(2), held(3), held(4), held(5), held(6), held(7), held(8), held(9)], help: false });
+        const window = chunks.at(-1)!.replace(ANSI_PATTERN, '');
+        expect(window).toContain('press enter to run these 8 steps');
+        expect(window).toContain('▶ step 2');
+        expect(window).not.toContain('▶ step 9');
+      } finally {
+        restore();
+      }
+    });
+
+    it('prints the --step prompt as one line without a live window', () => {
+      const lines: string[] = [];
+      const reporter = new ListReporter({ write: (line) => lines.push(line) }, { live: false, colors: false, stepping: true });
+      const held = { target: 'chromium', testId: 't1', agent: 'default', repeat: 0, title: 'orders a drink', api: 'app.open', label: '/cart' };
+      reporter.showStepPrompt({ steps: [{ step: held, number: 3 }], help: false });
+      // `h` adds nothing to a plain line, so it prints nothing.
+      reporter.showStepPrompt({ steps: [{ step: held, number: 3 }], help: true });
+      reporter.showStepPrompt({ steps: [{ step: held, number: 3 }, { step: { ...held, api: 'locator.click', label: 'Pay' }, number: 4 }], help: true });
+      reporter.showStepPrompt(undefined);
+      expect(lines).toEqual([
+        'paused at step 3 of orders a drink [chromium]: app.open "/cart" · press enter to run this step, n to run to the next test, a to run all without stopping, q to quit',
+        'paused at steps 3, 4 of orders a drink [chromium]: app.open "/cart"; locator.click "Pay" · press enter to run these 2 steps, n to run to the next test, a to run all without stopping, q to quit',
+      ]);
+    });
+
     it('clips a finished step label so the row keeps its tail at the terminal width', () => {
       const restore = withTerminalSize({ columns: 80, rows: 40 });
       try {

@@ -101,7 +101,7 @@ identical, so these tests assert on meaning (`toContain`) and pair every
 agentic step with a deterministic locator check.
 
 To see where the tokens went, record the run and open the trace in
-[unbox-ai](https://github.com/tester-army/unbox-ai):
+[unbox-ai](https://github.com/e2e-inc/unbox-ai):
 
 ```bash
 AI_GATEWAY_API_KEY=... pnpm --filter @e2e-dev/testbed test:agent -- --ai-trace

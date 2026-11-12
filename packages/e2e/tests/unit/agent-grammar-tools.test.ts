@@ -6,11 +6,27 @@
 
 import type { ToolSet } from 'ai';
 import { z } from 'zod';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { aiSdk, loadAiSdk } from '../../src/agent/ai-sdk.ts';
 import { GRAMMAR_TOOL_NAMES } from '../../src/agent/action-names.ts';
 import { createGrammarTools, createVerdictTool } from '../../src/agent/primitives.ts';
+import { createBuiltInAgent, projectTools } from '../../src/agent/default-agent.ts';
+import { defineTool } from '../../src/agent/tool.ts';
 import { fakeExecutorContext } from '../helpers/fake-executor-context.ts';
+import { installFakeLoopModel } from '../helpers/fake-loop-model.ts';
+
+it('does not repeat a static assertion opening to request pixels it cannot use', async () => {
+  const { context } = fakeExecutorContext({ verbs: [], secrets: [] });
+  const observe = vi.fn(async () => ({
+    revision: '1', text: '#n1 text "Static content"', truncated: false,
+    viewport: { width: 800, height: 600 },
+  }));
+  const model = installFakeLoopModel(() => [{ toolName: 'complete_step', input: { status: 'passed', summary: 'read static content' } }]);
+  await expect(createBuiltInAgent().runStep({
+    ...context, step: { ...context.step, kind: 'assert', vision: false }, model, observe,
+  })).resolves.toMatchObject({ status: 'passed' });
+  expect(observe).toHaveBeenCalledExactlyOnceWith({ pixels: false });
+});
 
 /** An input each tool accepts; a tool added to the grammar without one fails the vocabulary check. */
 const ACCEPTED: Readonly<Record<string, Record<string, unknown>>> = {
@@ -168,4 +184,35 @@ describe('the schema a provider receives', () => {
     expect(Object.keys(sent(schema)).toSorted()).toEqual(['$schema', 'additionalProperties', 'properties', 'required', 'type']);
     expect(Object.keys(emitted(schema)).toSorted()).toEqual(['$schema', 'additionalProperties', 'properties', 'required', 'type']);
   });
+});
+
+
+it('offers only viewport exploration tools to assertion steps', () => {
+  const { context } = fakeExecutorContext();
+  const tools = createGrammarTools({ ...context, step: { ...context.step, kind: 'assert' } });
+  expect(Object.keys(tools).toSorted()).toEqual(['observe', 'screenshot', 'scroll', 'scroll_to']);
+});
+
+
+it('offers read-only project tools alongside assertion exploration', () => {
+  const { context } = fakeExecutorContext();
+  const tool = { inputSchema: z.object({}), execute: async () => 'read' };
+  const tools = {
+    read_status: defineTool(tool, { mutates: false }),
+    write_status: defineTool(tool, { mutates: true }),
+  };
+  expect(Object.keys(projectTools({ ...context, step: { ...context.step, kind: 'assert' } }, tools))).toEqual(['read_status']);
+  expect(Object.keys(projectTools(context, tools))).toEqual(['read_status', 'write_status']);
+});
+
+it('drops an inconclusive code from an act verdict and keeps it on an assertion', async () => {
+  const input = { status: 'failed', summary: 'no evidence', errorCode: 'ASSERTION_INCONCLUSIVE' } as const;
+  const options = { toolCallId: 'verdict', messages: [], context: undefined };
+  const act = createVerdictTool('act');
+  expect((act.tool.inputSchema as z.ZodType).safeParse(input).success).toBe(true);
+  expect(await act.tool.execute!(input, options)).toBe('Step concluded as failed; the errorCode ASSERTION_INCONCLUSIVE you sent applies only to assertions and was ignored.');
+  expect(act.verdict()).toEqual({ status: 'failed', summary: 'no evidence' });
+  const assertion = createVerdictTool('assert');
+  expect(await assertion.tool.execute!(input, options)).toBe('Step concluded.');
+  expect(assertion.verdict()).toEqual(input);
 });

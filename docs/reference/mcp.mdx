@@ -45,7 +45,7 @@ bunx e2e mcp [--config <path>] [--target <name>] [--headed] [--max-sessions <n>]
 | [`--config <path>`](#config) | discovered like `e2e run` |
 | [`--target <name>`](#target) | the only target |
 | [`--headed`](#headed) | headless |
-| [`--max-sessions <n>`](#max-sessions) | `4` |
+| [`--max-sessions <n>`](#max-sessions) | `4`, `1` on Bun |
 
 #### `--config`
 
@@ -70,8 +70,8 @@ session whose `open_session` does not set `headed`.
 
 #### `--max-sessions`
 
-How many sessions may be open at once, 1 through 16. See
-[Several sessions](#several-sessions).
+How many sessions may be open at once, 1 through 16. On
+[Bun](/reference/cli#bun), one. See [Several sessions](#several-sessions).
 
 ```bash
 e2e mcp --max-sessions 8 # default: 4
@@ -96,7 +96,9 @@ Loads the config, starts the target's app command, boots the engine, starts
 one attempt, and opens the app: its URL when the engine can navigate, or on a
 device the [pinned app](/mobile#point-at-your-app), launched fresh. It installs
 no build, so a local device target needs `app.bundleId`. Returns the session
-id, the catalog, and the first observation.
+id, the catalog, and the first observation. The summary above the observation
+tells the agent to read the `writing-tests` guide (`e2e://guide/writing-tests`) before it
+writes or edits a test; the server's instructions say the same.
 
 The summary names the app's URL, with the port a free-port `url` was
 assigned, and the app command: its executable, readiness URL, `env` and
@@ -119,6 +121,8 @@ open_session {target: "web", headed: true}
 | `config` | string (path) | no | The config for this session, absolute or relative to the server's working directory (`cwd` in the client's MCP config). Otherwise `--config`, else discovered like `e2e run`. |
 | `headed` | boolean | no | `true` shows this session's browser or simulator, `false` hides it. Without it the session follows `--headed`. |
 | `test` | string | no | One test to run first, named like an `e2e run` positional. The session stops where the test stopped. See [Running a test](#running-a-test). |
+| `engine` | string or object | no | The session's engine in a directory with no config file, as a package name or `{package, export, options}`. See [Without a config](#without-a-config). |
+| `app` | object | no | The app under test for an `engine` session, as `url`, `bundleId`, or `appPath`. |
 
 #### `tools`
 
@@ -264,12 +268,13 @@ changed on screen.
 | Input | Does |
 | --- | --- |
 | A node id | From the newest observation. |
-| The value, key, `checked` state, direction, drop target, project-relative `files`, URL, `width` and `height`, or secret name | What the verb needs. |
+| The value, key, `checked` state, direction, drop target, project-relative or `sample:` `files`, URL, `width` and `height`, or secret name | What the verb needs. |
 | `modifiers` (optional) | On `tap`, `double_tap`, and `right_click`, when the engine declares `tapModifiers`: a list of `Shift`, `Control`, `Alt`, `Meta`, `ControlOrMeta`, held for the click. |
 
 - A verb the engine does not declare is not in the catalog.
 - `upload` refuses a path outside the project, a hidden file, or a file
-  under a hidden directory with `POLICY_DENIED`.
+  under a hidden directory with `POLICY_DENIED`. A `sample:` file has no
+  test line: save a file in the project for one.
 - `type_secret` is listed when the config declares `credentials` or
   `secrets` and the engine declares the `fill` action. The plaintext never
   reaches the agent as text; see
@@ -490,7 +495,7 @@ own names, scoped to the target's platform. A mobile project that passes
 The server ships with `e2e`. `e2e init` offers to register it in
 `.mcp.json` (Claude Code), `.cursor/mcp.json` (Cursor), and
 `.codex/config.toml` (Codex). Install dependencies and start the MCP client
-in the project directory so `npx` uses the installed e2e version. By hand:
+in the project directory so `npx` (`bunx` in a Bun project) uses the installed e2e version. By hand:
 
 <CodeGroup>
 ```bash npm
@@ -518,7 +523,7 @@ args = ["e2e", "mcp"]
 
 The server is also listed in the
 [MCP Registry](https://registry.modelcontextprotocol.io) as
-`io.github.tester-army/e2e`. A client that installs it from there runs the
+`io.github.e2e-inc/e2e`. A client that installs it from there runs the
 listed release with `npx` and must start it in the project directory. The
 project still needs e2e and its engine installed, since the config imports
 them. A listed release on another version than the project's e2e can reject
@@ -532,6 +537,70 @@ the replay cache cannot serve.
 Start the server in the project directory. Config discovery works like
 `e2e run`. For another config, see [`--config`](#config) and
 [`open_session`](#open_session).
+
+## Without a config
+
+In a directory with no config file, `open_session` needs an `engine`. The
+session has one target on that engine. Every other setting is at its
+default, so the session has no credentials, secrets, or project tools.
+
+```txt
+open_session {engine: "@e2e-dev/web", app: {url: "http://localhost:3000"}}
+open_session {engine: {package: "@e2e-dev/mobile", options: {platform: "ios"}}, app: {bundleId: "com.example.app"}}
+```
+
+A package name is enough for an engine that needs no options. To pass
+options, or to name an export, write `engine` as an object:
+
+| Field | Type | Does |
+| --- | --- | --- |
+| `package` | string | The package to load. It can carry a subpath, such as `@e2e-dev/testmu/web`. |
+| `export` | string | The export to call. Default: the default export. |
+| `options` | object | The options the factory takes, as in an `e2e.config.ts`. |
+
+- **A package name alone** calls the package's default export with no
+  options. `@e2e-dev/web` and `@e2e-dev/mobile` export their factory this
+  way. [Your own engine](/writing-an-engine#open-it-by-name) can do the same.
+- **An option can be another factory call.** The server reads an option
+  value as a call when it has `package` and no key other than `export` and
+  `options`. It makes that call first and passes the result as the option.
+  Use it to give an engine a device or browser provider:
+
+  ```txt
+  open_session {
+    engine: {package: "@e2e-dev/mobile", options: {
+      platform: "ios",
+      device: {package: "@e2e-dev/limrun", export: "limrun", options: {region: "eu"}}
+    }},
+    app: {bundleId: "com.example.app"}
+  }
+  ```
+
+  The call above builds
+  `mobile({ platform: 'ios', device: limrun({ region: 'eu' }) })`. The
+  provider reads its API key from the server's environment.
+- **Lookup.** The server looks for each package in the project, then beside
+  the running `e2e`, then in `~/.e2e/engines`. When it is in none of them,
+  the error names the command that installs it for every project:
+  `npm install --prefix ~/.e2e/engines @e2e-dev/web`.
+- **`app`** takes `url`, `bundleId`, and `appPath`, as a target's
+  [`app`](/reference/config#the-app-under-test) does. `@e2e-dev/web` needs
+  `url`. `@e2e-dev/mobile` needs `bundleId` or `appPath`.
+- **Files.** The project root is the server's working directory, and the
+  session writes `.e2e/` there.
+- **Tests.** `run_tests` and `open_session {test}` need a config. To keep
+  the session's test lines as a test, write a config with
+  [`e2e init`](/reference/cli#e2e-init).
+- **Several sessions.** Sessions opened with `engine` run side by side. A
+  session on a config doesn't open beside them and fails with
+  `CONFIG_IN_USE`.
+
+| Throws | When |
+| --- | --- |
+| `CONFIG_NOT_FOUND` | `open_session` without `engine`, and the directory has no config. |
+| `ENGINE_NOT_INSTALLED` | A package that `engine` names is in none of the three lookup places. |
+| `INVALID_ARGUMENT` | `package` is not a package name, `export` is not an export name, `engine` comes with `target`, `config`, or `test`, or the directory has a config. Also `app` without `engine`. |
+| `INVALID_CONFIG` | The named export is not a function, a factory refused its `options`, the engine's factory returned no engine, or the engine refused `app`. For an export that is not a function, the message lists the package's functions. |
 
 ## Output
 
@@ -652,15 +721,15 @@ Several sessions can be open at once, up to `--max-sessions`, each on its
 own attempt and its own browser or device. Parallel agents, such as a
 coding agent's subagents, share one server this way: each opens a session
 and passes its id to every `tools`, `call`, and `close_session`.
-[Bug bashes](/bug-bash) use this: every verifying subagent drives its own
-session.
+[Bug bashes](/bug-bash) use this: a verifying subagent that hardens a repro
+into a scripted test drives its own session.
 
 | Throws | When |
 | --- | --- |
 | `SESSION_REQUIRED` | A call without `session` while several are open. The message lists the open sessions. |
 | `NO_SESSION` | A `session` id that is not open. For a session that is closing or ended, the message says why. |
 | `SESSION_OPEN` | An `open_session` past the limit, or while the server shuts down. |
-| `CONFIG_IN_USE` | An `open_session` on another config while sessions are open. |
+| `CONFIG_IN_USE` | An `open_session` on another config while sessions are open, or on a config beside sessions opened with `engine`. |
 | `ENGINE_IN_USE` | A second session on an engine created inside a package. |
 | `CANCELLED` | An `open_session` the client cancelled or disconnected from, or the server shut down during, once what it started has stopped. |
 

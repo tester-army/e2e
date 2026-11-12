@@ -1,7 +1,7 @@
 name: mcp-registry
 
 # Lists one e2e release in the official MCP Registry as
-# io.github.tester-army/e2e, from packages/e2e/server.json at that release's
+# io.github.e2e-inc/e2e, from packages/e2e/server.json at that release's
 # tag. `release.yml` calls it after each release that published e2e; dispatch
 # it by hand with the version to retry a failed publish. A registry version
 # cannot be changed once published, so a version already listed is skipped.
@@ -28,7 +28,7 @@ concurrency:
 
 env:
   VERSION: ${{ inputs.version }}
-  SERVER_NAME: io.github.tester-army/e2e
+  SERVER_NAME: io.github.e2e-inc/e2e
 
 jobs:
   publish:

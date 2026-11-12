@@ -22,7 +22,8 @@ The server ships with the project's `e2e` dependency, separately from the
 skills-only plugin. `e2e init` offers to register it for Claude Code,
 Cursor, and Codex. Reuse an existing registration; when adding one, use the project's
 config so it starts in the project it drives. Install dependencies and start
-the MCP client in that directory so `npx` uses the installed e2e version.
+the MCP client in that directory so `npx` uses the installed e2e version. In a
+Bun project, use `bunx` wherever this file says `npx`.
 
 For an existing setup, `e2e init --yes --skills none --mcp .codex/config.toml` adds Codex.
 Codex reads `.codex/config.toml` in a trusted project:
@@ -47,9 +48,22 @@ Or declare it in the client's project config (`.mcp.json` for Claude Code,
 { "mcpServers": { "e2e": { "command": "npx", "args": ["e2e", "mcp"] } } }
 ```
 
-Sessions run on the project's config (`e2e.config.ts`, `.mts`, `.js`, or `.mjs`):
-in a project without one, `open_session` fails with `CONFIG_NOT_FOUND`, so
-set it up first (topic `setup`). No model is needed: without the optional `ai` package, sessions
+Sessions run on the project's config (`e2e.config.ts`, `.mts`, `.js`, or `.mjs`).
+In a directory without one, plain `open_session` fails with `CONFIG_NOT_FOUND`.
+To look at an app there anyway, name the engine package:
+`open_session {engine: "@e2e-dev/web", app: {url: "http://localhost:3000"}}`, or
+`{engine: {package: "@e2e-dev/mobile", options: {platform: "ios"}}, app: {bundleId: "<app>"}}`.
+`engine` is the factory call a config would write: a package name calls its
+default export, and `{package, export?, options?}` names another export and
+passes options. An option value of that same shape is called first, which
+gives an engine a device or browser provider:
+`options: {platform: "ios", device: {package: "@e2e-dev/limrun", export: "limrun"}}`
+is `mobile({ platform: 'ios', device: limrun() })`. That session has one
+target, no credentials, secrets, or project tools, and `engine` excludes
+`target`, `config`, and `test`. `ENGINE_NOT_INSTALLED` names the command that installs the package
+into `~/.e2e/engines`: run it, then open again. `run_tests` and
+`open_session {test}` still need a config, so set the project up before
+writing tests (topic `setup`). No model is needed: without the optional `ai` package, sessions
 open and the deterministic tools work. A test a session runs needs one only for
 an agent step with no recording.
 
@@ -57,7 +71,7 @@ Flags: `--config <path>` names the default config file, `--target <name>`
 fixes the target every session opens on, `--headed` shows the browser or
 simulator when the engine supports it in sessions that do not set `headed`
 (sessions are headless by default, as in `e2e run`), `--max-sessions <n>`
-sets how many sessions may be open at once (default 4, 1 through 16).
+sets how many sessions may be open at once (default 4, 1 through 16; one on Bun).
 
 ## Tools
 
@@ -68,7 +82,7 @@ tool with the same name, use the `e2e` server's.
 
 | Tool | Does |
 | --- | --- |
-| `open_session` | Loads the config (`config` names another file; default the nearest `e2e.config.ts`), starts the declared app command if any, boots the engine, opens the app (its URL, or launches a device's pinned app; it installs no build, so a local device needs `app.bundleId`), and returns the session id, the catalog, and the first observation. Its summary names the app URL, a port assigned for `:0`, and the app command's readiness URL and `env` names; e2e starts nothing else, so a database the app uses runs outside it. The config reads the MCP server's environment, not your shell's. `target` is required when the config declares several. `headed: true` shows the browser or simulator when the user wants to watch; without it the session follows the server's `--headed`, headless by default. `test` runs one test first and leaves the session on the screen where it stopped (see Fixing a failing test). Each session has its own browser or device. |
+| `open_session` | Loads the config (`config` names another file; default the nearest `e2e.config.ts`), starts the declared app command if any, boots the engine, opens the app (its URL, or launches a device's pinned app; it installs no build, so a local device needs `app.bundleId`), and returns the session id, the catalog, and the first observation. Its summary names the app URL, a port assigned for `:0`, and the app command's readiness URL and `env` names; e2e starts nothing else, so a database the app uses runs outside it. The config reads the MCP server's environment, not your shell's. `target` is required when the config declares several. `headed: true` shows the browser or simulator when the user wants to watch; without it the session follows the server's `--headed`, headless by default. `test` runs one test first and leaves the session on the screen where it stopped (see Fixing a failing test). In a directory with no config, `engine` names the engine to open on, as a package name or `{package, export?, options?}`, with `app` for the app under test (Setup); it excludes `target`, `config`, and `test`. Each session has its own browser or device. |
 | `tools` | The catalog: one line per tool with its argument names (`?` marks optional), the first sentence of its description, and `[read-only]` where it changes nothing. `tools {tool}` shows the full description and the JSON Schema of its arguments. |
 | `call` | Runs one catalog tool: `call {tool: "tap", args: {target: "n42"}}`. Arguments are checked against the tool's schema first; a wrong one fails with `INVALID_ARGUMENT` naming the field. |
 | `close_session` | Saves a recording still running, ends the attempt, disposes the engine, stops the app processes the session started once no other session uses them. |
@@ -79,7 +93,7 @@ The catalog, per session:
 | Catalog tool | Does |
 | --- | --- |
 | `observe` | A fresh observation: one node per line as `#id role "name" ...`, plus the current path. On the web engine a link's `href` is its path on the app URL's origin, else origin and path (`mailto:` and `tel:` keep their scheme, `blob:` its inner origin and path); `?…` and `#…` mark a dropped query or fragment, `data:…` and `javascript:…` an inline payload, a trailing `…` a target cut at 256 characters. |
-| `tap`, `double_tap`, `long_press`, `right_click`, `hover`, `type`, `press`, `select`, `check`, `scroll`, `scroll_to`, `drag`, `upload`, `navigate`, `back`, `resize_viewport`, `dismiss_keyboard` | The grammar verbs, as the testing agent gets them: `check` takes `checked`, `drag` a `to` node, `upload` project-relative `files`; `dismiss_keyboard` comes with device engines. On an engine that declares `tapModifiers`, `tap`, `double_tap`, and `right_click` take an optional `modifiers` list (`Shift`, `Control`, `Alt`, `Meta`, `ControlOrMeta`) to hold keys for the click. Each reports what changed on screen and, after its lead, the test line that repeats it (`Test line: await screen.getByRole("button", "Save").tap();`) or `No test line:` and why; `observe` shows the whole screen. A verb the engine cannot honor is not listed and fails with `UNSUPPORTED_CAPABILITY`. |
+| `tap`, `double_tap`, `long_press`, `right_click`, `hover`, `type`, `press`, `select`, `check`, `scroll`, `scroll_to`, `drag`, `upload`, `navigate`, `back`, `resize_viewport`, `dismiss_keyboard` | The grammar verbs, as the testing agent gets them: `check` takes `checked`, `drag` a `to` node, `upload` project-relative `files` or `sample:` files (no test line for those); `dismiss_keyboard` comes with device engines. On an engine that declares `tapModifiers`, `tap`, `double_tap`, and `right_click` take an optional `modifiers` list (`Shift`, `Control`, `Alt`, `Meta`, `ControlOrMeta`) to hold keys for the click. Each reports what changed on screen and, after its lead, the test line that repeats it (`Test line: await screen.getByRole("button", "Save").tap();`) or `No test line:` and why; `observe` shows the whole screen. A verb the engine cannot honor is not listed and fails with `UNSUPPORTED_CAPABILITY`. |
 | `type_secret` | Fills a configured secret by name: a credential's password into a password field, a `secrets` entry into any editable input; the plaintext never reaches the agent, and its test line names the credential or secret (`fill(credentials.user(name).password)`, `fill(secrets.get(name))`). Listed when the config declares `credentials` or `secrets` and the engine can fill secrets. |
 | `locate` | Tries a semantic locator with exactly one of `role`, `text`, `label`, `placeholder`, `testId` (`name` only with `role`; `exact` optional; anything else is `INVALID_ARGUMENT`) and returns how many nodes match, which, and the `screen.*` call to write. |
 | `run_code` | Runs test statements (`code`, as a test body writes them) on the session's `screen` and `app` with a test's waits, exactly-one rule, and matchers. Stops at the first failure and returns each statement's pass, failure (code and message), or read value, then what changed on screen. Each statement waits at most `timeout` ms (default 5000), but `timeout` doesn't stop a regex mid-match: avoid nested quantifiers such as `(\w+\s?)*`. The code is parsed, never evaluated as JavaScript: statements start with `screen`, `app`, or `expect(locator)`; arguments are literals, regexes, arrays, objects, locators, and `credentials.user(name).username`. A secret (`credentials.user(name).password`, `secrets.get(name)`) goes only into `fill`, under `type_secret`'s checks. Engine fixtures (`browser`, `device`), `app.screenshot`, and `toHaveScreenshot` are left out. Anything else is `INVALID_ARGUMENT` quoting the refused code with its line and column, and nothing runs. Reads and matchers see `<secret:name>` where a secret value is. When the config declares a secret or credential, a locator found by part of a text (a regex, an `exact` other than `true`, `hasText`) is `POLICY_DENIED` before anything runs: find it by its exact text. A matcher that expects `<secret:name>` is `INVALID_ARGUMENT`. The statements that pass, except reads, join `test_lines` as written. |
@@ -108,9 +122,14 @@ Resources: `e2e://guide` and `e2e://guide/<topic>` hold this skill.
 
 ## Workflow
 
-1. Before `open_session`, create `tests/<feature>.e2e.ts` (topic
-   `writing-tests`) with its imports, the `test(...)`, and the call that
-   opens the screen it covers, such as `app.open('/settings/members')`.
+1. Read topic `writing-tests` before you write or edit any test
+   (`e2e://guide/writing-tests`, or `npx e2e guide writing-tests`); the
+   server's instructions and every `open_session` result say so too. Then,
+   before `open_session`, create `tests/<feature>.e2e.ts` (its "Structure"
+   section) with its imports, the feature's `describe(...)`, a `test(...)`
+   titled with the one behavior it verifies, and the call that opens the
+   screen it covers, such as `app.open('/settings/members')`. A setup test
+   (`test.setup`) goes top-level instead, outside any `describe`.
    Then `open_session`, which opens the app, and go to that screen: on the
    web, `call {tool: "navigate", args: {url: "<the path app.open names>"}}`;
    on a device, the shortest path from the launch screen. Actions that only
@@ -137,8 +156,8 @@ Resources: `e2e://guide` and `e2e://guide/<topic>` hold this skill.
 
    With several `screen` steps on one screen, take their actions, then add
    the lines they printed in one edit.
-3. When the outcome shows, add its check before the next step: an
-   `agent.assert`, or an `expect` you ran first with
+3. When the outcome shows, add its check to the test's assert block, after
+   every step: an `agent.assert`, or an `expect` you ran first with
    `call {tool: "run_code", args: {code: "await expect(screen.getByRole('status')).toHaveText('Saved');"}}`.
    Build its locator from `observe`, or try it with
    `call {tool: "locate", args: {...}}`. One match: use the printed
@@ -167,20 +186,26 @@ Resources: `e2e://guide` and `e2e://guide/<topic>` hold this skill.
    `Test line:` or ran with `run_code` has run once on the live app, and the
    first run checks the rest. If you missed a line, `test_lines` returns
    every line printed or passed so far, in order, the act goals' paths
-   included. One walk, in order:
+   included, for the whole session rather than one test. A walk that goes
+   on to a second behavior goes on into a second test in the same
+   `describe`, with its own assert block: `navigate` back to the path its
+   `app.open` names first, so its lines run from the state the test starts
+   in. One walk, in order:
 
    ```text
-   write   tests/members.e2e.ts: imports, test(...), app.open('/settings/members')
+   write   tests/members.e2e.ts: imports, describe('members'), test('invites a member as an editor'), app.open('/settings/members')
    call    open_session, then navigate {url: "/settings/members"}   its line is the app.open already written
    edit    + await agent.act('invite {email} as an editor', { params: { email: 'ada@example.test' } });
    call    tap, type, select, tap                   the goal's path; its test lines stay out
    call    run_code {code: "await expect(screen.getByRole('status')).toContainText('Invite sent');"}   passed
-   edit    + that line
-   call    type {target: "n40", value: "ada"}       prints the test line below
-           Test line: await screen.getByRole("searchbox", "Search members").fill("ada");
+   edit    + that line, in the assert block
+   write   + test('finds a member by name'), app.open('/settings/members')
+   call    navigate {url: "/settings/members"}       the new test's fresh start
+   call    type {target: "n40", value: "grace"}     prints the test line below
+           Test line: await screen.getByRole("searchbox", "Search members").fill("grace");
    edit    + that line, as printed
    call    run_code {code: "await expect(screen.getByRole('listitem')).toHaveCount(1);"}   passed
-   edit    + that line
+   edit    + that line, in the assert block
    ```
 4. Run only that test:
    `run_tests {files: ["tests/<feature>.e2e.ts:<line>"]}`, or
@@ -294,8 +319,10 @@ session runs the test and stops where it failed:
   ones. `NO_SESSION`: call `open_session` first, or the session named has
   ended (the message says why). `SESSION_REQUIRED`: several sessions are open;
   pass `session`. `SESSION_OPEN`: every session slot is taken (close one, or
-  raise `--max-sessions`). `CONFIG_IN_USE`: open sessions use another config;
-  open on theirs, or close them first. `ENGINE_IN_USE`: the target's engine
+  raise `--max-sessions`). `CONFIG_IN_USE`: open sessions use another config,
+  or were opened with `engine` and this one names a config; open the same
+  way, or close them first. `ENGINE_NOT_INSTALLED`: run the install command
+  the message names, then `open_session` again. `ENGINE_IN_USE`: the target's engine
   comes from a package every session shares; create it in the config or a
   file it imports by path. `UNKNOWN_TOOL`: the name is not in this session's
   catalog; the message lists what is. `TEST_AMBIGUOUS` and

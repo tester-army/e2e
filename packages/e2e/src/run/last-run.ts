@@ -275,29 +275,53 @@ function isError(value: unknown): value is ReportError {
 }
 
 /**
- * How long each file took for each target in the previous run, keyed by
- * `target::file`: every attempt of every result and serial group summed. A
- * file with no attempt (skipped, or never reached) has no entry. No readable
- * report is no history, never an error.
+ * Whether a result stands for a test its run did not carry out whole: left
+ * out by a filter, never reached, or with an attempt cut short, which a retry
+ * after a failure leaves under the earlier verdict. A test its `platforms`
+ * list keeps off the target is not left out: no run of that target would ever
+ * carry it out, so it does not make its file partial.
  */
-export async function previousFileDurations(reportPath: string): Promise<ReadonlyMap<string, number>> {
+function leftUnmeasured(result: ReportResult): boolean {
+  const onlyPlatformExcluded = result.skip?.cause === 'platform-unavailable';
+  if ((result.selected === false && !onlyPlatformExcluded) || result.status === 'interrupted' || result.attempts.some((attempt) => attempt.status === 'interrupted')) return true;
+  return result.skip !== undefined && UNDELIVERED_SKIPS.has(result.skip.cause);
+}
+
+/**
+ * How long each file took for each target in a report, keyed by
+ * `target::file`: every attempt of every result and serial group summed. A
+ * file has an entry only when the run carried out all of it, once: a file with
+ * a test a filter or `--last-failed` left out, or one an interrupt or a limit
+ * cut short, would read as faster than it is, and a repeat past the first
+ * would read as slower. A file with no attempt has none either.
+ */
+export function fileDurationsOf(report: Report1Document): ReadonlyMap<string, number> {
+  const cutShort = report.run.serialGroups.filter((group) => group.attempts.some((attempt) => attempt.status === 'interrupted'));
+  const partial = new Set([...report.run.results.filter(leftUnmeasured), ...cutShort].map((unit) => fileDurationKey(unit.targetId, unit.file)));
   const durations = new Map<string, number>();
-  let report: Report1Document;
-  try {
-    report = await readLastRun(reportPath);
-  } catch {
-    return durations;
-  }
   for (const unit of [...report.run.results, ...report.run.serialGroups]) {
-    if (unit.attempts.length === 0) continue;
     const key = fileDurationKey(unit.targetId, unit.file);
+    if (unit.attempts.length === 0 || unit.repeat > 0 || partial.has(key)) continue;
     const ms = unit.attempts.reduce((sum, attempt) => sum + attempt.durationMs, 0);
     durations.set(key, (durations.get(key) ?? 0) + ms);
   }
   return durations;
 }
 
-/** The key `previousFileDurations` files one target's file under. */
+/**
+ * How long each file took for each target in the previous run, read from its
+ * report (see `fileDurationsOf`). No readable report is no history, never an
+ * error.
+ */
+export async function previousFileDurations(reportPath: string): Promise<ReadonlyMap<string, number>> {
+  try {
+    return fileDurationsOf(await readLastRun(reportPath));
+  } catch {
+    return new Map();
+  }
+}
+
+/** The key `fileDurationsOf` files one target's file under. */
 export function fileDurationKey(targetName: string, file: string): string {
   return `${targetName}::${file}`;
 }

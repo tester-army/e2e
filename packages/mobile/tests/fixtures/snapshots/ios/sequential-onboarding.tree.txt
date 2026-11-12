@@ -45,7 +45,7 @@ screen
           other "Next keyboard"
             button "Next keyboard" value="Polski"
             button "Dictate" #dictation
-    other #inputView
+    other [hidden] #inputView
     other "Benchmark Examples"
       navigation "Benchmark Examples" #Sequential Onboarding
         button "Benchmark Examples" #BackButton
@@ -57,6 +57,6 @@ screen
               text "Step 1 of 3"
               text "Let's start with your email"
               textbox [focused] #email-input placeholder="e.g. jane@example.com"
-              other "Continue" #continue-button
+              other "Continue" [hidden] #continue-button
             other "Vertical scroll bar, 1 page" value="0%"
-            other "Horizontal scroll bar, 1 page" value="0%"
+            other "Horizontal scroll bar, 1 page" value="0%" [hidden]

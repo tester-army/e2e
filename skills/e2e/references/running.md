@@ -15,7 +15,7 @@ npx e2e run [files...] [options]   # run tests
 npx e2e explore [goal] [options]   # explore toward a goal without a test file (topic explore)
 npx e2e list [files...] [options]  # print what run would select
 npx e2e doctor [--check-model]     # can a run start: config, engine setup, models;
-                                   # --reporter json for a host, exit 2 on a failed check
+                                   # --json for a host, exit 2 on a failed check
 npx e2e init [directory] [--yes]   # scaffold a project, refresh the agent skill
 npx e2e guide [topic]              # print this skill; topics: setup, writing-tests, agent,
                                    # running, explore, debugging, mcp, bug-bash
@@ -41,7 +41,7 @@ npx e2e telemetry [disable|enable] # anonymous usage telemetry: status or switch
 | `--tag <tags>` | Any of the tags, comma-separated or repeated; all of them with `--tag-mode all`. An empty `--target`, `--tag`, or `--agent` value is a usage error, exit 2. |
 | `--exclude-tag <tags>` | Drop tests carrying any of these tags, however selected. |
 | `--grep <pattern>`, `--grep-invert <pattern>` | Keep, or drop, tests whose title (describe titles and test title joined by spaces, `checkout pays`; not file or tags) matches a regular expression. Bare pattern or `'/pattern/i'`; repeat for alternatives. |
-| `--changed-since <ref>` | Run the configured `filters` on the change since the ref: every file that differs from the merge base of the ref and HEAD, uncommitted and untracked included (`--changed-since origin/main`). Without it no filter runs. A ref git can't measure from is `INVALID_CHANGED_SINCE`, exit 2. |
+| `--changed-since <ref>` | Run the configured `filters` on the change since the ref: every file that differs from the merge base of the ref and HEAD, uncommitted and untracked included (`--changed-since origin/main`). Each target starts the files of the tests the filters score likeliest first (`relevance`, see topic `setup`). Without it no filter runs. A ref git can't measure from is `INVALID_CHANGED_SINCE`, exit 2. |
 | `--last-failed` | The tests the previous run (`<output>/report.json`) did not pass or never ran (`--max-failures` and `--max-duration` included), plus every test in a failed `beforeAll` or `afterAll` scope. A test another filter leaves out stays owed (`run.carried` in the report) until a rerun runs it. No report is `NO_LAST_RUN`, exit 2. |
 | `--shard <index/total>` | One contiguous slice of the selected tests (`--shard 2/3`), cut after every other flag; serial groups stay whole, each shard brings its own setup tests. |
 | `--headed` | Visible browser or simulator when the engine supports it. |
@@ -58,8 +58,10 @@ npx e2e telemetry [disable|enable] # anonymous usage telemetry: status or switch
 | `-u`, `--update-snapshots` | Write the stored screenshots `toHaveScreenshot` finds missing or different, and pass. |
 | `-w`, `--watch` | Run, then run again when a test file, a source file beside the tests, or the config is saved, or a key asks: `a` or enter all, `r` the current filters, `f` failed, `u` update snapshots, `p` and `t` filter by file and title, `q` quit; a key during a run cancels it. Refused in CI and with `--reporter json`. |
 | `--pass-with-no-tests` | Exit 0, not `NO_TESTS`, when nothing matches; a run with nothing to run starts no engine or app. |
+| `--step` | Run the first step, then hold each later one until a key at its prompt: Enter runs it, `n` the rest of the test, `a` the rest of the run, `h` lists the keys, `q` stops (exit 130). For a person at a terminal, not an agent: refused in CI, with `--watch`, `--workers` above 1, and the json reporter. |
 | `--debug` | Phase timings and an agent step table on stderr; transcripts as artifacts. |
 | `--ai-trace` | Every model call except a test filter's, to `<output>/ai-trace.json`. |
+| `--timings <file>` | The timings history to update, over `<output>/timings.json`. With more than one worker, files with no recorded time start first, then the rest longest first. |
 | `--trace [mode]`, `--video [mode]` | Which tests keep a trace page (`<output>/results/<test>/trace.md`), or which attempts record a video (WebM on browsers, MP4 on devices), over the config and every target: bare is `on` (`--trace` then pages every test, passing ones too); `--trace off` writes none; `retain-on-failure` keeps only failures; `on-first-retry` keeps first retries, `on-all-retries` every retry. A test's own `trace` or `video` still wins; targets whose engine cannot record video are skipped with a notice. Both are greedy: write `--video=<mode>` or put test files first. The failure recap names the trace page and the video. |
 
 ```bash
@@ -133,7 +135,7 @@ its own tools.
 ## Output
 
 `<output>` (`.e2e` by default) holds `report.json`, `junit.xml`,
-`summary.md`, `ai-trace.json`, `sessions/`, and `results/`, one directory
+`summary.md`, `ai-trace.json`, `timings.json` (how long each file took; with more than one worker the next run starts the longest known files first, after any with no time), `sessions/`, and `results/`, one directory
 per test with its `trace.md` and an `attempt-<n>/` per attempt
 (screenshots, videos, `--debug` transcripts, downloads).
 `results/` is cleared once a run's tests start; a run stopping before
@@ -164,7 +166,10 @@ hosted service's video by URL.
   run: a signal, `--max-failures`, `--max-duration`, a run-level error; not a failure), `flaky`, and `skipped` add up
   to `selected`; `discovered - selected` were left out.
 - `junit`: `junit.xml` for CI summaries; `--reporter list,junit` keeps the
-  terminal output.
+  terminal output. A case with a failure screenshot links it as
+  `<system-out>[[ATTACHMENT|<path>]]</system-out>`, relative to
+  `$CI_PROJECT_DIR` (else the project root), which GitLab shows in the
+  test report.
 - Every run that reaches its tests also writes a trace page per failed,
   timed-out, interrupted, or flaky test, `results/<test>/trace.md` (the
   `trace` mode, default `retain-on-failure`): every step with what
@@ -185,6 +190,11 @@ hosted service's video by URL.
   comment per run (edited on rerun) plus the job summary; needs
   `pull-requests: write` and `GITHUB_TOKEN` (or `GH_TOKEN`) in the step's
   env.
+- `htmlReporter()` from `@e2e-dev/html-reporter`: `<output>/report.html`
+  (`.e2e/` by default), one page that opens from disk, with each test's
+  steps, screenshots, and video. It links media from `<output>/results/`;
+  `media: 'embed'` puts it in the page, one file to share, except downloads
+  the runner could not scan for secrets, and `media: 'none'` leaves it out.
 
 ## Exit codes
 
@@ -290,7 +300,10 @@ jobs:
   passes on `pull_request` alone; never pass it on `pull_request_target`.
   Every test runs without it and on a `--last-failed` rerun. The decision
   filter also runs every test on a lockfile or `e2e.config` change, and the
-  tests whose test file, setup file, or stored screenshots changed. On GitLab, pass `--changed-since ${CI_MERGE_REQUEST_TARGET_BRANCH_SHA:-$CI_MERGE_REQUEST_DIFF_BASE_SHA}`
+  tests whose test file, setup file, or stored screenshots changed. It scores
+  each test, and each target starts the likeliest files first. With one worker
+  (the CI default) only the relevance bands order files and collection order
+  breaks ties, since the timings history matters only above one worker. On GitLab, pass `--changed-since ${CI_MERGE_REQUEST_TARGET_BRANCH_SHA:-$CI_MERGE_REQUEST_DIFF_BASE_SHA}`
   on merge request pipelines, not merge trains, with `GIT_DEPTH: 0`. Preview
   with `npx e2e list --changed-since origin/main`, after committing: the
   decision filter reads what the commits change, and a file only the

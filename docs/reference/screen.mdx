@@ -376,10 +376,11 @@ await screen.getByRole('row').nth(2).getByRole('checkbox').check();
 | Method | Returns |
 | --- | --- |
 | [`screen.tapAt`](#screen-tapat) | `Promise<void>` |
+| [`screen.doubleTapAt`](#screen-doubletapat) | `Promise<void>` |
 | [`screen.swipe`](#screen-swipe) | `Promise<void>` |
 | [`screen.scrollUntilVisible`](#screen-scrolluntilvisible) | `Promise<void>` |
 
-`tapAt` and `swipe` act on the viewport.
+`tapAt`, `doubleTapAt`, and `swipe` act on the viewport.
 
 #### `screen.tapAt`
 
@@ -409,6 +410,32 @@ await screen.tapAt({ x: map.x + 360, y: map.y + 70 });
 
 <Note>
 `tapAt` is not scoped: on a locator it still taps a viewport point.
+</Note>
+
+#### `screen.doubleTapAt`
+
+Use it to double-tap a viewport point when the tree does not list the target.
+
+```ts
+/** Double-taps a viewport point, with no node behind it. */
+doubleTapAt(point: Point, options?: ActionOptions): Promise<void>;
+```
+
+```ts
+await screen.doubleTapAt({ x: 120, y: 240 }, { timeout: 1_000 });
+```
+
+- Use viewport coordinates in the same units as `boundingBox()`.
+- The page or device decides what receives the gesture. On web, this sends a primary-button double-click.
+- Defaults to `config.actionTimeout`.
+
+| Throws | When |
+| --- | --- |
+| `INVALID_ARGUMENT` | A negative or non-finite coordinate, or an unknown option. |
+| `UNSUPPORTED_CAPABILITY` | The engine does not list `doubleTap` in its pointer actions. |
+
+<Note>
+`doubleTapAt` is not scoped: on a locator it still double-taps a viewport point.
 </Note>
 
 #### `screen.swipe`
@@ -486,6 +513,9 @@ await screen.getByTestId('feed').scrollUntilVisible(row);
   whole scroll, each swipe included.
 - On a locator each step swipes that node. So a feed or a table that is its
   own scroll container pages without the pointer hovering it first.
+- It stops at the first match that is not hidden. On a device, a node under
+  the soft keyboard is hidden, so the scroll goes on
+  ([Mobile visibility](/reference/mobile#visibility)).
 
 | Throws | When |
 | --- | --- |
@@ -759,6 +789,10 @@ check(options?: ActionOptions): Promise<void>;
 ```ts
 await screen.getByRole('checkbox', 'Remember me').check();
 ```
+
+On the web engine, a checkbox or radio hidden under its own label (as in
+Element Plus) is clicked through that label. Anything else on top of the
+point the click lands on still fails `ACTION_FAILED`.
 
 #### `uncheck`
 
@@ -1307,7 +1341,7 @@ export interface SwipePathOptions {
 }
 
 /**
- * A point in CSS pixels. For `screen.tapAt` and `screen.swipe` the origin is
+ * A point in CSS pixels. For `screen.tapAt`, `screen.doubleTapAt`, and `screen.swipe` the origin is
  * the viewport's top-left corner, the space `boundingBox()` reports in; for
  * `tap({ position })` it is the node's own top-left corner, inside its
  * border on a document platform.

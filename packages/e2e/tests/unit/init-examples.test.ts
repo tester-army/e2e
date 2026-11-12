@@ -161,7 +161,7 @@ describe('e2e init --example', () => {
     const outcome = await init(target, { yes: true, example: 'with-vite', directory: 'my-app' });
     expect(outcome).toMatchObject({ exitCode: 0, result: 'scaffolded', example: 'with-vite', existingConfig: true, engine: null });
     expect(fetchMock).toHaveBeenCalledOnce();
-    expect(String((fetchMock.mock.calls[0] as unknown[])[0])).toBe(`https://codeload.github.com/tester-army/e2e/tar.gz/refs/tags/e2e%40${RUNNER_VERSION}`);
+    expect(String((fetchMock.mock.calls[0] as unknown[])[0])).toBe(`https://codeload.github.com/e2e-inc/e2e/tar.gz/refs/tags/e2e%40${RUNNER_VERSION}`);
     // The example's stale runner pin moves to this CLI's range; from source no sibling version is recorded, so the engine pin stays.
     expect(JSON.parse(readFileSync(path.join(target, 'package.json'), 'utf8'))).toEqual({
       name: 'my-app',
@@ -182,7 +182,7 @@ describe('e2e init --example', () => {
     const fetchMock = vi.fn(async (url: string) => (url.includes('refs/tags/') ? new Response('', { status: 404 }) : new Response(new Uint8Array(viteTarball('e2e-main')))));
     vi.stubGlobal('fetch', fetchMock);
     expect((await init(dir, { yes: true, example: 'vite' })).result).toBe('scaffolded');
-    expect(String((fetchMock.mock.calls[1] as unknown[])[0])).toBe('https://codeload.github.com/tester-army/e2e/tar.gz/refs/heads/main');
+    expect(String((fetchMock.mock.calls[1] as unknown[])[0])).toBe('https://codeload.github.com/e2e-inc/e2e/tar.gz/refs/heads/main');
     expect(output()).toContain('used the examples on main');
     expect(existsSync(path.join(dir, 'e2e.config.ts'))).toBe(true);
   });

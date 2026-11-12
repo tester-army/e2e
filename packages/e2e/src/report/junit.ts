@@ -1,11 +1,15 @@
 /** JUnit XML reporter: the report-1 document as `.e2e/junit.xml`. */
 
+import path from 'node:path';
+import { envValue } from '../internal/env.ts';
 import { sanitizeText } from '../internal/errors.ts';
+import { realpathOfExisting, relativeToProjectRoot } from '../internal/paths.ts';
+import type { FinishedRun } from '../types.ts';
 import type { Report1Document, ReportError, ReportResult, ReportSerialGroup } from './build.ts';
 import { repeatSuffix } from './format.ts';
-import { toldAttempt } from './failure-text.ts';
-import { outcome } from './outcome.ts';
-import { fileReporter } from './write.ts';
+import { failureScreenshot, toldAttempt } from './failure-text.ts';
+import { outcome, type AttemptView } from './outcome.ts';
+import { fileReporter, toPosixPath } from './write.ts';
 
 interface SuiteCounts {
   tests: number;
@@ -107,7 +111,30 @@ function expectedNote(result: ReportResult): string | undefined {
   return `failed as expected: ${mark.reason}\n${mark.error.code}: ${mark.error.message}`;
 }
 
-function renderResult(result: ReportResult, groups: ReadonlyMap<string, ReportSerialGroup>): RenderedCase {
+/** Options for rendering JUnit reports. */
+export interface JunitReportOptions {
+  /**
+   * Where artifact files are located relative to the repository root or CI
+   * working directory (such as GitLab's `$CI_PROJECT_DIR`). When provided,
+   * a test with a failure screenshot gains `<system-out>[[ATTACHMENT|<path>]]</system-out>`.
+   */
+  readonly artifactsDir?: string | undefined;
+}
+
+/** The `<system-out>` element holding `lines`, or nothing when there are none. */
+function systemOut(lines: readonly string[]): string[] {
+  if (lines.length === 0) return [];
+  return [`  <system-out>${text(lines.join('\n'))}</system-out>`];
+}
+
+/** The told attempt's failure screenshot as a path below `artifactsDir`, when both are known. */
+function screenshotAttachment(told: AttemptView, options?: JunitReportOptions): string | undefined {
+  if (options?.artifactsDir === undefined) return undefined;
+  const shot = failureScreenshot(told);
+  return shot?.path === undefined ? undefined : path.posix.join(options.artifactsDir, shot.path);
+}
+
+function renderResult(result: ReportResult, groups: ReadonlyMap<string, ReportSerialGroup>, options?: JunitReportOptions): RenderedCase {
   const final = outcome(result, groups);
   // The agent joins the name only when it is not `default`, so a suite that
   // never names one keeps the case names its CI history is keyed on.
@@ -119,18 +146,24 @@ function renderResult(result: ReportResult, groups: ReadonlyMap<string, ReportSe
   })}`;
   const expected = expectedNote(result);
   switch (result.status) {
-    case 'passed':
+    case 'passed': {
       if (expected === undefined) return { lines: [`${open}/>`], outcome: 'passed', durationMs: final.durationMs };
+      // A test.fail pass failed as expected; its failure screenshot shows that failure.
+      const attachment = screenshotAttachment(toldAttempt(result, final), options);
+      const lines = [expected, ...(attachment === undefined ? [] : [`[[ATTACHMENT|${attachment}]]`])];
       return {
-        lines: [`${open}>`, `  <system-out>${text(expected)}</system-out>`, '</testcase>'],
+        lines: [`${open}>`, ...systemOut(lines), '</testcase>'],
         outcome: 'passed',
         durationMs: final.durationMs,
       };
+    }
     case 'flaky': {
       const count = final.failedAttempts;
-      const note = [`flaky: ${count} failed attempt${count === 1 ? '' : 's'} before passing`, ...(expected === undefined ? [] : [expected])].join('\n');
+      const note = `flaky: ${count} failed attempt${count === 1 ? '' : 's'} before passing`;
+      const attachment = screenshotAttachment(toldAttempt(result, final), options);
+      const lines = [note, ...(expected === undefined ? [] : [expected]), ...(attachment === undefined ? [] : [`[[ATTACHMENT|${attachment}]]`])];
       return {
-        lines: [`${open}>`, `  <system-out>${text(note)}</system-out>`, '</testcase>'],
+        lines: [`${open}>`, ...systemOut(lines), '</testcase>'],
         outcome: 'passed',
         durationMs: final.durationMs,
       };
@@ -146,15 +179,19 @@ function renderResult(result: ReportResult, groups: ReadonlyMap<string, ReportSe
       };
     }
     default: {
-      const error = toldAttempt(result, final).error;
+      const told = toldAttempt(result, final);
+      const error = told.error;
       const element = verdictElement(error);
       const message = error?.message ?? result.status;
       const type = error?.code ?? result.status;
       const body = error === undefined ? result.status : errorBody(error);
+      const attachment = screenshotAttachment(told, options);
+      const lines = attachment === undefined ? [] : [`[[ATTACHMENT|${attachment}]]`];
       return {
         lines: [
           `${open}>`,
           `  <${element} ${attributes({ message, type })}>${text(body)}</${element}>`,
+          ...systemOut(lines),
           '</testcase>',
         ],
         outcome: element,
@@ -201,14 +238,14 @@ function renderSuite(name: string, cases: readonly RenderedCase[]): { lines: str
  * the filters left empty still lists its suite. Like every reporter it reads
  * the document, never runner state, and it can never change run status.
  */
-export function renderJunitReport(report: Report1Document): string {
+export function renderJunitReport(report: Report1Document, options?: JunitReportOptions): string {
   const groups = new Map(report.run.serialGroups.map((group) => [group.id, group]));
   const byFile = new Map<string, RenderedCase[]>();
   for (const result of report.run.results) {
     // Other unselected results are report-only; a CI viewer counts what the run selected.
     if (result.selected === false && result.skip?.filter === undefined) continue;
     const cases = byFile.get(result.file) ?? [];
-    cases.push(renderResult(result, groups));
+    cases.push(renderResult(result, groups, options));
     byFile.set(result.file, cases);
   }
   const suites = [...byFile].map(([file, cases]) => renderSuite(file, cases));
@@ -230,7 +267,22 @@ export function renderJunitReport(report: Report1Document): string {
 }
 
 /**
+ * Where `artifactsRoot` sits relative to the directory GitLab resolves
+ * attachment paths against: `$CI_PROJECT_DIR` when set, else the project
+ * root. Undefined when the artifacts are outside it, since GitLab cannot
+ * serve those.
+ */
+function attachmentBase(run: FinishedRun): string | undefined {
+  const base = envValue(process.env, 'CI_PROJECT_DIR') ?? run.projectRoot;
+  if (realpathOfExisting(base) === realpathOfExisting(run.artifactsRoot)) return '.';
+  const relative = relativeToProjectRoot(base, run.artifactsRoot);
+  return relative === undefined ? undefined : toPosixPath(relative);
+}
+
+/**
  * The built-in `junit` reporter: the report as JUnit XML in `junit.xml`
  * beside `report.json`, for CI test summaries.
  */
-export const junitReporter = fileReporter('junit', 'JUnit', 'junit.xml', (run) => renderJunitReport(run.report));
+export const junitReporter = fileReporter('junit', 'JUnit', 'junit.xml', (run) =>
+  renderJunitReport(run.report, { artifactsDir: attachmentBase(run) }),
+);

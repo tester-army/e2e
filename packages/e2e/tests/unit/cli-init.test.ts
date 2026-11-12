@@ -138,6 +138,13 @@ describe('e2e init', () => {
     expect(output()).toContain('Next: npm install, then APP_URL=http://localhost:3000 npm run test:e2e');
   });
 
+  it('registers the MCP server through bunx in a Bun project', async () => {
+    writeFileSync(path.join(dir, 'bun.lock'), '');
+    expect((await init(dir, { yes: true })).exitCode).toBe(0);
+    expect(JSON.parse(read('.mcp.json'))).toEqual({ mcpServers: { e2e: { command: 'bunx', args: ['e2e', 'mcp'] } } });
+    expect(read('.codex/config.toml')).toContain('command = "bunx"');
+  });
+
   it('hands back what --yes chose, then that a second run had nothing to do', async () => {
     expect(await init(dir, { yes: true })).toEqual({
       exitCode: 0,
@@ -730,7 +737,7 @@ describe('e2e init', () => {
     await init(dir, { yes: true });
     expect(read('e2e.config.ts')).toBe('// custom config\n');
     expect(read('tests/example.e2e.ts')).toBe('// custom test\n');
-    expect(read('.gitignore')).toBe(`${older}.e2e/results/\n.e2e/ai-trace.json\n.e2e/junit.xml\n.e2e/summary.md\n.e2e/logs/\n.e2e/videos/\n`);
+    expect(read('.gitignore')).toBe(`${older}.e2e/results/\n.e2e/ai-trace.json\n.e2e/timings.json\n.e2e/junit.xml\n.e2e/summary.md\n.e2e/logs/\n.e2e/videos/\n`);
     expect(output()).not.toContain('commit-the-replay-cache');
   });
 

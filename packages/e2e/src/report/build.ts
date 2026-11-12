@@ -11,6 +11,7 @@ import type { ErrorCategory, ErrorDetails, ErrorPhase, HookScope, SerializedErro
 import { resultId, timestamp } from '../internal/ids.ts';
 import { obj } from '../internal/objects.ts';
 import { packageVersion } from '../internal/package-version.ts';
+import { onBun } from '../internal/runtime.ts';
 import { projectRelativePath } from '../internal/source.ts';
 import type { VcsInfo } from '../internal/vcs.ts';
 import type { SkipInfo } from '../collect/select.ts';
@@ -115,7 +116,7 @@ export type ReportChanges =
       files?: undefined;
     };
 
-/** Why a filter left nothing out without answering: it threw or answered with something other than `{ exclude, note? }`, or ran past 5 minutes. */
+/** Why a filter left nothing out without answering: it threw or answered with something other than `{ exclude, relevance?, note? }`, or ran past 5 minutes. */
 export type FilterOutcome = 'failed' | 'timed-out';
 
 /** One test filter the run applied, in order. */
@@ -131,7 +132,7 @@ export interface ReportFilter {
   /**
    * Set when the filter left nothing out because the call did not answer:
    * `failed` when it threw or answered with something other than
-   * `{ exclude, note? }`, `timed-out` when it ran past 5 minutes and the run
+   * `{ exclude, relevance?, note? }`, `timed-out` when it ran past 5 minutes and the run
    * stopped waiting. Absent when it answered.
    */
   outcome?: FilterOutcome | undefined;
@@ -863,7 +864,7 @@ export function buildReport(options: BuildReportOptions): Report1Document {
         trustNoticeShown: false,
         os: `${os.platform()} ${os.release()}`,
         arch: os.arch(),
-        runtime: `node ${process.version}`,
+        runtime: onBun ? `bun v${process.versions['bun']}` : `node ${process.version}`,
       },
       ...(options.vcs === undefined ? {} : { vcs: options.vcs }),
       targets,

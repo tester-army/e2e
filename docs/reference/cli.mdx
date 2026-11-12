@@ -30,12 +30,11 @@ bunx e2e run tests/signup.e2e.ts --headed  # one file, with a visible browser
 </CodeGroup>
 
 <Note>
-The CLI needs Node.js 24.8 or newer, or 22.22.3 or newer on Node.js 22. Any
-package manager installs it: npm, pnpm, Yarn with or without Plug'n'Play, or
-Bun. The CLI runs on Node.js, not on the Bun or Deno runtimes; `bunx e2e`
-runs it on Node.js. Under Yarn Plug'n'Play on Node.js 24.8 through 24.11.0, a
-`.cts` file fails to load: Node.js rejects the source Yarn's loader hands on.
-24.11.1 and later load it.
+The CLI needs Node.js 24.8 or newer (22.22.3 or newer on Node.js 22), or
+[Bun](#bun) 1.4.3 or newer. Any package manager installs it: npm, pnpm, Yarn
+with or without Plug'n'Play, or Bun. Under Yarn Plug'n'Play on Node.js 24.8
+through 24.11.0, a `.cts` file fails to load: Node.js rejects the source
+Yarn's loader hands on. 24.11.1 and later load it.
 </Note>
 
 ## Reference
@@ -178,7 +177,7 @@ field or lockfile, then the invoking package manager, then npm.
 | `package.json` | Created as a private ESM package when missing; otherwise gets only the missing dependencies and scripts. Sibling packages (`@e2e-dev/web`, `@e2e-dev/mobile`) get the caret range of the version released with the CLI, or that exact version when the CLI is a prerelease. Adds a `test:e2e` script that runs `e2e run`, unless one exists |
 | `e2e.config.ts` | One target per selected engine, with the app in its `app`. Playwright reads `APP_URL` (default `http://localhost:3000`) into `app.url` and shows `app.command` in a comment. Mobile sets `app: { bundleId: 'Settings' }` on iOS and `com.android.settings` on Android, and `workers: 1`. With a gateway, `agents.default` is `{ model, system }` |
 | `tests/example.e2e.ts` | An app-open test that passes against any page, plus a commented agent test. Device setup gets a Settings check instead. With both engines, `tests/web.e2e.ts` and `tests/mobile.e2e.ts` instead, each test with `requires: ['browser']` or `requires: ['device']` so the other target skips it |
-| `.gitignore` | Appends `node_modules/`, `.e2e/results/`, `.e2e/cache/`, `.e2e/sessions/`, `.e2e/report.json`, `.e2e/ai-trace.json`, `.e2e/junit.xml`, `.e2e/summary.md`, `.e2e/logs/`, and `.e2e/videos/`. Committing the cache is opt-in; see [commit the replay cache](/cache#commit-the-replay-cache) |
+| `.gitignore` | Appends `node_modules/`, `.e2e/results/`, `.e2e/cache/`, `.e2e/sessions/`, `.e2e/report.json`, `.e2e/ai-trace.json`, `.e2e/timings.json`, `.e2e/junit.xml`, `.e2e/summary.md`, `.e2e/logs/`, and `.e2e/videos/`. Committing the cache is opt-in; see [commit the replay cache](/cache#commit-the-replay-cache) |
 | `.agents/skills/e2e/`, `.claude/skills/e2e/` | `SKILL.md` and one `references/<topic>.md` per `e2e guide` topic. With both chosen, the Claude Code directory is a relative symlink (`../../.agents/skills/e2e`) to the copy, the layout `npx skills add` produces |
 | `.mcp.json`, `.cursor/mcp.json`, `.codex/config.toml` | Registers `e2e mcp` without changing other servers |
 | `.github/workflows/e2e.yml`, `.gitlab-ci.yml` | With `--ci`: a job that runs the web tests. At the repository root, also for a project in a subfolder. See [CI pipeline](#ci-pipeline) |
@@ -245,7 +244,7 @@ bunx e2e init --yes --ci gitlab
 ##### Starting from an example
 
 `--example` copies one of the
-[example apps](https://github.com/tester-army/e2e/tree/main/examples) into a
+[example apps](https://github.com/e2e-inc/e2e/tree/main/examples) into a
 new or empty directory, then runs the wizard in its e2e project. That is
 the directory itself for a web or Expo app, and its `e2e/` folder for a
 native app.
@@ -431,7 +430,7 @@ See [Pick a model](/subscriptions#pick-a-model).
 
 #### `e2e guide`
 
-Prints the skill that `init` installs; `npx skills add tester-army/e2e`
+Prints the skill that `init` installs; `npx skills add e2e-inc/e2e`
 installs the same skill. See [Coding agents](/coding-agents).
 
 <CodeGroup>
@@ -478,7 +477,7 @@ bunx e2e mcp [--config <path>] [--target <name>] [--headed] [--max-sessions <n>]
 | `--config <path>` | The config every session loads unless `open_session` names one. Default: the nearest `e2e.config.ts`, `.mts`, `.js`, or `.mjs`. |
 | `--target <name>` | The target every session opens on. Default: the only target, or the one `open_session` names. |
 | `--headed` | Shows the UI in sessions whose `open_session` does not set `headed`, when the engine supports it. |
-| `--max-sessions <n>` | Sessions open at once, each with its own browser or device, 1 through 16. Default: 4. |
+| `--max-sessions <n>` | Sessions open at once, each with its own browser or device, 1 through 16. Default: 4. On [Bun](#bun), 1. |
 
 The [MCP server](/reference/mcp) page covers these options in full, plus the
 tools and the session rules.
@@ -609,7 +608,7 @@ Test files, directories, or globs relative to the project root:
 | `--exclude-tag <tags>` | Leaves out tests with any of the tags, comma-separated or repeated, whatever `--tag` or a positional selected. A serial group still runs whole when any member is selected; tag the serial `describe` to exclude the flow. |
 | `--grep <pattern>` | Only tests whose title matches one of the regular expressions; repeatable. The title is the describe titles and the test title joined by one space (`checkout pays`), without the file or the tags. A bare pattern is case-sensitive; `'/pattern/i'` adds flags. A pattern that does not compile is a usage error, exit 2. |
 | `--grep-invert <pattern>` | Leaves out tests whose title matches one of the regular expressions; repeatable, with the text and forms of `--grep`. With both, the run keeps what `--grep` matches minus what `--grep-invert` matches. |
-| `--changed-since <ref>` | Runs the configured [test filters](/filters) on the change since the ref: every file that differs from the merge base of the ref and `HEAD`, uncommitted and untracked files included. Without it, no filter runs. With no filters configured, a warning says every test runs. |
+| `--changed-since <ref>` | Runs the configured [test filters](/filters) on the change since the ref: every file that differs from the merge base of the ref and `HEAD`, uncommitted and untracked files included. Each target starts the files of the tests the filters score likeliest first. Without it, no filter runs. With no filters configured, a warning says every test runs. |
 | `--last-failed` | Only the tests the previous run did not pass; the list after these tables says which. |
 | `--shard <index/total>` | Runs one contiguous slice of the selected tests, such as `2/3`, cut after every other flag. Slices differ by at most one test. A serial group counts as one and is never split. Each shard brings only the setup tests its own tests need. Skipped tests are not cut: the shard that runs the nearest test before one reports it, else the first shard, so only one shard does. Every shard runs the same command with a different index. The order is the report order, so a suite shards the same way on every machine. A shard with no test is `NO_TESTS` unless `--pass-with-no-tests`. See [Sharding](/ci#sharding). |
 | `--pass-with-no-tests` | Exits 0 instead of `NO_TESTS` when nothing is selected. A run with nothing to run prepares no engine and starts no app or service command. |
@@ -631,6 +630,7 @@ Test files, directories, or globs relative to the project root:
 | `--strict-cache` | Turns on `cache.strict` for this run. A step whose recording exists but no longer replays fails with `REPLAY_STALE` instead of handing off to the agent. Retries replay too, and the run never writes the cache. See [Fail on a stale recording](/cache#fail-on-a-stale-recording). |
 | `-u`, `--update-snapshots` | Writes each stored screenshot [`toHaveScreenshot`](/reference/expect#screenshot-matchers) finds missing or different, and passes the matcher. Without it, a missing one is written and fails; in CI it is only attached to the results. |
 | `-w`, `--watch` | Runs, then reruns when a test file or the config changes, or on a key. See [Watch mode](#watch-mode). |
+| `--step` | Runs the first step, then holds each later step until a key at its prompt: Enter runs it, `n` runs the rest of the test, `a` the rest of the run, `h` lists the keys, `q` stops with exit 130. Held time counts toward no timeout. Runs one worker; needs a terminal; refused in CI, with `--watch`, `--workers` above 1, and the json reporter (exit 2). See [Step through a test](/debugging#step-through-a-test). |
 
 **Output**
 
@@ -639,6 +639,7 @@ Test files, directories, or globs relative to the project root:
 | `--reporter <ids>` | Replaces the built-in IDs in `config.reporters`, comma-separated: `list`, `json`, `junit`, `markdown`. Default: the config. `json` with `list` is `INVALID_CONFIG`. [Reporter objects](/reference/reporters) in the config keep running. |
 | `--output <dir>` | The results directory for this run, over the config's [`output`](/reference/config#output): the report, the reporter files, the AI trace, `results/`, and `sessions/`. Default: the config, else `.e2e`. Resolved from the project root; a directory the run cannot own is `INVALID_CONFIG`. `results/` is cleared once the tests start; a `--last-failed` rerun keeps what the previous report names. |
 | `--cache-dir <dir>` | The replay cache directory for this run, over [`E2E_CACHE_DIR`](/reference/environment#replay-cache) and [`cache.dir`](/reference/config#cache). Default: `E2E_CACHE_DIR`, else `cache.dir`, else `.e2e/cache`. Resolved from the project root; `~` or a leading `~/` is the home directory. The cache mode stays as configured. With a custom `cache.store` it is `INVALID_CONFIG`. |
+| `--timings <file>` | The [timings history](/ci#cache-the-timings-history) to update when the run ends, over `<output>/timings.json`. With more than one worker, files with no recorded time start first, then the rest longest first. Resolved from the project root. A missing or invalid file is no history, never an error. |
 | `--debug` | Phase timings and an agent step table on stderr after the run; see [Debug output](#debug-output). |
 | `--ai-trace` | Records every model call to `<output>/ai-trace.json`; see [Output](#output). |
 | `--trace [mode]` | Which tests keep a trace page (`<output>/results/<test>/trace.md`): `off`, `on`, `retain-on-failure`, `on-first-retry`, or `on-all-retries`. Default: the config. `--trace off` writes none for a test without its own `trace`. See [trace](/reference/config#trace). |
@@ -779,7 +780,7 @@ With `--ai-trace`, the run also writes `<output>/ai-trace.json`, an AI SDK
 devtools database. It holds one entry per model round trip: the exact prompt,
 tool definitions, response, usage, and provider metadata. Observations in it
 are already redacted, and inline image and file bytes become byte counts.
-Open it with [unbox-ai](https://github.com/tester-army/unbox-ai):
+Open it with [unbox-ai](https://github.com/e2e-inc/unbox-ai):
 `npx unbox-ai runs .e2e/ai-trace.json` lists its runs. See
 [Debugging a run](/debugging#agent-steps). A [test filter](/filters)'s model
 calls are not recorded.
@@ -1070,7 +1071,7 @@ bunx e2e doctor --target web --headed
 
 | Check | Status |
 | --- | --- |
-| `node` | `pass`: the Node.js version. On an unsupported runtime, `--json` still prints a report with `node` as `fail`. |
+| `node` | `pass`: the Node.js or Bun version. On an unsupported runtime, `--json` still prints a report with `node` as `fail`. |
 | `config` | `pass` with `path` and `targets` (`name`, `platform`, `engine`), or `fail` with the `CONFIG_*` or `UNKNOWN_TARGET` code. A failed `config` is the last check. |
 | Engine checks, with `target` | What the target's engine reports, such as the web engine's `browser`: `pass` when installed, `warn` when the first run will download it, `skip` with a browser provider or `connect`; or the mobile engine's agent-device checks (`agent-device`, `toolchain`, `ios-runner-cache`, `device` per configured device, `target-app`) and `app-path`, with only `device`, as `skip`, for a device provider. An engine that reports nothing adds no check. `engine` is `skip` when the engine has no `doctor` hook, and `fail` when the hook threw, timed out, or returned a malformed check. |
 | `model`, with `agent` | `model` and `judge` as `provider` and `modelId`, the names the AI SDK instance reports. `pass` or `fail` for a model on an [`e2e login`](/subscriptions), from the stored login or the provider's API key variable, with `login` set when the agent's models read one login. `unknown` for any other model, because the model reads its own credential. With `--check-model`, `pass` when every model answered, else `fail` with the error code, its message prefixed `model:` or `judge:` when the agent has both. `skip` when the agent has no model. `unknown` with `executor` when a custom executor brings its own agent and declares no model or judge; any model it declares is checked like an agent's. |
@@ -1189,7 +1190,7 @@ package.json: "e2e": "^0.21.2", "@e2e-dev/web": "^0.15.2", "@e2e-dev/kernel": "^
 $ npm install
 ...
 Upgraded: e2e 0.21.2, @e2e-dev/web 0.15.2, @e2e-dev/kernel 0.2.1
-Release notes: https://github.com/tester-army/e2e/releases/tag/e2e%400.21.2
+Release notes: https://github.com/e2e-inc/e2e/releases/tag/e2e%400.21.2
 Updated the agent skill in .agents/skills/e2e/ (12 files)
 ```
 
@@ -1295,7 +1296,7 @@ bunx e2e feedback --type feature -m "Need a way to set the viewport per test" --
 
 - **A bug needs `--repro`.** Without it, the command sends nothing and prints
   a prefilled
-  [GitHub issue](https://github.com/tester-army/e2e/issues/new?template=bug_report.yml)
+  [GitHub issue](https://github.com/e2e-inc/e2e/issues/new?template=bug_report.yml)
   instead, where the e2e team can ask for a reproduction. Add a minimal one
   and submit it yourself.
 - **Outdated releases are refused.** Before sending, the command asks the npm
@@ -1378,7 +1379,7 @@ E2E_TELEMETRY_DEBUG=1 bunx e2e run
 | 2 | CLI, config, collection, dependency, credential, model-config, or policy error |
 | 3 | Engine, app process, model provider, artifact, or cleanup infrastructure failure; `e2e feedback` that could not be delivered; `e2e upgrade` that could not reach the registry |
 | 4 | Internal runner invariant or unhandled runner error |
-| 130 | Interrupted by a user or CI signal |
+| 130 | Interrupted by a user or CI signal, or by `q` at the `--step` prompt |
 
 - Precedence for a mixed run is `130 > 4 > 3 > 2 > 1 > 0`. The report keeps
   every individual result; precedence affects only the process exit code.
@@ -1394,3 +1395,29 @@ E2E_TELEMETRY_DEBUG=1 bunx e2e run
   exports.
 - A model credential the provider rejects names the variable the provider
   reads.
+
+## Bun
+
+On Bun 1.4.3 or newer, the CLI runs without Node.js. When Node.js is
+installed, `bunx e2e` and `bun run` follow the CLI's `node` shebang and run it
+on Node.js. `bunx --bun e2e` and `bun --bun run` run it on Bun. Without
+Node.js, all of them run it on Bun. The web engine runs on Bun.
+`@e2e-dev/mobile` and the integrations are not verified on Bun yet.
+
+Bun compiles the config and test files with its own TypeScript support. Where
+that differs from Node.js:
+
+- A `#` import that maps to a directory does not load its index. Map the
+  import to the file.
+- A legacy decorator in a `.cts` file fails to load. Move the class to a `.ts`
+  file.
+- `e2e run --watch` and `e2e mcp` read `tsconfig.json` one time, and load a
+  file that an `import()` or `require()` names with a computed path one time.
+  Restart them after you edit either, or after you add a file that an import
+  did not find.
+- `e2e mcp` opens one session at a time and ignores `--max-sessions`.
+- [`e2e/runner`](/reference/runner) needs Node.js.
+- An app `command` with `executable: 'node'` needs Node.js, unless `bun run`
+  or `bunx` started the CLI. They put a `node` on `PATH` that runs Bun.
+- A test that a helper declares after an `await` reports the line in the
+  helper.

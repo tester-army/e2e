@@ -18,18 +18,18 @@
   ],
   "license": "Apache-2.0",
   "contributors": [
-    "Oskar Kwaśniewski <oskar@tester.army>",
+    "Oskar Kwa\u015bniewski <oskar@tester.army>",
     "Szymon Rybczak <szymon@tester.army>"
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/tester-army/e2e.git",
+    "url": "git+https://github.com/e2e-inc/e2e.git",
     "directory": "packages/mobile"
   },
   "bugs": {
-    "url": "https://github.com/tester-army/e2e/issues"
+    "url": "https://github.com/e2e-inc/e2e/issues"
   },
-  "homepage": "https://github.com/tester-army/e2e/tree/main/packages/mobile#readme",
+  "homepage": "https://github.com/e2e-inc/e2e/tree/main/packages/mobile#readme",
   "publishConfig": {
     "registry": "https://registry.npmjs.org/",
     "access": "public",
@@ -78,7 +78,7 @@
   },
   "devDependencies": {
     "@types/node": "26.6.6",
-    "ai": "7.0.164",
+    "ai": "7.0.170",
     "e2e": "workspace:*",
     "typescript": "7.0.2",
     "vitest": "5.1.0"

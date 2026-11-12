@@ -3,6 +3,12 @@ name: spec
 # The ruleset requires `spec gate` alone, so a job added here gates merges
 # once it is listed in the gate's `needs`.
 on:
+  workflow_call:
+    inputs:
+      agent-device-version:
+        description: Exact driver version for compatibility runs
+        type: string
+        default: ''
   pull_request:
   merge_group:
   push:
@@ -16,7 +22,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-spec-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -33,7 +39,12 @@ jobs:
         with:
           node-version: 26
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/workspace-install
+        with:
+          agent-device-version: ${{ inputs.agent-device-version }}
+      - name: Full nightly check
+        if: ${{ inputs.agent-device-version != '' }}
+        run: pnpm check
       - name: Lint
         run: pnpm lint
       - name: Dead code (fallow)
@@ -100,13 +111,45 @@ jobs:
           # sit below the patch floor in engines.node (22.22.3).
           check-latest: true
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/workspace-install
+        with:
+          agent-device-version: ${{ inputs.agent-device-version }}
       - name: Install browsers
         uses: ./.github/actions/chromium
         with:
           only-shell: false
       - name: Unit and integration tests
         run: pnpm test
+
+  # The built CLI on Bun with no Node.js on its PATH
+  # (packages/e2e/tests/integration/bun-runtime.test.ts): the floor
+  # runtime.ts names, and the newest release. Vitest itself runs on Node.js.
+  bun:
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        bun: [1.4.3, latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@9fd676a19091d4595eefd76e4bd31c97133911f1 # v4.2.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+          cache: pnpm
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: ${{ matrix.bun }}
+      - uses: ./.github/actions/workspace-install
+        with:
+          agent-device-version: ${{ inputs.agent-device-version }}
+      - run: pnpm --filter e2e run build
+      - name: The CLI on Bun ${{ matrix.bun }}
+        run: pnpm --filter e2e exec vitest run tests/integration/bun-runtime.test.ts
+        env:
+          # Requires Bun rather than skipping without it.
+          E2E_BUN: bun
 
   # A new user's first install of the packed packages, which pnpm 11 and
   # later fail on any dependency build script (scripts/install-smoke.ts).
@@ -124,16 +167,20 @@ jobs:
         with:
           node-version: 26
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/workspace-install
+        with:
+          agent-device-version: ${{ inputs.agent-device-version }}
       - run: pnpm run build
       - name: Fresh install with pnpm ${{ matrix.pnpm }}
+        env:
+          AGENT_DEVICE_VERSION: ${{ inputs.agent-device-version }}
         run: node scripts/install-smoke.ts ${{ matrix.pnpm }}
 
   # The one check the ruleset requires from this workflow. A skipped job
   # passes (the change cannot reach it); a failed or cancelled one fails it.
   gate:
     name: spec gate
-    needs: [check, test, install]
+    needs: [check, test, bun, install]
     if: ${{ always() }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 5

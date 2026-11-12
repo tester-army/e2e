@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  <a href="https://trendshift.io/repositories/274762" target="_blank"><img src="https://trendshift.io/api/badge/repositories/274762" alt="tester-army/e2e | Trendshift" width="250" height="55" /></a>
+  <a href="https://trendshift.io/repositories/274762" target="_blank"><img src="https://trendshift.io/api/badge/repositories/274762" alt="e2e-inc/e2e | Trendshift" width="250" height="55" /></a>
 </p>
 
 # e2e
@@ -44,7 +44,7 @@ config and an example test. The
 [quickstart](https://e2e.com/docs/quickstart) covers the rest.
 
 To see a finished setup in your stack, open
-[`examples/`](https://github.com/tester-army/e2e/tree/main/examples):
+[`examples/`](https://github.com/e2e-inc/e2e/tree/main/examples):
 Vite, Next.js, Astro, Angular, Expo, SwiftUI, Jetpack Compose, Kotlin Multiplatform,
 Flutter, and .NET MAUI, each a standalone project with a passing suite.
 
@@ -68,10 +68,12 @@ Flutter, and .NET MAUI, each a standalone project with a passing suite.
 | [`@e2e-dev/lightpanda`](https://www.npmjs.com/package/@e2e-dev/lightpanda) | Lightpanda, the open-source headless browser, started per run for the web engine. |
 | [`@e2e-dev/smol`](https://www.npmjs.com/package/@e2e-dev/smol) | smol machines browsers for the web engine: by default, each attempt branches a warm Chromium microVM. |
 | [`@e2e-dev/testmu`](https://www.npmjs.com/package/@e2e-dev/testmu) | TestMu AI (formerly LambdaTest) hosted Android emulators, iOS simulators, and real devices for the mobile engine, and hosted Chrome and Edge for the web engine. |
+| [`@e2e-dev/e2b`](https://www.npmjs.com/package/@e2e-dev/e2b) | E2B sandboxes: Android 16 for the mobile engine, and Chromium for the web engine. |
 | [`@e2e-dev/browserstack`](https://www.npmjs.com/package/@e2e-dev/browserstack) | BrowserStack App Automate real Android and iOS devices for the mobile engine. |
 | [`@e2e-dev/limrun`](https://www.npmjs.com/package/@e2e-dev/limrun) | Limrun hosted iOS simulators and Android emulators for mobile tests. |
 | [`@e2e-dev/eas`](https://www.npmjs.com/package/@e2e-dev/eas) | Expo Simulators hosted iOS simulators and Android emulators for the mobile engine. |
 | [`@e2e-dev/github`](https://www.npmjs.com/package/@e2e-dev/github) | Reporter that posts results as a pull request comment. |
+| [`@e2e-dev/html-reporter`](https://www.npmjs.com/package/@e2e-dev/html-reporter) | Reporter that writes the run as one HTML page, with steps, screenshots, and video. |
 
 ### Community
 

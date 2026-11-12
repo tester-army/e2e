@@ -21,6 +21,11 @@ export function toPosixPath(relative: string): string {
   return relative.split(path.sep).join(path.posix.sep);
 }
 
+/** `to` relative to `from` with POSIX separators, `.` when they are the same directory. */
+export function posixRelative(from: string, to: string): string {
+  return toPosixPath(path.relative(from, to)) || '.';
+}
+
 /**
  * A reporter that renders the finished run into one file beside
  * `report.json` and returns the row naming it, relative to the project root.
