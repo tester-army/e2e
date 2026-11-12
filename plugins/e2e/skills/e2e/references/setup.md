@@ -398,7 +398,8 @@ export default {
   names from Revyl's catalog, Revyl installs `app` from an `https` URL (omit
   `app.appPath`; a local path is refused), and it reads `REVYL_API_KEY`.
   Revyl devices record no video, so `--video` fails with
-  `UNSUPPORTED_CAPABILITY`.
+  `UNSUPPORTED_CAPABILITY`. On iOS, the first screen read after `app.open()`
+  takes about 4 s, so consider raising `assertionTimeout` for a margin.
 - `browserstack({ device, osVersion, app })` from `@e2e-dev/browserstack`
   leases BrowserStack App Automate real devices; `device` and `osVersion`
   match its catalog exactly, BrowserStack installs `app` (a `bs://` id, an

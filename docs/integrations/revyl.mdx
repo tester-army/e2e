@@ -63,11 +63,16 @@ export default {
     },
   ],
   workers: 2,
+  assertionTimeout: 10_000,
 } satisfies E2EConfig;
 ```
 
 Revyl installs `app` when it starts each device, so leave `app.appPath` off
 the target. For Android, `bundleId` is the app's package name.
+
+On iOS, the first screen read after `app.open()` usually takes about 4
+seconds, close to the default 5-second `expect` deadline, and a heavier app
+can take longer. The example raises `assertionTimeout` to leave a margin.
 
 ## Test an app flow
 
