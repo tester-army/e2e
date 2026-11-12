@@ -345,7 +345,7 @@
         "turns": { "type": "array", "maxItems": 32, "items": { "$ref": "#/$defs/turn" } },
         "model": { "$ref": "#/$defs/model" },
         "agent": { "type": "string", "minLength": 1 },
-        "phase": { "enum": ["beforeEach", "afterEach"] },
+        "phase": { "enum": ["beforeAll", "beforeEach", "afterEach", "afterAll"] },
         "screen": { "$ref": "#/$defs/stepScreen" },
         "error": { "$ref": "#/$defs/error" },
         "artifacts": { "type": "array", "items": { "type": "string", "minLength": 1 } },

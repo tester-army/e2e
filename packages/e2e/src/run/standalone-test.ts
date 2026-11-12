@@ -27,11 +27,11 @@ import { settleExpectedFailure } from './expected-failure.ts';
 import { withAbort, withTimeout } from '../internal/time.ts';
 import type { SetupFn } from '../types.ts';
 import type { AttemptBudget } from './budget.ts';
-import { classifyAttemptStatus, type TargetExecutor } from './execute.ts';
+import { classifyAttemptStatus, leaveHook, suiteView, type TargetExecutor } from './execute.ts';
 import { createExtendedFixtures, type ExtendedFixtures } from './extended-fixtures.ts';
 import { captureFailureEvidence } from './failure-evidence.ts';
 import type { ArtifactSink, AttemptFixtures } from './fixtures.ts';
-import { findRegistered, runHook, type Realm } from './realm.ts';
+import { findRegistered, runHook, type OpenSuiteHookSession, type Realm } from './realm.ts';
 import type { FailureEvidence } from './records.ts';
 import { sessionLedger } from './secrecy.ts';
 import type { StepRecord, StepRecorder } from './steps.ts';
@@ -230,6 +230,24 @@ export function createStandaloneTestRun(env: StandaloneTestEnvironment, test: St
     },
   };
   const operation = (signal: AbortSignal, timeoutMs: number): OperationContext => ({ signal, timeoutMs, runId: env.runId, attemptId, origin: 'test' });
+  // The hosted attempt is open from before the hooks to after them: they run
+  // on its fixtures and record their steps on it, each hook in a budget of its own.
+  const hooksOnSession: OpenSuiteHookSession = (phase) => ({
+    fixtures: suiteView(env.fixtures, phase),
+    enter: (timeoutMs) => {
+      const hookAbort = budget.enter(env.signal, timeoutMs);
+      const outer = steps.phase;
+      steps.phase = phase;
+      return {
+        cancel: () => hookAbort.abort(),
+        leave: async () => {
+          steps.phase = outer;
+          await leaveHook(steps, phase, () => hookAbort.abort(), config.cleanupTimeout);
+        },
+      };
+    },
+    close: async () => {},
+  });
 
   const execute = async (): Promise<{ started: Started | undefined; outcome: StandaloneTestOutcome }> => {
     const startedMs = Date.now();
@@ -266,10 +284,10 @@ export function createStandaloneTestRun(env: StandaloneTestEnvironment, test: St
     // A rejection nobody handled is charged to this turn, as a run's worker charges the attempt in flight.
     strayInTurn = (cause) => (cutBody === undefined ? fail(cause, phase) : cutBody(cause));
 
-    const hookFailure = await executor.realms.enterScopes(realm, registered);
+    const hookFailure = await executor.realms.enterScopes(realm, registered, hooksOnSession);
     let extended: ExtendedFixtures | undefined;
     if (hookFailure !== undefined) {
-      fail(new E2EError('test', hookFailure.code, hookFailure.message), 'beforeAll');
+      fail(new E2EError(hookFailure.category, hookFailure.code, hookFailure.message), 'beforeAll');
     } else {
       // The test's own timeout bounds its hooks and body.
       const bodyAbort = budget.enter(env.signal, pair.options.timeout);
@@ -480,7 +498,7 @@ export function createStandaloneTestRun(env: StandaloneTestEnvironment, test: St
             }
           }
           await executor.settleAttempt(env.session, attemptId).catch((cause: unknown) => errors.push(serialize(cause, 'afterEach')));
-          await executor.realms.leave(started.realm).catch((cause: unknown) => errors.push(serialize(cause, 'afterAll')));
+          await executor.realms.leave(started.realm, hooksOnSession).catch((cause: unknown) => errors.push(serialize(cause, 'afterAll')));
         } finally {
           steps.phase = undefined;
           publication.abort();

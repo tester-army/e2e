@@ -141,6 +141,7 @@ leaves out on purpose.
 | `expect(el).toHaveToggleValue(true)` | `.toBeChecked()` |
 | `expect(el).toHaveValue(v)` | `.toHaveValue(v)` |
 | `expect(el).toHaveLabel(l)` | `.toHaveAccessibleName(l)` |
+| `beforeAll` and `afterAll` with `device` | The same on `test` from `@e2e-dev/mobile`. The device keeps permissions, the keychain, and installed apps for the tests. A failed test runs `beforeAll` again, see [`beforeAll`](/reference/test#beforeall) |
 | `device.launchApp({ newInstance: true })` | `app.restart()` |
 | `device.launchApp({ delete: true })` | `app.clearState()` |
 | `device.launchApp({ newInstance: false })` | `device.openApp(id)` without `relaunch` |

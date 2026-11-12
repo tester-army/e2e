@@ -852,8 +852,17 @@ describe('group', { tags: ['smoke'] }, () => {
 });
 // @ts-expect-error a describe body is synchronous
 describe('async group', async () => {});
-// @ts-expect-error a suite hook sees suite fixtures only
-beforeAll((fixtures) => void fixtures.screen);
+// A suite hook gets the target's surfaces, never the per-test agent.
+beforeAll((fixtures) => void [fixtures.app, fixtures.screen]);
+// @ts-expect-error a suite hook has no agent
+beforeAll((fixtures) => void fixtures.agent);
+// An engine's type-only extend reaches the suite hooks; a defined fixture belongs to one test.
+const deviceTest = test.extend<{ device: { clearKeychain(): Promise<void> } }>();
+deviceTest.beforeAll(async ({ device }) => device.clearKeychain());
+const projectTest = deviceTest.extend<{ project: string }>({ project: async (_fixtures, use) => use('p') });
+projectTest.afterAll(async ({ device }) => device.clearKeychain());
+// @ts-expect-error a test.extend() fixture is not set up for suite hooks
+projectTest.beforeAll(({ project }) => void project);
 
 // Suite execution accepts project selection, progress, and cancellation; execution settings live in config.
 declare const runResult: RunResult;

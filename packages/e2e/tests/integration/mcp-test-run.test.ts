@@ -9,7 +9,8 @@
  * the test; a promise a test left rejected fails that test
  * rather than the server, before and after its close; a body its timeout cut
  * short can't drive the session; a `beforeAll` failure is the outcome, once,
- * with no screen; a screenshot baseline one session wrote passes the next; a
+ * with no screen; `beforeAll` and `afterAll` drive the session, each hook in
+ * a budget of its own; a screenshot baseline one session wrote passes the next; a
  * name that selects no test, several, or one a session cannot run alone fails
  * before anything boots. In-process: the replay cache serves a session's test
  * as it serves `e2e run`, both ways, with a scripted model; two sessions
@@ -131,6 +132,23 @@ test('needs the database', async ({ app }) => {
 });
 `;
 
+const DRIVEN_HOOKS = `import { writeFileSync } from 'node:fs';
+import { afterAll, beforeAll, test } from 'e2e';
+
+beforeAll(async ({ app }) => {
+  await app.open('/about');
+});
+
+afterAll(async ({ app }) => {
+  await app.open('/');
+  writeFileSync(new URL('../after-all.txt', import.meta.url), 'ran');
+});
+
+test('outlives its timeout between driven hooks', { timeout: 1_000 }, async () => {
+  await new Promise((resolve) => setTimeout(resolve, 2_000));
+});
+`;
+
 const MARKED_HOOKS = `import { beforeAll, test } from 'e2e';
 
 beforeAll(() => {
@@ -214,6 +232,7 @@ describe('open_session {test}', { timeout: 120_000 }, () => {
         'tests/auth.setup.e2e.ts': SETUP,
         'tests/sloppy.e2e.ts': SLOPPY,
         'tests/hooks.e2e.ts': HOOKS,
+        'tests/driven-hooks.e2e.ts': DRIVEN_HOOKS,
         'tests/visual.e2e.ts': VISUAL,
         'tests/expected.e2e.ts': EXPECTED,
         'tests/marked-hooks.e2e.ts': MARKED_HOOKS,
@@ -336,6 +355,16 @@ describe('open_session {test}', { timeout: 120_000 }, () => {
       expect(opened.text).toMatch(/\n\nNo screen to show: no app page is open/);
       const closed = await invoke('close_session');
       expect(closed.text).not.toContain('HOOK_FAILED');
+    });
+
+    it('drives the session from beforeAll, and from afterAll in a budget of its own after the body timed out', async () => {
+      const opened = await invoke('open_session', { test: 'tests/driven-hooks.e2e.ts' });
+      expect(opened.text).toMatch(/^Test "outlives its timeout between driven hooks" .* timed out after /);
+      // The screen is the one the beforeAll hook opened.
+      expect(opened.text).toContain('document "About page"');
+      const closed = await invoke('close_session');
+      expect(closed.text).not.toContain('Cleanup');
+      expect(readFileSync(path.join(project.dir, 'after-all.txt'), 'utf8')).toBe('ran');
     });
 
     it('tells a test that failed as test.fail expected, and one that passed unexpectedly', async () => {

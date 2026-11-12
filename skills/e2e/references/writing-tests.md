@@ -121,8 +121,8 @@ describe('group', { tags: ['billing'] }, () => { /* tests and hooks */ });
 describe('checkout flow', { serial: true }, () => { /* ordered, shared app state */ });
 beforeEach(async ({ app }) => {});     // per attempt, with test fixtures
 afterEach(async ({ screen }) => {});   // runs after failures too, with its own cleanup budget
-beforeAll(async ({ platform }) => {}); // per suite realm, no app fixtures
-afterAll(async () => {});
+beforeAll(async ({ app, screen }) => {}); // per suite realm: app, screen, platform, and the engine's device or browser; no agent
+afterAll(async ({ app }) => {});          // same fixtures, each hook with its own cleanup budget
 test.skip('later', async () => {});
 test.only('focus', async () => {});         // local only: CI fails with ONLY_IN_CI
 test('conditional', async () => { test.skip(await onlyOneOrg(), 'nothing to switch to'); }); // throws: the body stops here, reported skipped; call it before the first step
@@ -162,6 +162,23 @@ Hooks nest: outer `beforeEach` first, inner `afterEach` first. `beforeAll`
 reruns per retry and per serial group (each a fresh module realm) on the
 test timeout; `afterAll` runs on `config.cleanupTimeout`. A failing
 `beforeAll` is a `HOOK_FAILED` run error skipping every test in its scope.
+
+`beforeAll` and `afterAll` get `app`, `screen`, `platform`, and the engine's
+`device` or `browser`, on a hook attempt of their own that starts at the
+first fixture call. A device keeps what they set (permissions, keychain,
+installed apps) for the tests. A browser gives each attempt a new context,
+so a page or sign-in from `beforeAll` does not reach the tests: use
+`test.setup` and `session`. In a serial group the hooks run on the group's
+session. `agent` and `test.extend` fixtures are per test and not available.
+
+```ts
+import { test } from '@e2e-dev/mobile';
+
+test.describe('camera denied', () => {
+  test.beforeAll(async ({ device }) => { await device.setPermission('camera', 'deny'); });
+  test.afterAll(async ({ device }) => { await device.setPermission('camera', 'reset'); });
+});
+```
 
 ## Fixtures
 

@@ -224,7 +224,7 @@ export interface StepRecord {
 }
 
 /** The hooks a step can run in outside the test body. */
-export type StepPhase = 'beforeEach' | 'afterEach';
+export type StepPhase = 'beforeAll' | 'beforeEach' | 'afterEach' | 'afterAll';
 
 /**
  * Live progress notification for one step, streamed to reporters as the step
@@ -314,6 +314,12 @@ export interface StepRecorderOptions {
    * No record of the step exists until the hold resolves.
    */
   readonly hold?: (step: StepHoldRequest, signal: AbortSignal) => Promise<void>;
+  /**
+   * Awaited inside every step before its body: what the session still has to
+   * start. A hook attempt starts its engine attempt here, at the hooks' first
+   * step, so hooks that take no step start none. A rejection fails the step.
+   */
+  readonly ready?: () => Promise<void>;
 }
 
 /** A step about to wait at `StepRecorderOptions.hold`: what the person stepping through the test is shown. */
@@ -416,6 +422,7 @@ export class StepRecorder {
   private readonly redact: ((text: string) => string) | undefined;
   private readonly signal: AbortSignal | undefined;
   private readonly hold: StepRecorderOptions['hold'];
+  private readonly ready: StepRecorderOptions['ready'];
 
   constructor(
     private readonly attemptId: string,
@@ -428,6 +435,7 @@ export class StepRecorder {
     this.redact = options.redact;
     this.signal = options.signal;
     this.hold = options.hold;
+    this.ready = options.ready;
   }
 
   /** Replaces secret values in text the way every record is redacted; identity without a redactor. */
@@ -455,9 +463,14 @@ export class StepRecorder {
     kind: StepKind,
     api: string,
     rawLabel: string,
-    body: () => Promise<T>,
+    run: () => Promise<T>,
     options: StepRunOptions = {},
   ): Promise<T> {
+    const { ready } = this;
+    const body = ready === undefined ? run : async (): Promise<T> => {
+      await ready();
+      return run();
+    };
     // The label is published, reported, and traced as is: a secret the test
     // spelled into an instruction or a locator stops here, once.
     const label = this.redact?.(rawLabel) ?? rawLabel;
@@ -592,9 +605,9 @@ export class StepRecorder {
    * awaited. Each such step is recorded as failed at the line it was called
    * on, its later outcome is dropped, and its rejection is observed here: a
    * step the body abandoned must not take the worker down as an unhandled
-   * rejection.
+   * rejection. `owner` names what returned, in the error.
    */
-  abandonRunning(): TestError | undefined {
+  abandonRunning(owner = 'the test body'): TestError | undefined {
     // A step still held never ran: it is recorded here, at its call, so it
     // fails like one the body left running, and its hold is let go.
     const held = [...this.held].map((call) => {
@@ -610,7 +623,7 @@ export class StepRecorder {
       const more = first === undefined && running.length > 1 ? ` and ${running.length - 1} more` : '';
       const error = new TestError(
         'STEP_NOT_AWAITED',
-        withHint(`the test body returned before ${step.api} ${quoted(step.label)}${more} finished`, 'put `await` in front of every step call'),
+        withHint(`${owner} returned before ${step.api} ${quoted(step.label)}${more} finished`, 'put `await` in front of every step call'),
       );
       relocateStack(error, this.stacks.get(step.id));
       first ??= error;

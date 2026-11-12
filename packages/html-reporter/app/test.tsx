@@ -220,8 +220,10 @@ const CACHE_HINT: Record<CacheMode, string> = {
 };
 
 const PHASE_HINT: Record<NonNullable<Step['phase']>, string> = {
+  beforeAll: 'Ran in a beforeAll hook, before the test.',
   beforeEach: 'Ran in a beforeEach hook, before the test body.',
   afterEach: 'Ran in an afterEach hook, after the test body.',
+  afterAll: 'Ran in an afterAll hook, after the test.',
 };
 
 function StepRow({

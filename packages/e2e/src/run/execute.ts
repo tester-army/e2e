@@ -1,6 +1,6 @@
 /** Test-target execution engine. */
 
-import { rm } from 'node:fs/promises';
+import { rm, rmdir } from 'node:fs/promises';
 import path from 'node:path';
 import type { EngineDisposeContext, EngineSnapshot, ResolveSecretOptions } from '../engine/index.ts';
 import type { TargetSession, OperationContext, VideoSegment } from '../engine/surface.ts';
@@ -25,7 +25,7 @@ import { withAiTraceScope } from '../internal/ai-trace.ts';
 import { DebugTrace } from '../internal/debug.ts';
 import { resultId, timestamp, uuidv7 } from '../internal/ids.ts';
 import { engineAppInfo } from '../config/app.ts';
-import { Deadline, NEVER_ABORTS, withAbort, withScopedBudget, withTimeout } from '../internal/time.ts';
+import { cancelledError, Deadline, NEVER_ABORTS, withAbort, withScopedBudget, withTimeout } from '../internal/time.ts';
 import { createAgentCacheContext, settleStagedTraces } from '../cache/context.ts';
 import { storedRecordingsFor, type StoredRecordings } from '../cache/rekeyed.ts';
 import type { ModuleRegistration, RegisteredTest } from '../collect/registry.ts';
@@ -42,7 +42,7 @@ import { WrittenScreenshots } from './screenshots.ts';
 import { publishAttempt } from '../expect/attempt.ts';
 import { PollScope, runInPollScope } from '../expect/poll-scope.ts';
 import { SoftFailures } from '../expect/soft.ts';
-import { findRegistered, RealmManager, runHook, type FileRef, type Realm } from './realm.ts';
+import { findRegistered, RealmManager, runHook, type FileRef, type Realm, type SuiteHookSession } from './realm.ts';
 import type {
   AttemptRecord,
   ResultRecord,
@@ -56,6 +56,7 @@ import { traceScreen } from './step-screens.ts';
 import { runWithRetries } from './retry.ts';
 import { runSerialUnit, type SerialAttemptStart, type SerialHost, type SharedSerialSession } from './serial.ts';
 import { interruptedInPhase, interruptedSkip, pairKey, pairResult, unstartedResult } from './units.ts';
+import type { SecretLedger } from '../internal/redact.ts';
 import { adoptSecrets, carriedSecrets, processSecrets, registerDerivedSecrets, redactForSession, resolveSecretValue, sessionLedger, staticSecretLedger } from './secrecy.ts';
 import { isSecret } from '../secrets.ts';
 import { SessionStaging, SessionStore, targetIdentity, type SessionIdentity } from './sessions.ts';
@@ -65,7 +66,7 @@ import { EngineError } from '../engine/contract.ts';
 import { hostedVideoUrl } from '../engine/recording.ts';
 import { sessionRecordings } from './recordings.ts';
 import { WorkerModels } from './worker-models.ts';
-import type { SetupFn } from '../types.ts';
+import type { SetupFn, SuiteFixtures } from '../types.ts';
 
 export interface ExecutionEvents {
   onResult?(result: ResultRecord): void;
@@ -227,12 +228,13 @@ export class TargetExecutor implements SerialHost {
     });
     this.realms = new RealmManager({
       targetName: options.target.name,
-      platform: options.target.platform,
       timeout: options.config.timeout,
       cleanupTimeout: options.config.cleanupTimeout,
       runErrors: this.runErrors,
       redactTitle: staticSecretLedger(options.config.allSecrets).redact,
       debug: this.debug,
+      openHookSession: (phase) => this.openHookAttempt(phase),
+      interruptSignal: options.interruptSignal,
     });
     this.sessionIdentity = targetIdentity(options.target);
     this.storedRecordings = storedRecordingsFor(options.config.cache);
@@ -608,8 +610,29 @@ export class TargetExecutor implements SerialHost {
     artifactsDir: string,
     signal: AbortSignal,
   ): Promise<TargetSession> {
-    // The engine booted in init() once per worker; the adapter is per-attempt
-    // so refs never cross attempts.
+    const session = this.newSession(plan.recordings.trace !== undefined);
+    await this.startSession(session, plan, attemptId, artifactsDir, signal);
+    return session;
+  }
+
+  /** One attempt's adapter over the engine, which nothing has started yet: refs never cross attempts. */
+  private newSession(traced: boolean): TargetSession {
+    return createEngineSession({ engine: this.target.engine, targetName: this.target.name, traced });
+  }
+
+  /**
+   * Starts the attempt `session` was made for: the worker's engine init,
+   * the engine's attempt, the planned session restore, the planned video.
+   * A failure ends whatever of the attempt it opened.
+   */
+  private async startSession(
+    session: TargetSession,
+    plan: SessionPlan,
+    attemptId: string,
+    artifactsDir: string,
+    signal: AbortSignal,
+  ): Promise<void> {
+    // The engine boots in init() once per worker.
     await this.initEngineOnce();
     const engine = this.target.engine;
     // Session restore rides the engine's neutral state capability. Checked
@@ -623,7 +646,6 @@ export class TargetExecutor implements SerialHost {
       );
     }
     const { video } = plan.recordings;
-    const session = createEngineSession({ engine, targetName: this.target.name, traced: plan.recordings.trace !== undefined });
     const launch = <T>(label: string, run: (launchSignal: AbortSignal) => Promise<T>) =>
       this.lifecycle(label, this.config.launchTimeout, 'LAUNCH_TIMEOUT', signal, run);
     const launchOp = (launchSignal: AbortSignal) =>
@@ -672,7 +694,6 @@ export class TargetExecutor implements SerialHost {
       await this.endAttempt(session, attemptId).catch(() => undefined);
       throw cause;
     }
-    return session;
   }
 
   /**
@@ -711,6 +732,123 @@ export class TargetExecutor implements SerialHost {
       () => new InfrastructureError('CLEANUP_TIMEOUT', 'settling the attempt timed out'),
       (signal) => session.settle(this.op(attemptId, this.config.cleanupTimeout, signal)),
     );
+  }
+
+  /**
+   * A hook attempt for one scope's `beforeAll` or `afterAll` hooks, between
+   * test attempts: the suite fixtures over a session of its own, with no
+   * session restore, video, or trace. The engine's attempt starts at the
+   * hooks' first step, so hooks that take none (a database seed) boot no
+   * engine, open no browser context, and lease nothing; the close ends
+   * whatever started. Its directory is named by the phase and attempt id,
+   * never by a title, and is removed again when the hooks left nothing in
+   * it. No report names what they did leave, so it is not handed to the
+   * artifact store.
+   */
+  private openHookAttempt(phase: 'beforeAll' | 'afterAll'): SuiteHookSession {
+    const attemptId = uuidv7();
+    const session = this.newSession(false);
+    const artifacts = createAttemptArtifacts({
+      artifactsRoot: this.artifactsRoot,
+      segments: [`hooks-${phase}-${attemptId}`],
+      attemptId,
+      ledger: () => sessionLedger(session, this.config.allSecrets),
+    });
+    let launch: Promise<void> | undefined;
+    const hooks = this.hookSessionOver(session, attemptId, artifacts.sink, phase, () => {
+      launch = this.startSession(session, HOOK_SESSION_PLAN, attemptId, artifacts.dir, this.interruptSignal);
+      return launch;
+    });
+    return {
+      ...hooks,
+      close: async () => {
+        try {
+          await hooks.close();
+          // A launch that failed ended its own attempt and failed the step that asked for it.
+          const started = launch !== undefined && (await launch.then(() => true, () => false));
+          if (started) await this.debug.time('session.close', () => this.endAttempt(session, attemptId));
+        } finally {
+          await artifacts.settle();
+          await removeIfEmpty(artifacts.dir);
+        }
+      },
+    };
+  }
+
+  /**
+   * Suite hook fixtures over a session: a hook attempt's own, which `start`
+   * starts at the hooks' first step, or a serial group's shared one, open
+   * already. Each hook enters a budget of its own that the run's interrupt
+   * also cuts, as an `afterEach` hook does. The start is not the hook's
+   * time: `launchTimeout` bounds it, and the hook that asked gets its budget
+   * anew once the attempt is up. No attempt is published for the hooks, so
+   * `expect.soft`, `test.skip()`, and `test.fail()` have no test to act on
+   * there and say so. Steps the hooks take are redacted and bounded like a
+   * test's, and reported nowhere yet.
+   */
+  hookSessionOver(
+    session: TargetSession,
+    attemptId: string,
+    sink: ArtifactSink,
+    phase: 'beforeAll' | 'afterAll',
+    start?: () => Promise<void>,
+  ): SuiteHookSession {
+    // Expired until a hook enters its own: nothing runs on a budget no hook owns.
+    const budget = new AttemptBudget(this.interruptSignal, new Deadline(0));
+    const end = new AbortController();
+    let turnMs = 0;
+    let starting: Promise<void> | undefined;
+    let started = start === undefined;
+    const ready = (): Promise<void> => {
+      // A hook that overran and reaches a fixture after the close starts nothing: nobody is left to end it.
+      if (end.signal.aborted) return Promise.reject(cancelledError());
+      // Once per hook session, failure included: every later step fails with the same cause.
+      starting ??= start!().finally(() => {
+        started = true;
+        budget.resetDeadline(turnMs);
+      });
+      return starting;
+    };
+    const steps = new StepRecorder(attemptId, {
+      maxEventsPerStep: this.config.limits.maxEventsPerStep,
+      projectRoot: this.config.projectRoot,
+      redact: (text) => redactForSession(session, this.config.allSecrets, text),
+      ...(start === undefined ? {} : { ready }),
+    });
+    const { fixtures } = createFixtures({
+      config: this.config,
+      target: this.target,
+      session,
+      steps,
+      budget,
+      runId: this.options.runId,
+      attemptId,
+      attempt: { testId: `hooks:${phase}`, attemptId, titlePath: [], index: 0, signal: end.signal, memory: new Map() },
+      artifacts: sink,
+      priorSteps: () => [],
+      agentContext: undefined,
+      saveSession: undefined,
+      debug: this.debug,
+      models: this.models,
+    });
+    return {
+      fixtures: suiteView(fixtures, phase),
+      starting: () => (started ? undefined : starting),
+      enter: (timeoutMs) => {
+        turnMs = timeoutMs;
+        const hookAbort = budget.enter(this.interruptSignal, timeoutMs);
+        return {
+          cancel: () => hookAbort.abort(),
+          leave: () => leaveHook(steps, phase, () => hookAbort.abort(), this.config.cleanupTimeout),
+        };
+      },
+      close: async () => end.abort(),
+    };
+  }
+
+  /** The secret ledger of a session (SerialHost). */
+  ledgerOf(session: TargetSession): SecretLedger {
+    return sessionLedger(session, this.config.allSecrets);
   }
 
   /** Ends one attempt's isolation within the cleanup budget. */
@@ -1402,4 +1540,48 @@ function registerVideos(sink: ArtifactSink, segments: readonly VideoSegment[]): 
   if (rejected.length > 0) {
     throw new EngineError('ENGINE_FAILURE', `the engine returned a video link that is not an http(s) URL: ${rejected.join(', ')}`, { retryable: false });
   }
+}
+
+/** Per-test fixtures a suite hook does not get, each with the reason. */
+const TEST_ONLY_FIXTURES: ReadonlyMap<string | symbol, string> = new Map([
+  ['agent', 'agent steps belong to a test; call the agent in beforeEach or the test body'],
+  ['session', 'session.save() is only available inside setup tests'],
+]);
+
+/**
+ * The suite hook's view of a fixture graph: everything the target
+ * contributes but the per-test fixtures, which fail at the first touch.
+ */
+export function suiteView(fixtures: SuiteFixtures, phase: 'beforeAll' | 'afterAll'): SuiteFixtures {
+  return new Proxy(fixtures, {
+    get(target, property, receiver) {
+      const reason = TEST_ONLY_FIXTURES.get(property);
+      if (reason !== undefined) {
+        throw new TestError('INVALID_ARGUMENT', `${phase} has no "${String(property)}" fixture: ${reason}`);
+      }
+      return Reflect.get(target, property, receiver) as unknown;
+    },
+  });
+}
+
+/** What a hook attempt asks of its session: the engine's attempt, and nothing a report would file. */
+const HOOK_SESSION_PLAN: SessionPlan = { session: undefined, recordings: { trace: undefined, video: undefined } };
+
+/**
+ * Ends one suite hook's turn on `steps`. A step the hook started and never
+ * awaited is cancelled, waited for within `settleMs` so the next hook or the
+ * close starts on a quiet session, and thrown as `STEP_NOT_AWAITED`: left
+ * alone it would fail once the session closed, with nobody to catch it.
+ */
+export async function leaveHook(steps: StepRecorder, phase: 'beforeAll' | 'afterAll', cancel: () => void, settleMs: number): Promise<void> {
+  const notAwaited = steps.abandonRunning(`the ${phase} hook`);
+  if (notAwaited === undefined) return;
+  cancel();
+  await withTimeout(steps.settleAbandoned(), settleMs, () => new Error('abandoned steps did not settle')).catch(() => undefined);
+  throw notAwaited;
+}
+
+/** Removes a hook attempt's directory when nothing was written there; a sibling worker's stays. */
+async function removeIfEmpty(dir: string): Promise<void> {
+  await rmdir(dir).catch(() => undefined);
 }

@@ -8,6 +8,7 @@ import {
   type SerializedError,
 } from '../internal/errors.ts';
 import { canonicalDigest, timestamp, uuidv7 } from '../internal/ids.ts';
+import type { SecretLedger } from '../internal/redact.ts';
 import type { CollectedTest } from '../collect/collect.ts';
 import { groupTitles, type RegisteredTest } from '../collect/registry.ts';
 import { pairRecordings, type SkipInfo, type TestTargetPair } from '../collect/select.ts';
@@ -17,7 +18,7 @@ import { attemptSegments, createAttemptArtifacts, resultSegment } from './artifa
 import type { AttemptContext, ClosingRecord, SessionClose, SessionPlan } from './execute.ts';
 import type { ArtifactSink } from './fixtures.ts';
 import type { StepRecord } from './steps.ts';
-import { findRegistered, type FileRef, type Realm, RealmManager } from './realm.ts';
+import { findRegistered, type FileRef, type OpenSuiteHookSession, type Realm, RealmManager, type SuiteHookSession } from './realm.ts';
 import type { AttemptRecord, ResultRecord, ResultStatus, SerialAttemptRecord, SerialGroupRecord, SerialMemberRecord, FailedStatus } from './records.ts';
 import { isFailedStatus } from './records.ts';
 import { isCutSerialRetry, isRetryEligible, retryVerdict, runWithRetries } from './retry.ts';
@@ -78,6 +79,10 @@ export interface SerialHost {
     attemptIndex: number,
     context: AttemptContext,
   ): Promise<AttemptRecord>;
+  /** Suite hook fixtures over the group's open session, so its hooks need no attempt of their own. */
+  hookSessionOver(session: TargetSession, attemptId: string, sink: ArtifactSink, phase: 'beforeAll' | 'afterAll'): SuiteHookSession;
+  /** The secret ledger of a session, which a download the group's suite hooks keep is redacted through. */
+  ledgerOf(session: TargetSession): SecretLedger;
   emit(result: ResultRecord): void;
   /** Announces one member about to execute; the previous member is done by then. */
   pairStarted(pair: TestTargetPair): void;
@@ -370,11 +375,15 @@ async function runSerialAttempt(
     resultSegment({ id: groupId, file: first.test.file, titlePath: serialTitlePath(first.test) }),
     attemptIndex,
   );
+  /** The group's session, once it is open. */
+  let launched: TargetSession | undefined;
   const artifacts = createAttemptArtifacts({
     artifactsRoot: host.artifactsRoot,
     segments: artifactSegments,
     attemptId,
     ...(host.artifactStore === undefined ? {} : { store: host.artifactStore }),
+    // Members register through sinks of their own; this one also takes what the group's suite hooks download.
+    ledger: () => (launched === undefined ? undefined : host.ledgerOf(launched)),
     // A group-owned artifact is identified by the group, the same identity
     // its report path uses.
     identity: { runId: host.runId, testId: first.test.serialId!, attemptId },
@@ -425,6 +434,9 @@ async function runSerialAttempt(
     return finishedSerialAttempt(record, false);
   }
 
+  launched = shared.session;
+  // The group's session is open from here to its close: its suite hooks run on it.
+  const hooksOnShared: OpenSuiteHookSession = (phase) => host.hookSessionOver(shared.session, attemptId, artifacts.sink, phase);
   let skipRemaining: SkipInfo | undefined;
   let hookFailure: SerializedError | undefined;
   for (let memberIndex = 0; memberIndex < members.length; memberIndex += 1) {
@@ -458,7 +470,7 @@ async function runSerialAttempt(
     // Suite scopes enter per member, exactly as for ordinary tests: a
     // beforeAll failure skips this member and, since later members build on
     // its screen, every member after it.
-    hookFailure = await host.realms.enterScopes(realm, registered);
+    hookFailure = await host.realms.enterScopes(realm, registered, hooksOnShared);
     if (hookFailure !== undefined) {
       skipRemaining = { cause: 'hook-failed', reason: hookFailure.message };
       finishMember(skippedMember(attemptId, memberIndex, member.test.id, skipRemaining));
@@ -492,13 +504,13 @@ async function runSerialAttempt(
     // tests. A failed afterAll discards the suite instance, and the group
     // attempt is that instance: remaining members skip, as after a failed
     // beforeAll, and the attempt fails without a retry.
-    const teardownFailure = await host.realms.leaveFinished(realm, members.slice(memberIndex + 1));
+    const teardownFailure = await host.realms.leaveFinished(realm, members.slice(memberIndex + 1), hooksOnShared);
     if (teardownFailure !== undefined && skipRemaining === undefined) {
       hookFailure = teardownFailure;
       skipRemaining = { cause: 'hook-failed', reason: teardownFailure.message };
     }
   }
-  await host.realms.leave(realm);
+  await host.realms.leave(realm, hooksOnShared);
   // The group's verdict is reached before its session closes: the close reads
   // it to decide what the shared recording is worth.
   const failedMember = memberRecords.find(isFailedMember);

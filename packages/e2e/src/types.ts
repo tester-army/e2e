@@ -722,7 +722,17 @@ export interface SetupFixtures extends TestFixtures {
   readonly session: SetupSession;
 }
 
+/**
+ * What `beforeAll` and `afterAll` receive: the target's own surfaces, over a
+ * hook attempt of their own. No `agent`, and no `test.extend()` fixtures:
+ * those belong to one test. An engine's `extend<{ device: Device }>()` adds
+ * its fixtures here too.
+ */
 export interface SuiteFixtures {
+  /** App lifecycle: open, restart, clear state, back, screenshot, recording. */
+  readonly app: App;
+  /** Semantic queries and the actions on their matches. */
+  readonly screen: Screen;
   /** The target's platform label: `web`, `ios`, `android`, or an engine's own string. */
   readonly platform: string;
 }
@@ -797,7 +807,7 @@ export type SetupFn<Fixtures = TestFixtures> = (
 /** A `beforeEach` or `afterEach` body. */
 export type TestHookFn<Fixtures = TestFixtures> = (fixtures: Fixtures) => void | Promise<void>;
 /** A `beforeAll` or `afterAll` body. */
-export type SuiteHookFn = (fixtures: SuiteFixtures) => void | Promise<void>;
+export type SuiteHookFn<Fixtures = SuiteFixtures> = (fixtures: Fixtures) => void | Promise<void>;
 /**
  * Defines one fixture: everything before `await use(value)` is its setup,
  * everything after is its teardown. The body, its hooks, and later fixtures
@@ -827,7 +837,8 @@ export interface TestCase {
   readonly [testCaseBrand]: true;
 }
 
-export interface TestAPI<Fixtures = TestFixtures> {
+/** `Fixtures` are what a test and its per-test hooks get, `Suite` what its suite hooks get. */
+export interface TestAPI<Fixtures = TestFixtures, Suite = SuiteFixtures> {
   /** Registers one test synchronously during module evaluation. */
   (title: string, fn: TestFn<Fixtures>): TestCase;
   /** Registers one configured test synchronously during module evaluation. */
@@ -870,7 +881,7 @@ export interface TestAPI<Fixtures = TestFixtures> {
    *
    *   export const test = base.extend<{ device: Device }>();
    */
-  extend<Extra>(): TestAPI<Fixtures & Extra>;
+  extend<Extra>(): TestAPI<Fixtures & Extra, Suite & Extra>;
   /**
    * Returns a new `test` whose registrations carry these fixture
    * definitions on top of the ones it already had. Each attempt sets them up
@@ -885,7 +896,7 @@ export interface TestAPI<Fixtures = TestFixtures> {
    *     },
    *   });
    */
-  extend<Extra>(fixtures: FixtureDefinitions<Fixtures, Extra>): TestAPI<Fixtures & Extra>;
+  extend<Extra>(fixtures: FixtureDefinitions<Fixtures, Extra>): TestAPI<Fixtures & Extra, Suite>;
   /** Declares a group synchronously. */
   describe<Result>(title: string, body: SynchronousBody<Result>): void;
   /** Declares a configured group synchronously. */
@@ -898,10 +909,10 @@ export interface TestAPI<Fixtures = TestFixtures> {
   beforeEach(fn: TestHookFn<Fixtures>): void;
   /** Registers a test-attempt teardown hook. */
   afterEach(fn: TestHookFn<Fixtures>): void;
-  /** Registers a suite-instance setup hook. */
-  beforeAll(fn: SuiteHookFn): void;
-  /** Registers a suite-instance teardown hook. */
-  afterAll(fn: SuiteHookFn): void;
+  /** Registers a suite-instance setup hook, run in a hook attempt of its own. */
+  beforeAll(fn: SuiteHookFn<Suite>): void;
+  /** Registers a suite-instance teardown hook, run in a hook attempt of its own. */
+  afterAll(fn: SuiteHookFn<Suite>): void;
 }
 
 /**

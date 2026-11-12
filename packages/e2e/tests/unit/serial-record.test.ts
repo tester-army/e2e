@@ -12,6 +12,7 @@ import type { ResolvedTestOptions, TestTargetPair } from '../../src/collect/sele
 import type { ResolvedTarget } from '../../src/config/resolve.ts';
 import { createEngineSession } from '../../src/engine/session.ts';
 import { classifyError, serializeError } from '../../src/internal/errors.ts';
+import { SecretLedger } from '../../src/internal/redact.ts';
 import { buildReport } from '../../src/report/build.ts';
 import { outcome } from '../../src/report/outcome.ts';
 import { RealmManager } from '../../src/run/realm.ts';
@@ -113,8 +114,8 @@ describe('serial attempt record provenance', () => {
     const target = makeTarget('web', 0);
     const pairs = serialPairs(target).slice(0, 1).map((pair) => ({ ...pair, options: { ...pair.options, retries: 1 } }));
     const file = { file: pairs[0]!.test.file, absolutePath: `/project/${pairs[0]!.test.file}` };
-    const realms = new RealmManager({ targetName: target.name, platform: target.platform, timeout: 1000, cleanupTimeout: 1000, runErrors: [], redactTitle: (title) => title });
     const controller = new AbortController();
+    const realms = new RealmManager({ targetName: target.name, timeout: 1000, cleanupTimeout: 1000, runErrors: [], redactTitle: (title) => title, interruptSignal: controller.signal, openHookSession: () => { throw new Error('this group has no suite hooks'); } });
     let created = 0;
     vi.spyOn(realms, 'create').mockImplementation(async () => {
       created += 1;
@@ -138,6 +139,8 @@ describe('serial attempt record provenance', () => {
         return createEngineSession({ engine: undefined, targetName: target.name });
       },
       closeSession: async () => {},
+      hookSessionOver: () => { throw new Error('this group has no suite hooks'); },
+      ledgerOf: () => new SecretLedger(),
       runAttempt: async (_pair, _registered, _realm, index) => {
         if (index === 1 && mode === 'interrupted') controller.abort();
         return { ...structuredClone(FAILED_ATTEMPT), index, durationMs: index === 0 ? 1250 : 0 };

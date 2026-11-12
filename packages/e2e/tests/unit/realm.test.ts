@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { collectModule, test } from '../../src/collect/registry.ts';
+import { InfrastructureError, TestError } from '../../src/internal/errors.ts';
 import type { TestTargetPair } from '../../src/collect/select.ts';
-import { RealmManager, findRegistered, type Realm } from '../../src/run/realm.ts';
+import { RealmManager, findRegistered, type OpenSuiteHookSession, type Realm } from '../../src/run/realm.ts';
 import type { RunError } from '../../src/run/records.ts';
 
 /**
@@ -16,8 +17,20 @@ const noop = async () => {};
 /** The test module every realm here stands for; `collectModule` never reads it. */
 const FILE = { file: 'tests/realm.e2e.ts', absolutePath: '/project/tests/realm.e2e.ts' };
 
-function manager(runErrors: RunError[] = [], timeouts = { timeout: 1000, cleanupTimeout: 1000 }) {
-  return new RealmManager({ targetName: 'web', platform: 'web', runErrors, redactTitle: (title) => title, ...timeouts });
+/** A hook session that hands out `platform` alone and starts nothing. */
+const openPlatformOnly: OpenSuiteHookSession = () => ({
+  fixtures: { platform: 'web' } as never,
+  enter: () => ({ cancel: () => {}, leave: noop }),
+  close: noop,
+});
+
+function manager(
+  runErrors: RunError[] = [],
+  timeouts = { timeout: 1000, cleanupTimeout: 1000 },
+  openHookSession = openPlatformOnly,
+  interruptSignal = new AbortController().signal,
+) {
+  return new RealmManager({ targetName: 'web', runErrors, redactTitle: (title) => title, openHookSession, interruptSignal, ...timeouts });
 }
 
 /** The pairs still to run, as `leaveFinished` sees them: only the title path matters here. */
@@ -211,5 +224,115 @@ describe('realm hook lifecycle', () => {
       ['afterAll', 'file'],
     ]);
     expect(runErrors[1]!.error.message).toContain('afterAll hook timed out');
+  });
+
+  it('serves a scope\'s hooks from one hook session, each hook in a turn of its own, and closes it after a failing hook', async () => {
+    const log: string[] = [];
+    const runErrors: RunError[] = [];
+    const realms = manager(runErrors, undefined, (phase) => {
+      log.push(`open:${phase}`);
+      return {
+        fixtures: { platform: 'web' } as never,
+        enter: () => {
+          log.push('enter');
+          return { cancel: () => void log.push('cancel'), leave: async () => void log.push('leave') };
+        },
+        close: async () => void log.push(`close:${phase}`),
+      };
+    });
+    const realm = realms.adopt(
+      await collectModule(async () => {
+        test.describe('group', () => {
+          test.beforeAll(() => void log.push('beforeAll:1'));
+          test.beforeAll(() => {
+            throw new Error('setup exploded');
+          });
+          test.beforeAll(() => void log.push('never runs'));
+          test.afterAll(() => void log.push('afterAll'));
+          test('t', noop);
+        });
+        test.describe('plain', () => {
+          test('no hooks', noop);
+        });
+      }),
+      FILE,
+    );
+    expect((await realms.enterScopes(realm, registered(realm, 'group', 't')))?.message).toContain('setup exploded');
+    await realms.leaveFinished(realm, remaining(realm, ['plain', 'no hooks']));
+    // A scope without suite hooks opens nothing.
+    expect(await realms.enterScopes(realm, registered(realm, 'plain', 'no hooks'))).toBeUndefined();
+    expect(log).toEqual([
+      'open:beforeAll', 'enter', 'beforeAll:1', 'leave', 'enter', 'leave', 'close:beforeAll',
+      'open:afterAll', 'enter', 'afterAll', 'leave', 'close:afterAll',
+    ]);
+    expect(runErrors.map((entry) => [entry.error.phase, entry.error.scopeId, entry.error.category])).toEqual([['beforeAll', 'group', 'test']]);
+  });
+
+  it('cancels a hook that overruns, fails a hook that left a step running, and keeps an infrastructure failure\'s category', async () => {
+    const runErrors: RunError[] = [];
+    const cancelled: string[] = [];
+    let turns = 0;
+    const realms = manager(runErrors, { timeout: 20, cleanupTimeout: 20 }, (phase) => {
+      if (phase === 'afterAll') throw new InfrastructureError('LAUNCH_TIMEOUT', 'starting an attempt timed out');
+      return {
+        fixtures: { platform: 'web' } as never,
+        enter: () => {
+          const turn = (turns += 1);
+          return {
+            cancel: () => void cancelled.push(`turn ${turn}`),
+            leave: async () => {
+              if (turn === 2) throw new TestError('STEP_NOT_AWAITED', 'the beforeAll hook returned before app.open "/" finished');
+            },
+          };
+        },
+        close: noop,
+      };
+    });
+    const realm = realms.adopt(
+      await collectModule(async () => {
+        test.describe('slow', () => {
+          test.beforeAll(() => new Promise<void>(() => {}));
+          test('t', noop);
+        });
+        test.describe('unawaited', () => {
+          test.beforeAll(noop);
+          test.afterAll(noop);
+          test('u', noop);
+        });
+      }),
+      FILE,
+    );
+    expect((await realms.enterScopes(realm, registered(realm, 'slow', 't')))?.message).toContain('beforeAll hook timed out');
+    expect(cancelled).toEqual(['turn 1']);
+    expect((await realms.enterScopes(realm, registered(realm, 'unawaited', 'u')))?.message).toContain('returned before app.open');
+    await realms.leave(realm);
+    expect(runErrors.map((entry) => [entry.error.phase, entry.error.scopeId, entry.error.code, entry.error.category])).toEqual([
+      ['beforeAll', 'slow', 'HOOK_FAILED', 'test'],
+      ['beforeAll', 'unawaited', 'HOOK_FAILED', 'test'],
+      ['afterAll', 'unawaited', 'HOOK_FAILED', 'infrastructure'],
+    ]);
+  });
+
+  it('adds no run error for a hook whose fixture call the run\'s interrupt cancelled, and keeps its scope closed', async () => {
+    const runErrors: RunError[] = [];
+    const interrupt = new AbortController();
+    const realms = manager(runErrors, undefined, undefined, interrupt.signal);
+    const realm = realms.adopt(
+      await collectModule(async () => {
+        test.describe('group', () => {
+          test.beforeAll(() => {
+            throw new InfrastructureError('CANCELLED', 'operation cancelled');
+          });
+          test('t', noop);
+        });
+      }),
+      FILE,
+    );
+    interrupt.abort({ cause: 'max-failures', reason: 'stopped after 1 failure' });
+    expect(await realms.enterScopes(realm, registered(realm, 'group', 't'))).toMatchObject({
+      code: 'INTERRUPTED',
+      message: 'run interrupted in phase beforeAll: stopped after 1 failure',
+    });
+    expect(runErrors).toEqual([]);
   });
 });

@@ -5,6 +5,7 @@ import { PollScope, runInPollScope } from '../expect/poll-scope.ts';
 import {
   classifyError,
   E2EError,
+  InfrastructureError,
   serializeError,
   TestTimeoutError,
   type SerializedError,
@@ -27,6 +28,7 @@ import {
 import type { TestTargetPair } from '../collect/select.ts';
 import type { SuiteFixtures } from '../types.ts';
 import type { RunError } from './records.ts';
+import { interruptedInPhase } from './units.ts';
 
 /**
  * A suite scope of one realm: a describe group, or `undefined` for the file
@@ -63,24 +65,24 @@ export function findRegistered(realm: Realm, test: CollectedTest): RegisteredTes
  * caller cancel what it started. The hook owns the `expect.poll` calls it
  * starts: one still running when it returns fails it with
  * `STEP_NOT_AWAITED` and is cancelled, and one left by a hook that failed is
- * cancelled beside that failure.
+ * cancelled beside that failure. `starting` names a start the hook may be
+ * waiting on (a hook attempt's), whose time is not the hook's.
  */
 export async function runHook(
   label: string,
   run: () => void | Promise<void>,
   timeoutMs: number,
   onTimeout?: () => void,
+  starting?: () => Promise<unknown> | undefined,
 ): Promise<void> {
   const polls = new PollScope(`the ${label}`);
+  const work = runInPollScope(polls, () => Promise.resolve().then(run));
+  const overrun = (): Error => {
+    onTimeout?.();
+    return new TestTimeoutError(`${label} timed out`);
+  };
   try {
-    await withTimeout(
-      runInPollScope(polls, () => Promise.resolve().then(run)),
-      timeoutMs,
-      () => {
-        onTimeout?.();
-        return new TestTimeoutError(`${label} timed out`);
-      },
-    );
+    await (starting === undefined ? withTimeout(work, timeoutMs, overrun) : withTimeoutAfter(starting, work, timeoutMs, overrun));
   } catch (cause) {
     polls.close();
     throw cause;
@@ -89,9 +91,79 @@ export async function runHook(
   if (notAwaited !== undefined) throw notAwaited;
 }
 
+/**
+ * `withTimeout` for a hook that may be waiting on a start: a timer that
+ * fires while `starting()` names one in flight waits for it, then runs again
+ * in full. The start has a bound of its own (`launchTimeout`), so a slow one
+ * fails as a launch, never as the hook's timeout.
+ */
+function withTimeoutAfter<T>(
+  starting: () => Promise<unknown> | undefined,
+  work: Promise<T>,
+  timeoutMs: number,
+  onTimeout: () => Error,
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    let timer: NodeJS.Timeout | undefined;
+    let settled = false;
+    const arm = (): void => {
+      if (settled) return;
+      timer = setTimeout(() => {
+        const start = starting();
+        if (start === undefined) reject(onTimeout());
+        else void start.then(arm, arm);
+      }, timeoutMs);
+    };
+    arm();
+    void work.then(resolve, reject).finally(() => {
+      settled = true;
+      clearTimeout(timer);
+    });
+  });
+}
+
+/** The fixtures one scope's suite hooks run with, and how to give back what they started. */
+export interface SuiteHookSession {
+  readonly fixtures: SuiteFixtures;
+  /**
+   * The start of what serves the fixtures (a hook attempt's launch) while it
+   * is in flight. A hook's timeout does not run while it waits on one.
+   */
+  starting?(): Promise<unknown> | undefined;
+  /**
+   * Gives the next hook a budget of its own, as each `afterEach` hook has, so
+   * a slow hook never spends the next one's.
+   */
+  enter(timeoutMs: number): SuiteHookTurn;
+  /** Ends what the hooks started (a hook attempt); a failure here is the hooks' failure. */
+  close(): Promise<void>;
+}
+
+/** One suite hook's turn on a hook session. */
+export interface SuiteHookTurn {
+  /** Cancels the operations the hook has running; called when the hook overruns its budget. */
+  cancel(): void;
+  /**
+   * Called once the hook returned or failed. Rejects with `STEP_NOT_AWAITED`
+   * for a step the hook started and never awaited, which it cancels.
+   */
+  leave(): Promise<void>;
+}
+
+/**
+ * Hands out the fixtures for one scope's `beforeAll` or `afterAll` hooks.
+ * Between test attempts the runner serves them from a hook attempt of its
+ * own, which starts at the hooks' first step; a caller whose session is
+ * already open (a serial group, a hosted test) serves them from it.
+ */
+export type OpenSuiteHookSession = (phase: 'beforeAll' | 'afterAll') => SuiteHookSession;
+
 export interface RealmManagerOptions {
   readonly targetName: string;
-  readonly platform: string;
+  /** Where suite hooks get their fixtures when the caller names no other source. */
+  readonly openHookSession: OpenSuiteHookSession;
+  /** The run's interrupt: a hook fixture call it cancelled is not a hook failure. */
+  readonly interruptSignal: AbortSignal;
   readonly timeout: number;
   readonly cleanupTimeout: number;
   /** Run-level error sink for hook failures. */
@@ -148,22 +220,27 @@ export class RealmManager {
     return kind === 'beforeEach' ? ordered : ordered.toReversed();
   }
 
-  /** Enters suite scopes for a test, running pending beforeAll hooks. */
-  async enterScopes(realm: Realm, test: RegisteredTest): Promise<SerializedError | undefined> {
+  /**
+   * Enters suite scopes for a test, running pending beforeAll hooks. Each
+   * scope with hooks opens one hook session for all of them; `open` overrides
+   * the default source when the caller already holds a session.
+   */
+  async enterScopes(
+    realm: Realm,
+    test: RegisteredTest,
+    open?: OpenSuiteHookSession,
+  ): Promise<SerializedError | undefined> {
     for (const scope of scopeChainFor(test)) {
       const entered = realm.entered.get(scope);
       if (entered !== undefined) {
         if (entered.failed !== undefined) return entered.failed;
         continue;
       }
+      const hooks = this.scopeHooks<SuiteHook>(realm, scope, 'beforeAll');
       let failed: SerializedError | undefined;
-      for (const hook of this.scopeHooks<SuiteHook>(realm, scope, 'beforeAll')) {
-        try {
-          await runHook(`${hook.kind} hook`, () => hook.fn(this.suiteFixtures()), this.options.timeout);
-        } catch (cause) {
-          failed = this.hookFailed(realm, scope, 'beforeAll', cause);
-          break;
-        }
+      if (hooks.length > 0) {
+        const [cause] = await this.runSuiteHooks(hooks, 'beforeAll', this.options.timeout, open);
+        if (cause !== undefined) failed = this.hookFailed(realm, scope, 'beforeAll', cause.error);
       }
       realm.entered.set(scope, { failed });
       if (failed !== undefined) return failed;
@@ -185,6 +262,7 @@ export class RealmManager {
   async leaveFinished(
     realm: Realm,
     remaining: readonly TestTargetPair[],
+    open?: OpenSuiteHookSession,
   ): Promise<SerializedError | undefined> {
     let failure: SerializedError | undefined;
     const needed = new Set<Scope>();
@@ -196,36 +274,93 @@ export class RealmManager {
     for (const scope of [...realm.entered.keys()].toReversed()) {
       if (needed.has(scope)) continue;
       realm.entered.delete(scope);
-      for (const hook of this.scopeHooks<SuiteHook>(realm, scope, 'afterAll').toReversed()) {
-        try {
-          await runHook(`${hook.kind} hook`, () => hook.fn(this.suiteFixtures()), this.options.cleanupTimeout);
-        } catch (cause) {
-          const failed = this.hookFailed(realm, scope, 'afterAll', cause);
-          failure ??= failed;
-        }
+      const hooks = this.scopeHooks<SuiteHook>(realm, scope, 'afterAll').toReversed();
+      if (hooks.length === 0) continue;
+      for (const cause of await this.runSuiteHooks(hooks, 'afterAll', this.options.cleanupTimeout, open)) {
+        const failed = this.hookFailed(realm, scope, 'afterAll', cause.error);
+        failure ??= failed;
       }
     }
     return failure;
   }
 
   /** Closes every entered scope: the realm ends here. */
-  async leave(realm: Realm): Promise<void> {
-    await this.leaveFinished(realm, []);
+  async leave(realm: Realm, open?: OpenSuiteHookSession): Promise<void> {
+    await this.leaveFinished(realm, [], open);
+  }
+
+  /**
+   * Runs one scope's suite hooks of one phase in one hook session, each
+   * within a budget of `timeoutMs`, and returns their failures in order. A
+   * `beforeAll` failure ends the scope's hooks; every `afterAll` hook runs
+   * regardless. The session closes either way, and a session that would not
+   * open or close is a failure too.
+   */
+  private async runSuiteHooks(
+    hooks: readonly SuiteHook[],
+    phase: 'beforeAll' | 'afterAll',
+    timeoutMs: number,
+    open: OpenSuiteHookSession = this.options.openHookSession,
+  ): Promise<{ error: unknown }[]> {
+    let session: SuiteHookSession;
+    try {
+      session = open(phase);
+    } catch (error) {
+      return [{ error }];
+    }
+    const failures: { error: unknown }[] = [];
+    for (const hook of hooks) {
+      const turn = session.enter(timeoutMs);
+      // The hook's own failure is the verdict; a step it never awaited fails one that returned.
+      let failure: { error: unknown } | undefined;
+      try {
+        await runHook(`${hook.kind} hook`, () => hook.fn(session.fixtures), timeoutMs, turn.cancel, () => session.starting?.());
+      } catch (error) {
+        failure = { error };
+      }
+      try {
+        await turn.leave();
+      } catch (error) {
+        failure ??= { error };
+      }
+      if (failure === undefined) continue;
+      failures.push(failure);
+      if (phase === 'beforeAll') break;
+    }
+    try {
+      await session.close();
+    } catch (error) {
+      failures.push({ error });
+    }
+    return failures;
   }
 
   /**
    * Records a suite hook failure as a run error. No test result carries it,
    * so it names its scope the way results do, for `--last-failed` to run
-   * the tests in it again.
+   * the tests in it again. A hook the infrastructure failed (an engine that
+   * would not boot, a hook attempt that would not start or end) keeps that
+   * category, and with it exit code 3, as the same failure in a test does.
+   * A fixture call the run's interrupt cancelled is the interrupt's, as it is
+   * in a test: the scope stays closed to its tests, and no run error is added.
    */
   private hookFailed(realm: Realm, scope: Scope, phase: 'beforeAll' | 'afterAll', cause: unknown): SerializedError {
+    const classified = classifyError(cause);
+    const context = {
+      phase,
+      scopeId: scopeId(scope),
+      scope: { file: realm.file, targetId: this.options.targetName, titlePath: scope === undefined ? [] : groupTitles(scope) },
+    };
+    const { interruptSignal } = this.options;
+    if (interruptSignal.aborted && classified.code === 'CANCELLED') {
+      return serializeError(new E2EError('interrupted', 'INTERRUPTED', interruptedInPhase(interruptSignal, phase)), context);
+    }
+    const message = `${phase} failed: ${classified.message}`;
     const failed = serializeError(
-      new E2EError('test', 'HOOK_FAILED', `${phase} failed: ${classifyError(cause).message}`, { cause }),
-      {
-        phase,
-        scopeId: scopeId(scope),
-        scope: { file: realm.file, targetId: this.options.targetName, titlePath: scope === undefined ? [] : groupTitles(scope) },
-      },
+      classified.category === 'infrastructure'
+        ? new InfrastructureError('HOOK_FAILED', message, { cause })
+        : new E2EError('test', 'HOOK_FAILED', message, { cause }),
+      context,
     );
     this.options.runErrors.push({ error: failed });
     return failed;
@@ -240,10 +375,6 @@ export class RealmManager {
     return realm.registration.hooks.filter(
       (hook): hook is Hook => hook.kind === kind && hook.group === scope,
     );
-  }
-
-  private suiteFixtures(): SuiteFixtures {
-    return { platform: this.options.platform };
   }
 }
 

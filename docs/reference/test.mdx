@@ -286,17 +286,40 @@ Registers a suite-instance setup hook. It runs once per suite instance, on
 first entry into the scope.
 
 ```ts
-beforeAll(async ({ platform }) => {
-  await seedDatabase(platform);
+import { test } from '@e2e-dev/mobile';
+
+test.beforeAll(async ({ device }) => {
+  await device.setPermission('camera', 'deny');
 });
 ```
 
-The module is re-imported for every retry, serial group, and setup test, so
-`beforeAll` runs again in each. Its only fixture is `platform`.
+- Receives `app`, `screen`, `platform`, and the engine's fixture (`device`
+  or `browser`). `agent` and `test.extend()` fixtures belong to one test:
+  `agent` throws, and a `test.extend()` fixture is a type error.
+- The hooks of one scope share a hook attempt, separate from every test's.
+  It starts at the first call on a fixture, so a hook that makes none (a
+  database seed) starts no browser context and boots no device. Reading a
+  handle such as `device.unstable_raw` is not a call and starts nothing.
+- State reaches the tests only where the engine keeps it between attempts.
+  A device keeps its permissions, keychain, and installed apps. A browser
+  gives every attempt a new context, so sign in once with
+  [`test.setup`](#test-setup).
+- In a [serial group](#serial) the hooks run on the group's session, so the
+  first member starts on the screen `beforeAll` left.
+- Each hook has the config `timeout`. The hook attempt's start is not
+  counted: [`launchTimeout`](/reference/config#launchtimeout) bounds it.
+- A run interrupt cancels a hook's fixture calls. That is not a
+  `HOOK_FAILED`.
+- A screenshot or download a hook keeps is written to
+  `<output>/results/hooks-<phase>-<id>/`. It is not in the report and is not
+  sent to the artifact store. In a serial group it is filed under the
+  group's attempt.
+- The module is re-imported for every retry, serial group, and setup test,
+  so `beforeAll` runs again in each.
 
 | Throws | When |
 | --- | --- |
-| `HOOK_FAILED` | The hook throws. The suite's tests are skipped with cause `hook-failed`. Inside a serial group it skips every remaining member and fails the group without a retry. |
+| `HOOK_FAILED` | The hook throws, or returns while a step it started is still running. The suite's tests are skipped with cause `hook-failed`. Inside a serial group it skips every remaining member and fails the group without a retry. The category is `infrastructure` (exit code 3) when the engine could not start or end the hook attempt. |
 
 #### `afterAll`
 
@@ -304,14 +327,22 @@ Registers a suite-instance teardown hook. It runs as soon as the scope's last
 test in the realm is done.
 
 ```ts
-afterAll(async () => {
-  await resetDatabase();
+import { test } from '@e2e-dev/mobile';
+
+test.afterAll(async ({ device }) => {
+  await device.setPermission('camera', 'reset');
 });
 ```
 
-A realm that a failure discards runs `afterAll` for every scope whose
-`beforeAll` started. Its only fixture is `platform`. A throw is `HOOK_FAILED`,
-as for [`beforeAll`](#beforeall).
+- Receives the fixtures [`beforeAll`](#beforeall) receives, in a hook
+  attempt of its own.
+- A realm that a failure discards runs `afterAll` for every scope whose
+  `beforeAll` started.
+- Each hook has its own `cleanupTimeout` budget, and the interrupt and the
+  hook attempt's start are treated as in [`beforeAll`](#beforeall).
+- A worker that is killed runs no `afterAll`. Put a reset the next test
+  depends on in `beforeEach` or `beforeAll`.
+- A throw is `HOOK_FAILED`, as for [`beforeAll`](#beforeall).
 
 #### Blocked event loop
 
@@ -661,7 +692,8 @@ hook finishes.
 ### `TestAPI`
 
 ```ts
-export interface TestAPI<Fixtures = TestFixtures> {
+/** `Fixtures` are what a test and its per-test hooks get, `Suite` what its suite hooks get. */
+export interface TestAPI<Fixtures = TestFixtures, Suite = SuiteFixtures> {
   /** Registers one test synchronously during module evaluation. */
   (title: string, fn: TestFn<Fixtures>): TestCase;
   /** Registers one configured test synchronously during module evaluation. */
@@ -704,7 +736,7 @@ export interface TestAPI<Fixtures = TestFixtures> {
    *
    *   export const test = base.extend<{ device: Device }>();
    */
-  extend<Extra>(): TestAPI<Fixtures & Extra>;
+  extend<Extra>(): TestAPI<Fixtures & Extra, Suite & Extra>;
   /**
    * Returns a new `test` whose registrations carry these fixture
    * definitions on top of the ones it already had. Each attempt sets them up
@@ -719,7 +751,7 @@ export interface TestAPI<Fixtures = TestFixtures> {
    *     },
    *   });
    */
-  extend<Extra>(fixtures: FixtureDefinitions<Fixtures, Extra>): TestAPI<Fixtures & Extra>;
+  extend<Extra>(fixtures: FixtureDefinitions<Fixtures, Extra>): TestAPI<Fixtures & Extra, Suite>;
   /** Declares a group synchronously. */
   describe<Result>(title: string, body: SynchronousBody<Result>): void;
   /** Declares a configured group synchronously. */
@@ -732,10 +764,10 @@ export interface TestAPI<Fixtures = TestFixtures> {
   beforeEach(fn: TestHookFn<Fixtures>): void;
   /** Registers a test-attempt teardown hook. */
   afterEach(fn: TestHookFn<Fixtures>): void;
-  /** Registers a suite-instance setup hook. */
-  beforeAll(fn: SuiteHookFn): void;
-  /** Registers a suite-instance teardown hook. */
-  afterAll(fn: SuiteHookFn): void;
+  /** Registers a suite-instance setup hook, run in a hook attempt of its own. */
+  beforeAll(fn: SuiteHookFn<Suite>): void;
+  /** Registers a suite-instance teardown hook, run in a hook attempt of its own. */
+  afterAll(fn: SuiteHookFn<Suite>): void;
 }
 
 export const test: TestAPI;
@@ -830,7 +862,17 @@ export interface SetupFixtures extends TestFixtures {
   readonly session: SetupSession;
 }
 
+/**
+ * What `beforeAll` and `afterAll` receive: the target's own surfaces, over a
+ * hook attempt of their own. No `agent`, and no `test.extend()` fixtures:
+ * those belong to one test. An engine's `extend<{ device: Device }>()` adds
+ * its fixtures here too.
+ */
 export interface SuiteFixtures {
+  /** App lifecycle: open, restart, clear state, back, screenshot, recording. */
+  readonly app: App;
+  /** Semantic queries and the actions on their matches. */
+  readonly screen: Screen;
   /** The target's platform label: `web`, `ios`, `android`, or an engine's own string. */
   readonly platform: string;
 }
@@ -876,7 +918,7 @@ export type SetupFn<Fixtures = TestFixtures> = (
 export type TestHookFn<Fixtures = TestFixtures> = (fixtures: Fixtures) => void | Promise<void>;
 
 /** A `beforeAll` or `afterAll` body. */
-export type SuiteHookFn = (fixtures: SuiteFixtures) => void | Promise<void>;
+export type SuiteHookFn<Fixtures = SuiteFixtures> = (fixtures: Fixtures) => void | Promise<void>;
 
 /** A `describe` body. An async body is a type error. */
 export type SynchronousBody<Result> = Extract<Result, PromiseLike<unknown>> extends never
