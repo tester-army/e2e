@@ -427,6 +427,7 @@ await screen.doubleTapAt({ x: 120, y: 240 }, { timeout: 1_000 });
 
 - Use viewport coordinates in the same units as `boundingBox()`.
 - The page or device decides what receives the gesture. On web, this sends a primary-button double-click.
+- On a device, this sends two presses at the point, as `doubleTap()` does on a node. See [Known device limitations](/mobile#known-device-limitations) for their timing on iOS.
 - Defaults to `config.actionTimeout`.
 
 | Throws | When |
