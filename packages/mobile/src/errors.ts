@@ -8,7 +8,8 @@
  * | SESSION_NOT_FOUND, or a session-or-device-selector refusal  | INVALID_STATE                |
  * | UNSUPPORTED_OPERATION, NOT_IMPLEMENTED, UNSUPPORTED_PLATFORM | UNSUPPORTED_CAPABILITY      |
  * | "not supported on this device" under any code                | UNSUPPORTED_CAPABILITY       |
- * | a stale-ref refusal by `details.reason` (action paths only)  | NODE_STALE (retryable)        |
+ * | a stale-ref refusal, `dispatched: no` (action paths only)   | NODE_STALE (retryable)        |
+ * | a stale-ref refusal with dispatch unproven (action paths)   | ACTION_MAY_HAVE_COMMITTED     |
  * | target_still_moving with `details.dispatched: no`            | NODE_STALE (retryable)        |
  * | the iOS runner busy, wedged, or past its watchdog           | ENGINE_FAILURE, naming the   |
  * | a snapshot the iOS runner acquired but could not present    |   runner and the recovery    |
@@ -280,17 +281,32 @@ export async function runCommand<T>(label: string, work: () => Promise<T>, signa
 
 /**
  * Like translateError, but a ref agent-device refused as stale becomes
- * retryable `NODE_STALE`: nothing was dispatched, so the harness may
- * re-observe and re-resolve the node instead of failing the action. Existing
- * stale-ref reasons are sufficient on their own: Android dialog recovery can
- * mark a refused drag as `dispatched: unknown`. A `target_still_moving` refusal
- * additionally requires `dispatched: no`; missing or unknown dispatch is not retryable.
+ * retryable `NODE_STALE` only when it proves nothing was dispatched
+ * (`details.dispatched: 'no'`): the ref was refused at admission, before the
+ * gesture, so the harness may re-observe and re-resolve the node instead of
+ * failing the action. A stale-ref refusal that cannot prove that is
+ * `ACTION_MAY_HAVE_COMMITTED`: the gesture may already have landed (a tap
+ * that opened a drawer, with the stale report arriving during the post-tap
+ * settle), so the harness must not send it again. That includes the Android
+ * dialog-recovery shape, a drag refused before the gesture but reported as
+ * `dispatched: 'unknown'`: the engine cannot prove the drag never ran, so it
+ * fails closed the same way. A `target_still_moving` refusal additionally
+ * requires `dispatched: no`; missing or unknown dispatch is not retryable.
  */
 export function staleOr(cause: unknown, operation: string, where?: string): Error {
   if (isClassified(cause)) return cause;
   const { reason, dispatched } = details(cause);
-  if ((typeof reason === 'string' && STALE_REF_REASONS.has(reason)) ||
-      (reason === 'target_still_moving' && dispatched === 'no')) {
+  if (typeof reason === 'string' && STALE_REF_REASONS.has(reason)) {
+    if (dispatched === 'no') {
+      return new EngineError('NODE_STALE', `${operation}: ${message(cause)}`, { retryable: true, cause });
+    }
+    return new EngineError(
+      'ACTION_MAY_HAVE_COMMITTED',
+      `${operation}: ${message(cause)}; the action may already have reached the device, so it was not sent again`,
+      { retryable: false, cause },
+    );
+  }
+  if (reason === 'target_still_moving' && dispatched === 'no') {
     return new EngineError('NODE_STALE', `${operation}: ${message(cause)}`, { retryable: true, cause });
   }
   return translateError(cause, operation, where);
