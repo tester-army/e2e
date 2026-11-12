@@ -821,7 +821,7 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
     .option('--target <id>', 'the target to explore (default: the first configured target)')
     .option('--agent <name>', 'the configured agent to explore with (default: agents.default)')
     .option('--session <name>', 'start signed in: run the setup test that saves this session, then explore with it restored')
-    .option('--changed-since <ref>', 'explore the change since the merge base of this git ref, such as origin/main: the planner reads the commit messages and their diff, and the names of files no commit changed')
+    .option('--changed-since <ref>', 'explore the change since the merge base of this git ref, such as origin/main')
     .optionsGroup('Budgets:')
     .option(
       '--max-steps <n>',

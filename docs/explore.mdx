@@ -115,22 +115,7 @@ reaches the model. See
 
 Add `--changed-since <ref>` to explore what the branch changed. The planner
 reads the commit messages and the committed diff since the merge base with
-the ref, and spends its steps on the screens that the change can affect. A
-file no commit changed is listed by name only. With no goal, the goal is
-`Explore what this change affects and find bugs in it`.
-
-Only a defect the change can cause is an `issue`: one in the code it adds,
-edits, or removes, or in a flow that runs that code. A defect elsewhere in
-the app was there before the change, so it's reported as a `warning` and
-doesn't fail the run. This holds for a goal you write too.
-
-With no goal given, the planner can skip a change no user can see, such as
-docs, tests, or stories only, before the first step. It says why, the run
-ends `skipped` in the report, and it passes. It skips only when it sees the
-whole change: every file committed, no patch cut and no line shortened to
-fit, and a working tree that matches HEAD. A goal you write is never
-skipped. The branch's own commit messages and code can sway the call, so to
-tell a skip from a clean exploration, read `run.explore.ended`.
+the ref. It spends its steps on the screens that the change can affect.
 
 <CodeGroup>
 ```bash npm
@@ -145,6 +130,21 @@ pnpm exec e2e explore --changed-since origin/main
 bunx e2e explore --changed-since origin/main
 ```
 </CodeGroup>
+
+Only a defect the change can cause is an `issue`. A defect elsewhere in the
+app is a `warning` and doesn't fail the run.
+
+With no goal, the goal is `Explore what this change affects and find bugs in
+it`. The planner can then skip a change no user can see, such as docs or
+tests only. The run ends `skipped` and passes. It skips only when it read
+the whole change. A large diff, a binary file, or an uncommitted file rules
+a skip out.
+
+The branch's own commit messages and code can sway the call. To tell a skip
+from a clean exploration, read `run.explore.ended`.
+
+For what the model reads, see
+[Security](/reference/security#mcp-and-explore).
 
 On GitHub Actions, run it in its own job on `pull_request`. With the
 [GitHub reporter](/github) in the config, the findings go to their own pull
@@ -174,12 +174,11 @@ jobs:
 ```
 
 `fetch-depth: 0` puts the base branch in the checkout. Without it, the run
-fails with `INVALID_CHANGED_SINCE`. Keep the working tree clean after install
-and build: ignore `.e2e/` and build output, and don't let the install
-rewrite the lockfile. Run e2e with `npx`, not `pnpm exec`: where pnpm comes
-from npm, as with `pnpm/action-setup`, `pnpm exec` rewrites `pnpm-lock.yaml`.
-A file the job changes or adds is part of the change the planner reads by
-name, and the run is never skipped.
+fails with `INVALID_CHANGED_SINCE`.
+
+Keep the working tree clean after install and build, or the run is never
+skipped. Ignore `.e2e/` and build output. Run e2e with `npx`, not
+`pnpm exec`, which can rewrite `pnpm-lock.yaml`.
 
 <Warning>
 Never run it on `pull_request_target`. That run holds your secrets, and the
