@@ -465,8 +465,9 @@ mobile({ platform: 'ios', device: ['iPhone 17', 'iPhone 17 Pro'] })
 ```
 
 Without `device`, the engine uses booted devices, up to the worker limit.
-If none are booted, it boots a shut-down one: newest OS first, then name
-order. Two workers never drive the same device.
+A connected iPhone or iPad counts as booted. If none are booted, it boots
+a shut-down one: on iOS an iPhone before an iPad, then the newest OS, then
+name order. Two workers never drive the same device.
 
 ## Agent tools
 
