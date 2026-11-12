@@ -465,7 +465,23 @@ order. Two workers never drive the same device.
 ### Add the web to a React Native app
 
 A React Native app that builds for the web can run the same tests in a
-[browser](/web). Add a web target next to the device targets:
+[browser](/web). Install the web engine:
+
+<CodeGroup>
+```bash npm
+npm install -D @e2e-dev/web
+```
+
+```bash pnpm
+pnpm add -D @e2e-dev/web
+```
+
+```bash bun
+bun add -d @e2e-dev/web
+```
+</CodeGroup>
+
+Then add a web target next to the device targets:
 
 <Video>
   <video src="/images/cross-platform.mp4" aria-label="One Expo app on an Android emulator, an iPhone simulator, and in a browser, while the terminal runs the same tests on the android, ios, and web targets." muted loop playsInline controls />
