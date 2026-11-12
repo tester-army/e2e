@@ -53,7 +53,7 @@ import { copyExample, ExampleCopyCancelled, ExampleDownloadError, findExample, i
 import { DEFAULT_ENDPOINT, GATEWAYS, getGatewayPreset, validateEndpoint, type GatewayId } from './init/gateways.ts';
 import { isLoopbackHost } from '../internal/urls.ts';
 import { findRegisteredMcpFiles, linkOnPath, MCP_LOCATIONS, planMcpRegistration } from './init/mcp-config.ts';
-import { addDependencies, addScripts, describeManifestError, readPackage, serializePackage } from './init/package.ts';
+import { addDependencies, addScripts, declaresDependency, describeManifestError, readPackage, serializePackage } from './init/package.ts';
 import { createScaffold, type ScaffoldModel } from './init/scaffold.ts';
 import { MISSING_SKILL_MESSAGE, readSkillFiles } from './skill.ts';
 import { playWordmark } from './wordmark.ts';
@@ -377,7 +377,10 @@ export async function init(root: string, options: InitOptions = {}): Promise<Ini
   }
 
   const repositoryRoot = findRepositoryRoot(cwd, root);
-  const engineInstalled = hasDependency(manifest, '@e2e-dev/web') || hasDependency(manifest, '@e2e-dev/mobile');
+  // A new config's engines are the ones just chosen; an existing config's are the ones its package.json declares.
+  const engineInstalled = existingConfig === undefined
+    ? engines.length > 0
+    : declaresDependency(manifest, '@e2e-dev/web') || declaresDependency(manifest, '@e2e-dev/mobile');
   // Asked once: a later run finds e2e already running in some service's pipeline and leaves the question out.
   const setUp = CI_SERVICES.some((service) => service.locate(repositoryRoot).existing);
   let ci: CiChoice = 'none';
@@ -505,7 +508,7 @@ export async function init(root: string, options: InitOptions = {}): Promise<Ini
       existingConfig,
       existingConfigText,
       newTargets: engines.map((id) => getEnginePreset(id).platform).map((platform) => ({ name: platform, platform })),
-      dependsOn: (name) => hasDependency(manifest, name),
+      dependsOn: (name) => declaresDependency(manifest, name),
     });
   }
   if (installed !== undefined && (installed.error !== undefined || installed.status !== 0)) {
@@ -549,11 +552,6 @@ export async function init(root: string, options: InitOptions = {}): Promise<Ini
   const appUrl = example === undefined && scaffold.needsAppUrl ? 'APP_URL=http://localhost:3000 ' : '';
   clack.outro(`Next: ${[...before, `${appUrl}${last}`].join(', then ')}`);
   return done('scaffolded', 0);
-}
-
-/** Whether a manifest lists `name` in its dependencies or devDependencies. */
-function hasDependency(manifest: ReturnType<typeof readPackage>['manifest'], name: string): boolean {
-  return [manifest.dependencies, manifest.devDependencies].some((block) => block !== undefined && Object.hasOwn(block, name));
 }
 
 /** The pipeline init writes, and what the user still has to do for it to pass. */
@@ -602,6 +600,8 @@ function planWorkflow(input: {
     ...(nodeMajor === undefined ? {} : { nodeMajor }),
     ...(manager === 'pnpm' && !packageManager.startsWith('pnpm@') ? { pnpmVersion: localPnpmMajor() } : {}),
     yarnBerry: existsSync(path.join(installRoot, '.yarnrc.yml')) || /^yarn@[2-9]/u.test(packageManager),
+    // Bun before 1.2 writes the binary bun.lockb.
+    ...(manager === 'bun' && !existsSync(path.join(installRoot, 'bun.lock')) && existsSync(path.join(installRoot, 'bun.lockb')) ? { lockfile: 'bun.lockb' } : {}),
     secrets,
     jobs: input.jobs,
     ...(input.jobSuffix === undefined ? {} : { jobSuffix: input.jobSuffix }),

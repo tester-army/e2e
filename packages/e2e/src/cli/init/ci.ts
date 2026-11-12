@@ -155,6 +155,8 @@ export interface WorkflowContext {
   readonly pnpmVersion?: string;
   /** Yarn 2 or later, whose frozen install is `--immutable`. */
   readonly yarnBerry?: boolean;
+  /** The lockfile's name when it is not the manager's usual one, such as Bun's older `bun.lockb`. */
+  readonly lockfile?: string;
   /** Environment variables the run reads from repository secrets of the same name. */
   readonly secrets: readonly string[];
   /** The jobs to write, each with the targets it runs. */
@@ -389,7 +391,7 @@ function setBefore(doc: Document, map: YAMLMap, key: string, value: unknown, bef
  */
 function setUpGithubJob(doc: Document, job: YAMLMap, context: WorkflowContext): void {
   const { manager, projectDir, installDir } = context;
-  const lockfile = join(installDir, LOCKFILE[manager]);
+  const lockfile = join(installDir, context.lockfile ?? LOCKFILE[manager]);
   const steps = job.get('steps') as YAMLSeq;
   if (projectDir !== '') setBefore(doc, job, 'defaults', { run: { 'working-directory': projectDir } }, 'steps');
 
@@ -584,7 +586,7 @@ export function renderGitlabPipeline(context: WorkflowContext): string {
     const usesCorepack = (manager === 'pnpm' && context.pnpmVersion === undefined) || (manager === 'yarn' && context.yarnBerry === true);
     job.set('image', `node:${context.nodeMajor ?? DEFAULT_NODE}`);
     if (usesCorepack) (job.get('variables') as YAMLMap).set('COREPACK_ENABLE_DOWNLOAD_PROMPT', '0');
-    (job.getIn(['cache', 'key', 'files']) as YAMLSeq).set(0, join(installDir, LOCKFILE[manager]));
+    (job.getIn(['cache', 'key', 'files']) as YAMLSeq).set(0, join(installDir, context.lockfile ?? LOCKFILE[manager]));
     const cachePaths = job.getIn(['cache', 'paths']) as YAMLSeq;
     if (store === undefined) cachePaths.delete(1);
     else cachePaths.set(1, `${join(installDir, store)}/`);

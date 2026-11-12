@@ -49,6 +49,8 @@ e2e-web:
       - .e2e/report.json
       - .e2e/junit.xml
       - .e2e/results/
+      # The Android job's emulator output, for a boot that fails.
+      - .e2e/emulator.log
     reports:
       junit: .e2e/junit.xml
 

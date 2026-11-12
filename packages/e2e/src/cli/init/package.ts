@@ -39,7 +39,7 @@ export function describeManifestError(cause: unknown): string {
 }
 
 /** True when any dependency section lists `name`, so existing versions and workspace links are kept. */
-function declaresDependency(manifest: PackageManifest, name: string): boolean {
+export function declaresDependency(manifest: PackageManifest, name: string): boolean {
   return [manifest.dependencies, manifest.devDependencies, manifest.peerDependencies, manifest.optionalDependencies]
     .some((block) => block?.[name] !== undefined);
 }

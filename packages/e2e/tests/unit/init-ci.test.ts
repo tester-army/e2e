@@ -159,6 +159,13 @@ describe('renderGithubWorkflow', () => {
     expect(below.uses('oven-sh/setup-bun')?.['with']).toEqual({ 'bun-version-file': 'site/package.json' });
   });
 
+  it('keys the caches on Bun\'s older bun.lockb when that is the lockfile', () => {
+    const workflow = renderGithubWorkflow({ ...base, manager: 'bun', lockfile: 'bun.lockb', jobs: expoJobs });
+    expect(workflow).toContain("hashFiles('bun.lockb')");
+    expect(workflow).not.toContain("hashFiles('bun.lock')");
+    expect((gitlabJob(renderGitlabPipeline({ ...base, manager: 'bun', lockfile: 'bun.lockb' }))['cache'] as Node)['key']).toEqual({ files: ['bun.lockb'] });
+  });
+
   it('keeps a folder name with a space as one value', () => {
     expect(githubJob(renderGithubWorkflow({ ...base, projectDir: 'my app', installDir: 'my app' })).job['defaults']).toEqual({ run: { 'working-directory': 'my app' } });
   });

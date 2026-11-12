@@ -1280,6 +1280,21 @@ describe('e2e init', () => {
       expect(output()).toContain('set device: process.env.E2E_DEVICE in each mobile() target');
     });
 
+    it('asks nothing for a new config with no engine, whatever package.json still lists', async () => {
+      writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ devDependencies: { '@e2e-dev/web': '*' } }));
+      answers.engines = [];
+      vi.mocked(clack.confirm).mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+      expect(await init(dir, { gateway: 'none', skills: [], mcp: [] })).toMatchObject({ exitCode: 0, ci: null });
+      expect(clack.select).not.toHaveBeenCalledWith(expect.objectContaining({ message: 'Add a CI pipeline that runs the tests?' }));
+    });
+
+    it('counts an engine an existing project declares as a peer', async () => {
+      writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ peerDependencies: { '@e2e-dev/web': '*' } }));
+      writeFileSync(path.join(dir, 'e2e.config.ts'), "export default { targets: [{ platform: 'web' }] };\n");
+      await init(dir, { yes: true, ci: 'github-actions' });
+      expect(read(workflow)).toContain('run: npx e2e run --reporter list,junit');
+    });
+
     it('writes no pipeline for a project with neither engine', async () => {
       expect(await init(dir, { yes: true, engines: [], ci: 'github-actions' })).toMatchObject({ exitCode: 0, ci: null });
       expect(existsSync(path.join(dir, '.github'))).toBe(false);
@@ -1430,7 +1445,8 @@ describe('e2e init', () => {
       expect(output()).toContain('The model endpoint is on this machine, so agent steps fail in CI');
     });
 
-    it.skipIf(!symlinks)('writes nothing through a symlinked .github folder', async () => {
+    // A junction needs no symlink privilege on Windows.
+    it.skipIf(!symlinks && process.platform !== 'win32')('writes nothing through a symlinked .github folder', async () => {
       const elsewhere = mkdtempSync(path.join(os.tmpdir(), 'e2e-init-elsewhere-'));
       try {
         symlinkSync(elsewhere, path.join(dir, '.github'), process.platform === 'win32' ? 'junction' : 'dir');
