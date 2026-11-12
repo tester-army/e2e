@@ -125,6 +125,7 @@
           {
             "group": "Extend",
             "pages": [
+              "community-packages",
               "tools",
               "fixtures",
               "executors",
