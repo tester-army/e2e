@@ -571,7 +571,7 @@ describe('tool output sent to the model', () => {
         dictionary: defineTool({ description: 'dictionary', inputSchema: z.object({}), execute: async () => Object.assign(Object.create(null) as Record<string, string>, { value: token }) }, { mutates: false }),
         serialized: defineTool({ description: 'serialized', inputSchema: z.object({}), execute: async () => new URL(`https://example.test/?key=${token}`) }, { mutates: false }),
         customOutput: defineTool({ description: 'custom output', inputSchema: z.object({}), execute: async () => new URL(`https://example.test/?key=${token}`), toModelOutput: ({ output }) => ({ type: 'text', value: `custom ${output.searchParams.get('key')}` }) }, { mutates: false }),
-        bounded: defineTool({ description: 'bounded', inputSchema: z.object({}), execute: async () => 'x'.repeat(16384 - 8) + token }, { mutates: false }),
+        bounded: defineTool({ description: 'bounded', inputSchema: z.object({}), execute: async () => 'x'.repeat(16120) + token + 'x'.repeat(300) }, { mutates: false }),
         structured: defineTool({ description: 'structured', inputSchema: z.object({}), execute: async () => ({ [token]: [token] }) }, { mutates: false }),
         boom: defineTool({ description: 'boom', inputSchema: z.object({}), execute: async () => { throw new Error(`tool rejected ${token}`); } }, { mutates: false }),
       } } },
@@ -579,7 +579,15 @@ describe('tool output sent to the model', () => {
     try {
       expect(resultByTitle(outcome, 'tool redaction').status).toBe('passed');
       expect(loopCalls).toHaveLength(2);
-      const results = loopCalls[1]!.toolResults.join('\n');
+      const outputs = loopCalls[1]!.toolResults;
+      expect(outputs).toContain(JSON.stringify({ '<secret:key>': ['<secret:key>'] }));
+      expect(outputs).toContain(JSON.stringify({ value: '<secret:key>' }));
+      const bounded = outputs[2]!;
+      expect(bounded).toMatch(/^x+/);
+      expect(bounded).toContain('<secret:');
+      expect(bounded).toContain('[tool output truncated:');
+      expect(Buffer.byteLength(bounded)).toBeLessThanOrEqual(16384);
+      const results = outputs.join('\n');
       expect(results).toContain('row <secret:key>');
       expect(results).toContain('tool rejected <secret:key>');
       expect(results).toContain('engine rejected <secret:key>');

@@ -169,6 +169,9 @@ it('redacts and bounds static and runtime skip reasons before reporters see them
     test('failed skip', () => { expect.soft(1).toBe(2); test.skip(true, 'blocked ${token}'); });
   `, `secrets: { key: '${token}' }, reporters: ['json', 'markdown', 'junit'],`);
   expect(exitCode).toBe(1);
+  expect(report.run.results[2]?.skip?.reason).toBeDefined();
+  expect(report.run.results[3]?.skip?.reason).toBeDefined();
+  expect(report.run.results[3]?.attempts[0]?.skip?.reason).toBeDefined();
   for (const result of report.run.results) {
     for (const reason of [result.skip?.reason, ...result.attempts.map(attempt => attempt.skip?.reason)]) {
       if (reason !== undefined) {

@@ -18,7 +18,7 @@ export interface StackFrame {
 /** A position the report keeps: the file relative to the project root, POSIX separators, one-based line and column. */
 export type SourceLocation = StackFrame;
 
-const FRAME_PATTERN = /^((?:file:\/\/)?\/[^):]+):(\d+):(\d+)\)?\s*$/;
+const FRAME_PATTERN = /^((?:file:\/{0,2})?\/[^):]+):(\d+):(\d+)\)?\s*$/;
 
 /**
  * `file` relative to `projectRoot` with POSIX separators, or nothing when the
@@ -54,7 +54,7 @@ export function userFrame(stack: string | undefined, projectRoot: string | undef
     const withoutQuery = location.split('?')[0]!;
     let file: string;
     try {
-      file = withoutQuery.startsWith('file://') ? fileURLToPath(withoutQuery) : withoutQuery;
+      file = withoutQuery.startsWith('file:') ? fileURLToPath(withoutQuery) : withoutQuery;
     } catch {
       continue;
     }

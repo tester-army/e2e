@@ -353,3 +353,21 @@ it('redacts serialized tool values in trace input and output with the live ledge
   expect(step.input).not.toContain(token);
   expect(step.output).not.toContain(token);
 });
+
+it('redacts run names and scope metadata before label truncation', async () => {
+  const token = 'synthetic-metadata-secret-314159';
+  const redact = (text: string): string => text.replaceAll(token, '<secret:key>');
+  const recorder = new AiTraceRecorder(redact);
+  const scope = { ...SCOPE, test: `test ${token}`, testId: `id-${token}`, target: token, agent: token, api: token, label: 'x'.repeat(75) + token };
+  await withAiTraceScope(scope, async () => {
+    await recorder.telemetry.onStart?.({ callId: 'scope', operationId: 'ai.generateText' } as never);
+    await recorder.telemetry.onEnd?.({ callId: 'scope' } as never);
+  });
+  await recorder.telemetry.onStart?.({ callId: 'function', operationId: 'ai.generateText', functionId: `function ${token}` } as never);
+  await recorder.telemetry.onEnd?.({ callId: 'function' } as never);
+  const { runs } = recorder.drain();
+  expect(runs[0]?.e2e).toEqual({ ...scope, test: 'test <secret:key>', testId: 'id-<secret:key>', target: '<secret:key>', agent: '<secret:key>', api: '<secret:key>', label: 'x'.repeat(75) + '<secret:key>' });
+  expect(runs[0]?.function_id).toContain('test <secret:key>');
+  expect(runs[0]?.function_id).not.toContain(token.slice(0, 5));
+  expect(runs[1]?.function_id).toBe('function <secret:key>');
+});

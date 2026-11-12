@@ -300,13 +300,15 @@ export class AiTraceRecorder {
     if (stepScope !== undefined) this.stepRuns.set(stepScope, run);
     const runId = run.runId;
     this.calls.set(event.callId, { runId, openSteps: new Map(), run });
+    const safeScope = redactScope(scope, this.redact);
+    const name = runName(safeScope, event.functionId);
     this.runs.push({
       id: runId,
       started_at: new Date().toISOString(),
       parent_run_id: parent?.runId ?? null,
       parent_step_id: parent?.stepId ?? null,
-      function_id: runName(scope, event.functionId),
-      e2e: scope,
+      function_id: name === null ? null : this.redact(name),
+      e2e: safeScope,
     });
   }
 
@@ -499,6 +501,20 @@ function promptMessages(instructions: unknown, messages: unknown[]): unknown[] {
     system.push(instructions);
   }
   return [...system, ...messages];
+}
+
+/** Redacts attribution before the run name truncates its label. */
+function redactScope(scope: AiTraceScope | undefined, redact: (text: string) => string): AiTraceScope | undefined {
+  if (scope === undefined) return undefined;
+  return {
+    ...scope,
+    test: redact(scope.test),
+    testId: redact(scope.testId),
+    target: redact(scope.target),
+    agent: redact(scope.agent),
+    ...(scope.api === undefined ? {} : { api: redact(scope.api) }),
+    ...(scope.label === undefined ? {} : { label: redact(scope.label) }),
+  };
 }
 
 function runName(scope: AiTraceScope | undefined, functionId: string | undefined): string | null {

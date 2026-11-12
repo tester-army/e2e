@@ -250,8 +250,7 @@ export function projectTools(
             attachScreenshot: (pixels, label) => context.attachScreenshot(pixels, label),
           })),
         );
-        // A text result is bounded like every other thing the model reads;
-        // structured results are the tool's own contract and pass through.
+        // Redact before cutting text so the cut cannot retain a secret prefix.
         const redacted = redactToolResult(context, result);
         return typeof redacted === 'string' ? boundToolOutput(redacted).text : redacted;
       },

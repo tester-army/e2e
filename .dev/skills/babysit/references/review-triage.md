@@ -89,6 +89,9 @@ before any reviewer does.
     that also rewrote another library's code: a Playwright `page.getByRole`
     in a migration sample, a raw `Page` from `surfaceOf`. Grep the diff for
     the old spelling on receivers that are not ours.
+15. Negative-only security tests: dropping a result or reason makes absence
+    and size checks pass. Assert the expected redacted value exists before
+    checking that the secret is absent or the value is bounded.
 
 ## Keeping this file useful
 
