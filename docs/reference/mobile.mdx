@@ -1097,6 +1097,24 @@ On iOS only an `Other` carries one, and the state words after the role set
 Android `WebView` is `document`. Neither is a `getByRole` role: find text
 with `getByText`.
 
+## Visibility
+
+A device node is hidden when the platform reports it off screen, or when the
+soft keyboard covers its centre. So `toBeVisible()`, `scrollUntilVisible`,
+and `getByRole` treat a field under the keyboard like a field scrolled out
+of view. The keyboard's own keys, suggestion bar, and dock stay visible, and
+so does the focused field.
+
+- The keyboard's area is the frame agent-device measures. When a capture has
+  no frame, the area runs from the top of the keyboard in the tree to the
+  bottom of the screen.
+- A container whose centre is under the keyboard stays visible while one of
+  its children shows above it.
+- A node under another view, such as a footer the keyboard lifts, is not
+  hidden. A tap on it fails with `ACTION_FAILED` when agent-device finds the
+  cover, and the message names the cover. A tap under the keyboard fails the
+  same way. Dismiss the cover, or scroll the target clear of it.
+
 ## Video recording cleanup
 
 A pending agent-device screen-recording stop is shared with later callers

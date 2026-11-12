@@ -98,6 +98,29 @@ describe('error translation', () => {
     });
   });
 
+  // Each refusal as agent-device 0.21.36 sends it when something else is drawn where the touch would land.
+  it.each([
+    [
+      'target_covered',
+      '@e12 is covered by another visible element and cannot be tapped safely',
+      'Covered by Toolbar "Back Next". Dismiss or close that element, scroll the target clear of it, or inspect with snapshot/screenshot before retrying.',
+    ],
+    [
+      'tap_keyboard_occludes_target',
+      '@e12 is behind the visible keyboard and cannot be tapped safely',
+      "The visible keyboard covers this target, so the tap would land on a key instead of on it. End editing first: tap the app's own Done/Cancel/close control.",
+    ],
+  ] as const)('fails a tap agent-device refused as %s with NOT_ACTIONABLE and its hint', (reason, text, hint) => {
+    const refused = new AppError('COMMAND_FAILED', text, { reason, hint, dispatched: 'no' });
+    const failure = staleOr(refused, 'perform tap');
+    expect(failure).toMatchObject({ code: 'NOT_ACTIONABLE', retryable: false, cause: refused });
+    expect(failure.message).toBe(`perform tap failed: ${text} Hint: ${hint}`);
+    // A refusal that may have sent input is not the test's to fix.
+    expect(staleOr(new AppError('COMMAND_FAILED', text, { reason, hint, dispatched: 'unknown' }), 'perform tap')).toMatchObject({
+      code: 'ENGINE_FAILURE',
+    });
+  });
+
   it('maps the rest to ENGINE_FAILURE with the text, a ref named in a message without a stale reason included', () => {
     expect(staleOr(new Error('ref @e12 not found in the current snapshot'), 'perform tap')).toMatchObject({
       code: 'ENGINE_FAILURE',
