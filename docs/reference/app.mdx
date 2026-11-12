@@ -87,7 +87,7 @@ await app.restart();
 | Throws | When |
 | --- | --- |
 | `ACTION_FAILED`, `ENGINE_FAILURE` | The operation or the engine failed. |
-| `UNSUPPORTED_CAPABILITY` | No `session.restart`, or a device build not installed yet. |
+| `UNSUPPORTED_CAPABILITY` | No `session.restart`, or on a device with no `app.bundleId`, the build not installed yet. |
 
 ### `clearState`
 
@@ -103,7 +103,7 @@ test.beforeEach(async ({ app }) => {
 | Throws | When |
 | --- | --- |
 | `ACTION_FAILED`, `ENGINE_FAILURE` | The operation or the engine failed. |
-| `UNSUPPORTED_CAPABILITY` | No `session.reset`, or a device build not installed yet. |
+| `UNSUPPORTED_CAPABILITY` | No `session.reset`, or on a device with no `app.bundleId`, the build not installed yet. |
 
 <Warning>
 `clearState` inside a serial group destroys the shared state the group
