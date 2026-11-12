@@ -69,7 +69,7 @@ the other old app options are `INVALID_CONFIG` naming their key under `app`.
 | Option | Meaning |
 | --- | --- |
 | `platform` | `'ios'` or `'android'`. |
-| `device` | Simulator or emulator name or UDID, or a connected phone's name. A list is a pool: one worker per entry, worker slot `n` driving the `n`th. Omitted, every booted device of the platform is the pool, as many as the run has slots, a connected iPhone or iPad included; with none booted, agent-device boots one (on iOS an iPhone over an iPad, then the newest OS, then name order). |
+| `device` | Simulator or emulator name or UDID, or a connected phone's name. A list is a pool: one worker per entry, worker slot `n` driving the `n`th. Omitted, every booted device of the platform is the pool, as many as the run has slots, a paired iPhone or iPad included; with none booted, agent-device boots one (on iOS an iPhone over an iPad over an Apple TV, on Android a phone or tablet over a TV, then the newest OS, then name order). |
 | `session` | agent-device session name, before the worker slot: slot `n` drives its device under `<session>-<n>`, `e2e-<target name>-<n>` by default. One run per session at a time. |
 | `snapshot` | `'full'` (default, includes static text) or `'interactive'` (actionable nodes only). |
 | `settle` | Milliseconds the UI must hold still after an agent action before the agent observes again, default `150`; `false` skips the wait. A test's steps do not settle, except `device.back()`; `expect` verifies their outcome. |
