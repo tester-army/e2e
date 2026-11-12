@@ -16,21 +16,25 @@ A test mixes three types of step:
 With a [custom executor](/executors), `act` and `assert` need no model.
 
 ```ts title="tests/todos.e2e.ts"
-import { test, expect } from 'e2e';
+import { describe, test, expect } from 'e2e';
 
-test('todos survive a filter round-trip', async ({ app, agent, screen }) => {
-  await app.open('/todos');
+describe('todos', () => {
+  test('the Done filter shows only completed todos', async ({ app, agent, screen }) => {
+    await app.open('/todos');
+    await agent.act('add todos "Buy milk" and "Walk the dog"');
+    await agent.act('complete "Buy milk"');
+    await agent.waitFor('"Buy milk" is completed and "Walk the dog" is open');
 
-  await agent.act('add todos "Buy milk" and "Walk the dog"');
-  await expect(screen.getByTestId('todo')).toHaveCount(2);
+    await screen.getByRole('tab', 'Done').tap();
 
-  await agent.act('complete "Buy milk"');
-  await agent.assert('only one todo remains open');
-
-  await screen.getByRole('tab', 'Done').tap();
-  await expect(screen.getByTestId('todo')).toHaveCount(1);
+    await expect(screen.getByTestId('todo')).toHaveCount(1);
+    await agent.assert('the only todo listed is "Buy milk"');
+  });
 });
 ```
+
+Each test checks one behavior in three blocks: arrange the starting state,
+act on the behavior, then assert the result.
 
 Await each agent call, screen call, and `expect.poll`. If a test returns
 while a step still runs, the test fails with `STEP_NOT_AWAITED`.
@@ -55,26 +59,30 @@ await agent.act('open the Pro plan, set the seats to {seats}, and check out', {
 });
 ```
 
-```ts title="Good: one atomic goal per call, each checked before the next"
-await agent.act('open the Pro plan');
-await expect(screen.getByRole('heading', 'Pro plan')).toBeVisible();
+```ts title="Good: one atomic goal per call, arrange, act, assert"
+test('checks out the Pro plan', async ({ app, agent, screen }) => {
+  await app.open('/plans');
+  await agent.act('open the Pro plan');
+  await agent.act('set the seats to {seats}', { params: { seats: 3 } });
+  await agent.waitFor('the cart shows the Pro plan with 3 seats');
 
-await agent.act('set the seats to {seats}', { params: { seats: 3 } });
-await expect(screen.getByRole('status', 'Seats')).toHaveText('3 seats');
+  await agent.act('check out');
 
-await agent.act('check out');
-await expect(screen.getByText('Order confirmed')).toBeVisible();
+  await expect(screen.getByText('Order confirmed')).toBeVisible();
+});
 ```
 
-A failure then names the goal that broke. Each goal replays from its own
+The setup goals come first and end with a wait for the state they reach.
+The goal under test comes next. The assertions on its result come last. A
+failure then names the goal that broke. Each goal replays from its own
 recording and gets its own model-call and action
 [budgets](/reference/agent#budgets). The actions toward one outcome are not
 goals: opening the screen or menu that holds a control, scrolling to it,
 closing a banner, or filling the fields of one form.
 
 - You control the order of the goals. The agent picks the actions.
-- Check each goal's result with an `expect`. The [replay cache](/cache)
-  records a goal only after a later check passes.
+- End the test with an `expect` on the result. The [replay cache](/cache)
+  records a goal only after a later check or wait passes.
 - Use the words that the screen shows.
 - Give test data in `params`. For a password, give a `Secret`. The model
   never gets its value as text. See [Authentication](/authentication).

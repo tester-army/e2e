@@ -5,6 +5,18 @@ name: agent
 # instead of tests/helpers/fake-model.ts, so they run on a schedule instead of
 # never.
 on:
+  workflow_call:
+    inputs:
+      agent-device-version:
+        description: Exact driver version for compatibility runs
+        type: string
+        default: ''
+      suite:
+        type: string
+        default: all
+      model:
+        type: string
+        default: ''
   schedule:
     # Mondays 04:17 UTC. Off the hour to avoid the scheduler's peak backlog.
     - cron: '17 4 * * 1'
@@ -29,7 +41,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-agent-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -94,7 +106,9 @@ jobs:
               "The agent suites need a real provider credential."
             exit 1
           fi
-      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/workspace-install
+        with:
+          agent-device-version: ${{ inputs.agent-device-version }}
       - name: Install browsers
         uses: ./.github/actions/chromium
       - name: Build

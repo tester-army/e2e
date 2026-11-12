@@ -73,8 +73,10 @@ export default {
 ## Rewrite one spec
 
 Start with a flow that needs frequent maintenance. If its screens take time
-to settle, set the engine's
-[`settle` and `transition` options](/reference/mobile#engine).
+to settle after agent actions, raise the engine's
+[`settle` option](/reference/mobile#settle); for deterministic test steps, raise
+its [`transition` option](/reference/mobile#transition) when a control is still
+arriving.
 
 ```js title="Detox"
 describe('login', () => {
