@@ -323,6 +323,58 @@ scales to 0 or 1. Both settings outlast the test, so put them back in `afterEach
 test's `app.open()` relaunches the app, so restoring the setting is enough.
 </Accordion>
 
+<Accordion title="Photos for a picker test">
+`device` can't add photos to the library, so add them from the host before
+`app.open()`. On an iOS simulator, `xcrun simctl addmedia` does it, and
+`deviceId` is the simulator's UDID. `addmedia` adds a copy on every call, and
+an agent step can't tell identical photos apart, so the sample leaves a marker
+file in the simulator's own data directory and adds the photo once. The marker
+goes with the library when the simulator is erased:
+
+```ts
+import { execFileSync } from 'node:child_process';
+import { existsSync, writeFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { test, type Device } from '@e2e-dev/mobile';
+import { expect } from 'e2e';
+
+// Put a JPEG named receipt.jpg beside this test.
+const receipt = resolve(import.meta.dirname, 'receipt.jpg');
+
+function addPhotoOnce(device: Device, file: string): void {
+  const { deviceId } = device.unstable_raw;
+  const listing = execFileSync('xcrun', ['simctl', 'list', 'devices', '-j'], { encoding: 'utf8' });
+  const { devices } = JSON.parse(listing) as {
+    devices: Record<string, { udid: string; dataPath: string }[]>;
+  };
+  const simulator = Object.values(devices).flat().find((d) => d.udid === deviceId);
+  if (!simulator) throw new Error(`No simulator ${deviceId}`);
+  const marker = resolve(simulator.dataPath, 'tmp', 'receipt-photo-added');
+  if (existsSync(marker)) return;
+  execFileSync('xcrun', ['simctl', 'addmedia', deviceId, file]);
+  writeFileSync(marker, file);
+}
+
+test('attaches the receipt from the photo library', { platforms: ['ios'] }, async ({ app, device, screen }) => {
+  addPhotoOnce(device, receipt);
+  await app.open();
+  await screen.getByLabel('Choose photo').tap();
+  await screen.getByRole('image', /^Photo, /).first().tap();
+  await expect(screen.getByText(/^Receipt attached/)).toBeVisible();
+});
+```
+
+The system picker runs outside the app, but its photos are in the screen
+tree, each an `image` named `Photo, ` and the date it was taken. The picker
+sorts by that date, newest first, which is the date in the photo's EXIF data,
+not the day you added it.
+
+An Android emulator needs the file pushed with `adb` and a media scan, and
+its picker is another app with its own names. This page has not been checked
+on Android, so read the picker's tree in the trace before you write that
+locator.
+</Accordion>
+
 <Accordion title="Foldable simulators and emulators">
 `device.fold(pose)` puts the iPhone Duo simulator or a foldable Android
 emulator (a Pixel Fold profile, or the generic "7.6in Foldable") in a hinge
