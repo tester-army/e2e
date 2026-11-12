@@ -77,7 +77,7 @@ export function resolveTargets(
       );
     }
     const platform = resolvePlatform(target, where);
-    const name = target.name === undefined ? platform : target.name;
+    const name = targetName(target, platform);
     if (typeof name !== 'string' || !TARGET_NAME_PATTERN.test(name)) {
       const source = target.name === undefined ? ' (defaulted from the platform)' : '';
       throw new ConfigurationError(
@@ -156,13 +156,18 @@ export function digestTargets(targets: readonly ResolvedTarget[]) {
   }));
 }
 
+/** A target's name: its own, else its platform's, so one unnamed target per platform needs none. */
+export function targetName(target: Target, platform: string): unknown {
+  return target.name === undefined ? platform : target.name;
+}
+
 /**
  * The target's platform: its own label, else the engine's declaration. Tool
  * packs are offered by the engine's platform while tests filter by the
  * target's, so a target that names one while its engine declares another is a
  * mistake, not an override.
  */
-function resolvePlatform(target: Target, where: string): string {
+export function resolvePlatform(target: Target, where: string): string {
   const declared = target.platform;
   if (declared !== undefined && (typeof declared !== 'string' || declared.trim() === '')) {
     throw new ConfigurationError('INVALID_CONFIG', `${where} platform must be a non-empty string`);

@@ -1,5 +1,5 @@
-# Written by `e2e init --ci github-actions`: the web tests on every pull request
-# and every push to main. See https://e2e.com/docs/ci/github-actions
+# Written by `e2e init --ci github-actions`: the e2e tests on every pull request
+# and every push to main, one job per platform. See https://e2e.com/docs/ci/github-actions
 name: e2e
 
 on:
@@ -15,7 +15,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  e2e:
+  web:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -35,7 +35,7 @@ jobs:
         run: npx e2e-web install chromium --with-deps
 
       - name: Run e2e
-        run: npx e2e run --reporter list,junit
+        run: npx e2e run --target web --reporter list,junit
         env:
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
 
@@ -43,10 +43,149 @@ jobs:
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: e2e-report
+          name: e2e-web
           path: |
             .e2e/report.json
             .e2e/junit.xml
             .e2e/results
+          # .e2e is a hidden directory, which upload-artifact skips when it expands a folder.
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 7
+
+  ios:
+    runs-on: macos-26
+    # A Release build for the simulator alone can take 35 minutes on this runner.
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+
+      # Expo generates ios/ (CNG): expo run:ios prebuilds it, installs the pods, and builds without a simulator.
+      - name: Build the app
+        run: npx expo run:ios --configuration Release --device generic --no-bundler --output build/ios
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.agent-device/apple-runner/derived
+          key: agent-device-runner-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      # Boots the image's own iPhone 17 Pro on a pinned runtime: a simulator made with `simctl create`
+      # can spend minutes on its first boot. Bump the runtime on purpose, after a local run on it,
+      # since the accessibility tree changes between iOS releases.
+      - name: Boot a simulator and install the app
+        env:
+          IOS_RUNTIME: com.apple.CoreSimulator.SimRuntime.iOS-26-5
+        run: |
+          set -euo pipefail
+          UDID=$(xcrun simctl list devices available -j | jq -r --arg rt "$IOS_RUNTIME" '.devices[$rt][]? | select(.name == "iPhone 17 Pro") | .udid' | head -n 1)
+          if [ -z "$UDID" ]; then
+            echo "::error::No iPhone 17 Pro on $IOS_RUNTIME"
+            xcrun simctl list runtimes
+            exit 1
+          fi
+          xcrun simctl boot "$UDID"
+          xcrun simctl bootstatus "$UDID"
+          APP=$(find build -maxdepth 5 -name '*.app' -type d | head -n 1)
+          if [ -z "$APP" ]; then
+            echo "::error::No .app under build/"
+            exit 1
+          fi
+          xcrun simctl install "$UDID" "$APP"
+          # A target with device: process.env.E2E_DEVICE drives this simulator, whatever else the image has.
+          echo "E2E_DEVICE=$UDID" >> "$GITHUB_ENV"
+
+      - name: Run e2e
+        run: npx e2e run --target ios --workers 1 --reporter list,junit
+        env:
+          AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
+
+      - name: Upload the report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: e2e-ios
+          path: |
+            .e2e/report.json
+            .e2e/junit.xml
+            .e2e/results
+          # .e2e is a hidden directory, which upload-artifact skips when it expands a folder.
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 7
+
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      # Expo generates android/ (CNG) and signs release builds with the debug keystore.
+      # Only the emulator's ABI: building all four takes about 25 minutes longer.
+      - name: Build the app
+        run: |
+          npx expo prebuild --platform android --no-install
+          (cd android && ./gradlew :app:assembleRelease -PreactNativeArchitectures=x86_64)
+
+      # The emulator action downloads the system image once and fails the job when that download drops.
+      - name: Install the emulator system image
+        run: |
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          "$SDKMANAGER" --licenses < <(yes) > /dev/null
+          for attempt in 1 2 3; do
+            "$SDKMANAGER" --install 'system-images;android-36;google_apis;x86_64' > /dev/null && exit 0
+            echo "Download attempt $attempt failed"
+            sleep 30
+          done
+          exit 1
+
+      - name: Run e2e
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: 36
+          arch: x86_64
+          target: google_apis
+          profile: pixel_7
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          disable-animations: true
+          script: |
+            adb install -r android/app/build/outputs/apk/release/app-release.apk
+            npx e2e run --target android --workers 1 --reporter list,junit
+        env:
+          AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
+          # The emulator the action boots, for a target with device: process.env.E2E_DEVICE.
+          E2E_DEVICE: emulator-5554
+
+      - name: Upload the report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: e2e-android
+          path: |
+            .e2e/report.json
+            .e2e/junit.xml
+            .e2e/results
+          # .e2e is a hidden directory, which upload-artifact skips when it expands a folder.
+          include-hidden-files: true
           if-no-files-found: warn
           retention-days: 7

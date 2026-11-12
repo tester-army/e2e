@@ -24,6 +24,8 @@ export interface EnginePreset {
   readonly aiExample: (options: string) => string;
   /** Whether the run hint sets APP_URL, for engines that drive a URL. */
   readonly needsAppUrl: boolean;
+  /** The platform the target drives, which is also its name in the config, for the CI job that runs it. */
+  readonly platform: 'web' | 'ios' | 'android';
 }
 
 /** Builds prompt choices and scaffolds with defaults for the machine running init. */
@@ -64,6 +66,7 @@ test('app opens', ${options}async ({ app, browser }) => {
 // });
 `,
       needsAppUrl: true,
+      platform: 'web',
     },
     {
       id: 'mobile',
@@ -104,6 +107,7 @@ test('Settings opens', ${options}async ({ app, screen }) => {
 // });
 `,
       needsAppUrl: false,
+      platform: ios ? 'ios' : 'android',
     },
   ] as const satisfies readonly EnginePreset[];
 }

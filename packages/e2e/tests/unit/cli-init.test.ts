@@ -16,6 +16,7 @@ import os from 'node:os';
 import path from 'node:path';
 import * as clack from '@clack/prompts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { parse as parseYaml } from 'yaml';
 import { init } from '../../src/cli/init.ts';
 import { planSkillInstall } from '../../src/cli/init/agent-skill.ts';
 import { dependencyRange } from '../../src/cli/init/versions.ts';
@@ -47,6 +48,14 @@ const symlinks = ((): boolean => {
 /** Captures user-facing output without ANSI formatting. */
 function output(): string {
   return stdoutSpy.mock.calls.map((call: readonly unknown[]) => String(call[0])).join('');
+}
+
+/** Installs a stand-in for package `name` in the throwaway project, whose ESM entry is `source`. */
+function stubPackage(name: string, source: string): void {
+  const root = path.join(dir, 'node_modules', ...name.split('/'));
+  mkdirSync(root, { recursive: true });
+  writeFileSync(path.join(root, 'package.json'), JSON.stringify({ name, type: 'module', exports: './index.js' }));
+  writeFileSync(path.join(root, 'index.js'), source);
 }
 
 /** Reads one file from the throwaway project. */
@@ -253,7 +262,7 @@ describe('e2e init', () => {
     vi.mocked(clack.select).mockResolvedValueOnce('none');
     vi.mocked(clack.confirm).mockResolvedValueOnce(true).mockResolvedValueOnce(false);
 
-    expect((await init(dir)).exitCode).toBe(0);
+    expect((await init(dir, { ci: 'none' })).exitCode).toBe(0);
     expect(clack.select).toHaveBeenCalledTimes(1);
     expect(clack.multiselect).toHaveBeenCalledWith(expect.objectContaining({
       message: expect.stringContaining('Which engines?'),
@@ -379,7 +388,7 @@ describe('e2e init', () => {
       gateway: 'openrouter',
       skill: true,
       mcp: true,
-      ci: null,
+      ci: 'none',
       install: true,
     });
     expect(clack.select).not.toHaveBeenCalled();
@@ -1208,7 +1217,7 @@ describe('e2e init', () => {
       vi.mocked(clack.confirm).mockResolvedValueOnce(true).mockResolvedValueOnce(false);
       expect(await init(dir)).toMatchObject({ exitCode: 0, ci: 'github-actions' });
       expect(clack.select).toHaveBeenLastCalledWith(expect.objectContaining({
-        message: 'Add a CI pipeline that runs the web tests?',
+        message: 'Add a CI pipeline that runs the tests?',
         initialValue: 'github-actions',
         options: [
           expect.objectContaining({ value: 'github-actions' }),
@@ -1232,15 +1241,49 @@ describe('e2e init', () => {
       expect(clack.select).toHaveBeenLastCalledWith(expect.objectContaining({ initialValue: 'none' }));
     });
 
-    it('writes no workflow for a mobile-only project and points at the docs', async () => {
-      expect(await init(dir, { yes: true, engines: ['mobile'], ci: 'github-actions' })).toMatchObject({ exitCode: 0, ci: null });
-      expect(existsSync(path.join(dir, '.github'))).toBe(false);
-      expect(output()).toContain('Ignoring --ci: init writes a pipeline for web targets only');
+    it.each([
+      { host: 'darwin', platform: 'ios', label: 'iOS' },
+      { host: 'linux', platform: 'android', label: 'Android' },
+    ] as const)('writes the $platform job alone for a mobile-only project on $host', async ({ host, platform, label }) => {
+      vi.spyOn(os, 'platform').mockReturnValue(host);
+      expect(await init(dir, { yes: true, engines: ['mobile'], ci: 'github-actions' })).toMatchObject({ exitCode: 0, ci: 'github-actions' });
+      const jobs = (parseYaml(read(workflow)) as { jobs: Record<string, unknown> }).jobs;
+      expect(Object.keys(jobs)).toEqual([platform]);
+      expect(read(workflow)).toContain(`npx e2e run --target ${platform} --workers 1 --reporter list,junit`);
+      // Not an Expo or React Native project, so the build is the user's to write.
+      expect(output()).toContain(`The ${label} job's build step is a placeholder that fails`);
+      // app.command starts a web app; a phone job installs its build.
+      expect(output()).not.toContain('Nothing starts the app in CI');
     });
 
-    it('runs only the web target when mobile shares the config', async () => {
+    it('runs the web and phone targets in their own jobs when the config has both', async () => {
+      vi.spyOn(os, 'platform').mockReturnValue('darwin');
       await init(dir, { yes: true, engines: ['web', 'mobile'], ci: 'github-actions' });
+      expect(Object.keys((parseYaml(read(workflow)) as { jobs: object }).jobs)).toEqual(['web', 'ios']);
       expect(read(workflow)).toContain('run: npx e2e run --target web --reporter list,junit');
+      expect(read(workflow)).toContain('run: npx e2e run --target ios --workers 1 --reporter list,junit');
+    });
+
+    it('builds an Expo app in the phone jobs', async () => {
+      vi.spyOn(os, 'platform').mockReturnValue('linux');
+      writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ dependencies: { expo: '*' } }));
+      await init(dir, { yes: true, engines: ['mobile'], ci: 'github-actions' });
+      expect(read(workflow)).toContain('npx expo prebuild --platform android --no-install');
+      expect(output()).not.toContain('placeholder');
+    });
+
+    it('tells GitLab users the phone jobs need self-managed runners and a device from E2E_DEVICE', async () => {
+      vi.spyOn(os, 'platform').mockReturnValue('darwin');
+      await init(dir, { yes: true, engines: ['mobile'], ci: 'gitlab' });
+      expect(Object.keys(parseYaml(read('.gitlab-ci.yml')) as object)).toEqual(['.e2e-mobile', 'e2e-ios']);
+      expect(output()).toContain("GitLab's hosted runners can't run a simulator or an emulator");
+      expect(output()).toContain('set device: process.env.E2E_DEVICE in each mobile() target');
+    });
+
+    it('writes no pipeline for a project with neither engine', async () => {
+      expect(await init(dir, { yes: true, engines: [], ci: 'github-actions' })).toMatchObject({ exitCode: 0, ci: null });
+      expect(existsSync(path.join(dir, '.github'))).toBe(false);
+      expect(output()).toContain('Ignoring --ci: init writes a pipeline for web, iOS, and Android targets, and the project has none');
     });
 
     it('writes the workflow at the repository root for a project in a subfolder', async () => {
@@ -1258,9 +1301,10 @@ describe('e2e init', () => {
 
     it('reads the key and the start command from an existing config', async () => {
       writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ devDependencies: { e2e: '*', '@e2e-dev/web': '*' } }));
+      stubPackage('@openrouter/ai-sdk-provider', 'export const openrouter = () => undefined;');
       writeFileSync(path.join(dir, 'e2e.config.ts'), [
         "import { openrouter } from '@openrouter/ai-sdk-provider';",
-        "export default { targets: [{ app: { url: 'http://localhost:3100', command: { executable: 'npm', args: ['run', 'dev'] } } }] };",
+        "export default { model: openrouter, targets: [{ platform: 'web', app: { url: 'http://localhost:3100', command: { executable: 'npm', args: ['run', 'dev'] } } }] };",
         '',
       ].join('\n'));
       expect((await init(dir, { yes: true, ci: 'github-actions' })).exitCode).toBe(0);
@@ -1282,8 +1326,8 @@ describe('e2e init', () => {
       writeFileSync(path.join(dir, '.gitlab-ci.yml'), 'build:\n  script: [make]\n');
       await init(dir, { yes: true, ci: 'gitlab' });
       expect(read('.gitlab-ci.yml')).toBe('build:\n  script: [make]\n');
-      expect(read('.gitlab/e2e.gitlab-ci.yml')).toMatch(/^e2e:\n/mu);
-      expect(output()).toContain('.gitlab-ci.yml exists, not touching it; add this to it to run the e2e job:');
+      expect(read('.gitlab/e2e.gitlab-ci.yml')).toMatch(/^e2e-web:\n/mu);
+      expect(output()).toContain('.gitlab-ci.yml exists, not touching it; add this to it to run the e2e jobs:');
       expect(output()).toMatch(/include:\n\S*\s+- local: \.gitlab\/e2e\.gitlab-ci\.yml/u);
     });
 
@@ -1310,12 +1354,56 @@ describe('e2e init', () => {
       expect(read(workflow)).toContain('        run: pnpm exec e2e run --reporter list,junit\n');
     });
 
-    it('leaves --target out for an existing config with mobile targets, whose web target it cannot name', async () => {
+    it('reads the target names and platforms from an existing config', async () => {
       writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ devDependencies: { e2e: '*', '@e2e-dev/web': '*', '@e2e-dev/mobile': '*' } }));
-      writeFileSync(path.join(dir, 'e2e.config.ts'), "export default { targets: [{ name: 'chromium' }, { name: 'ios' }] };\n");
+      writeFileSync(path.join(dir, 'e2e.config.ts'), [
+        'const engine = (platform: string) => ({ platform });',
+        "export default { targets: [{ name: 'chromium', engine: engine('web') }, { name: 'iphone', engine: engine('ios') }, { name: 'pixel', engine: engine('android') }] };",
+        '',
+      ].join('\n'));
       await init(dir, { yes: true, ci: 'github-actions' });
+      expect(read(workflow)).toContain('run: npx e2e run --target chromium --reporter list,junit');
+      expect(read(workflow)).toContain('run: npx e2e run --target iphone --workers 1 --reporter list,junit');
+      expect(read(workflow)).toContain('npx e2e run --target pixel --workers 1 --reporter list,junit');
+    });
+
+    it('runs every target in one web job when an existing web config does not load, and says why', async () => {
+      writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ devDependencies: { e2e: '*', '@e2e-dev/web': '*' } }));
+      writeFileSync(path.join(dir, 'e2e.config.ts'), "import { web } from 'not-installed-engine';\nexport default { targets: [{ engine: web() }] };\n");
+      await init(dir, { yes: true, ci: 'github-actions' });
+      expect(Object.keys((parseYaml(read(workflow)) as { jobs: object }).jobs)).toEqual(['web']);
       expect(read(workflow)).toContain('run: npx e2e run --reporter list,junit');
-      expect(output()).toContain("add --target with the web target's name to the e2e run line in .github/workflows/e2e.yml");
+      expect(output()).toContain('Could not read the targets of e2e.config.ts');
+      expect(output()).toContain('The pipeline runs every target in one web job');
+      expect(output()).not.toContain('No web, iOS, or Android target');
+    });
+
+    it('writes no pipeline when an existing mobile config does not load', async () => {
+      writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ devDependencies: { e2e: '*', '@e2e-dev/mobile': '*' } }));
+      writeFileSync(path.join(dir, 'e2e.config.ts'), "import { mobile } from 'not-installed-engine';\nexport default { targets: [{ engine: mobile() }] };\n");
+      await init(dir, { yes: true, ci: 'github-actions' });
+      expect(existsSync(path.join(dir, workflow))).toBe(false);
+      expect(output()).toContain('No pipeline: the mobile jobs need the config\'s targets');
+    });
+
+    it('loads an existing config only after the changes are confirmed and the dependencies installed', async () => {
+      writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ devDependencies: { e2e: '*', '@e2e-dev/web': '*' } }));
+      writeFileSync(path.join(dir, 'e2e.config.ts'), "import { engine } from 'late-engine';\nexport default { targets: [{ name: 'chromium', engine }] };\n");
+      // The install puts the engine in place; before it, the config could not load.
+      vi.mocked(spawnSync).mockImplementationOnce(() => {
+        stubPackage('late-engine', "export const engine = { platform: 'web' };");
+        return spawnResult(0);
+      });
+      await init(dir, { yes: true, ci: 'github-actions', install: true });
+      expect(read(workflow)).toContain('run: npx e2e run --reporter list,junit');
+      expect(output()).not.toContain('Could not read the targets');
+
+      // Cancelled at the confirmation, the config never runs.
+      rmSync(path.join(dir, workflow));
+      writeFileSync(path.join(dir, 'e2e.config.ts'), "globalThis.configRan = true;\nexport default { targets: [{ platform: 'web' }] };\n");
+      vi.mocked(clack.confirm).mockResolvedValueOnce(false);
+      await init(dir, { ci: 'github-actions', skills: [], mcp: [] });
+      expect((globalThis as { configRan?: boolean }).configRan).toBeUndefined();
     });
 
     it('warns that a model served on this machine is out of the runner\'s reach', async () => {
@@ -1329,11 +1417,13 @@ describe('e2e init', () => {
 
     it('reads a loopback endpoint from an existing config too', async () => {
       writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ devDependencies: { e2e: '*', '@e2e-dev/web': '*' } }));
+      stubPackage('@ai-sdk/openai-compatible', 'export const createOpenAICompatible = (options) => options;');
       writeFileSync(path.join(dir, 'e2e.config.ts'), [
         "import { createOpenAICompatible } from '@ai-sdk/openai-compatible';",
         "const model = createOpenAICompatible({ name: 'local',",
         "  baseURL: 'http://127.0.0.1:11434/v1',",
         '});',
+        "export default { model, targets: [{ platform: 'web' }] };",
         '',
       ].join('\n'));
       await init(dir, { yes: true, ci: 'gitlab' });

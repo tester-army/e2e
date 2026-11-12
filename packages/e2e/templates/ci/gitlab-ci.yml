@@ -1,6 +1,7 @@
-# Written by `e2e init --ci gitlab`: the web tests in every merge request and on
-# the default branch. See https://e2e.com/docs/ci/gitlab
-e2e:
+# Written by `e2e init --ci gitlab`: the e2e tests in every merge request and on
+# the default branch, one job per platform. See https://e2e.com/docs/ci/gitlab
+
+e2e-web:
   image: node:24
   interruptible: true
   timeout: 30 minutes
@@ -20,7 +21,7 @@ e2e:
   script:
     - npm ci --cache .npm --prefer-offline
     - npx e2e-web install chromium --with-deps
-    - npx e2e run --reporter list,junit
+    - npx e2e run --target web --reporter list,junit
   artifacts:
     when: always
     expire_in: 7 days
@@ -30,3 +31,63 @@ e2e:
       - .e2e/results/
     reports:
       junit: .e2e/junit.xml
+
+# GitLab's hosted runners can't run a simulator or an emulator, so the mobile jobs run on
+# self-managed runners with the shell executor: a Mac with Xcode, and Linux with KVM, a JDK,
+# and the Android SDK, each with Node.js and the project's package manager. Replace the tags
+# with your runners' tags.
+.e2e-mobile:
+  interruptible: true
+  timeout: 90 minutes
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  artifacts:
+    when: always
+    expire_in: 7 days
+    paths:
+      - .e2e/report.json
+      - .e2e/junit.xml
+      - .e2e/results/
+    reports:
+      junit: .e2e/junit.xml
+
+e2e-ios:
+  extends: .e2e-mobile
+  tags: [macos]
+  script:
+    - npm ci
+    # Expo generates ios/ (CNG): expo run:ios prebuilds it, installs the pods, and builds without a simulator.
+    - npx expo run:ios --configuration Release --device generic --no-bundler --output build/ios
+    # A simulator of the job's own on a pinned runtime, so the run never drives a device another job left booted.
+    - export E2E_DEVICE=$(xcrun simctl create "e2e-$CI_JOB_ID" "iPhone 17 Pro" com.apple.CoreSimulator.SimRuntime.iOS-26-5)
+    - echo "$E2E_DEVICE" > "$CI_PROJECT_DIR/.simulator-udid"
+    - xcrun simctl bootstatus "$E2E_DEVICE" -b
+    - xcrun simctl install "$E2E_DEVICE" "$(find build -maxdepth 5 -name '*.app' -type d | head -n 1)"
+    - npx e2e run --target ios --workers 1 --reporter list,junit
+  after_script:
+    # after_script starts a new shell in the project directory, after a failed script too, but not after a timeout.
+    - xcrun simctl delete "$(cat "$CI_PROJECT_DIR/.simulator-udid")" || true
+
+e2e-android:
+  extends: .e2e-mobile
+  tags: [linux-kvm]
+  script:
+    - npm ci
+    # Expo generates android/ (CNG) and signs release builds with the debug keystore.
+    # Only the emulator's ABI: building all four takes about 25 minutes longer.
+    - npx expo prebuild --platform android --no-install
+    - (cd android && ./gradlew :app:assembleRelease -PreactNativeArchitectures=x86_64)
+    # An emulator of the job's own: the port comes from CI_CONCURRENT_ID, so parallel jobs on one runner don't share one.
+    # It boots an AVD named e2e that you create on the runner.
+    - mkdir -p .e2e
+    - PORT=$((5554 + 2 * CI_CONCURRENT_ID))
+    - export E2E_DEVICE=emulator-$PORT
+    - adb -s $E2E_DEVICE emu kill || true
+    - $ANDROID_HOME/emulator/emulator -avd e2e -read-only -port $PORT -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect > .e2e/emulator.log 2>&1 &
+    - timeout 300 adb -s $E2E_DEVICE wait-for-device
+    - timeout 300 sh -c 'until [ "$(adb -s $E2E_DEVICE shell getprop sys.boot_completed | tr -d "\r")" = 1 ]; do sleep 2; done'
+    - adb -s $E2E_DEVICE install -r android/app/build/outputs/apk/release/app-release.apk
+    - npx e2e run --target android --workers 1 --reporter list,junit
+  after_script:
+    - adb -s emulator-$((5554 + 2 * CI_CONCURRENT_ID)) emu kill || true

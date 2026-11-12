@@ -1,8 +1,9 @@
 /**
  * The CI pipeline `e2e init` writes: GitHub Actions or GitLab CI/CD, one job
- * that runs the web targets on a hosted Linux runner. A mobile job needs the
- * app's build command, scheme, and paths, which init cannot know, so init
- * points at the docs page instead of writing a job that fails on its first push.
+ * per platform the config's targets run on. The web job runs on a hosted
+ * Linux runner. The iOS and Android jobs build the app, boot a simulator or
+ * an emulator, install the app, and run its targets; init writes the build
+ * for Expo and bare React Native apps and a step to replace for anything else.
  */
 
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
@@ -10,6 +11,8 @@ import path from 'node:path';
 import { isMap, isScalar, parseDocument, type Document, type Scalar, type YAMLMap, type YAMLSeq } from 'yaml';
 import type { PackageManager } from '../../internal/package-manager.ts';
 import { isLoopbackHost } from '../../internal/urls.ts';
+import type { E2EConfig } from '../../types.ts';
+import { resolvePlatform, targetName } from '../../config/targets.ts';
 import { GATEWAYS, type GatewayPreset } from './gateways.ts';
 
 export type CiId = 'github-actions' | 'gitlab';
@@ -22,10 +25,10 @@ export interface CiFile {
   readonly existing: boolean;
   /** For a file the main pipeline must include: the lines to add to it. */
   readonly include?: string;
-  /** Something else the main pipeline needs before the included job can run. */
+  /** Something else the main pipeline needs before the included jobs can run. */
   readonly note?: string;
-  /** The job's name when the pipeline already has a job named `e2e`. */
-  readonly jobName?: string;
+  /** Appended to every job name when the pipeline already has a job of one of those names. */
+  readonly jobSuffix?: string;
 }
 
 export interface CiService {
@@ -50,7 +53,7 @@ export const CI_SERVICES: readonly CiService[] = [
   {
     id: 'github-actions',
     label: 'GitHub Actions',
-    hint: 'web tests on every pull request and push to main',
+    hint: 'on every pull request and push to main',
     docs: '/ci/github-actions',
     locate: locateGithubWorkflow,
     render: (context) => renderGithubWorkflow(context),
@@ -59,7 +62,7 @@ export const CI_SERVICES: readonly CiService[] = [
   {
     id: 'gitlab',
     label: 'GitLab CI/CD',
-    hint: 'web tests in every merge request and on the default branch',
+    hint: 'in every merge request and on the default branch',
     docs: '/ci/gitlab',
     locate: locateGitlabPipeline,
     render: (context) => renderGitlabPipeline(context),
@@ -98,20 +101,23 @@ function locateGitlabPipeline(root: string): CiFile {
   if (!existsSync(main)) return { file: GITLAB_PIPELINE, existing: false };
   const pipeline = readFileSync(main, 'utf8');
   if (pipeline.includes('e2e run')) return { file: GITLAB_PIPELINE, existing: true };
-  // The job runs in GitLab's default `test` stage, which a pipeline that lists its own stages may leave out.
+  // The jobs run in GitLab's default `test` stage, which a pipeline that lists its own stages may leave out.
   const stages = gitlabStages(pipeline);
-  // GitLab merges jobs of the same name across included files, so the job steps aside for one the pipeline already has.
-  const jobName = /^e2e\s*:/mu.test(pipeline) ? 'e2e-run' : 'e2e';
+  // GitLab merges jobs of the same name across included files, so the jobs step aside for ones the pipeline already has.
+  const taken = GITLAB_JOBS.some((name) => new RegExp(`^${name.replaceAll('.', '\\.')}\\s*:`, 'mu').test(pipeline));
   return {
     file: GITLAB_INCLUDED,
     existing: existsSync(path.join(root, GITLAB_INCLUDED)),
     include: `include:\n  - local: ${GITLAB_INCLUDED}`,
     ...(stages !== undefined && !stages.includes('test')
-      ? { note: `The ${jobName} job runs in the test stage; add test to the stages in ${GITLAB_PIPELINE}` }
+      ? { note: `The e2e jobs run in the test stage; add test to the stages in ${GITLAB_PIPELINE}` }
       : {}),
-    ...(jobName === 'e2e' ? {} : { jobName }),
+    ...(taken ? { jobSuffix: '-run' } : {}),
   };
 }
+
+/** The jobs the GitLab template defines, which an existing pipeline's own jobs must not share names with. */
+const GITLAB_JOBS = ['e2e-web', '.e2e-mobile', 'e2e-ios', 'e2e-android'] as const;
 
 /** The names a pipeline's top-level `stages:` lists, flow (`[build, test]`) or block style; undefined without one. */
 function gitlabStages(pipeline: string): string[] | undefined {
@@ -151,10 +157,154 @@ export interface WorkflowContext {
   readonly yarnBerry?: boolean;
   /** Environment variables the run reads from repository secrets of the same name. */
   readonly secrets: readonly string[];
-  /** The target to run when the config also has targets this runner cannot drive. */
-  readonly target?: string;
-  /** The GitLab job's name; `e2e` unless the pipeline it joins has one. */
-  readonly jobName?: string;
+  /** The jobs to write, each with the targets it runs. */
+  readonly jobs: CiJobs;
+  /** Appended to every GitLab job name; see {@link CiFile.jobSuffix}. */
+  readonly jobSuffix?: string;
+}
+
+/**
+ * The jobs a pipeline holds, one per platform. `web` runs every target that
+ * is not on a phone, or every target at all when the config has no phone
+ * target (`'all'`, no `--target`); `ios` and `android` name their targets.
+ * A platform with no targets gets no job.
+ */
+export interface CiJobs {
+  readonly web?: readonly string[] | 'all';
+  readonly ios?: { readonly targets: readonly string[]; readonly build: IosBuild };
+  readonly android?: { readonly targets: readonly string[]; readonly build: AndroidBuild };
+}
+
+/**
+ * How the iOS job builds the app for the simulator: Expo generates `ios/`
+ * and builds it, a bare React Native app builds its workspace with
+ * `xcodebuild`, and anything else gets a step that fails until it is replaced.
+ */
+export type IosBuild =
+  | { readonly kind: 'expo' }
+  | { readonly kind: 'react-native'; readonly workspace: string; readonly bundler: boolean }
+  | { readonly kind: 'custom' };
+
+/** How the Android job builds a release APK; `prebuild` when Expo still has to generate `android/`. */
+export type AndroidBuild =
+  | { readonly kind: 'expo'; readonly prebuild: boolean }
+  | { readonly kind: 'react-native' }
+  | { readonly kind: 'custom' };
+
+/** A target as the pipeline sees it: its name, for `--target`, and the platform its engine drives. */
+export interface CiTarget {
+  readonly name: string;
+  readonly platform: string;
+}
+
+/** Phone platforms run in their own job, on a runner with a simulator or an emulator. */
+const PHONES = new Set(['ios', 'android']);
+
+/**
+ * The jobs for a config's targets. iOS and Android targets get a job each;
+ * the rest, web and HTTP-only alike, run in the web job, which names them
+ * with `--target` only when the config has phone targets too.
+ */
+export function ciJobs(targets: readonly CiTarget[], builds: { ios: IosBuild; android: AndroidBuild }): CiJobs {
+  const named = (platform: string) => targets.filter((target) => target.platform === platform).map((target) => target.name);
+  const others = targets.filter((target) => !PHONES.has(target.platform)).map((target) => target.name);
+  const phones = targets.some((target) => PHONES.has(target.platform));
+  return {
+    ...(others.length === 0 ? {} : { web: phones ? others : 'all' }),
+    ...(named('ios').length === 0 ? {} : { ios: { targets: named('ios'), build: builds.ios } }),
+    ...(named('android').length === 0 ? {} : { android: { targets: named('android'), build: builds.android } }),
+  };
+}
+
+/**
+ * The targets of a loaded config, named and placed by the rules `e2e run`
+ * resolves them with. A target those rules reject is left out; `e2e run`
+ * would refuse it too.
+ */
+export function configTargets(config: E2EConfig): CiTarget[] {
+  return (Array.isArray(config.targets) ? config.targets : []).flatMap((target, index) => {
+    try {
+      const platform = resolvePlatform(target, `targets[${index}]`);
+      const name = targetName(target, platform);
+      return typeof name === 'string' ? [{ name, platform }] : [];
+    } catch {
+      return [];
+    }
+  });
+}
+
+/** Where every build writes the APK the Android job installs. */
+const APK = 'android/app/build/outputs/apk/release/app-release.apk';
+
+/**
+ * The app build for each phone platform, from the project's package.json and
+ * native folders: Expo when it depends on `expo`, bare React Native when it
+ * depends on `react-native` and has the native project, else custom.
+ */
+export function detectMobileBuilds(projectDir: string, dependsOn: (name: string) => boolean): { ios: IosBuild; android: AndroidBuild } {
+  const ios = path.join(projectDir, 'ios');
+  const workspace = existsSync(ios) && statSync(ios).isDirectory()
+    ? readdirSync(ios).find((name) => name.endsWith('.xcworkspace') && name !== 'Pods.xcworkspace')
+    : undefined;
+  const gradle = existsSync(path.join(projectDir, 'android', 'gradlew'));
+  if (dependsOn('expo')) {
+    return { ios: { kind: 'expo' }, android: { kind: 'expo', prebuild: !gradle } };
+  }
+  if (dependsOn('react-native')) {
+    return {
+      ios: workspace === undefined
+        ? { kind: 'custom' }
+        : { kind: 'react-native', workspace: workspace.replace(/\.xcworkspace$/u, ''), bundler: existsSync(path.join(projectDir, 'Gemfile')) },
+      android: gradle ? { kind: 'react-native' } : { kind: 'custom' },
+    };
+  }
+  return { ios: { kind: 'custom' }, android: { kind: 'custom' } };
+}
+
+/** The iOS build's commands and the comment above them; every build leaves the `.app` under `build/`. */
+function iosBuild(manager: PackageManager, build: IosBuild): { comment: string; lines: string[] } {
+  switch (build.kind) {
+    case 'expo':
+      return {
+        comment: ' Expo generates ios/ (CNG): expo run:ios prebuilds it, installs the pods, and builds without a simulator.',
+        lines: [exec(manager, 'expo run:ios --configuration Release --device generic --no-bundler --output build/ios')],
+      };
+    case 'react-native':
+      return {
+        comment: ' Installs the pods, then builds the workspace for the simulator into build/.',
+        lines: [
+          ...(build.bundler ? ['bundle install', '(cd ios && bundle exec pod install)'] : ['(cd ios && pod install)']),
+          `xcodebuild -workspace ios/${build.workspace}.xcworkspace -scheme ${build.workspace} -configuration Release -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath build`,
+        ],
+      };
+    case 'custom':
+      return {
+        comment: ' Replace this step with your app\'s Release build for the iOS simulator, with the .app under build/.',
+        lines: ['echo "Replace this step with your app\'s build for the simulator, with the .app under build/" >&2', 'exit 1'],
+      };
+  }
+}
+
+/** The Android build's commands and the comment above them; every build writes the APK at {@link APK}. */
+function androidBuild(manager: PackageManager, build: AndroidBuild): { comment: string; lines: string[] } {
+  const gradle = '(cd android && ./gradlew :app:assembleRelease -PreactNativeArchitectures=x86_64)';
+  switch (build.kind) {
+    case 'expo':
+      return {
+        comment: ' Expo generates android/ (CNG) and signs release builds with the debug keystore.\n Only the emulator\'s ABI: building all four takes about 25 minutes longer.',
+        lines: [...(build.prebuild ? [exec(manager, 'expo prebuild --platform android --no-install')] : []), gradle],
+      };
+    case 'react-native':
+      return {
+        comment: ' Only the emulator\'s ABI: building all four takes about 25 minutes longer.',
+        lines: [gradle],
+      };
+    case 'custom':
+      return {
+        comment: ` Replace this step with your app's release build, an APK at ${APK}.`,
+        lines: [`echo "Replace this step with your app's build, an APK at ${APK}" >&2`, 'exit 1'],
+      };
+  }
 }
 
 /**
@@ -206,10 +356,14 @@ function readTemplate(name: string): Document {
   return parseDocument(readFileSync(new URL(`../../../templates/ci/${name}`, import.meta.url), 'utf8'));
 }
 
-/** A template's `npx <bin> ...` command for the project's package manager, with `--target` after `e2e run`. */
-function templateCommand(manager: PackageManager, template: string, target: string | undefined): string {
+/**
+ * A template's `npx <bin> ...` command for the project's package manager. A
+ * template `--target` takes the job's target names, or goes for `'all'`.
+ */
+function templateCommand(manager: PackageManager, template: string, targets?: readonly string[] | 'all'): string {
   const bare = template.replace(/^npx /u, '');
-  return exec(manager, target === undefined ? bare : bare.replace(/^e2e run/u, `e2e run --target ${target}`));
+  if (targets === undefined) return exec(manager, bare);
+  return exec(manager, bare.replace(/ --target \S+/u, targets === 'all' ? '' : ` --target ${targets.join(',')}`));
 }
 
 /** The map in `items` whose `key` holds `value`, which the template guarantees. */
@@ -228,19 +382,18 @@ function setBefore(doc: Document, map: YAMLMap, key: string, value: unknown, bef
   else map.items.splice(at, 0, pair);
 }
 
-/** The GitHub Actions workflow that runs the project's web targets on pull requests and on pushes to main. */
-export function renderGithubWorkflow(context: WorkflowContext): string {
+/**
+ * Sets up one GitHub job for the project: its working directory, the Node
+ * version and cache, the package manager's own setup step, the frozen
+ * install, and the lockfile in every cache key.
+ */
+function setUpGithubJob(doc: Document, job: YAMLMap, context: WorkflowContext): void {
   const { manager, projectDir, installDir } = context;
   const lockfile = join(installDir, LOCKFILE[manager]);
-  const doc = readTemplate('github-actions.yml');
-  const job = doc.getIn(['jobs', 'e2e']) as YAMLMap;
   const steps = job.get('steps') as YAMLSeq;
-  const byUses = (action: string): YAMLMap => findItem(steps.items, 'uses', (uses) => uses.startsWith(`${action}@`));
-  const byName = (name: string): YAMLMap => findItem(steps.items, 'name', (value) => value === name);
-
   if (projectDir !== '') setBefore(doc, job, 'defaults', { run: { 'working-directory': projectDir } }, 'steps');
 
-  const setupNode = byUses('actions/setup-node');
+  const setupNode = findItem(steps.items, 'uses', (uses) => uses.startsWith('actions/setup-node@'));
   const nodeOptions = setupNode.get('with') as YAMLMap;
   if (context.nodeVersionFile !== undefined) {
     nodeOptions.delete('node-version');
@@ -265,24 +418,85 @@ export function renderGithubWorkflow(context: WorkflowContext): string {
   }
   steps.items.splice(steps.items.indexOf(setupNode), 0, ...setup);
 
-  const install = byName('Install dependencies');
+  const install = findItem(steps.items, 'name', (name) => name === 'Install dependencies');
   install.set('run', frozenInstall(manager, context.yarnBerry === true));
   if (installDir !== projectDir) install.set('working-directory', installDir === '' ? '.' : installDir);
 
-  const cache = byUses('actions/cache').get('with') as YAMLMap;
-  cache.set('key', String(cache.get('key')).replace(`hashFiles('${LOCKFILE.npm}')`, `hashFiles('${lockfile}')`));
+  for (const step of steps.items) {
+    const options = isMap(step) ? step.get('with') : undefined;
+    if (isMap(options) && typeof options.get('key') === 'string') {
+      options.set('key', String(options.get('key')).replace(`hashFiles('${LOCKFILE.npm}')`, `hashFiles('${lockfile}')`));
+    }
+  }
+}
 
-  const browsers = byName('Install browsers');
-  browsers.set('run', templateCommand(manager, String(browsers.get('run')), undefined));
-  const run = byName('Run e2e');
-  run.set('run', templateCommand(manager, String(run.get('run')), context.target));
-  if (context.secrets.length === 0) run.delete('env');
-  else run.set('env', doc.createNode(Object.fromEntries(context.secrets.map((name) => [name, `\${{ secrets.${name} }}`]))));
+/** Points the job's run step at its targets with the model keys, and its upload at the project's report. */
+function finishGithubJob(doc: Document, job: YAMLMap, context: WorkflowContext, run: YAMLMap, targets: readonly string[] | 'all'): void {
+  const steps = (job.get('steps') as YAMLSeq).items;
+  const script = run.getIn(['with', 'script'], true);
+  if (isScalar(script)) {
+    // The emulator action runs a script, line by line, instead of a run step.
+    script.value = String(script.value).split('\n').map((line) => (line.startsWith('npx ') ? templateCommand(context.manager, line, targets) : line)).join('\n');
+    if (context.projectDir !== '') (run.get('with') as YAMLMap).set('working-directory', context.projectDir);
+  } else {
+    run.set('run', templateCommand(context.manager, String(run.get('run')), targets));
+  }
+  // The template's model key stands for the config's; the rest of the env, such as the emulator's E2E_DEVICE, stays.
+  const kept = (run.get('env') as YAMLMap | undefined)?.items.filter((pair) => isScalar(pair.key) && pair.key.value !== TEMPLATE_SECRET) ?? [];
+  const env = doc.createNode(Object.fromEntries(context.secrets.map((name) => [name, `\${{ secrets.${name} }}`]))) as YAMLMap;
+  env.items.push(...kept);
+  if (env.items.length === 0) run.delete('env');
+  else run.set('env', env);
 
-  if (projectDir !== '') {
-    const upload = byName('Upload the report').get('with') as YAMLMap;
+  if (context.projectDir !== '') {
+    const upload = findItem(steps, 'name', (name) => name === 'Upload the report').get('with') as YAMLMap;
     const paths = upload.get('path', true) as Scalar<string>;
-    paths.value = paths.value.split('\n').map((line) => (line === '' ? line : join(projectDir, line))).join('\n');
+    paths.value = paths.value.split('\n').map((line) => (line === '' ? line : join(context.projectDir, line))).join('\n');
+  }
+}
+
+/** The model key the templates read, which the config's own keys replace. */
+const TEMPLATE_SECRET = 'AI_GATEWAY_API_KEY';
+
+/** Replaces a mobile job's build step with the project's build, and the comment above it. */
+function setGithubBuild(job: YAMLMap, build: { comment: string; lines: string[] }): void {
+  const step = findItem((job.get('steps') as YAMLSeq).items, 'name', (name) => name === 'Build the app');
+  step.commentBefore = build.comment;
+  step.set('run', build.lines.join('\n') + (build.lines.length > 1 ? '\n' : ''));
+}
+
+/**
+ * The GitHub Actions workflow: one job per platform in `context.jobs`, on
+ * pull requests and on pushes to main. The template holds all three; a
+ * platform with no targets loses its job.
+ */
+export function renderGithubWorkflow(context: WorkflowContext): string {
+  const doc = readTemplate('github-actions.yml');
+  const jobs = doc.get('jobs') as YAMLMap;
+  const byName = (job: YAMLMap, name: string): YAMLMap => findItem((job.get('steps') as YAMLSeq).items, 'name', (value) => value === name);
+
+  for (const platform of ['web', 'ios', 'android'] as const) {
+    if (context.jobs[platform] === undefined) jobs.delete(platform);
+    else setUpGithubJob(doc, jobs.get(platform) as YAMLMap, context);
+  }
+  // The first job left keeps no blank line from the one it followed in the template.
+  const firstJob = jobs.items[0]?.key;
+  if (isScalar(firstJob)) firstJob.spaceBefore = false;
+  if (context.jobs.web !== undefined) {
+    const job = jobs.get('web') as YAMLMap;
+    const browsers = byName(job, 'Install browsers');
+    browsers.set('run', templateCommand(context.manager, String(browsers.get('run'))));
+    finishGithubJob(doc, job, context, byName(job, 'Run e2e'), context.jobs.web);
+  }
+  if (context.jobs.ios !== undefined) {
+    const job = jobs.get('ios') as YAMLMap;
+    setGithubBuild(job, iosBuild(context.manager, context.jobs.ios.build));
+    finishGithubJob(doc, job, context, byName(job, 'Run e2e'), context.jobs.ios.targets);
+  }
+  if (context.jobs.android !== undefined) {
+    const job = jobs.get('android') as YAMLMap;
+    setGithubBuild(job, androidBuild(context.manager, context.jobs.android.build));
+    finishGithubJob(doc, job, context, byName(job, 'Run e2e'), context.jobs.android.targets);
   }
   return doc.toString(STRINGIFY);
 }
@@ -320,44 +534,96 @@ function gitlabInstall(context: WorkflowContext): string[] {
 }
 
 /**
- * The GitLab CI/CD job that runs the project's web targets in merge request
- * pipelines and on the default branch. The rules sit on the job, not in a
- * `workflow:` block, so the same file works as `.gitlab-ci.yml` and as a file
- * another pipeline includes.
+ * A mobile job's script on a self-managed shell runner: install, build, then
+ * the template's own device lines, with the run pointed at the job's targets.
+ * Paths stay relative to the project, which the script changes into.
+ */
+function gitlabMobileScript(doc: Document, job: YAMLMap, context: WorkflowContext, build: { comment: string; lines: string[] }, targets: readonly string[]): void {
+  const { manager, projectDir, installDir } = context;
+  const cd = (dir: string): string[] => (dir === '' ? [] : [`cd "$CI_PROJECT_DIR/${dir}"`]);
+  const script = job.get('script') as YAMLSeq<Scalar<string>>;
+  // The template's lines after its Expo build: the device, the app's install, and the run.
+  const lastBuildLine = script.items.findLastIndex((item) => /\bnpx expo |gradlew/u.test(String(item.value)));
+  const device = script.items.slice(lastBuildLine + 1);
+  const lines = doc.createNode([
+    ...cd(installDir),
+    frozenInstall(manager, context.yarnBerry === true),
+    ...(installDir === projectDir ? [] : projectDir === '' ? ['cd "$CI_PROJECT_DIR"'] : cd(projectDir)),
+    ...build.lines,
+  ]) as YAMLSeq<Scalar<string>>;
+  lines.items[lines.items.length - build.lines.length]!.commentBefore = build.comment;
+  for (const item of device) {
+    if (String(item.value).startsWith('npx ')) item.value = templateCommand(manager, item.value, targets);
+  }
+  lines.items.push(...device);
+  job.set('script', lines);
+}
+
+/**
+ * The GitLab CI/CD pipeline: one job per platform in `context.jobs`, in
+ * merge request pipelines and on the default branch. The web job runs in a
+ * `node` image on GitLab's runners; the mobile jobs need self-managed ones.
+ * The rules sit on the jobs, not in a `workflow:` block, so the same file
+ * works as `.gitlab-ci.yml` and as a file another pipeline includes.
  */
 export function renderGitlabPipeline(context: WorkflowContext): string {
   const { manager, projectDir, installDir } = context;
   const doc = readTemplate('gitlab-ci.yml');
-  const job = doc.get('e2e') as YAMLMap;
-  // Yarn 2 and later keep their own cache and ignore --cache-folder.
-  const store = manager === 'yarn' && context.yarnBerry === true ? undefined : GITLAB_STORE[manager];
-  const usesCorepack = (manager === 'pnpm' && context.pnpmVersion === undefined) || (manager === 'yarn' && context.yarnBerry === true);
+  const root = doc.contents as YAMLMap;
   const cd = (dir: string): string[] => (dir === '' ? [] : [`cd "$CI_PROJECT_DIR/${dir}"`]);
+  const prefixed = (seq: YAMLSeq<Scalar<string>>) => {
+    for (const item of seq.items) item.value = join(projectDir, item.value);
+  };
 
-  if (context.jobName !== undefined) {
-    const key = (doc.contents as YAMLMap).items.find((pair) => isScalar(pair.key) && pair.key.value === 'e2e')?.key as Scalar;
-    key.value = context.jobName;
+  if (context.jobs.web === undefined) {
+    root.delete('e2e-web');
+  } else {
+    const job = root.get('e2e-web') as YAMLMap;
+    // Yarn 2 and later keep their own cache and ignore --cache-folder.
+    const store = manager === 'yarn' && context.yarnBerry === true ? undefined : GITLAB_STORE[manager];
+    const usesCorepack = (manager === 'pnpm' && context.pnpmVersion === undefined) || (manager === 'yarn' && context.yarnBerry === true);
+    job.set('image', `node:${context.nodeMajor ?? DEFAULT_NODE}`);
+    if (usesCorepack) (job.get('variables') as YAMLMap).set('COREPACK_ENABLE_DOWNLOAD_PROMPT', '0');
+    (job.getIn(['cache', 'key', 'files']) as YAMLSeq).set(0, join(installDir, LOCKFILE[manager]));
+    const cachePaths = job.getIn(['cache', 'paths']) as YAMLSeq;
+    if (store === undefined) cachePaths.delete(1);
+    else cachePaths.set(1, `${join(installDir, store)}/`);
+    const [, browsers, run] = (job.get('script') as YAMLSeq<Scalar<string>>).items;
+    job.set('script', doc.createNode([
+      ...cd(installDir),
+      ...gitlabInstall(context),
+      ...(installDir === projectDir ? [] : projectDir === '' ? ['cd "$CI_PROJECT_DIR"'] : cd(projectDir)),
+      templateCommand(manager, browsers!.value),
+      templateCommand(manager, run!.value, context.jobs.web),
+    ]));
+    if (projectDir !== '') {
+      prefixed(job.getIn(['artifacts', 'paths']) as YAMLSeq<Scalar<string>>);
+      const junit = job.getIn(['artifacts', 'reports', 'junit'], true) as Scalar<string>;
+      junit.value = join(projectDir, junit.value);
+    }
   }
-  job.set('image', `node:${context.nodeMajor ?? DEFAULT_NODE}`);
-  if (usesCorepack) (job.get('variables') as YAMLMap).set('COREPACK_ENABLE_DOWNLOAD_PROMPT', '0');
-  (job.getIn(['cache', 'key', 'files']) as YAMLSeq).set(0, join(installDir, LOCKFILE[manager]));
-  const cachePaths = job.getIn(['cache', 'paths']) as YAMLSeq;
-  if (store === undefined) cachePaths.delete(1);
-  else cachePaths.set(1, `${join(installDir, store)}/`);
 
-  const [, browsers, run] = (job.get('script') as YAMLSeq<Scalar<string>>).items;
-  job.set('script', doc.createNode([
-    ...cd(installDir),
-    ...gitlabInstall(context),
-    ...(installDir === projectDir ? [] : projectDir === '' ? ['cd "$CI_PROJECT_DIR"'] : cd(projectDir)),
-    templateCommand(manager, browsers!.value, undefined),
-    templateCommand(manager, run!.value, context.target),
-  ]));
-
-  if (projectDir !== '') {
-    for (const item of (job.getIn(['artifacts', 'paths']) as YAMLSeq<Scalar<string>>).items) item.value = join(projectDir, item.value);
-    const junit = job.getIn(['artifacts', 'reports', 'junit'], true) as Scalar<string>;
+  if (context.jobs.ios === undefined) root.delete('e2e-ios');
+  else gitlabMobileScript(doc, root.get('e2e-ios') as YAMLMap, context, iosBuild(manager, context.jobs.ios.build), context.jobs.ios.targets);
+  if (context.jobs.android === undefined) root.delete('e2e-android');
+  else gitlabMobileScript(doc, root.get('e2e-android') as YAMLMap, context, androidBuild(manager, context.jobs.android.build), context.jobs.android.targets);
+  if (context.jobs.ios === undefined && context.jobs.android === undefined) {
+    root.delete('.e2e-mobile');
+  } else if (projectDir !== '') {
+    const mobile = root.get('.e2e-mobile') as YAMLMap;
+    prefixed(mobile.getIn(['artifacts', 'paths']) as YAMLSeq<Scalar<string>>);
+    const junit = mobile.getIn(['artifacts', 'reports', 'junit'], true) as Scalar<string>;
     junit.value = join(projectDir, junit.value);
+  }
+
+  const firstJob = root.items[0]?.key;
+  if (isScalar(firstJob)) firstJob.spaceBefore = false;
+  if (context.jobSuffix !== undefined) {
+    for (const pair of root.items) {
+      if (isScalar(pair.key)) pair.key.value = `${String(pair.key.value)}${context.jobSuffix}`;
+      const extended = isMap(pair.value) ? pair.value.get('extends', true) : undefined;
+      if (isScalar(extended)) extended.value = `${String(extended.value)}${context.jobSuffix}`;
+    }
   }
   return doc.toString(STRINGIFY);
 }

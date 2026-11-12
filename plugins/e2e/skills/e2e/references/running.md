@@ -224,11 +224,14 @@ CI mode is on when `CI` is set (not `0` or `false`): `retries` 1,
 `ONLY_IN_CI`, the replay cache `read-only` unless the config sets a mode explicitly
 (`cache: 'read-write'` or `cache.mode`), `reuseExisting` ignored.
 
-For a web project, `npx e2e init --yes --ci github-actions` writes this
-workflow for the project's package manager and model key, and `--ci gitlab`
-writes the same job as `.gitlab-ci.yml` (or `.gitlab/e2e.gitlab-ci.yml` to
-include beside an existing one). It leaves existing pipeline files alone. Set
-`app.command` in the config so the runner starts the app.
+`npx e2e init --yes --ci github-actions` writes a workflow like this one with
+a job per platform the config's targets run on (web, iOS, Android), for the
+project's package manager and model key; `--ci gitlab` writes the same jobs as
+`.gitlab-ci.yml` (or `.gitlab/e2e.gitlab-ci.yml` to include beside an existing
+one), its mobile jobs on self-managed runners. The mobile jobs build an Expo or
+bare React Native app; for any other app, replace the failing build step. It
+leaves existing pipeline files alone. Set `app.command` in the config so the
+runner starts the app.
 
 ```yaml
 # .github/workflows/e2e.yml

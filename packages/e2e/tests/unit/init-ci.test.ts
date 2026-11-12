@@ -4,8 +4,11 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
 import {
+  ciJobs,
   configStartsApp,
+  configTargets,
   configUsesLocalModel,
+  detectMobileBuilds,
   findNodeVersionFile,
   findRepositoryRoot,
   gatewaysInConfig,
@@ -14,22 +17,30 @@ import {
   readNodeMajor,
   renderGithubWorkflow,
   renderGitlabPipeline,
+  type CiJobs,
   type WorkflowContext,
 } from '../../src/cli/init/ci.ts';
 
-const base: WorkflowContext = { manager: 'npm', projectDir: '', installDir: '', secrets: [] };
+const base: WorkflowContext = { manager: 'npm', projectDir: '', installDir: '', secrets: [], jobs: { web: 'all' } };
+
+/** Expo on both phones beside a web target: the template's own case. */
+const expoJobs: CiJobs = {
+  web: ['web'],
+  ios: { targets: ['ios'], build: { kind: 'expo' } },
+  android: { targets: ['android'], build: { kind: 'expo', prebuild: true } },
+};
 
 /** One step or job of a rendered pipeline, as YAML reads it. */
 type Node = Record<string, unknown>;
 
 /** A rendered GitHub workflow's job and its steps. */
-function githubJob(text: string): { job: Node; steps: Node[]; step: (name: string) => Node; uses: (action: string) => Node | undefined } {
-  const job = (parse(text) as { jobs: { e2e: Node } }).jobs.e2e;
+function githubJob(text: string, name = 'web'): { job: Node; steps: Node[]; step: (name: string) => Node; uses: (action: string) => Node | undefined } {
+  const job = (parse(text) as { jobs: Record<string, Node> }).jobs[name]!;
   const steps = job['steps'] as Node[];
   return {
     job,
     steps,
-    step: (name) => steps.find((step) => step['name'] === name)!,
+    step: (stepName) => steps.find((step) => step['name'] === stepName)!,
     uses: (action) => steps.find((step) => String(step['uses']).startsWith(`${action}@`)),
   };
 }
@@ -38,8 +49,56 @@ function githubJob(text: string): { job: Node; steps: Node[]; step: (name: strin
 const templates = path.resolve(import.meta.dirname, '../../templates/ci');
 
 describe('renderGithubWorkflow', () => {
-  it('writes the template unchanged for npm at the repository root, the model key read from secrets', () => {
-    expect(renderGithubWorkflow({ ...base, secrets: ['AI_GATEWAY_API_KEY'] })).toBe(readFileSync(path.join(templates, 'github-actions.yml'), 'utf8'));
+  it('writes the template unchanged for npm at the repository root, Expo on both phones, and the model key from secrets', () => {
+    expect(renderGithubWorkflow({ ...base, secrets: ['AI_GATEWAY_API_KEY'], jobs: expoJobs })).toBe(readFileSync(path.join(templates, 'github-actions.yml'), 'utf8'));
+  });
+
+  it('writes only the web job, running every target, when the config has no phone target', () => {
+    const workflow = parse(renderGithubWorkflow(base)) as { jobs: Record<string, Node> };
+    expect(Object.keys(workflow.jobs)).toEqual(['web']);
+    expect(githubJob(renderGithubWorkflow(base)).step('Run e2e')['run']).toBe('npx e2e run --reporter list,junit');
+  });
+
+  it('writes only the phone jobs for a mobile-only config, each naming its targets', () => {
+    const workflow = renderGithubWorkflow({ ...base, jobs: { ios: { targets: ['iphone', 'ipad'], build: { kind: 'expo' } }, android: expoJobs.android! } });
+    expect(Object.keys((parse(workflow) as { jobs: object }).jobs)).toEqual(['ios', 'android']);
+    // No line of only spaces where the web job was.
+    expect(workflow).toContain('jobs:\n  ios:\n');
+    expect(workflow).not.toMatch(/^ +$/mu);
+    // The emulator's E2E_DEVICE stays when there is no model key to pass.
+    expect(githubJob(workflow, 'android').step('Run e2e')['env']).toEqual({ E2E_DEVICE: 'emulator-5554' });
+    expect(githubJob(workflow, 'ios').step('Run e2e')['run']).toBe('npx e2e run --target iphone,ipad --workers 1 --reporter list,junit');
+    expect((githubJob(workflow, 'android').step('Run e2e')['with'] as Node)['script']).toBe(
+      'adb install -r android/app/build/outputs/apk/release/app-release.apk\nnpx e2e run --target android --workers 1 --reporter list,junit\n',
+    );
+  });
+
+  it('runs the web job on every target off the phones when a config has both', () => {
+    const workflow = renderGithubWorkflow({ ...base, jobs: { ...expoJobs, web: ['web', 'api'] } });
+    expect(githubJob(workflow).step('Run e2e')['run']).toBe('npx e2e run --target web,api --reporter list,junit');
+  });
+
+  it('builds a bare React Native app with its workspace, through Bundler when it has a Gemfile', () => {
+    const workflow = renderGithubWorkflow({ ...base, jobs: {
+      ios: { targets: ['ios'], build: { kind: 'react-native', workspace: 'MyApp', bundler: true } },
+      android: { targets: ['android'], build: { kind: 'react-native' } },
+    } });
+    expect(githubJob(workflow, 'ios').step('Build the app')['run']).toBe(
+      "bundle install\n(cd ios && bundle exec pod install)\nxcodebuild -workspace ios/MyApp.xcworkspace -scheme MyApp -configuration Release -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath build\n",
+    );
+    expect(githubJob(workflow, 'android').step('Build the app')['run']).toBe('(cd android && ./gradlew :app:assembleRelease -PreactNativeArchitectures=x86_64)');
+    expect(workflow).toContain('      # Installs the pods, then builds the workspace for the simulator into build/.\n      - name: Build the app\n');
+  });
+
+  it('skips Expo prebuild when android/ is already there', () => {
+    const workflow = renderGithubWorkflow({ ...base, jobs: { android: { targets: ['android'], build: { kind: 'expo', prebuild: false } } } });
+    expect(githubJob(workflow, 'android').step('Build the app')['run']).toBe('(cd android && ./gradlew :app:assembleRelease -PreactNativeArchitectures=x86_64)');
+  });
+
+  it('writes a build step that fails until it is replaced for any other app, saying where the build goes', () => {
+    const workflow = renderGithubWorkflow({ ...base, jobs: { ios: { targets: ['ios'], build: { kind: 'custom' } }, android: { targets: ['android'], build: { kind: 'custom' } } } });
+    expect(githubJob(workflow, 'ios').step('Build the app')['run']).toBe('echo "Replace this step with your app\'s build for the simulator, with the .app under build/" >&2\nexit 1\n');
+    expect(workflow).toContain("      # Replace this step with your app's release build, an APK at android/app/build/outputs/apk/release/app-release.apk.\n");
   });
 
   it('keeps the template comments and pinned tags', () => {
@@ -51,17 +110,23 @@ describe('renderGithubWorkflow', () => {
 
   it('sets no env block when the run reads no key', () => {
     expect(githubJob(renderGithubWorkflow(base)).step('Run e2e')).not.toHaveProperty('env');
+    expect(githubJob(renderGithubWorkflow({ ...base, jobs: expoJobs }), 'ios').step('Run e2e')).not.toHaveProperty('env');
   });
 
-  it('runs a workspace member from its folder and installs at the workspace root', () => {
-    const { job, step, uses } = githubJob(renderGithubWorkflow({ ...base, manager: 'pnpm', projectDir: 'apps/web', installDir: '', pnpmVersion: '10' }));
-    expect(job['defaults']).toEqual({ run: { 'working-directory': 'apps/web' } });
-    expect(Object.keys(job)).toEqual(['runs-on', 'timeout-minutes', 'defaults', 'steps']);
-    expect(uses('pnpm/action-setup')?.['with']).toEqual({ version: '10' });
-    expect(step('Install dependencies')).toEqual({ name: 'Install dependencies', run: 'pnpm install --frozen-lockfile', 'working-directory': '.' });
-    expect(uses('actions/cache')?.['with']).toMatchObject({ key: "playwright-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('pnpm-lock.yaml') }}" });
-    expect(step('Run e2e')['run']).toBe('pnpm exec e2e run --reporter list,junit');
-    expect((step('Upload the report')['with'] as Node)['path']).toBe('apps/web/.e2e/report.json\napps/web/.e2e/junit.xml\napps/web/.e2e/results\n');
+  it('sets up every job for a workspace member: its folder, the install at the workspace root, and the cache keys', () => {
+    const workflow = renderGithubWorkflow({ ...base, manager: 'pnpm', projectDir: 'apps/app', installDir: '', pnpmVersion: '10', jobs: expoJobs });
+    for (const name of ['web', 'ios', 'android']) {
+      const { job, step, uses } = githubJob(workflow, name);
+      expect(job['defaults']).toEqual({ run: { 'working-directory': 'apps/app' } });
+      expect(Object.keys(job).indexOf('defaults')).toBe(Object.keys(job).indexOf('steps') - 1);
+      expect(uses('pnpm/action-setup')?.['with']).toEqual({ version: '10' });
+      expect(step('Install dependencies')).toEqual({ name: 'Install dependencies', run: 'pnpm install --frozen-lockfile', 'working-directory': '.' });
+      expect((step('Upload the report')['with'] as Node)['path']).toBe('apps/app/.e2e/report.json\napps/app/.e2e/junit.xml\napps/app/.e2e/results\n');
+      expect(workflow).not.toContain("hashFiles('package-lock.json')");
+    }
+    // The emulator action runs its script from the project, which defaults.run does not reach.
+    expect((githubJob(workflow, 'android').step('Run e2e')['with'] as Node)['working-directory']).toBe('apps/app');
+    expect(githubJob(workflow, 'ios').step('Build the app')['run']).toBe('pnpm exec expo run:ios --configuration Release --device generic --no-bundler --output build/ios');
   });
 
   it('points the cache at a lockfile below the root, and pnpm at the package.json with its packageManager field', () => {
@@ -94,28 +159,59 @@ describe('renderGithubWorkflow', () => {
     expect(below.uses('oven-sh/setup-bun')?.['with']).toEqual({ 'bun-version-file': 'site/package.json' });
   });
 
-  it('runs only the web target when a mobile target shares the config', () => {
-    expect(githubJob(renderGithubWorkflow({ ...base, target: 'web' })).step('Run e2e')['run']).toBe('npx e2e run --target web --reporter list,junit');
-  });
-
   it('keeps a folder name with a space as one value', () => {
     expect(githubJob(renderGithubWorkflow({ ...base, projectDir: 'my app', installDir: 'my app' })).job['defaults']).toEqual({ run: { 'working-directory': 'my app' } });
   });
 });
 
-/** A rendered GitLab pipeline's one job. */
-function gitlabJob(text: string, name = 'e2e'): Node {
+/** A rendered GitLab pipeline's job. */
+function gitlabJob(text: string, name = 'e2e-web'): Node {
   return (parse(text) as Record<string, Node>)[name]!;
 }
 
 describe('renderGitlabPipeline', () => {
-  it('writes the template unchanged for npm at the repository root, with no key in the file', () => {
+  it('writes the template unchanged for npm at the repository root and Expo on both phones, with no key in the file', () => {
     // CI/CD variables reach the job's environment on their own; the file names no key.
-    expect(renderGitlabPipeline({ ...base, secrets: ['AI_GATEWAY_API_KEY'] })).toBe(readFileSync(path.join(templates, 'gitlab-ci.yml'), 'utf8'));
+    expect(renderGitlabPipeline({ ...base, secrets: ['AI_GATEWAY_API_KEY'], jobs: expoJobs })).toBe(readFileSync(path.join(templates, 'gitlab-ci.yml'), 'utf8'));
+  });
+
+  it('keeps the header and starts with no blank line when the pipeline has no web job', () => {
+    const pipeline = renderGitlabPipeline({ ...base, jobs: { android: expoJobs.android! } });
+    expect(pipeline).toMatch(/^# Written by `e2e init --ci gitlab`[^\n]*\n# the default branch, one job per platform\. See https:\/\/e2e\.com\/docs\/ci\/gitlab\n\n# GitLab's hosted runners/u);
+    expect(Object.keys(parse(pipeline) as object)).toEqual(['.e2e-mobile', 'e2e-android']);
+  });
+
+  it('writes only the web job, without the mobile base or its comment, when the config has no phone target', () => {
+    const pipeline = renderGitlabPipeline(base);
+    expect(Object.keys(parse(pipeline) as object)).toEqual(['e2e-web']);
+    expect(pipeline).not.toContain('self-managed');
+    expect(gitlabJob(pipeline)['script']).toContain('npx e2e run --reporter list,junit');
+  });
+
+  it('runs the phone jobs on self-managed runners: install, build, a device of their own, then the targets', () => {
+    const pipeline = renderGitlabPipeline({ ...base, jobs: { ios: { targets: ['iphone'], build: { kind: 'react-native', workspace: 'MyApp', bundler: false } }, android: { targets: ['android'], build: { kind: 'custom' } } } });
+    expect(Object.keys(parse(pipeline) as object)).toEqual(['.e2e-mobile', 'e2e-ios', 'e2e-android']);
+    const ios = gitlabJob(pipeline, 'e2e-ios');
+    expect(ios['tags']).toEqual(['macos']);
+    expect(ios['script']).toEqual([
+      'npm ci',
+      '(cd ios && pod install)',
+      "xcodebuild -workspace ios/MyApp.xcworkspace -scheme MyApp -configuration Release -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath build",
+      'export E2E_DEVICE=$(xcrun simctl create "e2e-$CI_JOB_ID" "iPhone 17 Pro" com.apple.CoreSimulator.SimRuntime.iOS-26-5)',
+      'echo "$E2E_DEVICE" > "$CI_PROJECT_DIR/.simulator-udid"',
+      'xcrun simctl bootstatus "$E2E_DEVICE" -b',
+      `xcrun simctl install "$E2E_DEVICE" "$(find build -maxdepth 5 -name '*.app' -type d | head -n 1)"`,
+      'npx e2e run --target iphone --workers 1 --reporter list,junit',
+    ]);
+    const android = gitlabJob(pipeline, 'e2e-android')['script'] as string[];
+    expect(android.slice(0, 3)).toEqual(['npm ci', 'echo "Replace this step with your app\'s build, an APK at android/app/build/outputs/apk/release/app-release.apk" >&2', 'exit 1']);
+    expect(android.at(-1)).toBe('npx e2e run --target android --workers 1 --reporter list,junit');
+    expect(pipeline).toContain("    # Replace this step with your app's release build, an APK at android/app/build/outputs/apk/release/app-release.apk.\n    - echo");
   });
 
   it('installs at the workspace root and runs in the project folder', () => {
-    const job = gitlabJob(renderGitlabPipeline({ ...base, manager: 'pnpm', projectDir: 'apps/web', installDir: '', pnpmVersion: '10', nodeMajor: '26' }));
+    const pipeline = renderGitlabPipeline({ ...base, manager: 'pnpm', projectDir: 'apps/web', installDir: '', pnpmVersion: '10', nodeMajor: '26', jobs: expoJobs });
+    const job = gitlabJob(pipeline);
     expect(job['image']).toBe('node:26');
     expect(job['script']).toEqual([
       'npm install --global pnpm@10',
@@ -123,7 +219,7 @@ describe('renderGitlabPipeline', () => {
       'pnpm install --frozen-lockfile',
       'cd "$CI_PROJECT_DIR/apps/web"',
       'pnpm exec e2e-web install chromium --with-deps',
-      'pnpm exec e2e run --reporter list,junit',
+      'pnpm exec e2e run --target web --reporter list,junit',
     ]);
     expect(job['cache']).toEqual({ key: { files: ['pnpm-lock.yaml'] }, paths: ['.cache/ms-playwright/', '.pnpm-store/'] });
     expect(job['artifacts']).toMatchObject({
@@ -131,6 +227,12 @@ describe('renderGitlabPipeline', () => {
       reports: { junit: 'apps/web/.e2e/junit.xml' },
     });
     expect(job['variables']).not.toHaveProperty('COREPACK_ENABLE_DOWNLOAD_PROMPT');
+    expect((gitlabJob(pipeline, 'e2e-ios')['script'] as string[]).slice(0, 3)).toEqual([
+      'pnpm install --frozen-lockfile',
+      'cd "$CI_PROJECT_DIR/apps/web"',
+      'pnpm exec expo run:ios --configuration Release --device generic --no-bundler --output build/ios',
+    ]);
+    expect(gitlabJob(pipeline, '.e2e-mobile')['artifacts']).toMatchObject({ reports: { junit: 'apps/web/.e2e/junit.xml' } });
   });
 
   it('changes into a project below the root before the install, and lets corepack read packageManager', () => {
@@ -151,18 +253,92 @@ describe('renderGitlabPipeline', () => {
     expect((job['cache'] as Node)['paths']).toEqual(['.cache/ms-playwright/', ...store]);
   });
 
-  it('installs Bun into the node image and runs only the web target beside a mobile one', () => {
-    const job = gitlabJob(renderGitlabPipeline({ ...base, manager: 'bun', target: 'web' }));
+  it('installs Bun into the node image and runs the web job beside a phone job', () => {
+    const job = gitlabJob(renderGitlabPipeline({ ...base, manager: 'bun', jobs: { web: ['web'], ios: expoJobs.ios! } }));
     expect((job['script'] as string[]).slice(0, 2)).toEqual(['npm install --global bun', 'bun install --frozen-lockfile']);
     expect((job['script'] as string[]).at(-1)).toBe('bunx e2e run --target web --reporter list,junit');
     expect((job['cache'] as Node)['paths']).toEqual(['.cache/ms-playwright/']);
   });
 
-  it('renames the job and keeps the template comments', () => {
-    const pipeline = renderGitlabPipeline({ ...base, jobName: 'e2e-run' });
+  it('renames every job, and what the phone jobs extend, beside a pipeline that has one of the names', () => {
+    const pipeline = renderGitlabPipeline({ ...base, jobs: expoJobs, jobSuffix: '-run' });
+    expect(Object.keys(parse(pipeline) as object)).toEqual(['e2e-web-run', '.e2e-mobile-run', 'e2e-ios-run', 'e2e-android-run']);
+    expect(gitlabJob(pipeline, 'e2e-ios-run')['extends']).toBe('.e2e-mobile-run');
     expect(pipeline).toMatch(/^# Written by `e2e init --ci gitlab`/u);
     expect(pipeline).toContain('    # GitLab caches only paths inside the project.\n');
-    expect(Object.keys(parse(pipeline) as object)).toEqual(['e2e-run']);
+  });
+});
+
+describe('ciJobs', () => {
+  const builds = { ios: { kind: 'expo' }, android: { kind: 'expo', prebuild: true } } as const;
+
+  it('gives each phone platform its job and runs everything else in the web job', () => {
+    expect(ciJobs([{ name: 'web', platform: 'web' }], builds)).toEqual({ web: 'all' });
+    expect(ciJobs([{ name: 'chromium', platform: 'web' }, { name: 'api', platform: 'custom' }, { name: 'iphone', platform: 'ios' }, { name: 'pixel', platform: 'android' }], builds)).toEqual({
+      web: ['chromium', 'api'],
+      ios: { targets: ['iphone'], build: builds.ios },
+      android: { targets: ['pixel'], build: builds.android },
+    });
+    expect(ciJobs([{ name: 'ios', platform: 'ios' }, { name: 'ipad', platform: 'ios' }], builds)).toEqual({ ios: { targets: ['ios', 'ipad'], build: builds.ios } });
+  });
+
+  it('runs targets of other platforms, such as HTTP tests, in the web job, beside phone jobs too', () => {
+    expect(ciJobs([{ name: 'default', platform: 'custom' }], builds)).toEqual({ web: 'all' });
+    expect(ciJobs([{ name: 'api', platform: 'custom' }, { name: 'ios', platform: 'ios' }], builds)).toEqual({ web: ['api'], ios: { targets: ['ios'], build: builds.ios } });
+    expect(ciJobs([], builds)).toEqual({});
+  });
+});
+
+describe('configTargets', () => {
+  it('names and places each target the way e2e run resolves it, leaving out a target it would refuse', () => {
+    expect(configTargets({ targets: [
+      { engine: { platform: 'web' } },
+      { name: 'iphone', engine: { platform: 'ios' } },
+      { name: 'api', platform: 'custom' },
+      { name: 'unknown' },
+      // A platform that contradicts its engine is a config error to e2e run.
+      { name: 'mixed', platform: 'web', engine: { platform: 'ios' } },
+    ] } as never)).toEqual([{ name: 'web', platform: 'web' }, { name: 'iphone', platform: 'ios' }, { name: 'api', platform: 'custom' }]);
+    expect(configTargets({} as never)).toEqual([]);
+  });
+});
+
+describe('detectMobileBuilds', () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(path.join(os.tmpdir(), 'e2e-init-builds-'));
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('builds Expo with CNG, and skips prebuild when android/ is committed', () => {
+    expect(detectMobileBuilds(dir, (name) => name === 'expo')).toEqual({ ios: { kind: 'expo' }, android: { kind: 'expo', prebuild: true } });
+    mkdirSync(path.join(dir, 'android'));
+    writeFileSync(path.join(dir, 'android', 'gradlew'), '');
+    expect(detectMobileBuilds(dir, (name) => name === 'expo').android).toEqual({ kind: 'expo', prebuild: false });
+  });
+
+  it('builds bare React Native from its workspace and Gradle wrapper, else falls back to a step to replace', () => {
+    const rn = (name: string) => name === 'react-native';
+    expect(detectMobileBuilds(dir, rn)).toEqual({ ios: { kind: 'custom' }, android: { kind: 'custom' } });
+    mkdirSync(path.join(dir, 'ios', 'MyApp.xcworkspace'), { recursive: true });
+    mkdirSync(path.join(dir, 'ios', 'Pods.xcworkspace'));
+    mkdirSync(path.join(dir, 'android'));
+    writeFileSync(path.join(dir, 'android', 'gradlew'), '');
+    writeFileSync(path.join(dir, 'Gemfile'), '');
+    expect(detectMobileBuilds(dir, rn)).toEqual({ ios: { kind: 'react-native', workspace: 'MyApp', bundler: true }, android: { kind: 'react-native' } });
+  });
+
+  it('writes a step to replace for a native app', () => {
+    expect(detectMobileBuilds(dir, () => false)).toEqual({ ios: { kind: 'custom' }, android: { kind: 'custom' } });
+  });
+
+  it('reads no workspace from an ios that is a file', () => {
+    writeFileSync(path.join(dir, 'ios'), '');
+    expect(detectMobileBuilds(dir, (name) => name === 'react-native').ios).toEqual({ kind: 'custom' });
   });
 });
 
@@ -247,21 +423,23 @@ describe('project detection', () => {
   it('says when an existing pipeline lists stages without test, where the included job runs', () => {
     const gitlab = getCiService('gitlab');
     writeFileSync(path.join(dir, '.gitlab-ci.yml'), 'stages: [build, deploy]\nbuild:\n  script: [make]\n');
-    expect(gitlab.locate(dir).note).toBe('The e2e job runs in the test stage; add test to the stages in .gitlab-ci.yml');
+    expect(gitlab.locate(dir).note).toBe('The e2e jobs run in the test stage; add test to the stages in .gitlab-ci.yml');
     writeFileSync(path.join(dir, '.gitlab-ci.yml'), 'stages:\n  - build\n  - test\nbuild:\n  script: [make]\n');
     expect(gitlab.locate(dir).note).toBeUndefined();
     writeFileSync(path.join(dir, '.gitlab-ci.yml'), 'build:\n  script: [make]\n');
     expect(gitlab.locate(dir).note).toBeUndefined();
     // A stage whose name only contains test is another stage.
     writeFileSync(path.join(dir, '.gitlab-ci.yml'), 'stages: [build, unit-test]\n');
-    expect(gitlab.locate(dir).note).toBe('The e2e job runs in the test stage; add test to the stages in .gitlab-ci.yml');
+    expect(gitlab.locate(dir).note).toBe('The e2e jobs run in the test stage; add test to the stages in .gitlab-ci.yml');
     writeFileSync(path.join(dir, '.gitlab-ci.yml'), "stages:\n  - 'build'\n  - \"test\" # unit and e2e\nvariables: {}\n");
     expect(gitlab.locate(dir).note).toBeUndefined();
   });
 
-  it('names the job e2e-run beside a pipeline that already has a job named e2e', () => {
+  it('renames the jobs beside a pipeline that already has a job of one of their names', () => {
     writeFileSync(path.join(dir, '.gitlab-ci.yml'), 'e2e:\n  script: [npx cypress run]\n');
-    expect(getCiService('gitlab').locate(dir)).toMatchObject({ file: '.gitlab/e2e.gitlab-ci.yml', jobName: 'e2e-run' });
+    expect(getCiService('gitlab').locate(dir)).not.toHaveProperty('jobSuffix');
+    writeFileSync(path.join(dir, '.gitlab-ci.yml'), 'e2e-ios:\n  script: [npx detox test]\n');
+    expect(getCiService('gitlab').locate(dir)).toMatchObject({ file: '.gitlab/e2e.gitlab-ci.yml', jobSuffix: '-run' });
   });
 
   it('counts any GitHub workflow that runs e2e as set up', () => {
