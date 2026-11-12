@@ -55,6 +55,7 @@ export interface OperationContext {
    * the replay cache repeats a choice it made in an earlier run, whose
    * `origin` is then `test`. An engine answers for the agent what the agent
    * cannot see, such as a native dialog its action opens.
+   * When absent, use `origin === 'agent'`: older cores send only `origin`.
    */
   readonly agentStep?: boolean;
 }

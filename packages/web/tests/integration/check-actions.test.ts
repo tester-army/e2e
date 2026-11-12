@@ -358,10 +358,12 @@ describe.each(KINDS)('a control its own label covers, through the %s target', (k
     await page.setContent(`
       <input type="checkbox" id="c" style="display:none">
       <label for="c" style="display:inline-block"><a href="#went">Terms</a></label>`);
+    // A short deadline can expire before Playwright logs the visibility blocker.
+    // Assert the refusal and its effects rather than that timing-dependent diagnostic.
     for (const action of [{ kind: 'check' }, { kind: 'tap' }] as const) {
       expect(await perform(await targetOf(kind, '#c'), action, REFUSAL_TIMEOUT_MS)).toMatchObject({
         code: 'NOT_ACTIONABLE',
-        message: expect.stringContaining('not visible'),
+        retryable: false,
       });
       expect(await page.isChecked('#c')).toBe(false);
       expect(page.url()).not.toContain('#went');
