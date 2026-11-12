@@ -9,7 +9,7 @@ import type { Locator as PwLocator, Page } from 'playwright-core';
 import { describe, expect, it, vi } from 'vitest';
 import { EngineError, TestError, type LocatorAction } from 'e2e/engine';
 import { classifyActionError, dispatchLocatorAction, dispatchPointerAction } from '../../src/actions.ts';
-import type { ActionTarget } from '../../src/support.ts';
+import { dispatchedInput, type ActionTarget } from '../../src/support.ts';
 
 vi.mock('node:timers/promises', () => ({
   setTimeout: (ms: number, value?: unknown, options?: { signal?: AbortSignal }) =>
@@ -196,6 +196,20 @@ function stubUpload(fileInput: boolean) {
   const target: ActionTarget = { kind: 'locator', locator: locator as unknown as PwLocator };
   return { element, target, page, chooser, calls };
 }
+
+describe('dispatchedInput', () => {
+  /** A page closing under a click: Playwright puts the call log in `log`, not the message. */
+  const closed = (log: string[]): Error => Object.assign(new Error('elementHandle.click: Target page, context or browser has been closed'), { log });
+
+  it('reads the dispatch from the log of an error whose page closed under the action', () => {
+    expect(dispatchedInput(closed(['  - attempting click action', '    - element is visible, enabled and stable', '    - performing click action']))).toBe(true);
+  });
+
+  it('is false while the log ends before the input went out', () => {
+    expect(dispatchedInput(closed(['  - attempting click action', '    - waiting for element to be visible, enabled and stable']))).toBe(false);
+    expect(dispatchedInput(new Error('elementHandle.click: Target page, context or browser has been closed'))).toBe(false);
+  });
+});
 
 describe('dispatchLocatorAction', () => {
   const lookup = () => {

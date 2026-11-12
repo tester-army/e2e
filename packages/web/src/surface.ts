@@ -67,6 +67,7 @@ import { RefRegistry } from './refs.ts';
 import {
   cancelled,
   DEFAULT_VIEWPORT,
+  dispatchedInput,
   ErrorLatch,
   invalidState,
   isClassified,
@@ -993,10 +994,17 @@ export class PlaywrightSurface {
           this.requireSession().requireObservation();
           return performViewportSwipe(page, action.direction, action.momentum ?? 'none');
         }
-        const { refs } = this.requireSession();
-        return refs.lookup(ref).then((target) => {
+        const session = this.requireSession();
+        const { refs } = session;
+        return refs.lookup(ref).then(async (target) => {
           currentOperation.signal.throwIfAborted();
-          return dispatchLocatorAction(target, action, currentOperation, (other) => refs.lookup(other));
+          try {
+            await dispatchLocatorAction(target, action, currentOperation, (other) => refs.lookup(other));
+          } catch (cause) {
+            // The input went out and its own tab closed: closing was what it did.
+            if (dispatchedInput(cause) && session.tabClosed(page)) return;
+            throw cause;
+          }
         });
       },
       (cause) => classifyActionError(cause, action),
