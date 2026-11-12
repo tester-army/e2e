@@ -77,6 +77,10 @@
       {
         "id": "nodejs",
         "label": "Node.js"
+      },
+      {
+        "id": "python",
+        "label": "Python"
       }
     ],
     "useCase": [
@@ -1764,6 +1768,53 @@
           "api-testing",
           "e-commerce",
           "authentication"
+        ],
+        "platform": [
+          "web"
+        ]
+      }
+    },
+    {
+      "slug": "omadeck",
+      "title": "Testing OmaDeck's phone deck with e2e",
+      "shortTitle": "OmaDeck",
+      "description": "A Python-served phone deck tested in a phone-sized browser, with fake hyprctl and wtype recording what each tap sends to the desktop.",
+      "source": "community",
+      "repository": "https://github.com/Mohsintl/omadeck/tree/a022008c60f6d2689e3283d33a099755b4090b87/e2e",
+      "author": {
+        "name": "Mohsin Mohammed T L",
+        "github": "Mohsintl"
+      },
+      "license": "Apache-2.0",
+      "licenseUrl": "https://github.com/Mohsintl/omadeck/blob/a022008c60f6d2689e3283d33a099755b4090b87/LICENSE",
+      "tags": {
+        "framework": [
+          "python"
+        ],
+        "platform": [
+          "web"
+        ]
+      }
+    },
+    {
+      "slug": "automation-exercise",
+      "title": "Testing e-commerce flows on Automation Exercise with e2e",
+      "shortTitle": "Automation Exercise",
+      "description": "Navigation, product catalog search, and cart validation journeys for the Automation Exercise store, tested with locators.",
+      "source": "community",
+      "repository": "https://github.com/Mohsintl/e2e-automation-exercise/tree/b75be5340bad9f6d9566523b0ac7a6bd55feba2e",
+      "author": {
+        "name": "Tingri Lohar Mohammed Mohsin",
+        "github": "Mohsintl"
+      },
+      "license": "MIT",
+      "licenseUrl": "https://github.com/Mohsintl/e2e-automation-exercise/blob/b75be5340bad9f6d9566523b0ac7a6bd55feba2e/LICENSE",
+      "tags": {
+        "framework": [
+          "nodejs"
+        ],
+        "useCase": [
+          "e-commerce"
         ],
         "platform": [
           "web"

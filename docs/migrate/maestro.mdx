@@ -120,7 +120,7 @@ purpose.
 | `stopApp`, then `launchApp` | `app.restart()` |
 | `clearKeychain` | `device.clearKeychain()`, the whole simulator's keychain; iOS only |
 | `openLink` | `device.openLink(url, { app })`; on iOS the link opens into `app`, default the pinned app |
-| `addMedia` | Not yet. On an iOS simulator, run `xcrun simctl addmedia` on `device.unstable_raw.deviceId` before `app.open()` |
+| `addMedia` | Not yet. Add the photo from the host before `app.open()`: `xcrun simctl addmedia` on an iOS simulator; Android is unchecked. See the "Photos for a picker test" accordion under [The device fixture](/mobile#the-device-fixture) |
 | `back` | `app.back()`, or `device.back()` |
 
 </Accordion>
@@ -133,7 +133,7 @@ purpose.
 | `tapOn: { text, index: 2 }` | `.nth(2)` |
 | `tapOn: { below: "Email" }`, `above`, `leftOf`, `rightOf`, `containsDescendants` | No equivalent, see [Rewrite selectors](#rewrite-selectors) |
 | `tapOn: { point: "x,y" }` | `screen.tapAt({ x, y })`; inside a node, `.tap({ position: { x, y } })` |
-| `retryTapIfNoChange`, `waitToSettleTimeoutMs` | `mobile({ settle, transition })`, engine-wide; no per-call knob |
+| `retryTapIfNoChange`, `waitToSettleTimeoutMs` | `mobile({ transition })`, engine-wide; no per-call knob |
 | `doubleTapOn`, `longPressOn` | `.doubleTap()`, `.longPress({ duration })` |
 | `inputText` | `screen.getByTestId('field').fill('text')` |
 | `inputRandomEmail`, `inputRandomText`, `faker` | `unique()` around a value in `act` params so the cache still replays; any npm faker for the rest |
@@ -156,7 +156,7 @@ purpose.
 | `swipe: { start, end }` | `screen.swipe({ from: { x, y }, to: { x, y } })` |
 | `scroll` | `screen.swipe({ direction: 'down' })` |
 | `scrollUntilVisible: { element }` | `screen.scrollUntilVisible(locator, { direction })` |
-| `waitForAnimationToEnd` | an assertion on the settled state; `mobile({ settle, transition })` for the engine |
+| `waitForAnimationToEnd` | an assertion on the settled state; `mobile({ transition })` for the engine |
 
 </Accordion>
 <Accordion title="Assertions and waits">

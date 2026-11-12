@@ -6,6 +6,9 @@ description: >-
   releases its package.json names.
 
 inputs:
+  agent-device-version:
+    description: Exact driver version for compatibility runs
+    default: ''
   working-directory:
     description: The directory with the example's test package.json.
     required: true
@@ -27,6 +30,7 @@ runs:
       shell: bash
       working-directory: ${{ inputs.working-directory }}
       env:
+        AGENT_DEVICE_VERSION: ${{ inputs.agent-device-version }}
         PACKED: ${{ runner.temp }}/packed
       run: |
         set -euo pipefail
@@ -43,5 +47,11 @@ runs:
           }
           fs.writeFileSync("package.json", `${JSON.stringify(manifest, null, 2)}\n`);
         '
+        if [ -n "$AGENT_DEVICE_VERSION" ]; then
+          node "$GITHUB_WORKSPACE/.github/scripts/agent-device.cjs" override npm
+        fi
         npm install --no-audit --no-fund
+        if [ -n "$AGENT_DEVICE_VERSION" ]; then
+          node "$GITHUB_WORKSPACE/.github/scripts/agent-device.cjs" verify npm
+        fi
         npx e2e --version

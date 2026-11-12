@@ -1,0 +1,100 @@
+name: nightly agent-device
+
+on:
+  schedule:
+    # Nightlies normally land by 07:30 UTC. Allow 47 minutes and avoid the hour.
+    - cron: '17 8 * * *'
+  workflow_dispatch:
+    inputs:
+      agent-device-version:
+        description: agent-device version or npm dist-tag
+        type: string
+        default: nightly
+
+permissions:
+  contents: read
+  actions: write
+  pull-requests: write
+
+concurrency:
+  group: nightly-agent-device
+  cancel-in-progress: true
+
+jobs:
+  resolve:
+    if: ${{ github.repository == 'e2e-inc/e2e' }}
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
+    steps:
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+      - name: Resolve the driver once
+        id: resolve
+        env:
+          DRIVER: ${{ inputs.agent-device-version || 'nightly' }}
+        run: |
+          version=$(npm view "agent-device@$DRIVER" version)
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Expected one exact agent-device version, got: $version"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Testing agent-device $version (requested $DRIVER)" >> "$GITHUB_STEP_SUMMARY"
+
+  spec:
+    needs: resolve
+    uses: ./.github/workflows/spec.yml
+    with:
+      agent-device-version: ${{ needs.resolve.outputs.version }}
+    secrets: inherit
+
+  benchmark:
+    needs: resolve
+    uses: ./.github/workflows/benchmark.yml
+    with:
+      agent-device-version: ${{ needs.resolve.outputs.version }}
+    secrets: inherit
+
+  mobile:
+    needs: resolve
+    uses: ./.github/workflows/mobile.yml
+    with:
+      agent-device-version: ${{ needs.resolve.outputs.version }}
+    secrets: inherit
+
+  examples:
+    needs: resolve
+    uses: ./.github/workflows/examples.yml
+    with:
+      agent-device-version: ${{ needs.resolve.outputs.version }}
+    secrets: inherit
+
+  agent:
+    needs: resolve
+    uses: ./.github/workflows/agent.yml
+    with:
+      agent-device-version: ${{ needs.resolve.outputs.version }}
+    secrets: inherit
+
+  summary:
+    if: ${{ always() }}
+    needs: [resolve, spec, benchmark, mobile, examples, agent]
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 5
+    steps:
+      - name: Suite results
+        env:
+          VERSION: ${{ needs.resolve.outputs.version }}
+          RESULTS: ${{ toJSON(needs) }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "## agent-device ${VERSION:-resolution failed}" >> "$GITHUB_STEP_SUMMARY"
+          echo '| Workflow | Result |' >> "$GITHUB_STEP_SUMMARY"
+          echo '| --- | --- |' >> "$GITHUB_STEP_SUMMARY"
+          jq -r 'to_entries[] | "| \(.key) | \(.value.result) |"' <<< "$RESULTS" >> "$GITHUB_STEP_SUMMARY"
+          # Include individual matrix failures, not only the reusable workflow's result.
+          gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs?per_page=100"             --jq '.jobs[] | select(.conclusion == "failure" || .conclusion == "cancelled") | "- [\(.name)](\(.html_url)): \(.conclusion)"' >> "$GITHUB_STEP_SUMMARY"
+          jq -e 'all(.[]; .result == "success")' <<< "$RESULTS"

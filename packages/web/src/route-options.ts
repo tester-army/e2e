@@ -26,7 +26,7 @@ export interface FulfillDecision {
 
 /**
  * What `route.continue` hands Playwright once the overrides are validated;
- * `headers` before the site's are merged in, a header set to `undefined`
+ * `headers` before the configured ones are merged in, a header set to `undefined`
  * left out so the request goes without it.
  */
 export interface ContinueDecision {

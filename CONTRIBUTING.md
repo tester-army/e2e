@@ -333,3 +333,23 @@ changeset for each, so an engine and a runner from the same release always
 match. Engines declare a peer range on `e2e` that points one way only
 (engine to runner, `>=x <1`), and each integration (`@e2e-dev/kernel`, `@e2e-dev/lightpanda`, `@e2e-dev/eas`, `@e2e-dev/smol`, `@e2e-dev/testmu`, `@e2e-dev/browserstack`, `@e2e-dev/e2b`) does
 the same on the engines it plugs into; do not make it mutual or narrow it.
+
+### Driver nightly compatibility
+
+`nightly-agent-device.yml` runs daily at 08:17 UTC, after agent-device's
+usual 01:30–07:30 UTC publishing window. A manual dispatch accepts an npm
+tag or version, defaulting to `nightly`. It resolves the version once, then
+uses temporary overrides and checks the installed dependency graphs. No
+lockfile update is committed.
+
+The run calls the existing spec, web benchmark, mobile benchmark, examples,
+and agent workflows with that version. This includes `pnpm check`, unit and
+integration tests across the Node matrix, Bun and fresh-install checks,
+testbed, both mobile suites on Android and iOS, every example/platform,
+and the live agent and dogfood suites. It inherits the existing model key.
+Hand-run OAuth and cloud-provider live checks are not CI suites and remain
+manual; they need provider accounts, stored logins, or provisioned devices.
+
+The run summary records the version, workflow results, and failed jobs.
+This compatibility run sends no Slack messages or PR comments. Normal
+workflow triggers keep their existing reporting behavior.
