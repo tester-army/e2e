@@ -29,3 +29,5 @@ Start a new project from one with `npx e2e init my-app --example with-expo`.
 examples and partner and community ones from other repositories, from
 [`examples.json`](examples.json). To add yours, or to change an example
 here, see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+For third-party extensions, see [Community packages](https://e2e.com/docs/community-packages).
