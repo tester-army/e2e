@@ -266,7 +266,7 @@ function formatListedPair(pair: ListedPair): string {
 
 /** `explore` exits as `run` does; only what a pass and a failure mean differs. */
 const EXPLORE_EXIT_MEANINGS: Readonly<Record<string, string>> = {
-  '0': 'the exploration ran and reported no issue (warnings do not count)',
+  '0': 'the exploration ran and reported no issue (warnings do not count), or --changed-since found nothing a user can see',
   '1': 'at least one issue was reported, or nothing could be explored',
 };
 const EXPLORE_EXIT_CODES = EXIT_CODES.map(([code, meaning]) => [code, EXPLORE_EXIT_MEANINGS[code] ?? meaning] as const);
@@ -821,6 +821,7 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
     .option('--target <id>', 'the target to explore (default: the first configured target)')
     .option('--agent <name>', 'the configured agent to explore with (default: agents.default)')
     .option('--session <name>', 'start signed in: run the setup test that saves this session, then explore with it restored')
+    .option('--changed-since <ref>', 'explore the change since the merge base of this git ref, such as origin/main: the planner reads the commit messages and their diff, and the names of files no commit changed')
     .optionsGroup('Budgets:')
     .option(
       '--max-steps <n>',
@@ -852,6 +853,7 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
           'e2e explore --target web --max-steps 4 --headed',
           "e2e explore --agent ux 'Review onboarding as a first-time user'",
           "e2e explore --session admin 'Explore the admin settings and find bugs'",
+          'e2e explore --changed-since origin/main',
           "e2e explore 'Hunt for broken forms and dead links' --video",
         ]),
         '',
@@ -868,6 +870,7 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
           target?: string;
           agent?: string;
           session?: string;
+          changedSince?: string;
           maxSteps?: number;
           timeout?: number;
           headed?: boolean;
@@ -889,6 +892,7 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
             target: options.target,
             agent: options.agent,
             session: options.session,
+            changedSince: options.changedSince,
             maxSteps: options.maxSteps,
             timeoutMs: options.timeout,
             headed: options.headed,

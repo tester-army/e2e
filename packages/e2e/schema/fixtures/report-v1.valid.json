@@ -795,6 +795,15 @@
           }
         }
       ]
+    },
+    "explore": {
+      "goal": "Explore what this change affects and find bugs in it",
+      "budgets": { "maxSteps": 8, "timeoutMs": 600000 },
+      "ended": "skipped",
+      "summary": "Only README.md changed, and documentation reaches no screen.",
+      "change": { "base": "0123456789abcdef0123456789abcdef01234567", "files": 1 },
+      "steps": [],
+      "findings": []
     }
   }
 }

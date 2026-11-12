@@ -35,7 +35,7 @@ function finding(state: ExploreState, overrides: Partial<Parameters<ExploreState
 describe('ExploreState', () => {
   it('records steps in order with their outcome and timing', () => {
     let clock = 1_000;
-    const state = new ExploreState('Explore checkout', { maxSteps: 4, timeoutMs: 300_000 }, () => clock);
+    const state = new ExploreState('Explore checkout', { maxSteps: 4, timeoutMs: 300_000 }, { now: () => clock });
     expect(state.beginStep('Cart', 'Add two items and open the cart').index).toBe(1);
     clock += 2_500;
     const step = state.endStep('passed', 'Cart opened with both items');

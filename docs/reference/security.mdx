@@ -230,8 +230,9 @@ Redaction matches strings. These pass through:
   assertion in a test does,
 - a case mapping that changes length (`ß` shown as `SS`), for the cut-text
   rule,
-- a value a secret provider returns, in titles and in what a test filter
-  sees or sends, since both are redacted before any provider runs,
+- a value a secret provider returns, in titles, in what a test filter sees
+  or sends, and in an `e2e explore --changed-since` brief, since all three
+  are redacted before any provider runs,
 - console output of tests that run in the runner's own process, when an
   embedding host passes the config or tests in memory,
 - a screenshot, including one sent to the model: it masks secure fields
@@ -239,6 +240,9 @@ Redaction matches strings. These pass through:
 - video: it masks nothing and is labeled `redaction: "incomplete"`. A
   recording a hosted browser or device service keeps stays with that
   service, and the report holds only its URL,
+- in an `e2e explore --changed-since` brief, a run of fewer than 8
+  characters of a value, such as a short last line of a multiline key that
+  git prints on a line of its own,
 - `command.log`: the runner captures your app's output as written.
 
 ### Downloads
@@ -355,3 +359,4 @@ plugins, and app can make more connections.
 | --- | --- |
 | `e2e mcp` | Uses stdio and the same action authorization as a test run. Four open sessions by default ([`--max-sessions`](/reference/mcp), 1 through 16). Closes idle sessions. `open_session {engine}` loads the installed packages the agent names and calls the exports it names. That code runs with the server's full authority, like a config's imports. `engine` names packages only, never a path or a URL, and the server installs nothing. |
 | `e2e explore` | Offers every configured credential to every step. The explorer sees account names and usernames. Passwords stay handles and need an engine that supports sensitive fills; without one, the explorer skips them. With no credentials, it may sign in with made-up test credentials, typed as plain text. |
+| `e2e explore --changed-since` | Sends the commit messages and committed patches since the base to the model, as data in every call's context. A file no commit changed, such as one CI wrote, and a committed file's later local edits go by name only, never read. Secret values the config gives as strings, and runs of 8 or more of their characters, are redacted before anything is cut to fit. A secret provider's value, and a secret committed to the repository that the config doesn't name, reach the model. |

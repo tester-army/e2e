@@ -17,6 +17,7 @@ export const SEVERITY_WORDS: Record<ReportExploreFinding['severity'], string> = 
 
 export const ENDED_TEXT: Record<ReportExplore['ended'], string> = {
   finished: 'the agent covered the goal',
+  skipped: 'the change has nothing a user can see',
   'step-limit': 'the step limit was reached',
   time: 'the time budget ran out',
   stuck: 'steps kept failing',

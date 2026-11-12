@@ -1,12 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import { PLAN_SCHEMA, planInstruction, repairPlan } from '../../src/explore/plan.ts';
+import { planInstruction, planSchema, repairPlan } from '../../src/explore/plan.ts';
 import { ExploreState } from '../../src/explore/state.ts';
 
 /** Answers with every field present, as strict providers require; unused ones empty. */
 const step = (fields: Partial<Record<'title' | 'instruction' | 'summary', string>>) => ({ decision: 'step' as const, title: '', instruction: '', summary: '', ...fields });
 const finish = (fields: Partial<Record<'title' | 'instruction' | 'summary', string>>) => ({ decision: 'finish' as const, title: '', instruction: '', summary: '', ...fields });
+const PLAN_SCHEMA = planSchema({ skip: false });
 
-describe('PLAN_SCHEMA', () => {
+describe('planSchema', () => {
+  it('accepts a skip only when it offers one', () => {
+    const skip = { decision: 'skip', title: '', instruction: '', summary: 'Only README.md changed; no screen reads it.' };
+    expect(PLAN_SCHEMA.safeParse(skip).success).toBe(false);
+    expect(planSchema({ skip: true }).safeParse(skip).success).toBe(true);
+    expect(planSchema({ skip: true }).safeParse({ ...skip, summary: 'docs' }).success).toBe(false);
+  });
 
   it('accepts a step with a title and an instruction, and a finish with a summary', () => {
     expect(PLAN_SCHEMA.safeParse(step({ title: 'Cart', instruction: 'Add two items and open the cart' })).success).toBe(true);
@@ -121,5 +128,18 @@ describe('planInstruction', () => {
     expect(plan({ accounts })).toContain('another account or role');
     expect(plan({ accounts: accounts.slice(0, 1) })).not.toContain('another account or role');
     expect(plan({ accounts, session: 'admin' })).not.toContain('another account or role');
+  });
+
+  it('plans from the change the context holds only when the run explores one', () => {
+    const without = planInstruction(fresh(), { mustFinish: false, remainingMs: 300_000, timeoutMs: 60_000 });
+    expect(without).not.toContain('<change>');
+    const text = planInstruction(fresh(), { mustFinish: false, change: { skippable: false }, remainingMs: 300_000, timeoutMs: 60_000 });
+    expect(text).toContain('Plan from the code change between <change> and </change> in the context.');
+    expect(text).toContain('never plan a step that expects it');
+    expect(text).toContain('(server code, configuration, build or CI files, tests, docs), cover the main\n  flows that rely on it briefly and finish early');
+    expect(text).not.toContain('"skip"');
+    const skippable = planInstruction(fresh(), { mustFinish: false, change: { skippable: true }, remainingMs: 300_000, timeoutMs: 60_000 });
+    expect(skippable).toContain('Anything else, or any doubt, is a step');
+    expect(skippable).toContain('or {"decision": "skip", "title": "", "instruction": "", "summary": "..."}.');
   });
 });
