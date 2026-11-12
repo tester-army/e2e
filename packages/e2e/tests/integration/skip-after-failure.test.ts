@@ -158,3 +158,29 @@ describe('a runtime skip after a failure', () => {
     expect(output).not.toContain('Skipped After Failure');
   });
 });
+
+it('redacts and bounds static and runtime skip reasons before reporters see them', () => {
+  const token = 'synthetic-skip-token-271828';
+  const { report, output, project, exitCode } = runSkipped(`
+    test('runtime secret', () => test.skip(true, 'blocked ${token}'));
+    test('static secret', { skip: 'blocked ${token}' }, () => {});
+    test('long static', { skip: 'é'.repeat(9000) }, () => {});
+    test('long runtime', () => test.skip(true, 'é'.repeat(9000)));
+    test('failed skip', () => { expect.soft(1).toBe(2); test.skip(true, 'blocked ${token}'); });
+  `, `secrets: { key: '${token}' }, reporters: ['json', 'markdown', 'junit'],`);
+  expect(exitCode).toBe(1);
+  for (const result of report.run.results) {
+    for (const reason of [result.skip?.reason, ...result.attempts.map(attempt => attempt.skip?.reason)]) {
+      if (reason !== undefined) {
+        expect(Buffer.byteLength(reason)).toBeLessThanOrEqual(8192);
+        expect(reason).not.toContain(token);
+      }
+    }
+  }
+  expect(report.run.results[0]?.skip?.reason).toBe('blocked <secret:key>');
+  expect(report.run.results[1]?.skip?.reason).toBe('blocked <secret:key>');
+  expect(output).not.toContain(token);
+  for (const file of ['report.json', 'summary.md', 'junit.xml']) {
+    expect(readFileSync(path.join(project.dir, '.e2e', file), 'utf8')).not.toContain(token);
+  }
+});

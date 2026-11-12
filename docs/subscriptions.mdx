@@ -319,6 +319,9 @@ export default {
 | `system` | Text appended to the rules the agent gets with the first step. |
 | `name` | The executor name in reports. |
 
+The local step-tool server returns HTTP 500 with `Internal server error` when
+request forwarding fails. Internal exception messages stay out of that response.
+
 ### What the agent can use
 
 An action the agent takes with its own tools isn't recorded, can't replay,

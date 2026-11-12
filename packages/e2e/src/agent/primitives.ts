@@ -9,6 +9,7 @@
  * the module is safe to import from a config that never calls a model.
  */
 
+import { redactToolResult } from './redaction.ts';
 import type { StepResult, Tool, ToolSet } from 'ai';
 import { z } from 'zod';
 import { isTapActionName, type NodeActionName, type PointActionName } from '../cache/trace.ts';
@@ -900,7 +901,7 @@ function verbKit(context: StepExecutorContext, options: GrammarToolSetup) {
   const inOrder = <T>(body: () => Promise<T>): Promise<T> => queue.run(body);
   /** The screen after an action: the changes since the one the model holds and, once the step shows pixels, a fresh screenshot. */
   const present = async (lead: string, update: ScreenUpdate = {}): Promise<ScreenOutput> =>
-    screen.present(await context.observe({ pixels: screen.showingPixels }), { lead, ...update });
+    screen.present(await context.observe({ pixels: screen.showingPixels }), { lead: redactToolResult(context, lead), ...update });
   /** An action and its look at the result, for a caller already inside the queue. */
   const perform = (
     label: ActionLabel,

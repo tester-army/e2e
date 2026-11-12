@@ -48,3 +48,8 @@ describe('projectRelativePath', () => {
   // A relative result that is itself absolute (a file on another drive) only
   // arises from path.win32, which the function does not use; it has no POSIX case.
 });
+
+it('decodes file URLs and rejects long slash-only stack frames', () => {
+  expect(sourceLocation(stackThrough('file:///repo/app/tests/a%20b.e2e.ts'), '/repo/app')).toEqual({ file: 'tests/a b.e2e.ts', line: 14, column: 3 });
+  expect(sourceLocation('    at ' + '/'.repeat(200_000), '/repo/app')).toBeUndefined();
+});

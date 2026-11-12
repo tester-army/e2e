@@ -328,3 +328,28 @@ describe('stringify', () => {
     });
   });
 });
+
+it('redacts serialized tool values in trace input and output with the live ledger', async () => {
+  const token = 'synthetic-trace-secret-271828';
+  let known = false;
+  const redact = (text: string): string => known ? text.replaceAll(token, '<secret:key>') : text;
+  const recorder = new AiTraceRecorder(redact);
+  const t = recorder.telemetry;
+  await t.onStart?.({ callId: 'redact', operationId: 'ai.generateText' } as never);
+  await t.onStepStart?.({ callId: 'redact', stepNumber: 0, provider: 'fake', modelId: 'fake', messages: [] } as never);
+  await t.onLanguageModelCallStart?.({ callId: 'redact', messages: [
+    { role: 'tool', content: [
+      { type: 'tool-result', output: { type: 'json', value: Object.assign(Object.create(null) as Record<string, string>, { [token]: token }) } },
+      { type: 'tool-result', output: { type: 'json', value: new URL(`https://example.test/?key=${token}`) } },
+      { type: 'tool-result', output: { type: 'text', value: `custom ${token}` } },
+    ] },
+  ] } as never);
+  known = true;
+  await t.onStepEnd?.({ callId: 'redact', stepNumber: 0, content: [{ type: 'tool-result', output: token }], finishReason: 'stop', usage: {}, response: { messages: [{ role: 'tool', content: [{ type: 'tool-result', output: { type: 'text', value: token } }] }] } } as never);
+  await t.onEnd?.({ callId: 'redact' } as never);
+  const step = recorder.drain().steps[0]!;
+  expect(step.input).toContain('<secret:key>');
+  expect(step.output).toContain('<secret:key>');
+  expect(step.input).not.toContain(token);
+  expect(step.output).not.toContain(token);
+});

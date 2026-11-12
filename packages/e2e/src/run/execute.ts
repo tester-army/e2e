@@ -11,6 +11,8 @@ import {
   E2EError,
   InfrastructureError,
   serializeError,
+  sanitizeText,
+  truncateUtf8,
   TestError,
   TestTimeoutError,
   translateEngineError,
@@ -1300,14 +1302,14 @@ export class TargetExecutor implements SerialHost {
       // recording is worth.
       if (failure === undefined && skipped !== undefined) {
         record.status = 'skipped';
-        record.skip = { cause: 'explicit', reason: skipped.reason };
+        record.skip = { cause: 'explicit', reason: truncateUtf8(sanitizeText(redact(skipped.reason)), 8192) };
       } else if (failure === undefined) {
         record.status = 'passed';
       } else {
         record.status = classifyAttemptStatus(failure, timedOut, this.interruptSignal.aborted);
         record.error = serializeError(failure, { phase: failurePhase ?? phase, projectRoot: this.config.projectRoot, redact });
         // A failure outranks the skip; the reason stays beside it.
-        if (skipped !== undefined) record.skip = { cause: 'explicit', reason: skipped.reason };
+        if (skipped !== undefined) record.skip = { cause: 'explicit', reason: truncateUtf8(sanitizeText(redact(skipped.reason)), 8192) };
         // A failure that first landed in teardown has had no look yet.
         await captureEvidence();
       }

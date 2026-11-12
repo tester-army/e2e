@@ -9,8 +9,8 @@
  * definitions, response, and usage of each generation — including calls a
  * custom executor makes through its own `ai` import, because the SDK
  * resolves registered integrations process-wide. What the model saw is
- * already redacted and size-bounded by the observation pipeline, so the
- * trace carries no secret the model could not have seen either.
+ * size-bounded by the observation pipeline. Serialization applies the live
+ * secret ledger too, since SDK telemetry can precede model middleware.
  *
  * Attribution comes from an async-local scope the run layer enters per
  * attempt and per step, so no model call site needs to know it is traced.
@@ -203,6 +203,9 @@ interface ToolAncestry {
  * layer, which ships them to the runner over the worker channel.
  */
 export class AiTraceRecorder {
+  /** Uses the process ledger at serialization time, including secrets resolved during a tool call. */
+  constructor(private readonly redact: (text: string) => string = text => text) {}
+
   private readonly calls = new Map<string, CallState>();
   /**
    * One run per agent step: every generation made under the same step scope
@@ -427,10 +430,10 @@ export class AiTraceRecorder {
         prompt: traceMessages(open.prompt),
         ...(open.tools === undefined ? {} : { tools: open.tools }),
         ...(open.toolChoice === undefined ? {} : { toolChoice: open.toolChoice }),
-      }),
-      output: outcome.output === undefined ? null : stringify(outcome.output),
-      usage: outcome.usage === undefined ? null : stringify(outcome.usage),
-      error: outcome.error ?? null,
+      }, this.redact),
+      output: outcome.output === undefined ? null : stringify(outcome.output, this.redact),
+      usage: outcome.usage === undefined ? null : stringify(outcome.usage, this.redact),
+      error: outcome.error === undefined ? null : this.redact(outcome.error),
     };
   }
 }
@@ -592,11 +595,15 @@ function binaryNote(bytes: number): string {
   return `[binary ${bytes} bytes omitted]`;
 }
 
-/** JSON with binary views omitted; arbitrary strings and raw tool JSON are preserved. */
-export function stringify(value: unknown): string {
+/** JSON with binary views omitted and text redacted after toJSON has exposed its serialized value. */
+export function stringify(value: unknown, redact: (text: string) => string = text => text): string {
   return JSON.stringify(value, (_key, current: unknown) => {
     if (current instanceof ArrayBuffer || ArrayBuffer.isView(current)) return binaryNote(current.byteLength);
-    if (typeof current === 'bigint') return current.toString();
+    if (typeof current === 'string') return redact(current);
+    if (typeof current === 'bigint') return redact(current.toString());
+    if (current !== null && typeof current === 'object' && !Array.isArray(current)) {
+      return Object.fromEntries(Object.entries(current).map(([key, entry]) => [redact(key), entry]));
+    }
     return current;
   });
 }

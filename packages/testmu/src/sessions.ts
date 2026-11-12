@@ -39,7 +39,9 @@ export function testmuApiEndpoint(env: Readonly<Record<string, string | undefine
   if (url.username !== '' || url.password !== '') {
     throw new ConfigurationError('INVALID_CONFIG', 'TESTMU_API_ENDPOINT must not carry a username or password; set LT_USERNAME and LT_ACCESS_KEY instead');
   }
-  return override.replace(/\/+$/, '');
+  let end = override.length;
+  while (override[end - 1] === '/') end -= 1;
+  return override.slice(0, end);
 }
 
 /** A session the list found: its `test_id`, and when it started, if the list says. */

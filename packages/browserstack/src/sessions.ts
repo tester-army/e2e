@@ -42,7 +42,9 @@ export function browserstackApiEndpoint(env: Readonly<Record<string, string | un
   if (url.username !== '' || url.password !== '') {
     throw new ConfigurationError('INVALID_CONFIG', 'BROWSERSTACK_API_ENDPOINT must not carry a username or password; set BROWSERSTACK_USERNAME and BROWSERSTACK_ACCESS_KEY instead');
   }
-  return override.replace(/\/+$/, '');
+  let end = override.length;
+  while (override[end - 1] === '/') end -= 1;
+  return override.slice(0, end);
 }
 
 /** A session the lookup found: its `hashed_id`, when it started, and its video, if the API says. */

@@ -110,9 +110,9 @@ async function forward(
     outgoing.writeHead(response.status, Object.fromEntries(response.headers));
     if (response.body === null) outgoing.end();
     else Readable.fromWeb(response.body as import('node:stream/web').ReadableStream).pipe(outgoing);
-  } catch (error) {
+  } catch {
     if (!outgoing.headersSent) outgoing.writeHead(500);
-    outgoing.end(error instanceof Error ? error.message : String(error));
+    outgoing.end('Internal server error');
   }
 }
 

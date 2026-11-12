@@ -11,6 +11,7 @@
  * - model-call accounting and a step transcript for `--debug`.
  */
 
+import { redactToolResult } from './redaction.ts';
 import type { StepTurn } from '../run/steps.ts';
 import type { AssistantModelMessage, ModelMessage, StepResult, ToolCallPart, ToolSet } from 'ai';
 import { asSdkLanguageModel, loadAiSdk, type AiSdk, type SdkLanguageModel } from './ai-sdk.ts';
@@ -271,8 +272,29 @@ class LoopRun {
   ) {
     this.conclusion = createVerdictTool(context.step.kind);
     this.toolChoice = FREE_TOOL_CHOICE_MODELS.has(model) ? 'auto' : 'required';
-    this.requestModel = withStallGuard(ai, model, (stallMs) => {
-      this.note(`turn ${String(this.turnsUsed + 1)} got no response in ${String(stallMs / 1000)}s: sending it again`);
+    this.requestModel = ai.wrapLanguageModel({
+      model: withStallGuard(ai, model, (stallMs) => {
+        this.note(`turn ${String(this.turnsUsed + 1)} got no response in ${String(stallMs / 1000)}s: sending it again`);
+      }),
+      middleware: {
+        transformParams: async ({ params }) => ({
+          ...params,
+          prompt: params.prompt.map(message => message.role !== 'tool' ? message : {
+            ...message,
+            content: message.content.map(part => {
+              if (part.type !== 'tool-result') return part;
+              const output = part.output;
+              // Run JSON serialization before redaction: dictionaries, class
+              // instances and toJSON hooks must expose the text a provider sees.
+              const serialized = output.type === 'json' || output.type === 'error-json'
+                // oxlint-disable-next-line e2e/no-unchecked-json -- round-trips this process's own JSON.stringify of an SDK JSON payload to honor toJSON before redacting
+                ? { ...output, value: JSON.parse(JSON.stringify(output.value)) as typeof output.value }
+                : output;
+              return { ...part, output: redactToolResult(context, serialized) };
+            }),
+          }),
+        }),
+      },
     });
     this.hints = providerHints(model as ProviderModelRef);
     this.maxTurns = context.budgets.maxModelCalls;
@@ -558,14 +580,14 @@ class LoopRun {
           return 'The step is already concluding; no further actions run.';
         }
         try {
-          return await body();
+          return redactToolResult(this.context, await body());
         } catch (cause) {
           if (isAgentError(cause) && RUNTIME_CODES.has(cause.code)) {
             this.hardStop ??= cause;
-            return `HARD STOP (${cause.code}): ${cause.message}`;
+            return redactToolResult(this.context, `HARD STOP (${cause.code}): ${cause.message}`);
           }
           const message = cause instanceof Error ? cause.message : String(cause);
-          return `${label} failed: ${message}`;
+          return redactToolResult(this.context, `${label} failed: ${message}`);
         }
       },
     };

@@ -401,6 +401,8 @@ trailing whitespace.
 #### `skip`
 
 Skips the test at collection. A string is the reason. Any truthy layer skips.
+Skip reasons, including runtime `test.skip` reasons, are secret-redacted,
+sanitized, and limited to 8,192 UTF-8 bytes before reporting.
 
 ```ts
 test('exports a PDF', { skip: 'PDF export is off on staging' }, async ({ app }) => {});

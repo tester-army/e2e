@@ -16,6 +16,7 @@
  * executor's verdict onto the runner's error taxonomy.
  */
 
+import { executorRedactors } from './redaction.ts';
 import type { StepTurn } from '../run/steps.ts';
 import { writeFileSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
@@ -298,7 +299,7 @@ class ActDispatch {
     );
     this.accounting.metrics.ledgerBytes = ledger.bytes;
     const replayedPrefix = this.stepCache?.replayedPrefix;
-    return {
+    const context: StepExecutorContext = {
       step: {
         kind: this.spec.kind,
         index: this.stepIndex,
@@ -350,6 +351,8 @@ class ActDispatch {
       attachScreenshot: (pixels, label) => this.attachScreenshot(pixels, label),
       actions: this.dispatcher.actions,
     };
+    executorRedactors.set(context, this.runtime.redact);
+    return context;
   }
 
   /**

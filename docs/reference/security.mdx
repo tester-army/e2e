@@ -212,8 +212,8 @@ export default {
 
 The runner replaces every registered secret value with `<secret:name>` in:
 
-- model input,
-- reports and trace pages,
+- model input, including project tool results, structured text fields, and tool or engine error messages,
+- reports and trace pages, including skip reasons and AI trace tool results,
 - text downloads,
 - what your code prints during `e2e run`: tests, the top-level code of the
   config and test files, test filters, and reporters.
