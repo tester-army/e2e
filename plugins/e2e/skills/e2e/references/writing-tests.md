@@ -541,8 +541,12 @@ params. A fixture's run-unique value in a goal's params goes in as
 Prefer `app` and `screen`; `browser` is for what only a browser has, and a
 portable suite declares `requires: ['browser']`. Page methods act on the one
 active tab; cookies, routes, and `onDialog` cover the whole browser. A tab
-the app opens itself (`target="_blank"`, `window.open`) is not followed:
-`browser.goto` its URL instead.
+the app opens (`target="_blank"`, `window.open`) opens in the background:
+the active tab stays where it was. `waitForPopup(() => trigger)` makes the
+tab the trigger opens active and resolves with it. When the active tab
+closes, its opener is active again, or the tab active most recently when
+the opener is gone. `tabs()`, `newTab()`, `tab.activate()`, and
+`tab.close()` move between tabs.
 
 - `goto(url, { waitUntil?, timeout? })`, `reload({ timeout? })`,
   `back({ timeout? })`, `forward({ timeout? })`: navigation on the test

@@ -27,7 +27,7 @@ export interface NavigationLog {
   readonly navigated: (line: string) => void;
   /** Whether a navigation of the test's page to `url` is one the engine started, which its step already tells. */
   readonly ownNavigation: (url: string) => boolean;
-  /** The page the test drives; every other page is a tab the app opened. */
+  /** The tab the attempt shows; every other page is a tab in the background. */
   readonly testPage: () => Page | undefined;
 }
 
@@ -78,22 +78,39 @@ export function installAppLog(context: BrowserContext, log: (entry: AppLogEntry)
     if (status < 400 || isMissingFavicon(response)) return;
     report({ source: 'network', level: status >= 500 ? 'error' : 'warning', text: responseLine(response) });
   });
+  /** The URL each tab the app opened was told at, which its first navigation commits and need not tell again. */
+  const announced = new WeakMap<Page, string>();
+  /** Tabs the app opened with no document yet, told once one commits; a download leaves its tab so for good. */
+  const unannounced = new WeakSet<Page>();
+  const opened = (url: string): void => {
+    const at = NO_PLACE.has(url) ? '' : ` at ${url}`;
+    went(`the app opened a new tab${at}`);
+  };
   const watch = (page: Page): void => {
-    // A tab's first document is told by its opening.
-    let opened = false;
     page.on('framenavigated', (frame) => {
-      const tab = page !== navigation.testPage();
-      if (tab && frame === page.mainFrame() && !opened && !NO_PLACE.has(frame.url())) {
-        opened = true;
+      if (frame === page.mainFrame() && unannounced.has(page)) {
+        if (page.url() === '') return;
+        unannounced.delete(page);
+        opened(page.url());
         return;
       }
-      const line = navigationLine(page, frame, tab, navigation);
+      if (frame === page.mainFrame() && announced.has(page)) {
+        const at = announced.get(page);
+        announced.delete(page);
+        if (frame.url() === at) return;
+      }
+      const line = navigationLine(page, frame, page !== navigation.testPage(), navigation);
       if (line !== undefined) went(line);
     });
-    // A tab the app opened (`window.open`, a `target="_blank"` link); the test stays on its own page.
+    // A tab the app opened (`window.open`, a `target="_blank"` link); the screen stays on its tab.
     page.on('popup', (tab) => {
-      const at = NO_PLACE.has(tab.url()) ? '' : ` at ${tab.url()}`;
-      went(`the app opened a new tab${at}; the test stays on its page`);
+      const url = tab.url();
+      if (url === '') {
+        unannounced.add(tab);
+        return;
+      }
+      announced.set(tab, url);
+      opened(url);
     });
   };
   for (const page of context.pages()) watch(page);
@@ -101,15 +118,15 @@ export function installAppLog(context: BrowserContext, log: (entry: AppLogEntry)
 }
 
 /**
- * `navigated to /checkout`, `the new tab navigated to /help`, `frame "pay"
- * loaded /embed`: one navigation as a line, or undefined for one not worth
- * telling.
+ * `navigated to /checkout`, `a background tab navigated to /help`, `frame
+ * "pay" loaded /embed`: one navigation as a line, or undefined for one not
+ * worth telling.
  */
-function navigationLine(page: Page, frame: Frame, tab: boolean, navigation: NavigationLog): string | undefined {
+function navigationLine(page: Page, frame: Frame, background: boolean, navigation: NavigationLog): string | undefined {
   const url = frame.url();
   if (NO_PLACE.has(url) || url.startsWith('data:')) return undefined;
   if (frame === page.mainFrame()) {
-    if (tab) return `the new tab navigated to ${url}`;
+    if (background) return `a background tab navigated to ${url}`;
     if (navigation.ownNavigation(url)) return undefined;
     return `navigated to ${url}`;
   }

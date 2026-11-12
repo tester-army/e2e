@@ -33,6 +33,9 @@ beforeEach(async () => {
   press = vi.fn(async (_key: string) => undefined);
   type = vi.fn(async (_text: string) => undefined);
   const page = {
+    // The tab listeners the session installs on every page it shows.
+    on: () => undefined,
+    once: () => undefined,
     isClosed: () => false,
     close: async () => undefined,
     goto: async () => undefined,

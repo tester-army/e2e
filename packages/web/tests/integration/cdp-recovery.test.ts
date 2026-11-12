@@ -266,6 +266,21 @@ describe('CDP session recovery', () => {
     }
   }, 60_000);
 
+  it('keeps a tab the app opened in the background across a reconnect', async () => {
+    const remote = await host();
+    const engine = await start({ cdpEndpoint: () => remote.endpoint, reconnectEndpoint: () => remote.endpoint });
+    const browser = fixtureOf(engine);
+    await browser.evaluate(`void window.open(${JSON.stringify(`${app.url}/login`)}, '_blank')`);
+    await expect.poll(() => browser.tabs().length).toBe(2);
+    const [own, background] = browser.tabs();
+    await surfaceOf(engine)!.context().browser()!.close();
+    await engine.observe!(operation());
+    expect(browser.tabs()).toEqual([own, background]);
+    expect(own!.isActive()).toBe(true);
+    await background!.activate();
+    expect(await browser.url()).toBe(`${app.url}/login`);
+  }, 60_000);
+
   it('bounds a hung reconnect resolver and propagates cancellation to it', async () => {
     const remote = await host();
     let signal: AbortSignal | undefined;

@@ -44,7 +44,7 @@ import {
 import { matchesText } from 'e2e/engine';
 import { classifyActionError, classifyInputError, dispatchLocatorAction, dispatchPointerAction } from './actions.ts';
 import { BrowserConnection, connectCdp, type BrowserName } from './browser-connection.ts';
-import { AttemptSession, type StorageState } from './attempt-session.ts';
+import { AttemptSession, type AttemptTab, type StorageState } from './attempt-session.ts';
 import type { CdpEndpointResolver } from './cdp-recovery.ts';
 import { LeasedBrowsers, type BrowserProvider, type LeaseDownloads } from './provider.ts';
 import { installAppLog } from './app-log.ts';
@@ -68,6 +68,7 @@ import { RefRegistry } from './refs.ts';
 import {
   cancelled,
   DEFAULT_VIEWPORT,
+  dispatchedInput,
   ErrorLatch,
   invalidState,
   isClassified,
@@ -761,6 +762,49 @@ export class PlaywrightSurface {
     ));
   }
 
+  /** Shows the open tab at `index`, in opening order, for the agent's `switchTab` verb, and shows the screen after it. */
+  switchTab(index: number, operation: OperationContext): Promise<void> {
+    return this.acted(operation, this.guard(operation, 'switch tab', () => this.requireSession().showTabAt(index)));
+  }
+
+  /** Closes the open tab at `index`, in opening order, for the agent's `closeTab` verb, and shows the screen after it. */
+  closeTabAt(index: number, operation: OperationContext): Promise<void> {
+    return this.acted(operation, this.guard(operation, 'close tab', () => this.requireSession().closeTabAt(index)));
+  }
+
+  // --- tabs shared with the browser fixture ---
+
+  /** The attempt's open tabs, in the order they opened. */
+  tabs(): readonly AttemptTab[] {
+    this.latch.throwPending();
+    return this.requireSession().openTabs();
+  }
+
+  /** The tab the attempt shows, if one is open. */
+  shownTab(): AttemptTab | undefined {
+    return this.session?.shownTab();
+  }
+
+  /** Shows one of the attempt's tabs (`BrowserTab.activate`). */
+  showTab(tab: AttemptTab, operation: OperationContext): Promise<void> {
+    return this.guard(operation, 'tab', () => this.requireSession().showTab(tab));
+  }
+
+  /** Opens a blank tab in the attempt's context and shows it (`browser.newTab`). */
+  newTab(operation: OperationContext): Promise<AttemptTab> {
+    return this.guard(operation, 'tab', () => this.requireSession().newTab());
+  }
+
+  /** Closes one of the attempt's tabs (`BrowserTab.close`); the tab shown next is shown before it resolves. */
+  closeTab(tab: AttemptTab, operation: OperationContext): Promise<void> {
+    return this.guard(operation, 'tab', () => this.requireSession().closeTab(tab));
+  }
+
+  /** Waits for the next tab the app opens and shows it (`browser.waitForPopup`). */
+  nextPopup(signal: AbortSignal): ReturnType<AttemptSession['nextPopup']> {
+    return this.requireSession().nextPopup(signal);
+  }
+
   /** Sets the viewport for the agent's `resize` verb, as `browser.setViewport` does, and shows the screen after it. */
   resize(size: ViewportSize, operation: OperationContext): Promise<void> {
     return this.acted(operation, this.guard(operation, 'resize', () => this.setViewport(size)));
@@ -836,15 +880,33 @@ export class PlaywrightSurface {
     return this.guard(
       operation,
       'locate',
-      async (currentOperation) => {
+      (currentOperation) => this.readingTab(async () => {
         try {
           return await this.locateNow(expression, currentOperation);
         } catch (cause) {
           throw (await pageScriptFailure(this.frameScope(expression), cause, 'locate', currentOperation.timeoutMs)) ?? cause;
         }
-      },
+      }),
       staleOr,
     );
+  }
+
+  /**
+   * Runs a read of the tab the attempt shows. A tab the app closes under the
+   * read makes it stale, as a navigation does: nothing was dispatched, and
+   * the read repeats on the tab shown next.
+   */
+  private async readingTab<T>(read: () => Promise<T>): Promise<T> {
+    const session = this.session;
+    const page = this.openPage();
+    try {
+      return await read();
+    } catch (cause) {
+      if (page !== undefined && session?.tabClosed(page) === true) {
+        throw new EngineError('NODE_STALE', 'the tab closed while it was read', { retryable: true, cause });
+      }
+      throw cause;
+    }
   }
 
   /** The body of `locate`, inside its guard. */
@@ -963,10 +1025,17 @@ export class PlaywrightSurface {
           this.requireSession().requireObservation();
           return performViewportSwipe(page, action.direction, action.momentum ?? 'none');
         }
-        const { refs } = this.requireSession();
-        return refs.lookup(ref).then((target) => {
+        const session = this.requireSession();
+        const { refs } = session;
+        return refs.lookup(ref).then(async (target) => {
           currentOperation.signal.throwIfAborted();
-          return dispatchLocatorAction(target, action, currentOperation, (other) => refs.lookup(other));
+          try {
+            await dispatchLocatorAction(target, action, currentOperation, (other) => refs.lookup(other));
+          } catch (cause) {
+            // The input went out and its own tab closed: closing was what it did.
+            if (dispatchedInput(cause) && session.tabClosed(page)) return;
+            throw cause;
+          }
         });
       },
       (cause) => classifyActionError(cause, action),
@@ -1228,7 +1297,7 @@ export class PlaywrightSurface {
     return this.guard(
       operation,
       'observe',
-      (currentOperation) => this.captureObservation(currentOperation, options),
+      (currentOperation) => this.readingTab(() => this.captureObservation(currentOperation, options)),
       navigationStaleOr,
     );
   }
@@ -1264,12 +1333,20 @@ export class PlaywrightSurface {
       }
       refs.publish(capture, captured);
       session.observedGeneration(token);
-      return snapshot;
+      return withTabs(snapshot, session);
     } catch (cause) {
       RefRegistry.dispose(generation);
       throw cause;
     }
   }
+}
+
+/** The snapshot with the attempt's tabs, when more than one is open; the snapshot as is otherwise. */
+function withTabs(snapshot: EngineSnapshot, session: AttemptSession): EngineSnapshot {
+  const tabs = session.openTabs();
+  const shown = session.shownTab();
+  const active = shown === undefined ? -1 : tabs.indexOf(shown);
+  return tabs.length < 2 || active === -1 ? snapshot : { ...snapshot, tabs: { count: tabs.length, active } };
 }
 
 /**

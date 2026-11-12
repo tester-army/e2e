@@ -52,6 +52,8 @@ interface AgentObservationMetadata {
   readonly path?: string;
   /** The location as a judgment is shown it (`judgeLocation`). */
   readonly judgedLocation?: JudgedLocation;
+  /** The open tabs when there is more than one, the active one numbered from 1 in opening order. */
+  readonly tabs?: { readonly count: number; readonly active: number };
   readonly revision: string;
   /** Redacted, size-bounded serialization sent to the model. */
   readonly text: string;
@@ -89,6 +91,7 @@ export function prepareObservation(
     revision: observation.revision,
     ...(location === undefined ? {} : { location, judgedLocation: judgeLocation(location, options.appOrigin) }),
     ...(path === undefined ? {} : { path }),
+    ...(observation.tabs === undefined ? {} : { tabs: { count: observation.tabs.count, active: observation.tabs.active + 1 } }),
     viewport: observation.viewport,
   };
   const pixels = clearPixels(observation);

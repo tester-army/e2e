@@ -26,6 +26,9 @@ vi.mock('../../src/browser-connection.ts', async (importOriginal) => ({
 function fakeBrowser(contextId: string) {
   let connected = true;
   const page = {
+    // The tab listeners the session installs on every page it shows.
+    on: () => undefined,
+    once: () => undefined,
     isClosed: () => false,
     close: async () => undefined,
     viewportSize: () => ({ width: 1280, height: 720 }),

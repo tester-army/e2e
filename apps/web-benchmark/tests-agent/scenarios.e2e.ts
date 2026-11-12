@@ -4,8 +4,8 @@
  * reads the rest off the page; the deterministic check on the scenario's
  * success message decides the test. Scenarios that need pixels (canvas, image
  * and CSS-content UIs, the aria-hidden flow, the onboarding wizard), native
- * dialogs, a second tab, or a file the agent first downloads are left out:
- * the grammar has no verb for them yet.
+ * dialogs, or a file the agent first downloads are left out: the grammar has
+ * no verb for them yet.
  */
 
 import { test } from '@e2e-dev/web';
@@ -124,6 +124,11 @@ const SCENARIOS: readonly Scenario[] = [
     slug: 'promo-storefront',
     goal: 'buy any one product, dismissing the promotional overlays that get in the way, until the order is confirmed',
     success: 'Order confirmed',
+  },
+  {
+    slug: 'new-tab-flow',
+    goal: 'open the verification tab, read the code it shows, then go back to the original tab, enter the code there, and verify it',
+    success: 'Verified successfully',
   },
   {
     slug: 'gift-card-purchase',

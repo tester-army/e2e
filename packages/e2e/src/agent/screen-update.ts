@@ -43,6 +43,8 @@ interface ShownScreen {
   readonly truncated: boolean;
   /** An on-screen keyboard is among the nodes. */
   readonly keyboard: boolean;
+  /** The open tabs when there was more than one, the shown one numbered from 1. */
+  readonly tabs: ExecutorObservation['tabs'];
 }
 
 /** A node line whose role is the on-screen keyboard, as device trees list it. */
@@ -141,7 +143,7 @@ export class ScreenPresenter {
 
   /** The update, told what the screenshot going out with it says against the one the model held. */
   private render(observation: ExecutorObservation, options: ScreenUpdateOptions, pixels: PixelEvidence): string {
-    const lead = options.lead === undefined ? '' : `${options.lead}\n\n`;
+    let lead = options.lead === undefined ? '' : `${options.lead}\n\n`;
     if (observation.treeUnavailable === true) {
       return `${lead}${this.initial(observation)}`;
     }
@@ -150,11 +152,17 @@ export class ScreenPresenter {
     this.shown = next;
     if (previous === undefined) return `${lead}${renderFull(observation)}`;
     const closed = options.keyboardNote === false || options.lead === undefined ? '' : keyboardClosedNote(previous, next);
+    const tabs = tabNote(previous.tabs, next.tabs);
+    // Another tab is another document: its ids say nothing about the tab the model held.
+    if (tabs?.moved === true) return `${lead}${tabs.note} ${renderFull(observation)}${closed}`;
+    // A tab opened is the action's effect, so an unchanged screen blames no control.
+    const expectChange = options.expectChange === true && tabs === undefined;
+    if (tabs !== undefined) lead = `${lead}${tabs.note} `;
     const diff = diffScreens(previous, next);
     const changes = diff.length;
     // A truncated screen is never called unchanged: what it left out is unknown.
     if (changes === 0 && !observation.truncated) {
-      return `${lead}${renderUnchanged(previous.revision, observation, options.expectChange === true, pixels)}${closed}`;
+      return `${lead}${renderUnchanged(previous.revision, observation, expectChange, pixels)}${closed}`;
     }
     if (changes >= MAX_DIFF_LINES || changes > MAX_DIFF_SHARE * next.order.length) {
       return `${lead}The screen changed substantially since revision ${previous.revision}. ${renderFull(observation)}${closed}`;
@@ -306,7 +314,32 @@ function keyboardClosedNote(previous: ShownScreen, next: ShownScreen): string {
 }
 
 function describeLocation(observation: ExecutorObservation): string {
-  return observation.path === undefined ? '' : `, path ${observation.path}`;
+  const path = observation.path === undefined ? '' : `, path ${observation.path}`;
+  const tabs = observation.tabs === undefined ? '' : `, tab ${String(observation.tabs.active)} of ${String(observation.tabs.count)}`;
+  return `${path}${tabs}`;
+}
+
+/**
+ * What the model hears when the open tabs changed, or undefined when they
+ * did not. A tab the app opens joins at the end and stays in the
+ * background, so the screen is on the same tab (`moved` false). Any other
+ * change may have put the screen on another tab (`moved` true): one that
+ * closed hands the screen back to another.
+ */
+function tabNote(previous: ShownScreen['tabs'], next: ShownScreen['tabs']): { readonly note: string; readonly moved: boolean } | undefined {
+  const before = previous ?? { count: 1, active: 1 };
+  const after = next ?? { count: 1, active: 1 };
+  if (before.count === after.count && before.active === after.active) return undefined;
+  if (after.count > before.count && after.active === before.active) {
+    const added = after.count - before.count;
+    const total = String(after.count);
+    const opened = added === 1
+      ? `a new tab (tab ${total} of ${total})`
+      : `${String(added)} new tabs (tabs ${String(before.count + 1)} to ${total} of ${total})`;
+    return { note: `The app opened ${opened}. The screen still shows tab ${String(after.active)}; use switch_tab to see ${added === 1 ? 'it' : 'one'}.`, moved: false };
+  }
+  if (next === undefined) return { note: `The other tab${before.count > 2 ? 's' : ''} closed; the screen shows the one tab still open.`, moved: true };
+  return { note: `The screen shows tab ${String(after.active)} of ${String(after.count)} now.`, moved: true };
 }
 
 /** Node id at the head of one rendered line, or undefined for a marker line. */
@@ -346,6 +379,7 @@ function indexScreen(observation: ExecutorObservation): ShownScreen {
     nodes: byId.size,
     truncated: observation.truncated,
     keyboard: order.some((line) => KEYBOARD_LINE.test(line)),
+    tabs: observation.tabs,
   };
 }
 

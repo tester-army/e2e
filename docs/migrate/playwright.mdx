@@ -269,7 +269,8 @@ uses it declares `requires: ['browser']` and other targets skip it. Calls on
 | `routeFromHAR()`, `routeWebSocket()` | not yet | missing |
 | `page.on('dialog')` | `browser.onDialog('accept')`, or a handler that calls `accept` or `dismiss` | web only |
 | `page.waitForEvent('download')` | `browser.waitForDownload(() => trigger)` | web only |
-| `page.waitForEvent('popup')`, `context.on('page')` | a window the app opens is not driven | missing |
+| `page.waitForEvent('popup')` | `browser.waitForPopup(() => trigger)`, which also makes the tab active. Without it, a tab the app opens stays in the background, as in Playwright. When the active tab closes, its opener is active again, or the tab active most recently when the opener is gone | web only |
+| `context.on('page')`, `context.pages()`, `context.newPage()`, `page.bringToFront()` | `browser.tabs()`, `browser.newTab()`, `tab.activate()`; no event per new page | web only |
 | `page.on('console')`, `page.on('pageerror')` | assert on what the page shows | missing |
 | `page.evaluate(fn, arg)` | `browser.evaluate(fn, arg)`; JSON in and out, no handles. It and the locator reads run in the page's main world, so a page that deletes a global such as `Map` or `Array` breaks them | web only |
 | `page.addInitScript(script, arg)`, `context.addInitScript()` | `browser.addInitScript(script, arg)`, or `web({ initScripts })` for every test; pass `{ content }` as a plain string | web only |

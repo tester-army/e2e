@@ -198,6 +198,10 @@ export class TraceRecorder {
         return { name: 'back', summary };
       case 'resize':
         return { name: 'resize', summary, size: { width: action.size.width, height: action.size.height } };
+      case 'switchTab':
+        return { name: 'switchTab', summary, tab: action.tab };
+      case 'closeTab':
+        return { name: 'closeTab', summary, tab: action.tab };
       case 'type':
         return { name: 'type', summary, target: requireTarget(), value: this.verbatim(action.value) };
       case 'typeSecret':

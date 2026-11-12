@@ -226,6 +226,8 @@ describe('TraceRecorder', () => {
     recorder.record({ name: 'back' });
     recorder.record({ name: 'resize', size: { width: 390, height: 844 } });
     recorder.record({ name: 'hoverAt', point: { x: 10, y: 20 }, viewport: { width: 1280, height: 720 } });
+    recorder.record({ name: 'switchTab', tab: 0 });
+    recorder.record({ name: 'closeTab', tab: 1 });
     const trace = recorder.finalize({ ...conclusion, startPath: '/board' })!;
     expect(trace.truncated).toBeUndefined();
     expect(trace.actions.map((action) => action.summary)).toEqual([
@@ -240,21 +242,27 @@ describe('TraceRecorder', () => {
       'navigate back',
       'resize the viewport to 390x844',
       'hover over the point (10, 20)',
+      'switch to tab 1',
+      'close tab 2',
     ]);
     expect(trace.actions[5]).toMatchObject({ name: 'check', checked: false });
     expect(trace.actions[6]).toMatchObject({ name: 'drag', destination: { role: 'region', name: 'Done column', within: 'Board' } });
     expect(trace.actions[7]).toMatchObject({ name: 'upload', paths: ['fixtures/a.txt', 'fixtures/b.txt'] });
     expect(trace.actions[9]).toEqual({ name: 'resize', summary: 'resize the viewport to 390x844', size: { width: 390, height: 844 } });
+    expect(trace.actions[11]).toEqual({ name: 'switchTab', summary: 'switch to tab 1', tab: 0 });
+    expect(trace.actions[12]).toEqual({ name: 'closeTab', summary: 'close tab 2', tab: 1 });
     const entry = readTraceEntry(JSON.parse(JSON.stringify(buildTraceEntry(trace))));
     expect(entry?.payload.actions).toEqual(trace.actions);
   });
 
-  it('rejects a stored check, upload, drag, or resize that lost a field', () => {
+  it('rejects a stored check, upload, drag, resize, tab switch, or tab close that lost a field', () => {
     const recorder = makeRecorder();
     recorder.record({ name: 'check', node: upgradeButton, checked: true });
     recorder.record({ name: 'upload', node: upgradeButton, paths: ['fixtures/a.txt'] });
     recorder.record({ name: 'drag', node: upgradeButton, destination: { node: upgradeButton } });
     recorder.record({ name: 'resize', size: { width: 390, height: 844 } });
+    recorder.record({ name: 'switchTab', tab: 1 });
+    recorder.record({ name: 'closeTab', tab: 1 });
     const entry = JSON.parse(JSON.stringify(buildTraceEntry(recorder.finalize(conclusion)!)));
     const broken = (index: number, patch: (action: Record<string, unknown>) => void) => {
       const copy = JSON.parse(JSON.stringify(entry));
@@ -268,6 +276,10 @@ describe('TraceRecorder', () => {
     expect(broken(3, (action) => { delete action['size']; })).toBeUndefined();
     expect(broken(3, (action) => { action['size'] = { width: 390.5, height: 844 }; })).toBeUndefined();
     expect(readTraceEntry(JSON.parse(JSON.stringify(entry)))?.payload.actions[3]).toMatchObject({ name: 'resize', size: { width: 390, height: 844 } });
+    expect(broken(4, (action) => { delete action['tab']; })).toBeUndefined();
+    expect(broken(5, (action) => { action['tab'] = -1; })).toBeUndefined();
+    expect(broken(4, (action) => { action['tab'] = -1; })).toBeUndefined();
+    expect(broken(4, (action) => { action['tab'] = 1.5; })).toBeUndefined();
     expect(broken(0, (action) => { action['name'] = 'fly'; })).toBeUndefined();
   });
 });

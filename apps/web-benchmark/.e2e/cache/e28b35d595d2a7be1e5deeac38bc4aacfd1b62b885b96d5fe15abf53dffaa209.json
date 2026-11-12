@@ -1,0 +1,98 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-11-12T10:18:11.382Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "tap",
+        "summary": "tap button \"Open verification tab\"",
+        "target": {
+          "role": "button",
+          "name": "Open verification tab",
+          "testId": "open-tab-button"
+        }
+      },
+      {
+        "name": "switchTab",
+        "summary": "switch to tab 2",
+        "tab": 1
+      },
+      {
+        "name": "switchTab",
+        "summary": "switch to tab 1",
+        "tab": 0
+      },
+      {
+        "name": "tool",
+        "summary": "tool type (run-time value)",
+        "derived": "whole-node"
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"Verify\"",
+        "target": {
+          "role": "button",
+          "name": "Verify",
+          "testId": "verify-button"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20new-tab-flow",
+      "targetId": "web",
+      "instructionDigest": "bb1f498111ed39c8a60e29cbba2f549c8091045facac32d4ce8f6083e0e09440",
+      "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "callIndex": 0,
+      "agent": "default"
+    },
+    "recordedBy": {
+      "provider": "gateway",
+      "model": "openai/gpt-6-luna-fast"
+    },
+    "summary": "Opened the verification tab, read code TAB-88421, returned to the original tab, entered it, and verified successfully.",
+    "startPath": "/e/new-tab-flow",
+    "endPath": "/e/new-tab-flow",
+    "endAnchors": [
+      {
+        "text": "Verified successfully",
+        "testId": "success-message"
+      }
+    ],
+    "goneAnchors": [
+      {
+        "text": "Open the verification tab, read the code there, come back and enter it."
+      },
+      {
+        "role": "button",
+        "name": "Open verification tab",
+        "testId": "open-tab-button"
+      },
+      {
+        "role": "textbox",
+        "name": "Verification code",
+        "testId": "code-input",
+        "placeholder": "Verification code"
+      },
+      {
+        "role": "button",
+        "name": "Verify",
+        "testId": "verify-button"
+      }
+    ],
+    "endWaitMs": 12321,
+    "keyedBy": {
+      "cacheSchema": "trace-1",
+      "policyVersion": "conservative/6",
+      "project": "6c340b4558007fd12144b6a4e0daf3abb724b92faa2d08705fa564444b68533c",
+      "platform": "web",
+      "engineName": "web",
+      "engineSpiVersion": 1,
+      "appIdentity": "dc587874e98340c0ead3b9555bef25c85bca9337c6c8e28ae9e991c982ef1202",
+      "agentContextDigest": "02e45116d4a18a6603260cbbc8fa198d311b6a1a01362cc9dd6aa341d16bb3cf"
+    }
+  }
+}

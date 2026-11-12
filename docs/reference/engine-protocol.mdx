@@ -232,6 +232,8 @@ params are the member's arguments by name, with every `OperationContext` as
 | `session/open` | `{ url, operation }` | `null` |
 | `session/back`, `session/restart`, `session/reset` | `{ operation }` | `null` |
 | `session/resize` | `{ size: { width, height }, operation }` | `null` |
+| `session/switchTab` | `{ index, operation }` | `null` |
+| `session/closeTab` | `{ index, operation }` | `null` |
 | `lifecycle/prepare` | `EnginePrepareInfo` without `log` | `EnginePrepareResult` or `null` |
 | `lifecycle/finish` | `EngineFinishInfo` without `log` | `null` |
 | `lifecycle/doctor` | `EngineDoctorInfo` without `log` | `EngineDoctorCheck[]` |
