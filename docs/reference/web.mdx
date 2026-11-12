@@ -181,10 +181,11 @@ How recovery runs:
 - After a disconnect, the next operation calls `reconnectEndpoint` once,
   within that operation's timeout and abort signal. The resolver must return
   the existing browser's endpoint.
-- The engine checks the persistent default context ID and the original
-  page's target ID. It refuses a browser that does not expose the default
-  context ID. A missing page or a different context fails the attempt. A
-  matching URL does not select a replacement tab.
+- The engine checks the persistent default context ID and the active tab's
+  target ID. It refuses a browser that does not expose the default context
+  ID. A missing active tab or a different context fails the attempt. A
+  matching URL does not select a replacement tab. The attempt's other tabs
+  are found by their target IDs; one that is gone is dropped.
 - The engine installs secure-field masking before it publishes each CDP
   binding. An incompatible Playwright version fails the connection instead of
   exposing pixels.
@@ -405,9 +406,10 @@ export type WebInitScript = string | { readonly path: string } | (() => unknown)
   `addInitScript`.
 - `setViewport` sizes the active tab and every tab opened after it, and
   `emulateMedia` sets its media the same way.
-- A tab the app opens itself, from a `target="_blank"` link or `window.open`,
-  is not followed. The active tab stays the one the attempt opened. Assert on
-  what that tab shows, or open the link's URL with `browser.goto`.
+- A tab the app opens, from a `target="_blank"` link or `window.open`,
+  becomes the active tab once the browser reports it, shortly after the
+  action that opened it. When it closes, the tab that opened it is active
+  again. See [Tabs](#tabs).
 - Every `browser` call is a recorded `browser.<method>` step, except
   `locator` and `frameLocator`. They build a locator without touching the
   page, and the action or assertion on it is the step.
@@ -442,6 +444,9 @@ export type WebInitScript = string | { readonly path: string } | (() => unknown)
 | [`setViewport`](#setviewport) | `Promise<void>` |
 | [`emulateMedia`](#media-emulation) | `Promise<void>` |
 | [`onDialog`](#ondialog) | `Promise<() => Promise<void>>` |
+| [`tabs`](#tabs) | `readonly BrowserTab[]` |
+| [`waitForPopup`](#tabs) | `Promise<BrowserTab>` |
+| [`newTab`](#tabs) | `Promise<BrowserTab>` |
 | [`waitForDownload`](#waitfordownload) | `Promise<{ path, absolutePath, … }>` |
 | [`waitForDownloads`](#waitfordownloads) | `Promise<{ path, absolutePath, … }[]>` |
 | [`keyboard`](#keyboard) | `{ press, down, up, type }` |
@@ -456,10 +461,10 @@ The [config](/reference/config) sets each member's budget:
   `locator` and `frameLocator` touch no page and take none.
 
 A `{ timeout }` option overrides the budget on `goto`, `reload`, `back`,
-`forward`, `waitForResponse`, `waitForDownload`, and `waitForDownloads`, capped
+`forward`, `waitForResponse`, `waitForPopup`, `waitForDownload`, and `waitForDownloads`, capped
 by the test deadline (`cleanupTimeout` in `afterEach`); `0` waits until it. `url`, `title`, `evaluate`, `addInitScript`, `route`,
 `unroute`, `unrouteAll`, `cookies`, `setCookies`, `clearCookies`, `setViewport`,
-`emulateMedia`, `onDialog`, `keyboard.*`, and `mouse.*` take no override.
+`emulateMedia`, `onDialog`, `newTab`, the `BrowserTab` methods, `keyboard.*`, and `mouse.*` take no override.
 
 #### `goto`
 
@@ -885,6 +890,64 @@ export interface Dialog {
 export type DialogHandler = 'accept' | 'dismiss' | ((dialog: Dialog) => void | Promise<void>);
 ```
 
+#### Tabs
+
+A tab the app opens becomes the active tab: `screen`, `expect`, and the
+`browser` page methods act on it. When it closes, the tab that opened it is
+active again, or the open tab that was active most recently when the opener
+is gone too. Most `target="_blank"` and OAuth-popup flows need no tab call.
+
+```ts
+const popup = await browser.waitForPopup(() =>
+  screen.getByRole('button', 'Open verification tab').tap(),
+);
+const code = await screen.getByText(/^TAB-/).textContent();
+await popup.close(); // the opener is active again
+await screen.getByRole('textbox', 'Verification code').fill(code);
+```
+
+- The switch happens before the next call after the action that opened
+  the tab: that call, and every one after it, acts on the new tab. While
+  the new tab's first page is still loading, the call waits for it within
+  its own timeout. `waitForPopup(trigger)` runs the trigger and resolves
+  with the tab once that tab is active.
+- A tab that never gets a page is not followed and not listed: a
+  `target="_blank"` link to a download, to a `mailto:` address, or to a
+  response with no content. The next call waits up to 1 second for it.
+- `tabs()` returns the open tabs in the order they opened, the same
+  `BrowserTab` for a tab the whole attempt. A tab still loading is not in it
+  yet: call it after a call that waited, such as `waitForPopup`.
+- `tab.activate()` makes a tab active without closing the others.
+  `tab.close()` closes it, and when it was active, waits until the next one
+  is.
+- `newTab()` opens a blank tab in the same browser context, with the same
+  cookies and storage, and makes it active. Navigate it with `goto`.
+- Only tabs opened from the attempt's own tabs are followed. A page a test
+  opens through `surfaceOf(engine)` is not one of them.
+- The screencast records the active tab, one video segment per change. A tab
+  that closes itself keeps no segment, since its page closes before the
+  recording can be saved. A provider's own recording covers every tab.
+
+```ts
+/** One tab of the browser the attempt drives. */
+export interface BrowserTab {
+  url(): Promise<string>;
+  title(): Promise<string>;
+  /** Whether this is the active tab. */
+  isActive(): boolean;
+  isClosed(): boolean;
+  /** Makes this the active tab. */
+  activate(): Promise<void>;
+  /** Closes the tab; the tab that opened it becomes active when it was. */
+  close(): Promise<void>;
+}
+```
+
+| Throws | When |
+| --- | --- |
+| `ACTION_FAILED` | `waitForPopup`: no tab opened in time. A trigger that resolved in time fails with `no tab opened within <n>ms; the trigger resolved after <m>ms`. `activate`: the tab has closed. |
+| `OPERATION_TIMEOUT` | Any call: the app opened a tab whose first page did not load within the call's timeout. The message reads `<call> timed out: the app opened a tab whose page has not loaded`. |
+
 #### `waitForDownload`
 
 Runs a trigger and waits for the download it starts.
@@ -1136,9 +1199,10 @@ export interface WebOptions {
  * `locator`, `frameLocator`, `evaluate`, `waitForResponse`, `waitForDownload`,
  * the keyboard and mouse, `expect(browser)`, and `screen` act on the active
  * tab; cookies, routes, and dialog handlers cover the whole browser, every
- * tab included. A tab the app opens itself (a `target="_blank"` link,
- * `window.open`) is not followed: the active tab stays the one the attempt
- * opened.
+ * tab included. A tab the app opens from the active tab or another of the
+ * attempt's tabs (a `target="_blank"` link, `window.open`) becomes the
+ * active tab once the browser reports it, shortly after the action that
+ * opened it; when it closes, the tab that opened it is active again.
  */
 export interface Browser extends Expectable<BrowserExpectation> {
   /** Navigates to an allowed URL. */
@@ -1202,6 +1266,16 @@ export interface Browser extends Expectable<BrowserExpectation> {
   emulateMedia(media: WebMedia): Promise<void>;
   /** Registers an attempt-scoped dialog handler and returns an unsubscribe function. */
   onDialog(handler: DialogHandler): Promise<() => Promise<void>>;
+  /** Returns the open tabs, in the order they opened. */
+  tabs(): readonly BrowserTab[];
+  /**
+   * Runs a trigger and waits for the tab it opens, then resolves with that
+   * tab once it is the active tab. Rejects with `ACTION_FAILED` when no tab
+   * opens within the timeout.
+   */
+  waitForPopup(trigger: () => Promise<void>, options?: { timeout?: number }): Promise<BrowserTab>;
+  /** Opens a blank tab in the same browser context, sharing its cookies and storage, and makes it the active tab. */
+  newTab(): Promise<BrowserTab>;
   /** Runs a trigger and waits for its download. */
   waitForDownload(
     trigger: () => Promise<void>,

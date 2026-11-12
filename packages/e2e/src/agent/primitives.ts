@@ -604,6 +604,14 @@ export function grammarTools(
         ),
     });
   }
+  if (verbs.has('switchTab')) {
+    tools['switch_tab'] = screenTool({
+      description:
+        'Show another open tab. When more than one tab is open, the screen header says which tab you are on and how many there are, numbered from 1 in the order they opened. A tab the app opens is shown as soon as it opens, and closing it shows the tab that opened it again; switch to read or act in another tab without closing this one.',
+      inputSchema: z.object({ tab: z.number().int().min(1).describe('The tab number, from 1 in the order the tabs opened.') }),
+      execute: ({ tab }) => acting({ done: `Switched to tab ${String(tab)}.`, attempt: `switch_tab ${String(tab)}` }, () => context.actions.switchTab(tab)),
+    });
+  }
   // The pixel verbs are the fallback for a target the tree does not list: a
   // tap, hover, or drag reaches the engine as bare points where it takes
   // them, and a type, press, or select acts on a listed control under the

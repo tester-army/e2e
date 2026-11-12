@@ -6,7 +6,10 @@
  * attempt's page; a page about to close (a restart, a context replaced by a
  * state reset) ends its segment first, since Playwright writes nothing for a
  * screencast whose page closed under it, and the next page the attempt opens
- * starts the next segment. Each segment is captured at `web({ screencast: { size } })`
+ * starts the next segment. A tab the app opens starts a segment as it is
+ * shown, and the tab it returns to starts another; a tab that closed itself
+ * keeps no segment, since its page closed before the screencast could flush.
+ * Each segment is captured at `web({ screencast: { size } })`
  * when set, else at its page's viewport size when it starts (the window's
  * under `viewport: null`, so a page `browser.setViewport` sized is recorded at
  * that size), and carries the instant it began, so a consumer can place step
@@ -34,6 +37,8 @@ export interface AttemptVideo {
   arm(page: Page, signal: AbortSignal): Promise<void>;
   pageOpened(page: Page): Promise<void>;
   pageClosing(): Promise<void>;
+  /** The recorded page closed on its own (a tab the app closed): what its segment wrote is kept, and one that could not flush is dropped, not reported lost. */
+  pageClosed(): Promise<void>;
   stop(signal: AbortSignal): Promise<readonly VideoSegment[]>;
   /** Ends a recording the attempt never collected; nothing it recorded is reported. */
   abandon(signal: AbortSignal): Promise<void>;
@@ -95,6 +100,11 @@ export class VideoRecorder implements AttemptVideo {
     return this.end();
   }
 
+  /** The recorded page already closed: its segment ends, and is dropped without a report when it left no file. */
+  pageClosed(): Promise<void> {
+    return this.end(true);
+  }
+
   /** The attempt closes uncollected: disarmed first, so no late page starts a segment, then the one in progress ends and its file is complete on disk. */
   abandon(): Promise<void> {
     this.armed = false;
@@ -150,17 +160,20 @@ export class VideoRecorder implements AttemptVideo {
    * Ends the segment in progress. A stop that failed but left a file keeps
    * the file; one that left nothing (a page closed before the stop, which
    * Playwright never flushes) lost the segment, which `stop` reports. A
-   * segment that wrote nothing is not a segment.
+   * segment that wrote nothing is not a segment. `closed` is for a page that
+   * closed on its own, whose segment Playwright never flushes: it is gone,
+   * not lost.
    */
-  private async end(): Promise<void> {
+  private async end(closed = false): Promise<void> {
     const segment = this.current;
     if (segment === null) return;
     this.current = null;
-    await waitForFrame(segment, FIRST_FRAME_WAIT_MS);
+    if (!closed) await waitForFrame(segment, FIRST_FRAME_WAIT_MS);
     try {
       await segment.page.screencast.stop();
     } catch (cause) {
       if (!existsSync(segment.absolute)) {
+        if (closed) return;
         this.lost ??= { relative: segment.relative, cause };
         return;
       }

@@ -49,7 +49,7 @@ const NESTED_HOOKS = {
   keyboard: ['type', 'press', 'dismiss'],
   state: ['capture', 'restore'],
   artifacts: ['screenshot', 'startVideo', 'stopVideo'],
-  session: ['open', 'back', 'resize', 'restart', 'reset'],
+  session: ['open', 'back', 'resize', 'switchTab', 'restart', 'reset'],
 } as const;
 
 /**

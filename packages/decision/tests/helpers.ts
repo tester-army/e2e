@@ -142,7 +142,7 @@ export function context(options: {
     navigate: vi.fn<ExecutorActions['navigate']>().mockResolvedValue(undefined),
     doubleTap: noop, longPress: noop, secondaryTap: noop, hover: noop,
     drag: noop, scrollTo: noop, scrollUntil: noop, upload: noop,
-    typeText: noop, pressKey: noop, dismissKeyboard: noop, resize: noop,
+    typeText: noop, pressKey: noop, dismissKeyboard: noop, resize: noop, switchTab: noop,
     tapAt: vi.fn<ExecutorActions['tapAt']>().mockImplementation(async (point) => ({ point, summary: 'tap' })),
     hoverAt: vi.fn<ExecutorActions['hoverAt']>().mockImplementation(async (point) => ({ point, summary: 'hover' })),
     dragAt: vi.fn<ExecutorActions['dragAt']>().mockImplementation(async (from, to) => ({ from, to, summary: 'drag' })),

@@ -23,7 +23,7 @@ import type {
   ViewportPoint,
   ViewportSize,
 } from './contract.ts';
-import type { AppLogEntry, EngineObserveOptions, EngineSnapshot, EngineState, VideoSegment } from './index.ts';
+import type { AppLogEntry, EngineObserveOptions, EngineSnapshot, EngineState, EngineTabs, VideoSegment } from './index.ts';
 
 export type * from './contract.ts';
 export { EngineError } from './contract.ts';
@@ -60,6 +60,8 @@ export type GrammarVerb =
   | 'back'
   /** Sets the viewport size (`session.resize`), for checking a layout at another width. */
   | 'resize'
+  /** Shows another open tab (`session.switchTab`), for a flow that crosses between tabs. */
+  | 'switchTab'
   | 'tapAt'
   | 'hoverAt'
   /** A drag from one viewport point to another (`dragTo` in `pointerActions`), for a drag the tree does not list. */
@@ -90,6 +92,8 @@ interface ObservationMetadata {
   readonly root: NodeRef;
   /** Where the surface was when captured, when the platform has a location. */
   readonly location?: string;
+  /** The open tabs, when more than one is (`EngineSnapshot.tabs`). */
+  readonly tabs?: EngineTabs;
   readonly revision: string;
   readonly capturedAt: string;
   readonly viewport: ViewportSize;
@@ -111,6 +115,8 @@ export interface SessionApp {
   back(operation: OperationContext): Promise<void>;
   /** Sets the viewport size in CSS pixels. */
   resize(size: ViewportSize, operation: OperationContext): Promise<void>;
+  /** Shows the open tab at a zero-based index, in the order the tabs opened. */
+  switchTab(index: number, operation: OperationContext): Promise<void>;
   /** Recreates the app context without clearing persisted state; shows nothing until `open`. */
   restart(operation: OperationContext): Promise<void>;
   /** Clears persisted client state and recreates the context; shows nothing until `open`. */

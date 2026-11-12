@@ -38,6 +38,7 @@ import {
   type TextPattern,
 } from 'e2e/engine';
 import { classifyInputError } from './actions.ts';
+import type { AttemptTab } from './attempt-session.ts';
 import type { DialogHandler } from './dialogs.ts';
 import { saveDownloadsTo, saveFromBrowser, saveLocally } from './downloads.ts';
 import { isTestErrorCode, message as causeMessage, pageScriptFailure, translatePwError } from './support.ts';
@@ -214,13 +215,37 @@ export interface FrameScreen extends Screen {
 }
 
 /**
+ * One tab of the browser the attempt drives: the attempt's own, one the app
+ * opened, or one `browser.newTab` opened. The same tab is the same object for
+ * the whole attempt.
+ */
+export interface BrowserTab {
+  /** Returns the tab's current URL. */
+  url(): Promise<string>;
+  /** Returns the tab's current title. */
+  title(): Promise<string>;
+  /** Whether this is the active tab, the one `screen`, `expect`, and the browser's page methods act on. */
+  isActive(): boolean;
+  /** Whether the tab has closed. */
+  isClosed(): boolean;
+  /** Makes this the active tab. Rejects with `ACTION_FAILED` when it has closed. */
+  activate(): Promise<void>;
+  /**
+   * Closes the tab. When it was the active tab, the tab that opened it becomes
+   * active, else the open tab that was active most recently.
+   */
+  close(): Promise<void>;
+}
+
+/**
  * The browser the attempt drives, showing one active tab. Navigation, reads,
  * `locator`, `frameLocator`, `evaluate`, `waitForResponse`, `waitForDownload`,
  * the keyboard and mouse, `expect(browser)`, and `screen` act on the active
  * tab; cookies, routes, and dialog handlers cover the whole browser, every
- * tab included. A tab the app opens itself (a `target="_blank"` link,
- * `window.open`) is not followed: the active tab stays the one the attempt
- * opened.
+ * tab included. A tab the app opens from the active tab or another of the
+ * attempt's tabs (a `target="_blank"` link, `window.open`) becomes the
+ * active tab once the browser reports it, shortly after the action that
+ * opened it; when it closes, the tab that opened it is active again.
  */
 export interface Browser extends Expectable<BrowserExpectation> {
   /** Navigates to an allowed URL. */
@@ -294,6 +319,16 @@ export interface Browser extends Expectable<BrowserExpectation> {
   emulateMedia(media: WebMedia): Promise<void>;
   /** Registers an attempt-scoped dialog handler and returns an unsubscribe function. */
   onDialog(handler: DialogHandler): Promise<() => Promise<void>>;
+  /** Returns the open tabs, in the order they opened. */
+  tabs(): readonly BrowserTab[];
+  /**
+   * Runs a trigger and waits for the tab it opens, then resolves with that
+   * tab once it is the active tab. Rejects with `ACTION_FAILED` when no tab
+   * opens within the timeout.
+   */
+  waitForPopup(trigger: () => Promise<void>, options?: { timeout?: number }): Promise<BrowserTab>;
+  /** Opens a blank tab in the same browser context, sharing its cookies and storage, and makes it the active tab. */
+  newTab(): Promise<BrowserTab>;
   /** Runs a trigger and waits for its download. */
   waitForDownload(
     trigger: () => Promise<void>,
@@ -428,10 +463,75 @@ async function collectDownloads(
   }
 }
 
+/**
+ * Runs a trigger and waits for the tab it opens to become the active one.
+ * The trigger is test code, so its errors keep their classification; the
+ * wait for the tab is bounded apart from it.
+ */
+async function waitForTab(
+  surface: PlaywrightSurface,
+  context: EngineFixtureContext,
+  trigger: () => Promise<void>,
+  timeout: number | undefined,
+): Promise<AttemptTab> {
+  const api = 'browser.waitForPopup';
+  const operation = context.operation(stepTimeout(timeout, api));
+  const waitMs = operation.timeoutMs;
+  const deadline = new Deadline(waitMs);
+  const scope = new AbortController();
+  let triggerFailure: { cause: unknown } | undefined;
+  let triggerMs: number | undefined;
+  const timedOut = (): TestError => new TestError(
+    'ACTION_FAILED',
+    triggerMs === undefined
+      ? `${api} exceeded its timeout of ${waitMs}ms`
+      : `no tab opened within ${waitMs}ms; the trigger resolved after ${triggerMs}ms`,
+  );
+  try {
+    return await withTimeout(surface.guard({ ...operation, signal: AbortSignal.any([operation.signal, scope.signal]) }, 'popup', async (current) => {
+      const opened = surface.nextPopup(current.signal);
+      opened.catch(() => undefined);
+      const triggerStart = Date.now();
+      try {
+        await trigger();
+      } catch (cause) {
+        triggerFailure = { cause };
+        throw cause;
+      }
+      triggerMs = Date.now() - triggerStart;
+      return await opened;
+    }, (cause, label) => {
+      // The trigger is test code, so its errors keep their original classification.
+      if (triggerFailure !== undefined && Object.is(cause, triggerFailure.cause)) throw cause;
+      return translatePwError(cause, label);
+    }, 'test-code'), deadline.remaining(), timedOut);
+  } finally {
+    scope.abort();
+  }
+}
+
 /** Builds the `browser` fixture for one attempt over the shared surface. */
 export function createBrowserFixture(surface: PlaywrightSurface, context: EngineFixtureContext): Browser {
   const latch = surface.latch;
   const routes: StoredRoute[] = [];
+  /** One handle per tab, so the same tab is the same object for the attempt. */
+  const tabHandles = new WeakMap<AttemptTab, BrowserTab>();
+  const tabAction: FixtureOperation = { kind: 'resource' };
+  /** The handle a test holds for one of the attempt's tabs. */
+  const tabHandle = (tab: AttemptTab): BrowserTab => {
+    const known = tabHandles.get(tab);
+    if (known !== undefined) return known;
+    const handle = context.fixture<BrowserTab>('tab', {
+      url: () => surface.guard(context.operation(), 'url', async () => tab.page.url()),
+      title: () => surface.guard(context.operation(), 'title', () => tab.page.title()),
+      isActive: () => surface.shownTab() === tab,
+      isClosed: () => tab.page.isClosed(),
+      activate: () => surface.showTab(tab, context.operation()),
+      close: () => surface.closeTab(tab, context.operation()),
+    }, { url: tabAction, title: tabAction, activate: tabAction, close: tabAction });
+    tabHandles.set(tab, handle);
+    return handle;
+  };
 
   /** Unregisters the stored routes `match` selects, newest first. */
   const removeRoutes = async (match: (stored: StoredRoute) => boolean): Promise<void> => {
@@ -765,6 +865,12 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
       const unsubscribe = surface.dialogs.add(handler);
       return async () => unsubscribe();
     },
+    tabs: () => surface.tabs().map(tabHandle),
+    async waitForPopup(trigger, options) {
+      rejectUnknownOptions('browser.waitForPopup', options, ['timeout']);
+      return tabHandle(await waitForTab(surface, context, trigger, options?.timeout));
+    },
+    newTab: async () => tabHandle(await surface.newTab(context.operation())),
     async waitForDownload(trigger, options) {
       const [file] = await collectDownloads(surface, context, trigger, 1, options?.timeout, 'browser.waitForDownload');
       return file!;
@@ -825,6 +931,8 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
     setViewport: action,
     emulateMedia: { ...action, label: (media) => mediaLabel(media) },
     onDialog: action,
+    waitForPopup: { ...action, timeout: false },
+    newTab: action,
     waitForDownload: { ...action, timeout: false },
     waitForDownloads: { ...action, timeout: false },
     keyboard: { down: { ...action, label: (key) => key }, up: { ...action, label: (key) => key }, press: { ...action, label: (key) => key }, type: { ...action, label: (text) => `${text.length} chars` } },

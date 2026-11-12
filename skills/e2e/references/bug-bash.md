@@ -73,7 +73,7 @@ const shared: E2EConfig = base;
 // What the local app cannot do, plus the explorer's blind spots (step 5's artifact bucket).
 const context =
   'Sign in with the credential the goal names. The local app sends no email and has no AI key. Never start a paid run or connect an integration. ' +
-  'Not bugs: a link that opens a new tab leaves this one unchanged; accessible text splits around inline links, so judge copy by the rendered screen when a screenshot is available and never report split text alone as broken copy; an infinite-scroll "Loading more" sentinel loads when scrolled into view; images lazy-load, so scroll and wait before calling one blank.';
+  'Not bugs: accessible text splits around inline links, so judge copy by the rendered screen when a screenshot is available and never report split text alone as broken copy; an infinite-scroll "Loading more" sentinel loads when scrolled into view; images lazy-load, so scroll and wait before calling one blank.';
 const persona = { model: gateway('openai/gpt-6-luna-fast'), maxSteps: 40, maxModelCalls: 40, context };
 
 export default {
@@ -185,7 +185,7 @@ Sort every finding before writing any test. Read the source to sort them.
 
 | Bucket | Sign | Outcome |
 | --- | --- | --- |
-| Explorer artifact | A "dead" `target="_blank"` link whose destination opens when clicked with popup capture or navigated to directly, a broken sentence the screenshot renders whole, a "Loading more" sentinel nothing scrolled to, a lazy-loading image or embed | Rejected with the check that settled it; settle this bucket first. A new-tab link whose destination never opens stays a candidate |
+| Explorer artifact | A broken sentence the screenshot renders whole, a "Loading more" sentinel nothing scrolled to, a lazy-loading image or embed | Rejected with the check that settled it; settle this bucket first |
 | Environment | Fails on a key, a service, or a limit only the local stack lacks (an email provider, an AI key, a billing plan) | Rejected, naming the variable or service; note separately when the app handles the failure badly in a way production users would see, such as showing the raw error |
 | Design | The code, its tests, or its copy say the behavior is intended | Rejected, citing where |
 | Fixture | The seed data lacks a field real records always have | Rejected, naming the field |

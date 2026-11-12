@@ -29,7 +29,7 @@ const PAGE = `<!doctype html><html><body><h1>Todos</h1><script>
   setTimeout(() => { throw new RangeError('render loop exceeded'); }, 0);
 </script></body></html>`;
 
-const MOVING = `<!doctype html><html><body><h1>Moving</h1><button onclick="window.open('/tab', '_blank')">Help</button><script>
+const MOVING = `<!doctype html><html><body><h1>Moving</h1><button onclick="this.textContent = 'Counted'">Count</button><script>
   const frame = document.createElement('iframe');
   frame.name = 'pay';
   frame.src = '/embed';
@@ -39,7 +39,10 @@ const MOVING = `<!doctype html><html><body><h1>Moving</h1><button onclick="windo
 
 /** The pages a navigation lands on, each naming its own path; served from here, never from the request. */
 const LANDINGS: Readonly<Record<string, string>> = Object.fromEntries(
-  ['/next', '/tab', '/embed'].map((landing) => [landing, `<!doctype html><h1>${landing}</h1>`]),
+  ['/next', '/tab', '/embed'].map((landing) => [
+    landing,
+    `<!doctype html><h1>${landing}</h1>${landing === '/next' ? `<button onclick="window.open('/tab', '_blank')">Help</button>` : ''}`,
+  ]),
 );
 
 const signal = new AbortController().signal;
@@ -136,18 +139,19 @@ describe('app log', () => {
       expect(screens[0]!.location).toBe(`${url}/moving`);
       // The screen is the trace's, never published: a ref from the observation acts after it, twice.
       const observed = await surface.observe(operation());
-      const help = observed.root.children?.find((node) => node.role === 'button');
-      await surface.perform(help!.ref, { kind: 'tap' }, operation());
-      await surface.perform(help!.ref, { kind: 'tap' }, operation());
+      const count = observed.root.children?.find((node) => node.role === 'button');
+      await surface.perform(count!.ref, { kind: 'tap' }, operation());
+      await surface.perform(count!.ref, { kind: 'tap' }, operation());
       expect(screens).toHaveLength(3);
       const navigations = () => [...went];
       await expect.poll(navigations, { timeout: 5_000 }).toContain(`navigated to ${url}/next`);
-      expect(navigations()).toEqual(expect.arrayContaining([
-        `frame "pay" loaded ${url}/embed`,
-        `the app opened a new tab at ${url}/tab; the test stays on its page`,
-      ]));
+      const help = (await surface.observe(operation())).root.children?.find((node) => node.role === 'button');
+      await surface.perform(help!.ref, { kind: 'tap' }, operation());
+      await expect.poll(navigations, { timeout: 5_000 }).toContain(`the app opened a new tab at ${url}/tab; the screen follows it`);
+      expect(navigations()).toContain(`frame "pay" loaded ${url}/embed`);
       expect(navigations().some((text) => text.includes('/moving'))).toBe(false);
-      expect(navigations().some((text) => text.startsWith('the new tab navigated'))).toBe(false);
+      // The tab's first document is told by its opening.
+      expect(navigations().some((text) => text.includes('navigated to') && text.endsWith('/tab'))).toBe(false);
       await expect.poll(() => facts.length, { timeout: 5_000 }).toBe(1);
       expect(facts[0]).toEqual({ browser: expect.stringMatching(/^chromium \d+\./), 'user agent': expect.stringContaining('Chrome/') });
     } finally {

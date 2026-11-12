@@ -166,6 +166,7 @@ export class ActionDispatcher {
       navigate: (url) => this.navigate(url),
       back: () => this.back(),
       resize: (size) => this.resize(size),
+      switchTab: (tab) => this.switchTab(tab),
       tapAt: (point) => this.pointVerb('tapAt', point),
       hoverAt: (point) => this.pointVerb('hoverAt', point),
       dragAt: (from, to) => this.pointDrag(from, to),
@@ -460,6 +461,17 @@ export class ActionDispatcher {
       await this.session.app.resize({ width, height }, this.accounting.operation());
       this.runtime.steps.attachViewport({ width, height, scale: 1 });
       return { name: 'resize', size: { width, height } };
+    });
+  }
+
+  /** Shows the open tab numbered `tab` from 1, as the observation counts them. */
+  private async switchTab(tab: number): Promise<void> {
+    if (!Number.isSafeInteger(tab) || tab < 1) {
+      throw new TestError('INVALID_ARGUMENT', 'switchTab requires a tab number from 1');
+    }
+    await this.runAction('switchTab', async () => {
+      await this.session.app.switchTab(tab - 1, this.accounting.operation());
+      return { name: 'switchTab', tab: tab - 1 };
     });
   }
 

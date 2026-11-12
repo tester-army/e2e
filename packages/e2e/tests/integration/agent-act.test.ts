@@ -739,6 +739,7 @@ describe('agent.act with the default ToolLoopAgent executor', () => {
       'scroll_to',
       'select',
       'select_at',
+      'switch_tab',
       'tap',
       'tap_at',
       'type',

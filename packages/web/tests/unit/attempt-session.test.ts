@@ -49,6 +49,9 @@ function target(id: string, response?: Promise<{ targetId: string }>) {
     context: () => ({ newCDPSession: async () => ({ send, detach: async () => undefined }) }),
     setViewportSize: async () => undefined,
     viewportSize: () => ({ width: 320, height: 200 }),
+    // The tab listeners the session installs on every page it shows.
+    on: () => undefined,
+    once: () => undefined,
     isClosed: () => false,
     goto: async () => null,
     close: vi.fn(async () => undefined),

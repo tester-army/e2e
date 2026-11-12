@@ -47,6 +47,9 @@ export class ProviderVideo implements AttemptVideo {
   /** Pages come and go under one recording of the browser. */
   async pageClosing(): Promise<void> {}
 
+  /** Pages come and go under one recording of the browser. */
+  async pageClosed(): Promise<void> {}
+
   /**
    * Stops the recording as the attempt's one segment; nothing when none was
    * started. A stop that failed keeps the recording, so the attempt's close

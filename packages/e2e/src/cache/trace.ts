@@ -285,6 +285,12 @@ export interface ResizeAction extends ActionBase {
   readonly size: TraceViewport;
 }
 
+/** Another open tab shown, by its zero-based place in opening order, replayed as given. */
+export interface SwitchTabAction extends ActionBase {
+  readonly name: 'switchTab';
+  readonly tab: number;
+}
+
 /** A viewport size in CSS pixels, the precondition of a replayed point. */
 export interface TraceViewport {
   readonly width: number;
@@ -379,6 +385,7 @@ export type RecordedAction =
   | NavigateAction
   | BackAction
   | ResizeAction
+  | SwitchTabAction
   | PointAction
   | PointDragAction
   | TypeTextAction
@@ -590,6 +597,7 @@ function mapActionText(action: RecordedAction, map: TraceTextMap): RecordedActio
     }
     case 'back':
     case 'resize':
+    case 'switchTab':
     case 'pressKey':
     case 'dismissKeyboard':
     case 'tool':

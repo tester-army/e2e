@@ -29,6 +29,7 @@ export type { Dialog, DialogHandler } from './dialogs.ts';
 export type {
   Browser,
   BrowserExpectation,
+  BrowserTab,
   Cookie,
   CookieFields,
   CookieFilter,

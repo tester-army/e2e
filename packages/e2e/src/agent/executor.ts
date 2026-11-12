@@ -147,6 +147,11 @@ export interface ExecutorObservation {
    * reports one. Absent on engines without a location (a device screen).
    */
   readonly path?: string;
+  /**
+   * The open tabs when there is more than one: how many, and the one this
+   * screen shows, numbered from 1 in the order they opened.
+   */
+  readonly tabs?: { readonly count: number; readonly active: number };
   /** The redacted node tree; present when requested with `observe({ tree: true })`. */
   readonly tree?: ExecutorNode;
   /** Masked pixels; present when requested with `observe({ pixels: true })` and granted. */
@@ -249,6 +254,11 @@ export interface ExecutorActions {
    * (`resize` in `target.verbs`).
    */
   resize(size: ViewportSize): Promise<void>;
+  /**
+   * Shows another open tab, numbered from 1 in the order the tabs opened, as
+   * `ExecutorObservation.tabs` counts them (`switchTab` in `target.verbs`).
+   */
+  switchTab(tab: number): Promise<void>;
   /**
    * Taps one viewport point, in the CSS pixels of the newest observation
    * (`SemanticNode.rect` space; a point read off `pixels` is divided by its

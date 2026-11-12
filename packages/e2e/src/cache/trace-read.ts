@@ -299,6 +299,10 @@ function readRecordedAction(document: unknown): RecordedAction | undefined {
       const fits = (side: number) => side >= VIEWPORT_LIMITS.min && side <= VIEWPORT_LIMITS.max;
       return size === undefined || !fits(size.width) || !fits(size.height) ? undefined : { name: 'resize', summary, size };
     }
+    case 'switchTab': {
+      const tab = raw['tab'];
+      return typeof tab === 'number' && Number.isSafeInteger(tab) && tab >= 0 ? { name: 'switchTab', summary, tab } : undefined;
+    }
     case 'typeText': {
       const value = readTypedValue(raw['value']);
       if (value === undefined || typeof raw['replace'] !== 'boolean') return undefined;

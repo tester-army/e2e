@@ -156,6 +156,10 @@ The tools, one per engine action. Name the target as the screen names it
 - `resize_viewport`: set the viewport size (200 to 4096 CSS px) to check a
   layout at phone, tablet, or desktop width. Engines with `session.resize`,
   such as web.
+- `switch_tab`: show another open tab by its number (from 1, in opening
+  order). A tab the app opens is shown at once and the screen header says
+  `tab 2 of 2`; when it closes, the screen returns to its opener. Engines
+  with `session.switchTab`, such as web.
 - `type_secret`: a declared secret by name; plaintext never reaches the model.
   Offered only when the step declares secrets and the engine can fill them.
 - `screenshot`: attach viewport pixels; every later result then carries one.

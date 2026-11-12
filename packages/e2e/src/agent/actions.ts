@@ -63,6 +63,8 @@ export type RecordableAction =
   | { readonly name: 'back' }
   /** The viewport set to a size, in CSS pixels. */
   | { readonly name: 'resize'; readonly size: ViewportSize }
+  /** Another open tab shown, by its zero-based place in the order the tabs opened. */
+  | { readonly name: 'switchTab'; readonly tab: number }
   /** Keyboard input to whatever held focus, with no node resolved. */
   | { readonly name: 'typeText'; readonly value: string; readonly replace: boolean }
   | { readonly name: 'pressKey'; readonly key: string }
@@ -305,6 +307,8 @@ export function describeAction(action: RecordableAction, redaction: NodeRedactio
         return 'navigate back';
       case 'resize':
         return `resize the viewport to ${String(action.size.width)}x${String(action.size.height)}`;
+      case 'switchTab':
+        return `switch to tab ${String(action.tab + 1)}`;
       case 'typeText':
         return `type ${safe(action.value)} into the focused field${action.replace ? ', replacing its value' : ''}`;
       case 'pressKey':

@@ -22,7 +22,7 @@ import {
 import { requireKey } from '../internal/keys.ts';
 import { timestamp } from '../internal/ids.ts';
 import { bound } from '../internal/text.ts';
-import type { AppLogEntry, EngineHandle, EngineSnapshot } from './index.ts';
+import type { AppLogEntry, EngineHandle, EngineSnapshot, EngineTabs } from './index.ts';
 import {
   type AppEvent,
   type AppLogRoute,
@@ -135,6 +135,12 @@ function isEngineSnapshot(value: unknown): value is EngineSnapshot {
   return typeof root === 'object' && root !== null && typeof (root as SemanticNode).ref?.id === 'string' && typeof viewport === 'object' && viewport !== null;
 }
 
+/** True for a tab count an engine reported well: two or more tabs, the active one among them. A malformed one is dropped, never shown. */
+function validTabs(tabs: EngineTabs | undefined): tabs is EngineTabs {
+  return tabs !== undefined && Number.isSafeInteger(tabs.count) && Number.isSafeInteger(tabs.active)
+    && tabs.count >= 2 && tabs.active >= 0 && tabs.active < tabs.count;
+}
+
 /** Located refs are pruned oldest-first past this bound so the map cannot grow unboundedly. */
 const MAX_LOCATED_REFS = 2048;
 
@@ -214,6 +220,7 @@ function declaredVerbs(engine: EngineHandle | undefined): ReadonlySet<GrammarVer
   if (engine?.pointerActions?.includes('dragTo') === true) verbs.add('dragAt');
   if (engine?.session?.back !== undefined) verbs.add('back');
   if (engine?.session?.resize !== undefined) verbs.add('resize');
+  if (engine?.session?.switchTab !== undefined) verbs.add('switchTab');
   if (engine?.keyboard !== undefined) {
     verbs.add('typeText');
     verbs.add('pressKey');
@@ -293,6 +300,7 @@ export function createEngineSession(options: EngineSessionOptions): TargetSessio
     open: guard('navigation', engine?.session?.open),
     back: guard('back navigation', engine?.session?.back),
     resize: guard('viewport resizing', engine?.session?.resize),
+    switchTab: guard('tab switching', engine?.session?.switchTab),
     restart: guard('app restart', engine?.session?.restart),
     reset: guard('app state reset', engine?.session?.reset),
   };
@@ -373,6 +381,7 @@ export function createEngineSession(options: EngineSessionOptions): TargetSessio
         revision: minted,
         capturedAt: new Date().toISOString(),
         ...(snapshot.location === undefined ? {} : { location: snapshot.location }),
+        ...(validTabs(snapshot.tabs) ? { tabs: { count: snapshot.tabs.count, active: snapshot.tabs.active } } : {}),
         viewport: snapshot.viewport,
         redaction: {
           secureNodeCount: countSecure(snapshot.root),

@@ -43,6 +43,8 @@ interface ShownScreen {
   readonly truncated: boolean;
   /** An on-screen keyboard is among the nodes. */
   readonly keyboard: boolean;
+  /** The open tabs when there was more than one, the shown one numbered from 1. */
+  readonly tabs: ExecutorObservation['tabs'];
 }
 
 /** A node line whose role is the on-screen keyboard, as device trees list it. */
@@ -150,6 +152,9 @@ export class ScreenPresenter {
     this.shown = next;
     if (previous === undefined) return `${lead}${renderFull(observation)}`;
     const closed = options.keyboardNote === false || options.lead === undefined ? '' : keyboardClosedNote(previous, next);
+    // Another tab is another document: its ids say nothing about the tab the model held.
+    const moved = tabMoveNote(previous.tabs, next.tabs);
+    if (moved !== undefined) return `${lead}${moved} ${renderFull(observation)}${closed}`;
     const diff = diffScreens(previous, next);
     const changes = diff.length;
     // A truncated screen is never called unchanged: what it left out is unknown.
@@ -306,7 +311,24 @@ function keyboardClosedNote(previous: ShownScreen, next: ShownScreen): string {
 }
 
 function describeLocation(observation: ExecutorObservation): string {
-  return observation.path === undefined ? '' : `, path ${observation.path}`;
+  const path = observation.path === undefined ? '' : `, path ${observation.path}`;
+  const tabs = observation.tabs === undefined ? '' : `, tab ${String(observation.tabs.active)} of ${String(observation.tabs.count)}`;
+  return `${path}${tabs}`;
+}
+
+/**
+ * What the model hears when the screen is on another tab than the one it
+ * held, or undefined when it is on the same: a tab the app opened is shown
+ * at once, and one that closed hands the screen back to another.
+ */
+function tabMoveNote(previous: ShownScreen['tabs'], next: ShownScreen['tabs']): string | undefined {
+  if (previous?.count === next?.count && previous?.active === next?.active) return undefined;
+  if (next === undefined) return 'The other tab closed; the screen shows the one tab still open.';
+  const where = `tab ${String(next.active)} of ${String(next.count)}`;
+  if (next.count > (previous?.count ?? 1) && next.active === next.count) {
+    return `The app opened a new tab, and the screen shows it now (${where}).`;
+  }
+  return `The screen shows ${where} now.`;
 }
 
 /** Node id at the head of one rendered line, or undefined for a marker line. */
@@ -346,6 +368,7 @@ function indexScreen(observation: ExecutorObservation): ShownScreen {
     nodes: byId.size,
     truncated: observation.truncated,
     keyboard: order.some((line) => KEYBOARD_LINE.test(line)),
+    tabs: observation.tabs,
   };
 }
 

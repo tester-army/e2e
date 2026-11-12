@@ -1,8 +1,9 @@
-/** Owns one attempt's live binding, recovery, references, and recordings. */
+/** Owns one attempt's live binding, its tabs, recovery, references, and recordings. */
 import type { Browser, BrowserContext, BrowserContextOptions, Page } from 'playwright-core';
-import { EngineError, raceAbort, withinCleanupBudget, type EngineCleanupContext, type OperationContext, type VideoSegment, type ViewportSize } from 'e2e/engine';
-import { attachPersistent, recoveryFailed, targetIdentity, type CdpEndpointResolver, type SessionBinding } from './cdp-recovery.ts';
+import { EngineError, raceAbort, TestError, withinCleanupBudget, type EngineCleanupContext, type OperationContext, type VideoSegment, type ViewportSize } from 'e2e/engine';
+import { attachPersistent, recoveryFailed, targetIdentity, type CdpEndpointResolver, type SessionBinding, type TargetIdentity } from './cdp-recovery.ts';
 import { connectionAbort, withConnectionBudget, withOperationDeadline, type ConnectionBudget, type OperationBound } from './operation-budget.ts';
+import { OpeningTabs } from './opening-tabs.ts';
 import { RefRegistry } from './refs.ts';
 import type { LeaseRecording } from './provider.ts';
 import { ProviderVideo } from './provider-video.ts';
@@ -39,6 +40,22 @@ interface SessionOptions {
   };
 }
 
+/**
+ * One tab of the attempt: the attempt's own page, a tab the app opened from
+ * one of the attempt's tabs (a `target="_blank"` link, `window.open`), or one
+ * a test opened. The object outlives a CDP reconnect, which hands it the
+ * page of the same target on the new connection.
+ */
+export interface AttemptTab {
+  page: Page;
+  /** The tab it was opened from; undefined for the attempt's own page, a tab a test opened, and one whose opener closed before it loaded. */
+  readonly opener: AttemptTab | undefined;
+  /** The page's CDP target on a persistent browser, which a reconnect finds it by. */
+  target: TargetIdentity | undefined;
+  /** When the tab was last shown, in the attempt's order; 0 for never. */
+  shownAt: number;
+}
+
 type SessionState =
   | { readonly kind: 'empty' }
   | { readonly kind: 'ready'; readonly binding: SessionBinding }
@@ -63,6 +80,20 @@ export class AttemptSession {
   private readonly emulated = new WeakMap<Page, Promise<void>>();
   /** The active page being opened for the current binding, shared by concurrent callers. */
   private pendingPage: { readonly binding: SessionBinding; readonly work: Promise<Page> } | undefined;
+  /** The attempt's open tabs, in the order they opened; the binding's page is the one shown. */
+  private tabs: AttemptTab[] = [];
+  /** How many times a tab was shown, for `AttemptTab.shownAt`. */
+  private shown = 0;
+  /**
+   * Tab changes in the order they happened: following a tab the app opened,
+   * showing another, returning from one that closed. Settles once the last
+   * has finished; never rejects. Every operation waits for it first.
+   */
+  private tabWork: Promise<void> = Promise.resolve();
+  /** Waiting for the next tab the app opens (`browser.waitForPopup`), each told the tab and the work that shows it. */
+  private readonly popupWaiters = new Set<(tab: AttemptTab, shown: Promise<void>) => void>();
+  /** The tabs the current binding's browser is opening, when it can be watched. */
+  private opening: OpeningTabs | undefined;
 
   constructor(private readonly options: SessionOptions) {
     this.media = options.media;
@@ -178,6 +209,15 @@ export class AttemptSession {
         }, true);
       });
     }
+    // A tab the app just opened or closed is shown before the operation reads
+    // or acts on one, within the operation's own time.
+    const opening = this.opening;
+    const anyTab = this.tabs.find((tab) => !tab.page.isClosed());
+    if (opening !== undefined && !(await opening.settled(anyTab?.page, signal, endsAt))) {
+      throw new EngineError('OPERATION_TIMEOUT', `${label} timed out: the app opened a tab whose page has not loaded`, { retryable: false });
+    }
+    const settling = endsAt - Date.now();
+    if (settling > 0) await withConnectionBudget({ signal, timeoutMs: settling }, label, () => this.tabWork);
     const left = endsAt - Date.now();
     if (left <= 0) throw new EngineError('OPERATION_TIMEOUT', `${label} timed out`, { retryable: false });
     return withOperationDeadline({ signal, timeoutMs: left }, label, (remaining) => work({ ...operation, ...remaining() }), bound);
@@ -195,12 +235,18 @@ export class AttemptSession {
     const running = Promise.resolve().then(async () => {
       if (budget.signal.aborted) throw connectionAbort(budget.signal, 'connection');
       const candidate = await open();
-      const close = () => { void this.release(candidate).catch(() => undefined); };
+      let opening: OpeningTabs | undefined;
+      const close = () => {
+        opening?.detach();
+        void this.release(candidate).catch(() => undefined);
+      };
       budget.signal.addEventListener('abort', close, { once: true });
       try {
         if (budget.signal.aborted) throw connectionAbort(budget.signal, 'connection');
         await this.options.configure(candidate.context);
         this.watchPages(candidate.context);
+        opening = await OpeningTabs.watch(candidate.browser, candidate.context, candidate.identity?.contextId);
+        if (recover) await this.remapTabs(candidate);
         if (recover && candidate.page !== null) {
           const size = previous?.page?.viewportSize() ?? this.requestedViewport ?? this.options.viewport;
           if (size !== null) await candidate.page.setViewportSize(size);
@@ -212,7 +258,10 @@ export class AttemptSession {
         if (budget.signal.aborted) throw connectionAbort(budget.signal, 'connection');
         if (this.state !== pending) throw connectionAbort(this.lifetime.signal, 'connection');
         this.state = { kind: 'ready', binding: candidate };
+        this.opening?.detach();
+        this.opening = opening;
       } catch (cause) {
+        opening?.detach();
         await this.release(candidate).catch(() => undefined);
         throw cause;
       } finally {
@@ -258,6 +307,7 @@ export class AttemptSession {
       await this.video.pageOpened(page);
       this.check(token);
       this.state = { kind: 'ready', binding: { ...binding, page, ...(identity === undefined ? {} : { identity }) } };
+      this.adopt(page, undefined, identity?.target).shownAt = ++this.shown;
       return page;
     } catch (cause) {
       await page.close().catch(() => undefined);
@@ -284,6 +334,228 @@ export class AttemptSession {
       }
     }
     return context.newPage();
+  }
+
+  // --- tabs ---
+
+  /** The attempt's open tabs, in the order they opened. */
+  openTabs(): readonly AttemptTab[] {
+    return this.tabs;
+  }
+
+  /** The tab the attempt shows, if a page is open. */
+  shownTab(): AttemptTab | undefined {
+    const page = this.state.kind === 'ready' ? this.state.binding.page : null;
+    return page === null ? undefined : this.tabs.find((tab) => tab.page === page);
+  }
+
+  /** Shows one open tab: every read and action from now on is on its page. */
+  async showTab(tab: AttemptTab): Promise<void> {
+    if (!this.tabs.includes(tab)) throw new TestError('ACTION_FAILED', 'the tab is closed');
+    await this.inTurn(() => this.show(tab), true);
+  }
+
+  /** Shows the open tab at `index` in opening order, as the agent's `switchTab` counts them. */
+  showTabAt(index: number): Promise<void> {
+    const tab = this.tabs[index];
+    if (!Number.isSafeInteger(index) || tab === undefined) {
+      const open = this.tabs.length;
+      throw new TestError('ACTION_FAILED', `there is no tab ${String(index + 1)}: ${String(open)} tab${open === 1 ? ' is' : 's are'} open`);
+    }
+    return this.showTab(tab);
+  }
+
+  /** Opens a new tab in the attempt's context, as a test asks, and shows it. */
+  async newTab(): Promise<AttemptTab> {
+    const page = await this.current().context.newPage();
+    const tab = this.adopt(page, undefined, undefined);
+    await this.inTurn(() => this.show(tab), true);
+    return tab;
+  }
+
+  /** Closes a tab; when it was the one shown, waits until the tab shown next is. */
+  async closeTab(tab: AttemptTab): Promise<void> {
+    if (!tab.page.isClosed()) await tab.page.close();
+    await this.tabsSettled();
+  }
+
+  /** Whether `page` closed as a tab does, with the browser still connected, rather than with the connection. */
+  tabClosed(page: Page): boolean {
+    return page.isClosed() && this.state.kind === 'ready' && this.state.binding.browser.isConnected();
+  }
+
+  /** Settles once every tab change queued so far has finished. */
+  tabsSettled(): Promise<void> {
+    return this.tabWork;
+  }
+
+  /**
+   * Resolves with the next tab the app opens from one of the attempt's tabs,
+   * once it is shown, or with it closed when the app closed it first.
+   */
+  nextPopup(signal: AbortSignal): Promise<AttemptTab> {
+    let waiter!: (tab: AttemptTab, shown: Promise<void>) => void;
+    const opened = new Promise<AttemptTab>((resolve) => {
+      waiter = (tab, shown) => {
+        this.popupWaiters.delete(waiter);
+        resolve(shown.then(() => tab));
+      };
+    });
+    this.popupWaiters.add(waiter);
+    const forget = () => { this.popupWaiters.delete(waiter); };
+    signal.addEventListener('abort', forget, { once: true });
+    return raceAbort(opened, signal, 'popup').finally(() => {
+      forget();
+      signal.removeEventListener('abort', forget);
+    });
+  }
+
+  /** Records a page as one of the attempt's tabs and watches it for the tabs it opens and for its own close. */
+  private adopt(page: Page, opener: AttemptTab | undefined, target: TargetIdentity | undefined): AttemptTab {
+    const tab: AttemptTab = { page, opener, target, shownAt: 0 };
+    this.tabs.push(tab);
+    this.watchTab(tab);
+    return tab;
+  }
+
+  /** Listens on the tab's current page; a page a reconnect replaced stops counting for it. */
+  private watchTab(tab: AttemptTab): void {
+    const page = tab.page;
+    page.on('popup', (popup) => { this.follow(popup, tab, page); });
+    page.once('close', () => { this.closed(tab, page); });
+  }
+
+  /**
+   * A tab the app opened from one of the attempt's tabs: it joins the tabs
+   * at once and is shown as soon as it is set up, as a person's browser
+   * brings it to the front.
+   */
+  private follow(popup: Page, opener: AttemptTab, from: Page): void {
+    if (opener.page !== from || !this.tabs.includes(opener)) return;
+    this.join(popup, opener);
+  }
+
+  /**
+   * A page the app opened whose opener closed before Playwright reported it,
+   * so no tab heard its `popup` event: a window that opens the next one and
+   * closes itself. It is followed like any tab the app opens.
+   */
+  private orphaned(page: Page): void {
+    this.join(page, undefined);
+  }
+
+  /** Adds a page the app opened to the tabs and shows it, once it has a document. */
+  private join(popup: Page, opener: AttemptTab | undefined): void {
+    if (this.state.kind !== 'ready' || popup.isClosed() || this.tabs.some((tab) => tab.page === popup)) return;
+    if (popup.url() === '') {
+      // No document committed yet: a link whose response was a download
+      // leaves its tab so, where a person's browser closes it. It joins the
+      // tabs only once a document commits.
+      const committed = (): void => {
+        if (popup.url() === '') return;
+        popup.off('framenavigated', committed);
+        this.join(popup, opener);
+      };
+      popup.on('framenavigated', committed);
+      return;
+    }
+    const tab = this.adopt(popup, opener, undefined);
+    const shown = this.inTurn(() => this.show(tab));
+    for (const waiter of this.popupWaiters) waiter(tab, shown);
+  }
+
+  /**
+   * A tab's page closed. When it was the one shown, its opener is shown
+   * next, else the open tab shown most recently. A page a dropped connection
+   * closed is no tab closing: the close is read a turn later, once the
+   * browser says whether it is still connected, and recovery keeps the tab.
+   */
+  private closed(tab: AttemptTab, page: Page): void {
+    setImmediate(() => {
+      const binding = this.state.kind === 'ready' ? this.state.binding : undefined;
+      if (tab.page !== page || !this.tabs.includes(tab) || binding === undefined || !binding.browser.isConnected()) return;
+      this.tabs.splice(this.tabs.indexOf(tab), 1);
+      if (binding.page !== page) return;
+      const next = this.returnTo(tab);
+      if (next === undefined) {
+        this.invalidate();
+        this.state = { kind: 'ready', binding: { ...binding, page: null } };
+      } else {
+        this.publish(binding, next);
+      }
+      void this.inTurn(async () => {
+        await this.video.pageClosed();
+        if (next === undefined || this.shownTab() !== next) return;
+        if (this.requestedViewport !== undefined) await next.page.setViewportSize(this.requestedViewport);
+        await this.video.pageOpened(next.page);
+      });
+    });
+    // Queued now, so an operation that starts before the close is read waits for it.
+    void this.inTurn(() => new Promise<void>((resolve) => { setImmediate(() => { setImmediate(resolve); }); }));
+  }
+
+  /** The tab shown when `closed` closes: its nearest open opener, else the open tab shown most recently. */
+  private returnTo(closed: AttemptTab): AttemptTab | undefined {
+    for (let opener = closed.opener; opener !== undefined; opener = opener.opener) {
+      if (this.tabs.includes(opener)) return opener;
+    }
+    return this.tabs.reduce<AttemptTab | undefined>((best, tab) => (best === undefined || tab.shownAt > best.shownAt ? tab : best), undefined);
+  }
+
+  /**
+   * Shows a tab once its page is set up as the attempt's own is: the
+   * viewport a test asked for, the media features, its target on a
+   * persistent browser. Then the recording moves to it.
+   */
+  private async show(tab: AttemptTab): Promise<void> {
+    const binding = this.current();
+    if (binding.page === tab.page) return;
+    const page = tab.page;
+    const size = this.requestedViewport ?? (binding.identity === undefined ? null : this.options.viewport);
+    if (size !== null) await page.setViewportSize(size);
+    await (this.emulated.get(page) ?? this.applyMedia(page));
+    if (binding.identity !== undefined) tab.target ??= await targetIdentity(page);
+    const now = this.state.kind === 'ready' ? this.state.binding : undefined;
+    if (now?.context !== binding.context || !this.tabs.includes(tab) || page.isClosed()) return;
+    this.publish(now, tab);
+    await this.video.pageOpened(page);
+  }
+
+  /** Makes `tab` the binding's page: every reference and read in flight belongs to the page shown before. */
+  private publish(binding: SessionBinding, tab: AttemptTab): void {
+    this.invalidate();
+    tab.shownAt = ++this.shown;
+    const identity = binding.identity === undefined
+      ? undefined
+      : { contextId: binding.identity.contextId, ...(tab.target === undefined ? {} : { target: tab.target }) };
+    this.state = { kind: 'ready', binding: { ...binding, page: tab.page, ...(identity === undefined ? {} : { identity }) } };
+  }
+
+  /**
+   * Queues one tab change behind the earlier ones. The queue never rejects;
+   * `rethrow` hands this change's own failure to its caller, and a change
+   * nobody awaits fails quietly, as a tab the app opened cannot fail a step.
+   */
+  private inTurn(work: () => Promise<void>, rethrow = false): Promise<void> {
+    const run = this.tabWork.then(work);
+    this.tabWork = run.catch(() => undefined);
+    return rethrow ? run : run.catch(() => undefined);
+  }
+
+  /**
+   * After a reconnect, finds each tab's page on the new connection by its
+   * target and listens there; a tab whose target is gone is closed.
+   */
+  private async remapTabs(candidate: SessionBinding): Promise<void> {
+    const byTarget = new Map<string, Page>();
+    for (const page of candidate.context.pages()) byTarget.set((await targetIdentity(page)).targetId, page);
+    this.tabs = this.tabs.filter((tab) => {
+      const page = tab.target === undefined ? undefined : byTarget.get(tab.target.targetId);
+      if (page === undefined) return false;
+      tab.page = page;
+      this.watchTab(tab);
+      return true;
+    });
   }
 
   /** Sizes the open page, if any, and every page this attempt opens after it. */
@@ -343,6 +615,7 @@ export class AttemptSession {
       const applied = this.applyMedia(page);
       this.emulated.set(page, applied);
       applied.catch(() => undefined);
+      this.opening?.reported(page, () => { this.orphaned(page); });
     });
   }
 
@@ -352,6 +625,7 @@ export class AttemptSession {
     this.invalidate();
     const token = this.token();
     await this.video.pageClosing();
+    this.tabs = [];
     for (const page of binding.context.pages()) await page.close();
     this.check(token);
     this.state = { kind: 'ready', binding: { ...binding, page: null } };
@@ -362,6 +636,7 @@ export class AttemptSession {
   async replace(storageState: StorageState | undefined, operation: OperationContext): Promise<void> {
     const previous = this.current();
     await this.video.pageClosing();
+    this.tabs = [];
     await this.transition(previous, operation, async () => {
       await previous.context.close();
       const context = await previous.browser.newContext({ ...this.options.contextOptions, ...(storageState === undefined ? {} : { storageState }) });
@@ -376,6 +651,9 @@ export class AttemptSession {
     this.state = { kind: 'closed' };
     this.lifetime.abort();
     this.invalidate();
+    this.tabs = [];
+    this.opening?.detach();
+    this.opening = undefined;
     if (state.kind === 'pending') await withinCleanupBudget(state.work, budget);
     const binding = 'binding' in state ? state.binding : undefined;
     if (binding === undefined) return;

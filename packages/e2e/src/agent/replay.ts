@@ -191,6 +191,8 @@ function planCall(action: RecordedAction, actions: ExecutorActions): PlannedCall
       return { kind: 'free', invoke: () => actions.back() };
     case 'resize':
       return { kind: 'free', invoke: () => actions.resize(action.size) };
+    case 'switchTab':
+      return { kind: 'free', invoke: () => actions.switchTab(action.tab + 1) };
     case 'type':
       return {
         kind: 'targeted',

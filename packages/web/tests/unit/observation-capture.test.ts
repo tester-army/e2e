@@ -58,6 +58,9 @@ async function setup(stalled?: ReadStage) {
   const screenshot = vi.fn(async () => Buffer.from([1, 2, 3]));
   const count = vi.fn(async () => 0);
   const page = {
+    // The tab listeners the session installs on every page it shows.
+    on: () => undefined,
+    once: () => undefined,
     isClosed: vi.fn(() => false),
     waitForLoadState: async () => undefined,
     viewportSize: () => ({ width: 100, height: 80 }),

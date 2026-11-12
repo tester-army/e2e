@@ -249,6 +249,7 @@ describe('e2e mcp', { timeout: 120_000 }, () => {
       'navigate',
       'back',
       'resize_viewport',
+      'switch_tab',
       'screenshot',
       'tap_at',
       'hover_at',
@@ -271,7 +272,7 @@ describe('e2e mcp', { timeout: 120_000 }, () => {
 
     const listed = await invoke('tools');
     expect(listed.isError, listed.text).toBe(false);
-    expect(listed.text).toContain(`Session ${sessionId} on target "web": 30 tools.`);
+    expect(listed.text).toContain(`Session ${sessionId} on target "web": 31 tools.`);
     expect(catalogLines(listed.text)).toEqual(catalogLines(opened.text));
     const detail = await invoke('tools', { tool: 'type_secret' });
     expect(detail.text).toContain('"admin.password" (password)');

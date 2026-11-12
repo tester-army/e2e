@@ -51,6 +51,21 @@ describe('ScreenPresenter', () => {
     expect(text).toContain(' #n3 button "Increment"');
   });
 
+  it('shows another tab whole, saying which tab it is, even when its ids match the tab the model held', () => {
+    const presenter = new ScreenPresenter();
+    presenter.initial(screen('b1', HOME, { path: '/' }));
+    const popup = ['#n1 document "Verification"', ' #n2 text "Code TAB-88421"'];
+    const opened = presenter.update(screen('b2', popup, { path: '/verify', tabs: { count: 2, active: 2 } }), { lead: 'Tapped #n3.' });
+    expect(opened).toContain('The app opened a new tab, and the screen shows it now (tab 2 of 2). Current screen (revision b2, path /verify, tab 2 of 2, 2 nodes):');
+    expect(opened).toContain(' #n2 text "Code TAB-88421"');
+    expect(opened).not.toContain('changed #n1');
+    const switched = presenter.update(screen('b3', HOME, { path: '/', tabs: { count: 2, active: 1 } }), { lead: 'Switched to tab 1.' });
+    expect(switched).toContain('The screen shows tab 1 of 2 now. Current screen (revision b3, path /, tab 1 of 2, 6 nodes):');
+    expect(presenter.update(screen('b4', HOME, { path: '/', tabs: { count: 2, active: 1 } }))).toContain('Screen unchanged since revision b3');
+    const closed = presenter.update(screen('b5', HOME, { path: '/' }));
+    expect(closed).toContain('The other tab closed; the screen shows the one tab still open. Current screen (revision b5, path /, 6 nodes):');
+  });
+
   it('reports a changed and an added line, in document order, keyed by stable ids', () => {
     const presenter = new ScreenPresenter();
     presenter.initial(screen('b1', HOME));

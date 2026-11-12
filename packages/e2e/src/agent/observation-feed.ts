@@ -185,6 +185,7 @@ export class ObservationFeed {
       revision: observation.revision,
       viewport: observation.viewport,
       ...(observation.path === undefined ? {} : { path: observation.path }),
+      ...(observation.tabs === undefined ? {} : { tabs: observation.tabs }),
     };
     const pixels = this.options.pixelsAllowed && (options.pixels === true || observation.kind === 'pixels') ? this.pixelsFor(observation) : {};
     if (observation.kind === 'pixels') {

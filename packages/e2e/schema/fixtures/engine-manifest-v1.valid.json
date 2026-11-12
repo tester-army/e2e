@@ -13,6 +13,7 @@
     "keyboard/dismiss",
     "artifacts/screenshot",
     "session/back",
+    "session/switchTab",
     "session/restart",
     "session/reset",
     "lifecycle/doctor",

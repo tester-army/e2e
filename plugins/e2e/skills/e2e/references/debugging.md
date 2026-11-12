@@ -33,7 +33,7 @@ default.
      `## App log` lists up to 50 with their step, errors and warnings
      first, counting the rest;
    - where the page went (`↪ navigated to /login`, a new tab the app
-     opened, a frame that loaded);
+     opened, which the screen follows, a frame that loaded);
    - how the screen changed since the step before (`screen: 2 changes since
      step 3` with the added, removed, and changed nodes); `unchanged` after
      an action means it had no visible effect;

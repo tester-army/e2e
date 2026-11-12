@@ -99,6 +99,8 @@ export const SETTLE_AFTER: Record<RecordedAction['name'], SettleAfter> = {
   back: { changeWaitMs: FULL_CHANGE_WAIT_MS, look: 'held-still' },
   // A layout may reflow at the new size or stay as it was, like a scroll.
   resize: { changeWaitMs: BRIEF_CHANGE_WAIT_MS, look: 'held-still' },
+  // Another tab is another document, shown whole the moment it is switched to.
+  switchTab: { changeWaitMs: FULL_CHANGE_WAIT_MS, look: 'held-still' },
   tapAt: { changeWaitMs: FULL_CHANGE_WAIT_MS, look: 'held-still' },
   hoverAt: { changeWaitMs: FULL_CHANGE_WAIT_MS, look: 'held-still' },
   dragAt: { changeWaitMs: FULL_CHANGE_WAIT_MS, look: 'held-still' },
