@@ -148,13 +148,18 @@ jobs:
           (cd android && ./gradlew :app:assembleRelease -PreactNativeArchitectures=x86_64)
 
       # The emulator action downloads the system image once and fails the job when that download drops.
+      # sdkmanager can also report success for a package that holds no image, so the step checks for one.
       - name: Install the emulator system image
         run: |
           SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          IMAGE="$ANDROID_HOME/system-images/android-36/google_apis/x86_64"
           "$SDKMANAGER" --licenses < <(yes) > /dev/null
           for attempt in 1 2 3; do
-            "$SDKMANAGER" --install 'system-images;android-36;google_apis;x86_64' > /dev/null && exit 0
+            if "$SDKMANAGER" --install 'system-images;android-36;google_apis;x86_64' > /dev/null && ls "$IMAGE"/*.img > /dev/null 2>&1; then
+              exit 0
+            fi
             echo "Download attempt $attempt failed"
+            rm -rf "$IMAGE"
             sleep 30
           done
           exit 1
