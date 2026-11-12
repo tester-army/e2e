@@ -59,7 +59,7 @@ export async function saveFromBrowser(download: Download, downloads: LeaseDownlo
   if (failure !== null) throw new EngineError('ENGINE_FAILURE', `download failed: ${failure}`, { retryable: false });
   // Playwright names its own record of the file by the same download id.
   const saved = path.posix.join(downloads.dir, path.basename(await download.path()));
-  await writeFile(file, await downloads.read(saved, signal));
+  await writeFile(file, await downloads.read(saved, signal, download.suggestedFilename()));
 }
 
 /**

@@ -113,6 +113,7 @@
             "pages": [
               "integrations/index",
               "integrations/kernel",
+              "integrations/notte",
               "integrations/lightpanda",
               "integrations/eas",
               "integrations/smol",

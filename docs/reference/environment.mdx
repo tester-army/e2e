@@ -174,6 +174,8 @@ What is sent and how to read it is on the [Telemetry](/telemetry) page.
 | `PLAYWRIGHT_BROWSERS_PATH` | `PLAYWRIGHT_BROWSERS_PATH=~/.cache/ms-playwright` | value | Playwright's browser cache, honored by the engine's `prepare` hook |
 | `PLAYWRIGHT_SKIP_BROWSER_GC` | `PLAYWRIGHT_SKIP_BROWSER_GC=0` | value | Defaults to `1` for the engine's browser install, which keeps other browsers in the cache. `0` lets the install remove them |
 | `KERNEL_API_KEY` | `KERNEL_API_KEY=<key>` | value | The API key `kernel()` from `@e2e-dev/kernel` creates browsers with. Unset, the browser lease fails. See [Kernel](/integrations/kernel) |
+| `NOTTE_API_KEY` | `NOTTE_API_KEY=<key>` | value | The API key `notte()` from `@e2e-dev/notte` starts sessions with. Unset, the browser lease fails. See [Notte](/integrations/notte) |
+| `NOTTE_API_URL` | `NOTTE_API_URL=<url>` | value | The Notte API URL `notte()` calls. Default `https://api.notte.cc` |
 | `LIGHTPANDA_PATH` | `LIGHTPANDA_PATH=/opt/lightpanda` | value | The binary `lightpanda()` from `@e2e-dev/lightpanda` starts a CDP server with. Unset, `lightpanda` on `PATH`, `~/.lightpanda`, or `~/.local/bin`. See [Lightpanda](/integrations/lightpanda) |
 | [`EXPO_TOKEN`](#expo_token) | `EXPO_TOKEN=<token>` | value | The Expo access token `expoSimulators()` from `@e2e-dev/eas` uses |
 | `HOME`, `USERPROFILE` | `HOME=/home/ada` | value | Where `expoSimulators()` finds the eas-cli login without `EXPO_TOKEN`: `USERPROFILE` on Windows, `HOME` elsewhere, the OS user's home when unset |

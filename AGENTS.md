@@ -117,6 +117,20 @@ suites that consume the built packages the way a user would.
   Its docs page under `docs/integrations/` ships with the vendor's logo on
   its overview card (`authoring-docs`, "Vendor logos");
   `scripts/check-docs-logos.ts` fails `pnpm docs:check` without it.
+- `packages/notte` - the published `@e2e-dev/notte` package: Notte cloud
+  browsers for the web engine (`BrowserProvider`), through the `notte-sdk`
+  (peer). It leases in `attempt` scope only, since a Notte session refuses
+  `Target.createBrowserContext`. Notte sessions carry no tags, so `sweep`
+  finds a run's sessions through marker files under the system temp
+  directory (`src/ledger.ts`), which the workers write and the runner
+  reads on the same machine. Downloads are read back from the session's file
+  storage, which stores them under the site's suggested name rather than
+  the download id, so `downloads.read` finds them by
+  `BrowserDownloadContext.suggestedFilename`. Notte answers JavaScript
+  dialogs itself. Maintained by Notte. Run
+  `pnpm --filter @e2e-dev/notte test`, then the testbed on Notte
+  (`apps/testbed/e2e.notte.config.ts`, a tunnel to the playground) with
+  `NOTTE_API_KEY` set.
 - `packages/lightpanda` - the published `@e2e-dev/lightpanda` package: a
   `BrowserProvider` that starts a local `lightpanda serve` per worker slot
   and stops it with the run; no vendor SDK, the binary is the dependency.

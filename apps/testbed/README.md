@@ -39,6 +39,10 @@ here.
   CI runs them on every pull request.
   `tests/helpers.ts` holds the shared `failure`, `boxOf`, and `centerOf`,
   and the ported tests' `content`, `asset`, `PREFIX`, and `CROSS`.
+- `e2e.notte.config.ts`: the local suite on `@e2e-dev/notte` cloud
+  browsers, run by hand with `NOTTE_API_KEY` and `E2E_NOTTE_APP_URL`, a
+  public tunnel to the playground (`pnpm app`). Tests that open `127.0.0.1`
+  or `localhost` directly fail there, since the browser runs in Notte's cloud.
 - `e2e.lightpanda.config.ts` and `e2e.lightpanda-agent.config.ts`: the
   local suite and the agent suite on `@e2e-dev/lightpanda`, which starts
   [Lightpanda](https://lightpanda.io) from `LIGHTPANDA_PATH` (or `PATH`),

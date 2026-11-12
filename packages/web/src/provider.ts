@@ -98,6 +98,11 @@ export interface BrowserDownloadContext {
   readonly env: Readonly<Record<string, string | undefined>>;
   /** Aborts when the `browser.waitForDownload` call is cancelled or exceeds its timeout. */
   readonly signal: AbortSignal;
+  /**
+   * The file name the site suggested, as the download event reports it: for
+   * a service that stores downloads by name rather than under `file`.
+   */
+  readonly suggestedFilename?: string | undefined;
 }
 
 /**
@@ -118,7 +123,7 @@ export interface LeaseDownloads {
   /** The provider as error messages name it: `browser provider "kernel"`. */
   readonly provider: string;
   readonly dir: string;
-  read(file: string, signal: AbortSignal): Promise<Uint8Array>;
+  read(file: string, signal: AbortSignal, suggestedFilename?: string): Promise<Uint8Array>;
 }
 
 /** A provider recording the attempt started, with who made it and which lease it covers, for `stopProviderRecording`. */
@@ -598,12 +603,12 @@ export class LeasedBrowsers {
     return {
       provider: label,
       dir: served.dir,
-      read: async (file, signal) => {
+      read: async (file, signal, suggestedFilename) => {
         const run = this.requireRun();
         const lease = this.scope === 'attempt' ? this.attempt : this.current?.lease;
         if (lease === undefined) throw invalidState(`${label} was asked for a download before the attempt had a browser`);
         try {
-          return await served.read(lease, file, { runId: run.runId, targetName: run.targetName, env: run.env, signal });
+          return await served.read(lease, file, { runId: run.runId, targetName: run.targetName, env: run.env, signal, ...(suggestedFilename === undefined ? {} : { suggestedFilename }) });
         } catch (cause) {
           if (signal.aborted) throw connectionAbort(signal, `download from "${provider.name}"`);
           throw new EngineError('ENGINE_FAILURE', `${label} could not read download ${file} from browser ${lease.id}: ${message(cause)}`, { retryable: false, cause });

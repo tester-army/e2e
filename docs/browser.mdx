@@ -223,6 +223,7 @@ when the run no longer uses it.
 | Service | Provider |
 | --- | --- |
 | [Kernel](/integrations/kernel) | `kernel()` from `@e2e-dev/kernel` |
+| [Notte](/integrations/notte) | `notte()` from `@e2e-dev/notte` |
 | [smol machines](/integrations/smol) microVMs on your own computer | `smol()` from `@e2e-dev/smol` |
 | [Lightpanda](/integrations/lightpanda), the open-source headless browser, on your own machine | `lightpanda()` from `@e2e-dev/lightpanda` |
 | [TestMu AI](/integrations/testmu#run-web-targets-in-browsers) | `testmuBrowsers()` from `@e2e-dev/testmu/web` |
@@ -418,7 +419,9 @@ runner can't open it. With `downloads`, it saves the file under `dir`, and
 the engine passes the finished file's path to `read`. `read` fetches the
 bytes through the service's file API, in the worker, bounded by the call's
 timeout. [Kernel](/integrations/kernel#downloads) serves downloads this
-way.
+way. A service that stores downloads by name rather than by path finds the
+file by `context.suggestedFilename`, the name the site suggested, as
+[Notte](/integrations/notte#downloads) does.
 
 Without `downloads`, a download on a browser on another machine fails with
 `ENGINE_FAILURE`, naming the provider. A provider whose browsers run on the
