@@ -169,7 +169,7 @@ function resolveEntry(name: string, lookup: EngineLookup, role: 'engine' | 'opti
   const read = role === 'engine' ? '' : `an option value with only package, export, and options keys is read as a factory call, and `;
   throw new ConfigurationError(
     'ENGINE_NOT_INSTALLED',
-    `${read}package ${name} is not installed in ${lookup.cwd}, beside e2e, or in ${lookup.enginesDir}. Install it once for every project with: npm install --prefix ${JSON.stringify(lookup.enginesDir)} ${installable}; then call open_session again`,
+    `${read}package ${name} is not installed in ${lookup.cwd}, beside e2e, or in ${lookup.enginesDir}. Install it once for every project with: npm install --prefix ${JSON.stringify(lookup.enginesDir)} ${installable}; then call open_session again. If you cannot run it, for example without network access, ask the user to run it`,
   );
 }
 

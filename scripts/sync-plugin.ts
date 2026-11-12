@@ -1,7 +1,7 @@
 /**
  * Copy the maintained skills into the shared Claude, Codex, and Cursor plugin.
- * Each skill's agents/openai.yaml and the plugin's assets belong to the
- * plugin; every other skill file, the license, every manifest's version
+ * Each skill's agents/openai.yaml, the plugin's assets, and its .mcp.json
+ * belong to the plugin; every other skill file, the license, every manifest's version
  * (the runner's, so plugin installs update with each release), and the Claude
  * and Cursor manifests are generated here from Codex's. `version-packages`
  * runs it after `changeset version`. Use --check in CI to report missing,

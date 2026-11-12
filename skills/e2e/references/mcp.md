@@ -18,8 +18,9 @@ screen where it failed.
 
 ## Setup
 
-The server ships with the project's `e2e` dependency, separately from the
-skills-only plugin. `e2e init` offers to register it for Claude Code,
+The server ships with the project's `e2e` dependency. The e2e plugin for
+Claude Code, Codex, and Cursor registers it too, as `npx -y e2e mcp`; with
+the plugin installed there is nothing to add. Otherwise `e2e init` offers to register it for Claude Code,
 Cursor, and Codex. Reuse an existing registration; when adding one, use the project's
 config so it starts in the project it drives. Install dependencies and start
 the MCP client in that directory so `npx` uses the installed e2e version. In a
@@ -61,7 +62,9 @@ gives an engine a device or browser provider:
 is `mobile({ platform: 'ios', device: limrun() })`. That session has one
 target, no credentials, secrets, or project tools, and `engine` excludes
 `target`, `config`, and `test`. `ENGINE_NOT_INSTALLED` names the command that installs the package
-into `~/.e2e/engines`: run it, then open again. `run_tests` and
+into `~/.e2e/engines`: run it, then open again. When you cannot run it, because
+the sandbox has no network or cannot write there, ask the user to run it or to
+allow it, and wait. `run_tests` and
 `open_session {test}` still need a config, so set the project up before
 writing tests (topic `setup`). No model is needed: without the optional `ai` package, sessions
 open and the deterministic tools work. A test a session runs needs one only for
@@ -77,7 +80,8 @@ sets how many sessions may be open at once (default 4, 1 through 16; one on Bun)
 
 Five tools, all on the server registered as `e2e`; everything a session can
 do is a catalog behind `call`. Clients show them with the server name, such
-as `mcp__e2e__open_session` in Claude Code; when another MCP server offers a
+as `mcp__e2e__open_session` in Claude Code (`mcp__plugin_e2e_e2e__open_session`
+from the plugin); when another MCP server offers a
 tool with the same name, use the `e2e` server's.
 
 | Tool | Does |
@@ -322,7 +326,7 @@ session runs the test and stops where it failed:
   raise `--max-sessions`). `CONFIG_IN_USE`: open sessions use another config,
   or were opened with `engine` and this one names a config; open the same
   way, or close them first. `ENGINE_NOT_INSTALLED`: run the install command
-  the message names, then `open_session` again. `ENGINE_IN_USE`: the target's engine
+  the message names, or ask the user to when you cannot, then `open_session` again. `ENGINE_IN_USE`: the target's engine
   comes from a package every session shares; create it in the config or a
   file it imports by path. `UNKNOWN_TOOL`: the name is not in this session's
   catalog; the message lists what is. `TEST_AMBIGUOUS` and
