@@ -7,7 +7,7 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { defineTool } from '../../src/agent/public.ts';
@@ -21,6 +21,7 @@ import { extracted, fakeCalls, installFakeModel, type FakeCall } from '../helper
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 import { createFakeEngine } from '../helpers/fake-engine.ts';
 import { assertValidReport } from '../helpers/report-schema.ts';
+import { commitFiles, initRepo, runGit } from '../helpers/git-repo.ts';
 import { createProject, type FixtureProject } from '../helpers/run-project.ts';
 import { web } from '@e2e-dev/web';
 import { z } from 'zod';
@@ -34,7 +35,7 @@ const { explore: exploreBuilt } = (await import(builtExploreModule)) as typeof i
 const builtRunnerModule = '../../dist/runner.js';
 const { explore: publicExplore, run: publicRun } = (await import(builtRunnerModule)) as typeof import('../../src/runner.ts');
 
-type PlanAnswer = { decision: 'step'; title: string; instruction: string } | { decision: 'finish'; summary: string };
+type PlanAnswer = { decision: 'step'; title: string; instruction: string } | { decision: 'finish' | 'skip'; summary: string };
 
 /**
  * One model for both paths: a request offering `complete_step` is a step of
@@ -71,7 +72,7 @@ async function runExplore(
   app: FixtureApp,
   model: ModelInstance,
   options: Partial<ExploreOptions> = {},
-): Promise<ExploreOutcome> {
+): Promise<ExploreOutcome & { readonly notices: readonly string[] }> {
   const notices: string[] = [];
   const outcome = await explore({
     cwd: project.dir,
@@ -213,6 +214,88 @@ describe('e2e explore', () => {
     expect(written.run.explore).toEqual(record);
   }, 120_000);
 
+  it('plans from the change since --changed-since in every call\'s context, defaulting the goal to it, and records the change', async () => {
+    const changed = createProject({ 'README.md': 'app\n', '.gitignore': '.e2e/\n' });
+    try {
+      initRepo(changed.dir);
+      commitFiles(changed.dir, {}, 'project');
+      runGit(changed.dir, 'branch', '--quiet', 'base');
+      // Past the report's 8192-character step label: the change must never become one.
+      const large = Array.from({ length: 20 }, (_, index) => [`src/page-${index}.tsx`, `${'<p>row</p>\n'.repeat(60)}`]);
+      commitFiles(changed.dir, { 'src/counter.tsx': '<output>{count}</output>\n', ...Object.fromEntries(large) }, 'Show the counter value');
+      const planCalls: FakeCall[] = [];
+      const model = installExploreModel({
+        plan: (call) => {
+          planCalls.push(call);
+          return planCalls.length === 1
+            ? { decision: 'step', title: 'Counter', instruction: 'Look at the counter' }
+            : { decision: 'finish', summary: 'The changed counter renders.' };
+        },
+        loop: () => [{ toolName: 'complete_step', input: { status: 'passed', summary: 'Looked' } }],
+      });
+      const outcome = await runExplore(changed, app, model, { goal: undefined, changedSince: 'base' });
+      expect(planCalls[0]!.instruction).toContain('Goal: Explore what this change affects and find bugs in it');
+      expect(planCalls[0]!.instruction).toContain('Plan from the code change between <change> and </change> in the context.');
+      expect(planCalls[0]!.instruction).not.toContain('<output>{count}</output>');
+      // The planner and the explorer both read the change in their trusted context.
+      expect(planCalls[0]!.system).toContain('- Show the counter value');
+      expect(planCalls[0]!.system).toContain('src/counter.tsx (+1 -0; full patch below)\n@@ -0,0 +1 @@\n+<output>{count}</output>');
+      expect(loopCalls.at(-1)!.system).toContain('src/counter.tsx (+1 -0; full patch below)');
+      expect(outcome.report.run.explore!.change).toEqual({ base: runGit(changed.dir, 'rev-parse', 'base'), files: 21 });
+      expect(outcome.report.run.changes).toBeUndefined();
+      const labels = outcome.report.run.results[0]!.attempts[0]!.steps.map((step) => step.label);
+      expect(labels.every((label) => !label.includes('<output>{count}</output>'))).toBe(true);
+      assertValidReport(outcome.report);
+      // No change since the ref: a notice, and the context says so.
+      const unchanged = await runExplore(changed, app, model, { goal: undefined, changedSince: 'HEAD' });
+      expect(unchanged.notices).toContain('no files changed since HEAD');
+      expect(unchanged.explore.goal).toBe('Explore what this change affects and find bugs in it');
+      expect(unchanged.explore.change).toEqual({ base: runGit(changed.dir, 'rev-parse', 'HEAD'), files: 0 });
+      expect(planCalls.at(-1)!.system).toContain(`<change>\nNo files changed since ${runGit(changed.dir, 'rev-parse', '--short=7', 'HEAD')}.\n</change>`);
+      await expect(runExplore(changed, app, model, { changedSince: 'no-such-ref' })).rejects.toMatchObject({ code: 'INVALID_CHANGED_SINCE' });
+      // A ref that reads as a git option never reaches git.
+      await expect(runExplore(changed, app, model, { changedSince: '--output=/tmp/x' })).rejects.toMatchObject({
+        code: 'INVALID_CHANGED_SINCE',
+        message: '--changed-since must name a git ref, such as origin/main; got "--output=/tmp/x"',
+      });
+    } finally {
+      changed.cleanup();
+    }
+  }, 120_000);
+
+  it('passes when the planner skips a change with nothing a user can see, and offers no skip without a change or with a goal', async () => {
+    const changed = createProject({ 'README.md': 'app\n', '.gitignore': '.e2e/\n' });
+    try {
+      initRepo(changed.dir);
+      commitFiles(changed.dir, {}, 'project');
+      runGit(changed.dir, 'branch', '--quiet', 'base');
+      commitFiles(changed.dir, { 'README.md': 'app, documented\n' }, 'Document the app');
+      const model = installExploreModel({
+        plan: () => ({ decision: 'skip', summary: 'Only README.md changed: documentation, nothing a user sees.' }),
+        loop: () => [{ toolName: 'complete_step', input: { status: 'passed', summary: 'Looked' } }],
+      });
+      const skipped = await runExplore(changed, app, model, { goal: undefined, changedSince: 'base' });
+      expect(skipped).toMatchObject({ status: 'passed', exitCode: 0 });
+      expect(skipped.report.run.explore).toMatchObject({ ended: 'skipped', steps: [], findings: [], summary: 'Only README.md changed: documentation, nothing a user sees.' });
+      assertValidReport(skipped.report);
+      // No file changed and a clean working tree: the skip is offered too.
+      const empty = await runExplore(changed, app, model, { goal: undefined, changedSince: 'HEAD' });
+      expect(empty.report.run.explore).toMatchObject({ ended: 'skipped', change: { files: 0 } });
+      // Without a change, or with a goal someone wrote, the grammar has no skip: the answer is invalid, and the built-in survey runs instead.
+      for (const options of [{}, { goal: 'Check the counter', changedSince: 'base' }]) {
+        const explored = await runExplore(changed, app, model, options);
+        expect(explored.report.run.explore!.ended).not.toBe('skipped');
+        expect(explored.report.run.explore!.steps.map((step) => step.title)).toEqual(['Survey the app']);
+      }
+      // A working tree that differs from HEAD: the brief is not whole, so no skip.
+      writeFileSync(path.join(changed.dir, 'README.md'), 'app, edited locally\n');
+      const dirty = await runExplore(changed, app, model, { goal: undefined, changedSince: 'base' });
+      expect(dirty.report.run.explore!.ended).not.toBe('skipped');
+    } finally {
+      changed.cleanup();
+    }
+  }, 120_000);
+
   it('passes with warnings only', async () => {
     let plans = 0;
     const model = installExploreModel({
@@ -231,7 +314,7 @@ describe('e2e explore', () => {
     expect(outcome.exitCode).toBe(0);
     expect(outcome.status).toBe('passed');
     expect(outcome.report.run.explore!.findings[0]).toMatchObject({ kind: 'warning', severity: 1 });
-    expect((outcome as unknown as { notices: string[] }).notices).toEqual([]);
+    expect(outcome.notices).toEqual([]);
   }, 120_000);
 
   it('redacts a registered secret value the goal spells out from the title, artifact names, report, and model input', async () => {

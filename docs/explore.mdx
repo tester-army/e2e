@@ -111,6 +111,80 @@ Screenshots mask the password field. A value the app shows anywhere else
 reaches the model. See
 [screenshots after a secret fill](/reference/security#screenshots-after-a-secret-fill).
 
+## Explore a pull request's change
+
+Add `--changed-since <ref>` to explore what the branch changed. The planner
+reads the commit messages and the committed diff since the merge base with
+the ref. It spends its steps on the screens that the change can affect.
+
+<CodeGroup>
+```bash npm
+npx e2e explore --changed-since origin/main
+```
+
+```bash pnpm
+pnpm exec e2e explore --changed-since origin/main
+```
+
+```bash bun
+bunx e2e explore --changed-since origin/main
+```
+</CodeGroup>
+
+Only a defect the change can cause is an `issue`. A defect elsewhere in the
+app is a `warning` and doesn't fail the run.
+
+With no goal, the goal is `Explore what this change affects and find bugs in
+it`. The planner can then skip a change no user can see, such as docs or
+tests only. The run ends `skipped` and passes. It skips only when it read
+the whole change. A large diff, a binary file, or an uncommitted file rules
+a skip out.
+
+The branch's own commit messages and code can sway the call. To tell a skip
+from a clean exploration, read `run.explore.ended`.
+
+For what the model reads, see
+[Security](/reference/security#mcp-and-explore).
+
+On GitHub Actions, run it in its own job on `pull_request`. With the
+[GitHub reporter](/github) in the config, the findings go to their own pull
+request comment. A fork's run can't post; see
+[when nothing is posted](/github#when-nothing-is-posted).
+
+```yaml title=".github/workflows/explore.yml"
+on: pull_request
+
+jobs:
+  explore:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    # An issue exits 1. Keep the findings as a review aid, not a merge gate.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      # ...install, browsers
+      - run: npx e2e explore --changed-since origin/${{ github.base_ref }} --max-steps 4
+        env:
+          AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
+          GITHUB_TOKEN: ${{ github.token }}
+```
+
+`fetch-depth: 0` puts the base branch in the checkout. Without it, the run
+fails with `INVALID_CHANGED_SINCE`.
+
+Keep the working tree clean after install and build, or the run is never
+skipped. Ignore `.e2e/` and build output. Run e2e with `npx`, not
+`pnpm exec`, which can rewrite `pnpm-lock.yaml`.
+
+<Warning>
+Never run it on `pull_request_target`. That run holds your secrets, and the
+model reads the diff and commit messages a fork wrote.
+</Warning>
+
 ## If the run stops too early
 
 A run stops after 8 steps or 10 minutes. To reach further into the flow,

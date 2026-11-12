@@ -515,7 +515,15 @@ function exploreHeadline(run: ReportRun, results: readonly ReportResult[], explo
   const warnings = explore.findings.length - issues;
   const counts = [...(issues > 0 ? [plural(issues, 'issue')] : []), ...(warnings > 0 ? [plural(warnings, 'warning')] : [])];
   const summary =
-    counts.length > 0 ? counts.join(', ') : run.status === 'blocked' ? 'explored nothing' : run.status === 'passed' ? 'no findings' : 'did not finish';
+    counts.length > 0
+      ? counts.join(', ')
+      : explore.ended === 'skipped'
+        ? 'nothing to explore'
+        : run.status === 'blocked'
+          ? 'explored nothing'
+          : run.status === 'passed'
+            ? 'no findings'
+            : 'did not finish';
   return `### ${runIcon(run, results)} ${pageName(options)} explore: ${summary}`;
 }
 
@@ -613,7 +621,13 @@ export function renderMarkdownReport(report: Report1Document, options: MarkdownR
     explore === undefined
       ? [errors, ...failures, flaky, repeatsSection(entries, manyTargets), filtersSection(run, manyTargets, leftOut), allTests(groups, selected.length, manyTargets)]
       : [
-          [`**Goal:** ${cell(explore.goal, MAX_GOAL_CHARS)}  `, `**Steps:** ${exploreSteps(explore)}`],
+          [
+            `**Goal:** ${cell(explore.goal, MAX_GOAL_CHARS)}  `,
+            ...(explore.change === undefined
+              ? []
+              : [`**Change:** ${plural(explore.change.files, 'file')} changed since ${code(shortCommit(explore.change.base))}  `]),
+            `**Steps:** ${exploreSteps(explore)}`,
+          ],
           errors,
           ...failures,
           flaky,
