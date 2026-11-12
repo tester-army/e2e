@@ -66,7 +66,8 @@ const GRID_STEPS = 40;
  * `Pressable` with no role is an unnamed leaf like any other. A `Text` with
  * its own `onPress` reads as plain text and is one this misses; a control
  * inside a flattened tree, which shows as one leaf over most of the screen,
- * is the other.
+ * is the other. A node agent-device marks covered is an obstacle whatever it
+ * is, a scroll view included: a drag from it presses the cover.
  * Undefined when no point qualifies: a drag there would press a control or
  * do nothing.
  */
@@ -75,12 +76,13 @@ export function keyboardDragStart(projected: ProjectedSnapshot, viewport: Viewpo
   const scrollViews: Rect[] = [];
   const merged = viewport.width * viewport.height * MERGED_SHARE;
   for (const entry of projected.index) {
-    const { rect, role, children } = entry.node;
-    // A covered node stays an obstacle: a drag from it presses the cover, or the
-    // node where the cover leaves it showing.
+    const { rect, role, children, states } = entry.node;
     if (rect === undefined || entry.platformHidden || SCREEN_KINDS.has(entry.kind)) continue;
-    if (SCROLL_KINDS.has(entry.kind)) scrollViews.push(rect);
-    else if ((role !== undefined && CONTROL_ROLES.has(role)) || (children === undefined && !STATIC_ROLES.has(role ?? '') && rect.width * rect.height <= merged)) {
+    // Past the platform check a hidden node is one agent-device marks covered: a
+    // drag from it presses the cover, or the node where the cover leaves it showing.
+    const covered = states?.hidden === true;
+    if (SCROLL_KINDS.has(entry.kind) && !covered) scrollViews.push(rect);
+    else if (covered || (role !== undefined && CONTROL_ROLES.has(role)) || (children === undefined && !STATIC_ROLES.has(role ?? '') && rect.width * rect.height <= merged)) {
       controls.push(grow(rect, CONTROL_CLEARANCE));
     }
   }

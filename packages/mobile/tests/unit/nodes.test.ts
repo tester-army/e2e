@@ -718,21 +718,40 @@ describe('nodes agent-device marks covered (tester-army/e2e#1324)', () => {
     expect(byId('focused')?.node.states).toEqual({ focused: true, hidden: true });
   });
 
-  it('keeps a covered control out of where a keyboard-dismissing drag may start', () => {
-    // A button at the screen's middle, where the drag would otherwise start, marked covered by a cover the tree leaves out.
-    const save = { x: 145, y: 372, width: 100, height: 100 };
+  it('keeps a covered node out of where a keyboard-dismissing drag may start, plain text included', () => {
+    // Text at the screen's middle, where the drag would otherwise start: only its covered mark makes it an obstacle.
+    const saved = { x: 145, y: 372, width: 100, height: 100 };
     let counter = 0;
     const projected = projectSnapshot(
       [
         { index: 0, depth: 0, type: 'Application', label: 'Form', rect: { x: 0, y: 0, width: 390, height: 844 } },
-        { index: 1, parentIndex: 0, type: 'Button', label: 'Save', interactionBlocked: 'covered', rect: save },
+        { index: 1, parentIndex: 0, type: 'StaticText', label: 'Draft saved', interactionBlocked: 'covered', rect: saved },
+      ],
+      { mintId: () => `n${++counter}`, viewport: SCREEN },
+    );
+    expect(projected.index.find((entry) => entry.node.name === 'Draft saved')?.node.states).toEqual({ hidden: true });
+    const start = keyboardDragStart(projected, SCREEN, 700);
+    expect(start).toBeDefined();
+    const inside = start!.x >= saved.x - 8 && start!.x <= saved.x + saved.width + 8 && start!.y >= saved.y - 8 && start!.y <= saved.y + saved.height + 8;
+    expect(inside).toBe(false);
+  });
+
+  it('never starts a keyboard-dismissing drag in a scroll view agent-device marks covered', () => {
+    // The covered list holds the screen's middle; the drag starts in the clear one below it.
+    const covered = { x: 0, y: 300, width: 390, height: 240 };
+    const clear = { x: 0, y: 560, width: 390, height: 120 };
+    let counter = 0;
+    const projected = projectSnapshot(
+      [
+        { index: 0, depth: 0, type: 'Application', label: 'Form', rect: { x: 0, y: 0, width: 390, height: 844 } },
+        { index: 1, parentIndex: 0, type: 'ScrollView', identifier: 'covered-list', interactionBlocked: 'covered', rect: covered },
+        { index: 2, parentIndex: 0, type: 'ScrollView', identifier: 'clear-list', rect: clear },
       ],
       { mintId: () => `n${++counter}`, viewport: SCREEN },
     );
     const start = keyboardDragStart(projected, SCREEN, 700);
     expect(start).toBeDefined();
-    const inside = start!.x >= save.x - 8 && start!.x <= save.x + save.width + 8 && start!.y >= save.y - 8 && start!.y <= save.y + save.height + 8;
-    expect(inside).toBe(false);
+    expect(start!.y >= clear.y && start!.y <= clear.y + clear.height).toBe(true);
   });
 
   it("lets the keyboard's rules decide under the Android keyboard, which agent-device counts as a cover", () => {
