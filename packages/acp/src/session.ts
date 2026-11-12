@@ -114,6 +114,8 @@ export async function startSession(
   // Started before anything can fail, so teardown can close it even when the startup race is lost while it binds.
   const serving = serveTools(tools);
   serving.catch(() => undefined);
+  const toolServerFailed = serving.then(started => started.failed);
+  toolServerFailed.catch(() => undefined);
   const child = spawn(launch.command, [...launch.args], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: withoutSecrets({ ...process.env, ...launch.env }),
@@ -137,8 +139,8 @@ export async function startSession(
     signal.addEventListener('abort', onAbort, { once: true });
   });
   aborted.catch(() => undefined);
-  /** Ends a startup step early when the agent exits or the attempt ends. */
-  const startup = <T>(step: Promise<T>): Promise<T> => Promise.race([exited, aborted, step]);
+  /** Ends startup if the agent or tool server fails, or the attempt ends. */
+  const startup = <T>(step: Promise<T>): Promise<T> => Promise.race([toolServerFailed, exited, aborted, step]);
 
   const ours = new Set(tools.map((tool) => tool.name));
   const calls = new Map<string, Partial<ToolCallUpdate>>();
@@ -224,7 +226,7 @@ export async function startSession(
       turn.own = { allowed: new Set(), rejected: new Map(), ran: new Map() };
       const costBefore = turn.cost;
       const started = Date.now();
-      const response = await Promise.race([agent.request(methods.agent.session.prompt, { sessionId, prompt: [{ type: 'text', text }] }), exited]).catch((error: unknown) => {
+      const response = await Promise.race([agent.request(methods.agent.session.prompt, { sessionId, prompt: [{ type: 'text', text }] }), toolServerFailed, exited]).catch((error: unknown) => {
         throw withDetails(error);
       });
       const costUsd = turn.cost === undefined ? undefined : turn.cost - (costBefore ?? 0);

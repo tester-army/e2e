@@ -10,6 +10,7 @@ import { randomUUID } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import type { z } from 'zod';
 
 /** The MCP server name the agent sees. Distinct from `e2e mcp`'s `e2e`, so a permission request naming it is about these tools. */
@@ -35,6 +36,8 @@ export interface ServedTool {
 /** A running tool server. */
 export interface ToolServer {
   readonly url: string;
+  /** The first unexpected forwarding failure, kept local for the runner to report. */
+  readonly failed: Promise<never>;
   close(): Promise<void>;
 }
 
@@ -68,12 +71,16 @@ export async function serveTools(tools: readonly ServedTool[]): Promise<ToolServ
       return server;
     },
   );
+  let reportFailure: (error: unknown) => void;
+  const failed = new Promise<never>((_, reject) => { reportFailure = reject; });
+  // A session can fail between prompt turns; keep the rejection until the next reader.
+  failed.catch(() => undefined);
   const http = createServer((request, response) => {
     if (request.url !== route) {
       response.writeHead(404).end();
       return;
     }
-    void forward(handler.fetch, request, response);
+    void forward(handler.fetch, request, response, error => reportFailure(error));
   });
   await new Promise<void>((resolve, reject) => {
     http.once('error', reject);
@@ -82,6 +89,7 @@ export async function serveTools(tools: readonly ServedTool[]): Promise<ToolServ
   const { port } = http.address() as AddressInfo;
   return {
     url: `http://127.0.0.1:${port}${route}`,
+    failed,
     close: async () => {
       await handler.close();
       http.closeAllConnections();
@@ -95,7 +103,9 @@ async function forward(
   fetch: (request: Request) => Promise<Response>,
   incoming: IncomingMessage,
   outgoing: ServerResponse,
+  reportFailure: (error: unknown) => void,
 ): Promise<void> {
+  let sourceFailed = false;
   try {
     const headers = new Headers();
     for (const [key, value] of Object.entries(incoming.headers)) {
@@ -109,11 +119,29 @@ async function forward(
     );
     outgoing.writeHead(response.status, Object.fromEntries(response.headers));
     if (response.body === null) outgoing.end();
-    else Readable.fromWeb(response.body as import('node:stream/web').ReadableStream).pipe(outgoing);
-  } catch {
-    if (!outgoing.headersSent) outgoing.writeHead(500);
-    outgoing.end('Internal server error');
+    else {
+      const source = Readable.fromWeb(response.body as import('node:stream/web').ReadableStream);
+      // pipeline destroys both ends on failure; remember whether the source
+      // failed before that socket teardown so it is not mistaken for a peer disconnect.
+      source.once('error', () => { sourceFailed = !outgoing.destroyed; });
+      await pipeline(source, outgoing);
+    }
+  } catch (cause) {
+    // Closing an MCP connection is normal during cancellation or session cleanup.
+    if (!sourceFailed && isDisconnect(cause) && (incoming.aborted || outgoing.destroyed)) return;
+    if (!outgoing.headersSent) {
+      outgoing.writeHead(500);
+      outgoing.end('Internal server error');
+    } else outgoing.destroy();
+    const detail = cause instanceof Error ? cause.message : String(cause);
+    reportFailure(new Error(`step-tool request forwarding failed: ${detail}`, { cause }));
   }
+}
+
+/** Node stream errors caused by a peer ending its HTTP connection. */
+function isDisconnect(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null || !('code' in error)) return false;
+  return error.code === 'ERR_STREAM_PREMATURE_CLOSE' || error.code === 'ECONNRESET';
 }
 
 async function readAll(stream: IncomingMessage): Promise<Uint8Array<ArrayBuffer>> {

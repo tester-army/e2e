@@ -319,8 +319,9 @@ export default {
 | `system` | Text appended to the rules the agent gets with the first step. |
 | `name` | The executor name in reports. |
 
-The local step-tool server returns HTTP 500 with `Internal server error` when
-request forwarding fails. Internal exception messages stay out of that response.
+Unexpected forwarding failures stop the ACP session and appear in the runner's
+secret-redacted failure output. The HTTP client receives a generic error or a
+closed stream, without the exception text.
 
 ### What the agent can use
 
