@@ -117,6 +117,14 @@
         "excluded": 1,
         "outcome": "answered"
       }
-    ]
+    ],
+    "explore": {
+      "goal": "Explore what this change affects and find bugs in it",
+      "budgets": { "maxSteps": 8, "timeoutMs": 600000 },
+      "ended": "skipped",
+      "change": { "base": "HEAD", "files": -1 },
+      "steps": [],
+      "findings": []
+    }
   }
 }

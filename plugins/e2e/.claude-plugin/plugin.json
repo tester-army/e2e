@@ -21,5 +21,6 @@
     "agentic-testing",
     "bug-bash"
   ],
-  "skills": "./skills/"
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json"
 }

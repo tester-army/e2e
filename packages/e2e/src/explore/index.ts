@@ -17,6 +17,7 @@ import { resolveConfig, type ResolvedConfig, type ResolvedCredential, type Resol
 import { launchesPinnedApp } from '../config/targets.ts';
 import { ConfigurationError } from '../internal/errors.ts';
 import type { ReportExplore } from '../report/build.ts';
+import { validateChangedSince } from '../run/changes.ts';
 import type { RunEventSink } from '../run/events.ts';
 import type { RunnerOutput } from '../run/process-output.ts';
 import { run, type RunOutcome } from '../run/runner.ts';
@@ -24,11 +25,14 @@ import { registerStaticSecrets, staticSecretLedger } from '../run/secrecy.ts';
 import type { AgentConfig, BuiltinReporter, E2EConfig, RecordingMode } from '../types.ts';
 import { createExploreBody } from './body.ts';
 import { STEP_BOUNDS, TIMEOUT_BOUNDS } from './bounds.ts';
+import { changeContext, readExploreChange, type ChangeBrief, type ExploreChange } from './change.ts';
 import { explorerAgent, withFindingTool } from './executor.ts';
 import { signedInContext, type PlanAccount } from './plan.ts';
 import { ExploreState } from './state.ts';
 
 const DEFAULT_GOAL = 'Explore the app and find bugs';
+/** The goal with `--changed-since` and none given: the change is the scope. */
+const DEFAULT_CHANGE_GOAL = 'Explore what this change affects and find bugs in it';
 const MAX_GOAL_CHARS = 2_000;
 /** Each step's action and model-call budget when the config sets none: a charter is longer than a scripted step. */
 const DEFAULT_STEP_BUDGET = 40;
@@ -61,6 +65,12 @@ export interface ExploreOptions {
    * `COLLECTION_ERROR` before any process starts.
    */
   readonly session?: string | undefined;
+  /**
+   * A git ref, such as `origin/main`, to explore the change since: the
+   * planner reads what differs from the merge base of the ref and HEAD, and
+   * plans its charters from it. With no `goal`, the goal is the change.
+   */
+  readonly changedSince?: string | undefined;
   readonly maxSteps?: number | undefined;
   readonly timeoutMs?: number | undefined;
   readonly headed?: boolean | undefined;
@@ -116,7 +126,8 @@ export async function explore(options: ExploreOptions = {}): Promise<ExploreOutc
   const env = options.env ?? process.env;
   const earlyNotices: string[] = [];
   const notice = options.notice ?? ((message: string) => void earlyNotices.push(message));
-  const goal = resolveGoal(options.goal);
+  const givenGoal = validGoal(options.goal);
+  validateChangedSince(options.changedSince);
   const budgets = {
     maxSteps: resolveBounded(options.maxSteps, STEP_BOUNDS, 'maxSteps'),
     timeoutMs: resolveBounded(options.timeoutMs, TIMEOUT_BOUNDS, 'timeout'),
@@ -134,12 +145,14 @@ export async function explore(options: ExploreOptions = {}): Promise<ExploreOutc
     ? loadConfig()
     : options.processOutput.withholdDuring(loadConfig));
   const target = pickTarget(resolved.targets, options.target, notice);
+  const change = await exploreChange(options.changedSince, projectRoot, resolved.allSecrets, options.interruptSignal, notice);
+  const goal = givenGoal ?? (change === undefined ? DEFAULT_GOAL : DEFAULT_CHANGE_GOAL);
   const accounts = credentialAccounts(resolved.credentials);
   // An exploration runs as exactly one agent: the one named, else `default`.
   const agentName = resolved.agentNames[0]!;
   if (agentName !== 'default') notice(`exploring with agent "${agentName}"`);
 
-  const state = new ExploreState(redactGoal(goal, resolved.allSecrets), budgets);
+  const state = new ExploreState(redactGoal(goal, resolved.allSecrets), budgets, { change: change?.report });
   const explorer = explorerAgent({ state, agentName, entry: raw.agents?.[agentName], resolved: resolved.agent, notice });
   const resolvedExplorer = resolveAgentConfig(exploreAgentConfig(explorer), `agents.${agentName}`);
   // Every exploration step calls the model, a custom executor's included,
@@ -161,7 +174,14 @@ export async function explore(options: ExploreOptions = {}): Promise<ExploreOutc
     env,
     tests: {
       file: EXPLORE_FILE,
-      registration: exploreRegistration(state, { openApp: target.app.base !== undefined || launchesPinnedApp(target), accounts, session: options.session }),
+      registration: exploreRegistration(state, {
+        openApp: target.app.base !== undefined || launchesPinnedApp(target),
+        accounts,
+        session: options.session,
+        brief: change?.brief,
+        // A goal someone wrote asks for exploration: only the default one may be skipped.
+        skippable: change?.brief.complete === true && givenGoal === undefined,
+      }),
       agents: explorerAgents,
       explore: state,
       notices: earlyNotices,
@@ -190,9 +210,30 @@ async function loadRawConfig(options: ExploreOptions, cwd: string): Promise<{ ra
   return { raw: await loadConfigModule(discovered.configPath), projectRoot: discovered.projectRoot };
 }
 
-function resolveGoal(goal: string | undefined): string {
+/**
+ * The change `changedSince` names, read before anything starts, so a ref git
+ * cannot measure from fails as a bad flag does. Every text git gives is
+ * redacted of the config's static secrets, fragments included, before the
+ * brief cuts it. No change since the base is a notice; the brief says so.
+ */
+async function exploreChange(
+  changedSince: string | undefined,
+  projectRoot: string,
+  secrets: ResolvedConfig['allSecrets'],
+  signal: AbortSignal | undefined,
+  notice: (message: string) => void,
+): Promise<ExploreChange | undefined> {
+  if (changedSince === undefined) return undefined;
+  const { redactFragments } = staticSecretLedger(secrets);
+  const change = await readExploreChange({ cwd: projectRoot, changedSince, signal: signal ?? new AbortController().signal, redact: redactFragments });
+  if (change.report.files === 0) notice(`no files changed since ${changedSince}`);
+  return change;
+}
+
+/** The goal given, trimmed, or undefined when none was; one past `MAX_GOAL_CHARS` is `INVALID_CONFIG`. */
+function validGoal(goal: string | undefined): string | undefined {
   const trimmed = goal?.trim() ?? '';
-  if (trimmed === '') return DEFAULT_GOAL;
+  if (trimmed === '') return undefined;
   if (trimmed.length > MAX_GOAL_CHARS) {
     throw new ConfigurationError('INVALID_CONFIG', `the goal must be at most ${MAX_GOAL_CHARS} characters, got ${trimmed.length}`);
   }
@@ -289,10 +330,20 @@ function credentialAccounts(credentials: ReadonlyMap<string, ResolvedCredential>
  */
 function exploreRegistration(
   state: ExploreState,
-  start: { readonly openApp: boolean; readonly accounts: readonly PlanAccount[]; readonly session: string | undefined },
+  start: {
+    readonly openApp: boolean;
+    readonly accounts: readonly PlanAccount[];
+    readonly session: string | undefined;
+    readonly brief: ChangeBrief | undefined;
+    readonly skippable: boolean;
+  },
 ): ModuleRegistration {
   const title = state.goal;
-  const { session } = start;
+  const { openApp, accounts, session, brief, skippable } = start;
+  // The change rides in the trusted context, never in a step's label: the
+  // planner reads it, the explorer judges against it, and the report and
+  // the trace page never copy it; only the opt-in AI trace records prompts.
+  const context = [...(session === undefined ? [] : [signedInContext(session)]), ...(brief === undefined ? [] : [changeContext(brief.text)])];
   const test: RegisteredTest = {
     kind: 'test',
     title,
@@ -302,12 +353,12 @@ function exploreRegistration(
       timeout: state.budgets.timeoutMs + TIMEOUT_GRACE_MS,
       retries: 0,
       // The goal reaches every prompt as the test's title (`Test: <goal>`).
-      ...(session === undefined ? {} : { agentContext: signedInContext(session) }),
+      ...(context.length === 0 ? {} : { agentContext: context.join('\n\n') }),
       ...(session === undefined ? {} : { session }),
     },
     sessions: [],
     tags: [],
-    fn: createExploreBody({ state, stepTimeoutMs: STEP_TIMEOUT_MS, ...start }),
+    fn: createExploreBody({ state, stepTimeoutMs: STEP_TIMEOUT_MS, openApp, accounts, session, change: brief === undefined ? undefined : { skippable } }),
     fixtures: [],
     group: undefined,
     mode: 'normal',

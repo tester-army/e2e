@@ -13,6 +13,5 @@ const engine = mobile({ platform: 'ios', device: limrun() });
 Set `LIMRUN_API_KEY` in the run environment and install `@limrun/api`.
 Android also requires `adb` on `PATH` for the driver's tunnel.
 
-See the [integration guide](https://e2e.com/docs/integrations/limrun)
-and Limrun's [app-flow example](https://github.com/limrun-inc/testerarmy-e2e-limrun) for setup and tests
-that run unchanged on both platforms.
+See the [integration guide](https://e2e.com/docs/integrations/limrun) for setup.
+Find partner examples in [Community packages](https://e2e.com/docs/community-packages#find-related-integrations).

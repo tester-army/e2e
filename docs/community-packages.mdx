@@ -1,0 +1,74 @@
+---
+title: Community packages
+description: Find third-party packages that extend e2e and submit an integration.
+---
+
+Community packages extend e2e with tools, engines, and reporters. Their maintainers, not the e2e core team, maintain and support them. A listing is not an endorsement.
+
+Check each package's documentation for supported e2e versions and setup requirements. The versions below record published packages checked on November 12, 2026, not compatibility tests by the e2e team.
+
+## Find a package
+
+### e2e-cige
+
+Runs [CIGE](https://www.amazon.science/publications/cige-an-agentic-ai-test-case-standard) test cases as JSON through `agent.act` and `agent.assert`. Includes run summaries and checks for agents that repair failing tests.
+
+Maintainer: [Vivek Krishna](https://github.com/vivekkrishna). Version `0.1.0` declares `e2e >=0.21.0 <1`.
+
+[npm](https://www.npmjs.com/package/e2e-cige) · [Repository and setup](https://github.com/vivekkrishna/cige)
+
+### @appduct/e2e
+
+Calls an app's Appduct tools from test fixtures or agent steps over MCP. Supports web, iOS simulator, and Android emulator targets.
+
+Maintainer: [Callstack](https://github.com/callstackincubator/appduct). Version `0.16.0` declares `e2e >=0.21.0 <1` and `ai ^7.0.0`.
+
+[npm](https://www.npmjs.com/package/@appduct/e2e) · [Repository and setup](https://github.com/callstackincubator/appduct/tree/main/packages/e2e)
+
+### @mobai-app/e2e
+
+Adds a MobAI device engine and dashboard reporter for physical iOS and Android devices, simulators, emulators, and device farms.
+
+Maintainer: [MobAI](https://github.com/MobAI-App). Version `0.1.3` declares `e2e >=0.19.0 <1`.
+
+[npm](https://www.npmjs.com/package/@mobai-app/e2e) · [Repository and setup](https://github.com/MobAI-App/mobai-e2e)
+
+### @testdino/e2e
+
+Reports test cases, retries, steps, errors, console output, screenshots, and videos to TestDino.
+
+Maintainer: [TestDino](https://testdino.com). Version `1.1.0` declares `e2e >=0.16.0 <1`. Selection and rerun commands require e2e `0.19.0` or later.
+
+[npm](https://www.npmjs.com/package/@testdino/e2e) · [Documentation](https://docs.testdino.com/cli/testdino-e2e)
+
+### @testomatio/reporter
+
+Sends e2e results to Testomat.io through its `@testomatio/reporter/e2e` adapter.
+
+Maintainer: [Testomat.io](https://github.com/testomatio). Version `2.23.0` includes the adapter. Its example uses `e2e ^0.21.0`; the package declares no e2e peer range.
+
+[npm](https://www.npmjs.com/package/@testomatio/reporter) · [Repository and example](https://github.com/testomatio/reporter/tree/2.x/example/e2e)
+
+## Find related integrations
+
+The e2e team maintains the [hosted browser and device integrations](/integrations), [GitHub reporter](/github), and [built-in reporters](/reference/reporters).
+
+For application suites and provider examples, browse [community and partner examples](https://e2e.com/examples). These include [Limrun's app-flow example](https://github.com/limrun-inc/testerarmy-e2e-limrun) and [Notte's browser provider example](https://github.com/nottelabs/notte/tree/main/examples/e2e).
+
+## Add yours
+
+Open a pull request to [edit this page](https://github.com/e2e-inc/e2e/edit/main/docs/community-packages.mdx). Include:
+
+- The package name, a published package link, and its repository or documentation.
+- A short description of how it integrates with e2e, with a source or usage example.
+- The maintainer, supported platforms, and e2e compatibility requirements.
+- The version and publication date checked for the addition.
+
+Keep the description factual. Report package issues to its maintainer. Submit application examples through the [examples contribution guide](https://github.com/e2e-inc/e2e/blob/main/examples/CONTRIBUTING.md).
+
+## Next
+
+<CardGroup cols={2}>
+  <Card title="Custom tools" href="/tools">Expose app-specific actions to the agent.</Card>
+  <Card title="Fixtures" href="/fixtures">Share setup and resources across tests.</Card>
+</CardGroup>
