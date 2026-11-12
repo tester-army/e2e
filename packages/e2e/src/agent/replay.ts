@@ -189,6 +189,8 @@ function planCall(action: RecordedAction, actions: ExecutorActions): PlannedCall
       return { kind: 'drag', source: action.target, destination: action.destination };
     case 'back':
       return { kind: 'free', invoke: () => actions.back() };
+    case 'resize':
+      return { kind: 'free', invoke: () => actions.resize(action.size) };
     case 'type':
       return {
         kind: 'targeted',

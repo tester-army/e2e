@@ -81,7 +81,7 @@ async function harness(options: {
     ...base.actions,
     tap: ok, doubleTap: ok, longPress: ok, secondaryTap: ok, hover: ok, type: ok, typeSecret: ok, press: ok, select: ok,
     check: ok, drag: ok, scrollTo: ok, scrollUntil: ok, upload: ok, scroll: ok, navigate: ok, back: ok, typeText: ok, pressKey: ok,
-    dismissKeyboard: ok,
+    dismissKeyboard: ok, resize: ok,
     ...options.actions,
   };
   const observe = async (asked: ExecutorObserveOptions = {}): Promise<ExecutorObservation> => ({
@@ -360,12 +360,13 @@ describe('SessionTestLines', () => {
     }
   });
 
-  it('says why an action has no line: no node, a repeated key, a scroll, a keyboard fallback', async () => {
+  it('says why an action has no line: no node, a repeated key, a scroll, a keyboard fallback, a sample file', async () => {
     const field: Fake = { id: 'n60', role: 'textbox', name: 'Notes', y: 40 };
     const canvas: Fake = { id: 'n61', role: 'image', name: 'Pad', y: 80 };
+    const file: Fake = { id: 'n62', role: 'button', name: 'Attach', y: 120 };
     const session = await harness({
-      screen: [field, canvas],
-      matches: { 'getByRole("textbox", name: "Notes")': [field], 'getByRole("image", name: "Pad")': [canvas] },
+      screen: [field, canvas, file],
+      matches: { 'getByRole("textbox", name: "Notes")': [field], 'getByRole("image", name: "Pad")': [canvas], 'getByRole("button", name: "Attach")': [file] },
       actions: {
         type: async (target) => {
           if (target.id === 'n61') throw new TestError('ACTION_FAILED', 'fill failed', { cause: Object.assign(new Error('the node is not an input'), { code: 'NOT_ACTIONABLE' }) });
@@ -378,6 +379,9 @@ describe('SessionTestLines', () => {
     expect(noteOf(await session.run('scroll', { direction: 'down' }))).toMatch(/^No test line: a test action brings its node into view itself/);
     expect(noteOf(await session.run('scroll_to', { text: 'Row 40' }))).toMatch(/^No test line: scrolling to a text has none/);
     expect(noteOf(await session.run('type_secret', { target: 'n60', name: 'unknown' }))).toMatch(/^No test line: the secret is neither/);
+    expect(noteOf(await session.run('upload', { target: 'n62', files: ['sample:photo.png'] }))).toBe(
+      'No test line: a sample file exists only for the agent; save a file in the project and upload its path for a line.',
+    );
     const fallback = await session.run('type', { target: 'n61', value: 'x' });
     expect(fallback.split('\n')[0]).toMatch(/is not an input; tapped it to focus it and typed through the keyboard/);
     expect(noteOf(fallback)).toMatch(/^No test line: the node is not an input and took the value through the keyboard/);
@@ -417,6 +421,12 @@ describe('SessionTestLines', () => {
         'Paste it into a test body, async ({ app, screen }) => { ... }, and add an expect after each step that should change the screen.',
       ].join('\n'),
     );
+  });
+
+  it('prints no line for a resize, naming the size to set with the engine fixture', async () => {
+    const session = await harness({ screen: [save], matches: {} });
+    await session.run('resize_viewport', { width: 390, height: 844 });
+    expect(session.lines.draft()).toContain("// resize_viewport: no test line: set 390x844 with the engine fixture's viewport call");
   });
 
   it('drafts the lines after a test the session ran as the ones that continue it', async () => {

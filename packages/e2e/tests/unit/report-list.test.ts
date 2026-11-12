@@ -7,6 +7,7 @@ import { resultId } from '../../src/internal/ids.ts';
 import { visibleWidth } from '../../src/report/format.ts';
 import { ListReporter } from '../../src/report/list.ts';
 import { userFrame } from '../../src/report/code-frame.ts';
+import type { CacheWrite } from '../../src/cache/context.ts';
 import type { RunEventFact, RunEventOf, RunEventResult } from '../../src/run/events.ts';
 import type { ResultStatus, AttemptRecord, SerialGroupRecord, SerialMemberRecord } from '../../src/run/records.ts';
 
@@ -347,6 +348,19 @@ describe('ListReporter', () => {
       expect(lines).toEqual([
         ' ✓ |chromium| tests/a.e2e.ts (1 test | 1 flaky) 150ms',
         '   ✓ suite > case (flaky) 150ms',
+      ]);
+    });
+
+    it('marks a test that failed as test.fail expected, with the reason and the failure', () => {
+      const { lines, output } = capture();
+      const reporter = plainReporter({ ...output, raw: () => {} }, true);
+      reporter.handle(plan([{ file: 'tests/a.e2e.ts', tests: 1 }]));
+      const error = { category: 'test' as const, code: 'ASSERTION_FAILED', message: 'expected 1, got 0\nmore', retryable: false };
+      reporter.handle(finished(result({ status: 'passed', file: 'tests/a.e2e.ts', attempts: [attempt({ expectedFailure: { reason: 'known gap', error } })] })));
+      expect(lines).toEqual([
+        ' ✓ |chromium| tests/a.e2e.ts (1 test) 120ms',
+        '   ✓ suite > case (failed as expected) 120ms',
+        '     → known gap: ASSERTION_FAILED: expected 1, got 0',
       ]);
     });
 
@@ -747,6 +761,122 @@ describe('ListReporter', () => {
       reporter.handle(runFinished({ reportPath: 'r.json' }));
       const ai = lines.findIndex((line) => line.trimStart().startsWith('AI'));
       expect(lines[ai + 1]).toBe('      Cache  2 replayed · 1 handed off');
+    });
+
+    /** An `act` step that missed the cache and settled its recording as `write`. */
+    const cacheStep = (id: string, write: CacheWrite) =>
+      ({
+        id,
+        index: 0,
+        kind: 'agent',
+        api: 'agent.act',
+        label: 'do it',
+        status: 'passed',
+        startedAt: new Date(0).toISOString(),
+        durationMs: 10,
+        events: [],
+        artifacts: [],
+        cache: { mode: 'missed', reason: 'no-entry', write },
+        model: { provider: 'openai', model: 'gpt-5.6-luna-fast', calls: 1, inputTokens: 1_000, outputTokens: 100 },
+      }) as unknown as AttemptRecord['steps'][number];
+
+    /** The `Cache` row of the run summary after `facts`. */
+    const cacheRow = (facts: readonly RunEventFact[]) => {
+      const { lines, output } = capture();
+      const reporter = plainReporter(output);
+      reporter.handle(runStarted({ model: 'openai/gpt-5.6-luna-fast' }));
+      for (const fact of facts) reporter.handle(fact);
+      reporter.handle(runFinished({ reportPath: 'r.json' }));
+      return lines.find((line) => line.trimStart().startsWith('Cache'));
+    };
+
+    it('counts the steps whose recording was not saved', () => {
+      const steps = [
+        cacheStep('saved', 'saved'),
+        cacheStep('unconfirmed', 'unconfirmed'),
+        cacheStep('no-change', 'no-change'),
+        cacheStep('not-written', 'not-written'),
+      ];
+      expect(cacheRow([
+        plan([{ file: 'tests/a.e2e.ts', tests: 1 }]),
+        finished(result({ status: 'passed', file: 'tests/a.e2e.ts', attempts: [attempt({ steps })] })),
+      ])).toBe('      Cache  4 missed · 3 not saved');
+    });
+
+    it('counts not saved from the attempt that decided a passing result only', () => {
+      expect(cacheRow([
+        plan([{ file: 'tests/a.e2e.ts', tests: 2 }]),
+        finished(result({
+          status: 'flaky',
+          file: 'tests/a.e2e.ts',
+          attempts: [
+            attempt({ status: 'failed', steps: [cacheStep('first', 'unconfirmed')] }),
+            attempt({ id: 'attempt-2', index: 1, steps: [cacheStep('retry', 'saved')] }),
+          ],
+        })),
+        finished(result({
+          status: 'failed',
+          id: 'test-2',
+          file: 'tests/a.e2e.ts',
+          declarationIndex: 1,
+          attempts: [attempt({ status: 'failed', steps: [cacheStep('failed', 'unconfirmed')] })],
+        })),
+      ])).toBe('      Cache  3 missed');
+    });
+
+    it('counts not saved for a serial member from its last attempt only', () => {
+      const memberError = { category: 'test' as const, code: 'ASSERTION_FAILED', message: 'check failed', retryable: false };
+      expect(cacheRow([
+        plan([{ file: 'tests/case.e2e.ts', tests: 1 }]),
+        serialGroup('g1', [
+          { members: [serialMember('m1', { status: 'failed', steps: [cacheStep('first', 'unconfirmed')] })], error: memberError },
+          { members: [serialMember('m1', { steps: [cacheStep('retry', 'saved'), cacheStep('trailing', 'unconfirmed')] })] },
+        ], { status: 'flaky' }),
+        finished(result({ status: 'flaky', id: 'm1', title: ['wizard', 'step 1'], serialGroupId: 'g1' })),
+      ])).toBe('      Cache  3 missed · 1 not saved');
+    });
+
+    it('counts not saved for a passing serial member from before a retry that never reached the members', () => {
+      const memberError = { category: 'test' as const, code: 'ASSERTION_FAILED', message: 'check failed', retryable: false };
+      const launchError = { category: 'infrastructure' as const, code: 'ENGINE_FAILURE', message: 'device lost on retry', retryable: true };
+      expect(cacheRow([
+        plan([{ file: 'tests/case.e2e.ts', tests: 2 }]),
+        serialGroup('g1', [
+          {
+            members: [serialMember('m1', { steps: [cacheStep('first', 'unconfirmed')] }), serialMember('m2', { status: 'failed', error: memberError })],
+            error: memberError,
+          },
+          { members: [serialMember('m1', { status: 'failed', error: launchError }), serialMember('m2', { status: 'skipped' })], error: launchError },
+        ], { status: 'failed' }),
+        finished(result({ status: 'passed', id: 'm1', title: ['wizard', 'step 1'], serialGroupId: 'g1' })),
+        finished(result({ status: 'failed', id: 'm2', title: ['wizard', 'step 2'], declarationIndex: 1, serialGroupId: 'g1' })),
+      ])).toBe('      Cache  1 missed · 1 not saved');
+    });
+
+    it('counts not saved from the latest of two passing serial runs', () => {
+      const memberError = { category: 'test' as const, code: 'ASSERTION_FAILED', message: 'check failed', retryable: false };
+      expect(cacheRow([
+        plan([{ file: 'tests/case.e2e.ts', tests: 2 }]),
+        serialGroup('g1', [
+          { members: [serialMember('m1', { steps: [cacheStep('first', 'unconfirmed')] }), serialMember('m2', { status: 'failed', error: memberError })], error: memberError },
+          { members: [serialMember('m1', { steps: [cacheStep('retry', 'saved')] }), serialMember('m2')] },
+        ], { status: 'flaky' }),
+        finished(result({ status: 'flaky', id: 'm1', title: ['wizard', 'step 1'], serialGroupId: 'g1' })),
+        finished(result({ status: 'flaky', id: 'm2', title: ['wizard', 'step 2'], declarationIndex: 1, serialGroupId: 'g1' })),
+      ])).toBe('      Cache  2 missed');
+    });
+
+    it('adds nothing for a failed serial member that passed in an earlier group attempt', () => {
+      const memberError = { category: 'test' as const, code: 'ASSERTION_FAILED', message: 'check failed', retryable: false };
+      expect(cacheRow([
+        plan([{ file: 'tests/case.e2e.ts', tests: 2 }]),
+        serialGroup('g1', [
+          { members: [serialMember('m1', { steps: [cacheStep('first', 'unconfirmed')] }), serialMember('m2', { status: 'failed', error: memberError })], error: memberError },
+          { members: [serialMember('m1', { status: 'failed', error: memberError, steps: [cacheStep('retry', 'unconfirmed')] }), serialMember('m2', { status: 'skipped' })], error: memberError },
+        ], { status: 'failed' }),
+        finished(result({ status: 'failed', id: 'm1', title: ['wizard', 'step 1'], serialGroupId: 'g1' })),
+        finished(result({ status: 'skipped', id: 'm2', title: ['wizard', 'step 2'], declarationIndex: 1, serialGroupId: 'g1' })),
+      ])).toBe('      Cache  2 missed');
     });
 
     it('names the interrupt from run-finished alone when the host aborted without the event', () => {
@@ -1154,6 +1284,87 @@ describe('ListReporter', () => {
       // The window above the result line is erased before the block prints.
       expect(chunks.some((chunk) => chunk.includes('\u001b[0J'))).toBe(true);
       expect(chunks.at(-1)).not.toContain('└──');
+    });
+
+    it('shows the --step prompt under its paused test, after every step that ran, and takes it down', () => {
+      const restore = withTerminalSize({ columns: 120, rows: 40 });
+      try {
+        const { chunks, lines, output } = liveCapture();
+        const reporter = new ListReporter(output, { live: true, colors: false, stepping: true });
+        reporter.handle(runStarted());
+        reporter.handle(plan([{ file: 'tests/coffee.e2e.ts', tests: 1 }]));
+        reporter.handle(testStarted('t1', 'orders a drink', 'chromium', 'tests/coffee.e2e.ts'));
+        const step = (progress: object) => reporter.handle({ type: 'step', testId: 't1', agent: 'default', repeat: 0, target: 'chromium', progress } as never);
+        step({ phase: 'start', kind: 'locator', api: 'app.open', label: '/' });
+        step({ phase: 'end', kind: 'locator', api: 'app.open', label: '/', status: 'passed', durationMs: 85, modelCalls: 0 });
+        const held = { target: 'chromium', testId: 't1', agent: 'default', repeat: 0, title: 'orders a drink', api: 'locator.click', label: 'getByRole("radio", name: "Latte")', source: { file: 'tests/coffee.e2e.ts', line: 7, column: 3 } };
+        const shown = () => {
+          const window = chunks.at(-1)!.replace(ANSI_PATTERN, '').split('\n').filter((line) => line.trim() !== '');
+          const row = window.findIndex((line) => line.includes('orders a drink'));
+          return window.slice(row, window.findIndex((line) => line.includes('Test Files')));
+        };
+        reporter.showStepPrompt({ steps: [{ step: held, number: 2 }], help: false });
+        expect(shown()).toEqual([
+          '   └── orders a drink paused',
+          '       ✓ app.open "/" 85ms',
+          '       ▶ step 2  locator.click "getByRole("radio", name: "Latte")"  tests/coffee.e2e.ts:7',
+          '         press enter to run this step, press h to show help, press q to quit',
+        ]);
+        reporter.showStepPrompt({ steps: [{ step: held, number: 2 }], help: true });
+        expect(shown().slice(3)).toEqual([
+          '         press enter to run this step',
+          '         press n to run to the next test',
+          '         press a to run all without stopping',
+          '         press q to quit',
+          '         press h to hide help',
+        ]);
+        const pay = { ...held, api: 'locator.click', label: 'getByRole("button", name: "Pay")', source: { file: 'tests/coffee.e2e.ts', line: 8, column: 3 } };
+        reporter.showStepPrompt({ steps: [{ step: held, number: 2 }, { step: pay, number: 3 }], help: false });
+        expect(shown().slice(2)).toEqual([
+          '       ▶ step 2  locator.click "getByRole("radio", name: "Latte")"  tests/coffee.e2e.ts:7',
+          '       ▶ step 3  locator.click "getByRole("button", name: "Pay")"  tests/coffee.e2e.ts:8',
+          '         press enter to run these 2 steps, press h to show help, press q to quit',
+        ]);
+        reporter.showStepPrompt(undefined);
+        expect(chunks.at(-1)).not.toContain('step 2');
+        expect(lines.join('\n')).not.toContain('step 2');
+      } finally {
+        restore();
+      }
+    });
+
+    it('keeps the --step keys on a short terminal, cutting held steps first', () => {
+      const restore = withTerminalSize({ columns: 120, rows: 18 });
+      try {
+        const { chunks, output } = liveCapture();
+        const reporter = new ListReporter(output, { live: true, colors: false, stepping: true });
+        reporter.handle(runStarted());
+        reporter.handle(plan([{ file: 'tests/coffee.e2e.ts', tests: 1 }]));
+        reporter.handle(testStarted('t1', 'orders a drink', 'chromium', 'tests/coffee.e2e.ts'));
+        const held = (n: number) => ({ step: { target: 'chromium', testId: 't1', agent: 'default', repeat: 0, title: 'orders a drink', api: 'locator.click', label: `button ${n}` }, number: n });
+        reporter.showStepPrompt({ steps: [held(2), held(3), held(4), held(5), held(6), held(7), held(8), held(9)], help: false });
+        const window = chunks.at(-1)!.replace(ANSI_PATTERN, '');
+        expect(window).toContain('press enter to run these 8 steps');
+        expect(window).toContain('▶ step 2');
+        expect(window).not.toContain('▶ step 9');
+      } finally {
+        restore();
+      }
+    });
+
+    it('prints the --step prompt as one line without a live window', () => {
+      const lines: string[] = [];
+      const reporter = new ListReporter({ write: (line) => lines.push(line) }, { live: false, colors: false, stepping: true });
+      const held = { target: 'chromium', testId: 't1', agent: 'default', repeat: 0, title: 'orders a drink', api: 'app.open', label: '/cart' };
+      reporter.showStepPrompt({ steps: [{ step: held, number: 3 }], help: false });
+      // `h` adds nothing to a plain line, so it prints nothing.
+      reporter.showStepPrompt({ steps: [{ step: held, number: 3 }], help: true });
+      reporter.showStepPrompt({ steps: [{ step: held, number: 3 }, { step: { ...held, api: 'locator.click', label: 'Pay' }, number: 4 }], help: true });
+      reporter.showStepPrompt(undefined);
+      expect(lines).toEqual([
+        'paused at step 3 of orders a drink [chromium]: app.open "/cart" · press enter to run this step, n to run to the next test, a to run all without stopping, q to quit',
+        'paused at steps 3, 4 of orders a drink [chromium]: app.open "/cart"; locator.click "Pay" · press enter to run these 2 steps, n to run to the next test, a to run all without stopping, q to quit',
+      ]);
     });
 
     it('clips a finished step label so the row keeps its tail at the terminal width', () => {

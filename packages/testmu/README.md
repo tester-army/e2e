@@ -34,7 +34,7 @@ Set `LT_USERNAME` and `LT_ACCESS_KEY` in the run environment, from
 `device` and `osVersion` must match TestMu AI's catalog exactly, and `app` is an
 `lt://` app id, an `https` URL, or a local path. `deviceType: 'real'` picks a real device.
 
-See the [integration guide](https://e2e.tester.army/docs/integrations/testmu) for every
+See the [integration guide](https://e2e.com/docs/integrations/testmu) for every
 option and the limits.
 
 ## Browsers
@@ -61,7 +61,7 @@ export default {
 It reads the same `LT_USERNAME` and `LT_ACCESS_KEY`. `browserName` is `Chrome` (default)
 or `MicrosoftEdge`, and `capabilities` takes `browserVersion` and `LT:Options` fields such
 as `platform`, `geoLocation`, and `video`. See the
-[integration guide](https://e2e.tester.army/docs/integrations/testmu) for the
+[integration guide](https://e2e.com/docs/integrations/testmu) for the
 defaults and the limits.
 
 ## License

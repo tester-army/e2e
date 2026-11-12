@@ -32,7 +32,7 @@ Set `BROWSERSTACK_USERNAME` and `BROWSERSTACK_ACCESS_KEY` in the run environment
 shown there, not your email address. `device` and `osVersion` must match BrowserStack's
 App Automate catalog exactly, and `app` is a `bs://` app id, an `https` URL, or a local path.
 
-See the [integration guide](https://e2e.tester.army/docs/integrations/browserstack) for every
+See the [integration guide](https://e2e.com/docs/integrations/browserstack) for every
 option and the limits.
 
 ## License

@@ -8,13 +8,13 @@
 
 import { existsSync, readdirSync, statSync, watch as fsWatch } from 'node:fs';
 import path from 'node:path';
-import { emitKeypressEvents } from 'node:readline';
 import { Writable } from 'node:stream';
 import * as clack from '@clack/prompts';
 import picocolors from 'picocolors';
 import { discoverConfig } from '../config/load.ts';
 import { compileGlob, compileGlobList, GLOB_SYNTAX, literalPrefix, matchesGlob, type CompiledGlobList } from '../internal/globs.ts';
 import type { RunOptions, RunOutcome } from '../run/runner.ts';
+import { Keyboard, type Keypress } from './keyboard.ts';
 import type { SignalLadder } from './signals.ts';
 
 /**
@@ -352,13 +352,6 @@ export function mergeTriggers(first: WatchTrigger, second: WatchTrigger): WatchT
   return TRIGGER_RANK[second.kind] > TRIGGER_RANK[first.kind] ? second : first;
 }
 
-/** A key the terminal delivers, as `readline` names it. */
-export interface Keypress {
-  readonly name: string | undefined;
-  readonly ctrl: boolean;
-  readonly sequence?: string | undefined;
-}
-
 /** A key the session acts on: vitest's, plus what the terminal cannot deliver as a signal in raw mode. */
 export type WatchKey = 'a' | 'r' | 'f' | 'u' | 'p' | 't' | 'h' | 'q' | 'cancel' | 'interrupt' | 'suspend';
 
@@ -488,7 +481,7 @@ export async function watchSession(options: WatchSessionOptions): Promise<number
     if (wake === undefined) pending = pending === undefined ? next : mergeTriggers(pending, next);
     else wake(next);
   };
-  const keyboard = options.stdin === undefined ? undefined : new Keyboard(options.stdin);
+  const keyboard = options.stdin === undefined ? undefined : new Keyboard(options.stdin, keyOf);
   keyboard?.listen((key) => {
     if (key === 'interrupt') {
       signals.escalate();
@@ -700,67 +693,5 @@ function invalidPattern(source: string): string | undefined {
     return undefined;
   } catch (cause) {
     return cause instanceof Error ? cause.message : String(cause);
-  }
-}
-
-/** Raw-mode stdin delivering watch keys, pausable while a prompt owns the terminal. */
-class Keyboard {
-  private handler: ((key: WatchKey) => void) | undefined;
-  private readonly onKeypress = (_chunk: unknown, press: Keypress | undefined): void => {
-    if (press === undefined || this.handler === undefined) return;
-    const key = keyOf(press);
-    if (key !== undefined) this.handler(key);
-  };
-  /** While a prompt has the keys, Ctrl-C still ends the session: the prompt only closes on it. */
-  private readonly onInterruptOnly = (_chunk: unknown, press: Keypress | undefined): void => {
-    if (press !== undefined && press.ctrl && keyOf(press) === 'interrupt') this.handler?.('interrupt');
-  };
-
-  constructor(private readonly stdin: NodeJS.ReadStream) {
-    emitKeypressEvents(stdin);
-  }
-
-  /** Starts delivering keys to `handler`, in raw mode. */
-  listen(handler: (key: WatchKey) => void): void {
-    this.handler = handler;
-    this.resume();
-  }
-
-  /** Takes the terminal back after a prompt: raw mode on, keys delivered again. */
-  resume(): void {
-    this.stdin.off('keypress', this.onInterruptOnly);
-    this.stdin.setRawMode?.(true);
-    this.stdin.on('keypress', this.onKeypress);
-    this.stdin.resume();
-  }
-
-  /** Hands the terminal to a prompt: raw mode off, no key but Ctrl-C delivered. */
-  pause(): void {
-    this.stdin.off('keypress', this.onKeypress);
-    this.stdin.on('keypress', this.onInterruptOnly);
-    this.stdin.setRawMode?.(false);
-  }
-
-  /**
-   * Ctrl-Z: stops the process as the terminal would outside raw mode, with
-   * the terminal restored first. The stop goes to the whole process group,
-   * the job the shell waits on: a `| tee` or a package manager's wrapper
-   * stops with it, and one `fg` resumes them all. Timers do not run while
-   * a process is stopped: the resume fires on the continue, or at once
-   * under a shell without job control, where the stop is ignored.
-   */
-  suspend(): void {
-    if (process.platform === 'win32') return;
-    this.pause();
-    setTimeout(() => this.resume(), 0);
-    process.kill(0, 'SIGTSTP');
-  }
-
-  /** Stops for good: raw mode off, stdin paused so it no longer holds the process open. */
-  close(): void {
-    this.stdin.off('keypress', this.onKeypress);
-    this.stdin.off('keypress', this.onInterruptOnly);
-    this.stdin.setRawMode?.(false);
-    this.stdin.pause();
   }
 }

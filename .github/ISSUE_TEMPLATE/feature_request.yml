@@ -5,9 +5,11 @@ body:
   - type: markdown
     attributes:
       value: |
+        Questions and help requests go to [Discord](https://tester.army/discord), not here.
+
         **A concrete API and its tradeoffs are required.** Requests without a proposed API, upsides, and downsides are closed.
 
-        Want to build it yourself? Wait for a maintainer to agree on the approach here before opening a PR. See [CONTRIBUTING.md](https://github.com/tester-army/e2e/blob/main/CONTRIBUTING.md#pull-requests).
+        Want to build it yourself? Wait for a maintainer to agree on the approach here before opening a PR. See [CONTRIBUTING.md](https://github.com/e2e-inc/e2e/blob/main/CONTRIBUTING.md#pull-requests).
   - type: textarea
     id: problem
     attributes:

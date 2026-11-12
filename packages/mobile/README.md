@@ -19,8 +19,8 @@ npm install --save-dev e2e @e2e-dev/mobile
 
 `agent-device` needs Xcode with an iOS simulator runtime, or the Android SDK
 with an emulator. A phone needs Developer Mode and runner signing on iOS, or
-USB debugging authorized on Android (see [Physical devices](https://e2e.tester.army/docs/mobile#physical-devices)). Run `npx agent-device doctor` once before handing the target
-to the runner.
+USB debugging authorized on Android (see [Physical devices](https://e2e.com/docs/mobile#physical-devices)). Run `npx e2e doctor` to check the setup before
+a run.
 
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
@@ -72,8 +72,9 @@ the other old app options are `INVALID_CONFIG` naming their key under `app`.
 | `device` | Simulator or emulator name or UDID, or a connected phone's name. A list is a pool: one worker per entry, worker slot `n` driving the `n`th. Omitted, every booted device of the platform is the pool, as many as the run has slots. |
 | `session` | agent-device session name, before the worker slot: slot `n` drives its device under `<session>-<n>`, `e2e-<target name>-<n>` by default. One run per session at a time. |
 | `snapshot` | `'full'` (default, includes static text) or `'interactive'` (actionable nodes only). |
-| `settle` | For agent actions: milliseconds the UI must hold still after an action before the agent observes again, default `150`; `false` skips the wait. A test's own steps never settle; `expect` verifies their outcome. |
-| `transition` | For a test's steps: milliseconds a control that appeared or moved with the last action gets to finish arriving before it is acted on, default `500`. Unmoved controls are acted on immediately only when keyboard visibility is unchanged. Opening or closing the keyboard also uses the remaining budget. |
+| `settle` | Milliseconds the UI must hold still after an agent action before the agent observes again, default `150`; `false` skips the wait. A test's steps do not settle, except `device.back()`; `expect` verifies their outcome. |
+| `transition` | For a test's steps: milliseconds a control that appeared or moved with the last action gets to finish arriving before it is acted on, default `500`. Unmoved controls are acted on immediately only when keyboard visibility is unchanged. Opening or closing the keyboard also uses the remaining budget. Screen swipes in tests wait out the remaining budget before scrolling. |
+| `videoTouches` | For recordings the mobile engine makes (not a device provider's own recording), whether the video draws agent-device's touch indicator where a test tapped, default `true`. `false` records the plain screen and skips drawing the indicator after the recording stops, which on a hosted daemon can outlast `cleanupTimeout`. |
 
 Every optional `mobile()` value also accepts `undefined`, so a config passes
 `device: process.env.E2E_DEVICE` straight through, with no conditional
@@ -89,8 +90,8 @@ spread.
   (`ABOUT`, `android:id/title`) are the node's `testId`, what `getByTestId`
   matches.
 - **Actions**: tap, double tap, long press, fill, clear, check/uncheck (when
-  the tree exposes the checked state; Android switches do not), focus on
-  editable fields, `Enter`, single-character keys, swipe within a node, drag.
+  the tree exposes the checked state, as switches do on both platforms),
+  focus on editable fields, `Enter`, single-character keys, swipe within a node, drag.
   `selectOption`, `setInputFiles`, `scrollIntoView`, `secondaryTap`,
   `modifiers` on `tap` or `doubleTap`, focus on a control, and other keys fail with
   `UNSUPPORTED_CAPABILITY`.
@@ -136,9 +137,16 @@ test('shows the version in dark mode', async ({ agent, device, screen }) => {
 
 Methods: `setNetwork`, `setAirplaneMode`, `setPermission`, `setLocation`,
 `clearLocation`, `setAppearance`, `setOrientation`, `fold`, `setBiometrics`,
-`enrollBiometrics`, `installApp`, `openApp`, `closeApp`, `clearKeychain`,
-`foregroundApp`, `home`, `back`, `alert`, `dismissKeyboard`, `clipboard`,
-`setClipboard`, and the `locator` accessor.
+`enrollBiometrics`, `installApp`, `openApp`, `openLink`, `closeApp`,
+`clearKeychain`, `foregroundApp`, `home`, `back`, `alert`, `dismissKeyboard`,
+`clipboard`, `setClipboard`, and the `locator` accessor.
+
+`device.unstable_raw` is the raw driver session, for what the methods do not
+cover. Its `client` calls are not steps: the report and trace leave them out,
+the cache does not replay them, their arguments reach the driver unredacted,
+and nothing waits for the screen to settle. Reading it after the worker
+disposes the session throws `INVALID_STATE`. It can change in any release
+([reference](https://e2e.com/docs/reference/mobile#unstable_raw)).
 
 `setNetwork('offline')` and `setAirplaneMode(true)` are Android only. An iOS
 simulator shares the Mac's network, and simctl can only change its status
@@ -167,6 +175,15 @@ pack dispatches each call to the engine whose attempt is running. Tools are
 scoped to the platforms of those engines, so a suite that mixes web and device
 targets can hand the pack to one agents entry's `tools`.
 
+## Custom tools with a raw driver session
+
+`unstable_deviceSession(...engines)` from `@e2e-dev/mobile/tools` gives a
+custom tool the running attempt's raw driver session, for capabilities e2e
+does not wrap yet. Its client is bound to the engine's daemon, lease, and
+session. The client is typed as `DeviceSessionClient`, exported from `@e2e-dev/mobile`.
+This API can change in any release, like `device.unstable_raw`
+([reference](https://e2e.com/docs/reference/mobile#unstable_devicesession)).
+
 ## Secrets
 
 `type_secret` and `screen.getByLabel(...).fill(secret)` fill declared secrets
@@ -176,4 +193,4 @@ withheld for the rest of the attempt.
 
 ## Documentation
 
-Full documentation lives at [e2e.tester.army/docs](https://e2e.tester.army/docs).
+Full documentation lives at [e2e.com/docs](https://e2e.com/docs).

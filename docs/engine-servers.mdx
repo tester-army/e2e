@@ -1,7 +1,6 @@
 ---
 title: Engine servers
 description: Run an engine in another process, on another machine, or in another language.
-icon: "network-wired"
 ---
 
 An engine server answers the [engine protocol](/reference/engine-protocol)
@@ -133,7 +132,8 @@ lists every params and result shape. The manifest's JSON Schema ships as
 
 Write a transport when a server needs setup first, such as an app installed
 on a device and a port forwarded to it. `open` receives the target's app,
-because a server elsewhere can't read the project's files.
+because a server elsewhere can't read the project's files. A `doctor`
+connection, which `e2e doctor` opens, only checks: skip the install there.
 
 ```ts
 import type { EngineTransport } from 'e2e/engine';
@@ -142,7 +142,9 @@ export function deviceTransport(serial: string): EngineTransport {
   return {
     label: `device ${serial}`,
     async open(context) {
-      if (context.app?.appPath !== undefined) await install(serial, context.app.appPath);
+      if (context.role !== 'doctor' && context.app?.appPath !== undefined) {
+        await install(serial, context.app.appPath);
+      }
       const socket = await forward(serial, context.signal);
       return { input: socket, output: socket, close: async () => void socket.destroy() };
     },

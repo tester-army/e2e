@@ -1,0 +1,21 @@
+name: Install workspace
+description: Install the lockfile, or override and verify the driver for compatibility runs.
+inputs:
+  agent-device-version:
+    description: Exact driver version resolved by the nightly workflow. Empty uses the lockfile.
+    default: ''
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        AGENT_DEVICE_VERSION: ${{ inputs.agent-device-version }}
+      run: |
+        cd "$GITHUB_WORKSPACE"
+        if [ -n "$AGENT_DEVICE_VERSION" ]; then
+          node .github/scripts/agent-device.cjs override
+          pnpm install --no-frozen-lockfile
+          node .github/scripts/agent-device.cjs verify
+        else
+          pnpm install --frozen-lockfile
+        fi

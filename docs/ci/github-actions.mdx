@@ -1,14 +1,13 @@
 ---
 title: GitHub Actions
 description: Run web, iOS, and Android tests on GitHub Actions, upload the reports, and post the results on the pull request.
-icon: "/images/icons/github-actions.svg"
-"og:image": "https://e2e.tester.army/docs/images/og/ci/github-actions.png?v=1a59aebfc8"
-"twitter:image": "https://e2e.tester.army/docs/images/og/ci/github-actions.png?v=1a59aebfc8"
+"og:image": "https://e2e.com/docs/images/og/ci/github-actions.png?v=1a59aebfc8"
+"twitter:image": "https://e2e.com/docs/images/og/ci/github-actions.png?v=1a59aebfc8"
 ---
 
 import { SetupPrompt } from '../snippets/setup-prompt-card.jsx';
 
-export const setupPrompt = `Add a GitHub Actions workflow that runs this project's e2e tests. Docs: \`https://e2e.tester.army/docs/ci/github-actions.md\` and \`https://e2e.tester.army/docs/ci.md\`
+export const setupPrompt = `Add a GitHub Actions workflow that runs this project's e2e tests. Docs: \`https://e2e.com/docs/ci/github-actions.md\` and \`https://e2e.com/docs/ci.md\`
 
 1. Read both pages. Use the web workflow for web targets and the iOS and Android workflow for mobile targets.
 2. Adapt the workflow to this project: package manager, Node version, how the app starts or builds, and the app paths.
@@ -58,6 +57,10 @@ jobs:
           node-version: 26
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('pnpm-lock.yaml') }}
 
       - name: Install browsers
         run: pnpm exec e2e-web install chromium --with-deps
@@ -92,8 +95,35 @@ jobs:
 
 `npx e2e` runs the version the lockfile installs. The
 [install command](/reference/web#installing-browsers) downloads the browsers
-for the engine's pinned Playwright version, with their system libraries. A
+for the engine's pinned Playwright version, with their system libraries; the
+cache step skips the download until the lockfile changes. A
 test that passed on retry keeps its failed attempt's evidence in the upload.
+
+## Cache the timings history
+
+Restore and save [`.e2e/timings.json`](/ci#cache-the-timings-history) with
+`actions/cache`, so a fresh runner starts the longest files first. Add the
+step before the run:
+
+```yaml
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .e2e/timings.json
+          key: e2e-timings-${{ github.ref_name }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            e2e-timings-${{ github.ref_name }}-
+            e2e-timings-main-
+```
+
+Each run, and each rerun, saves a new entry and restores the newest one for its branch. A pull
+request can read the base branch's cache but not write to it, so a first run
+on a new branch starts from the history of `main`.
+
+The step saves after the job passes. To save after a failed run too, use
+`actions/cache/restore` before the run and `actions/cache/save` after it with
+`if: ${{ !cancelled() }}`. The history only helps with
+[`workers`](/reference/config#workers) of 2 or more, and the workflow above
+runs one.
 
 ## iOS and Android
 
@@ -207,7 +237,7 @@ The emulator runner action runs each `script` line in a new shell and stops
 the emulator when the step ends. Install and run in the same step.
 
 This repository's own
-[`mobile.yml`](https://github.com/tester-army/e2e/blob/main/.github/workflows/mobile.yml)
+[`mobile.yml`](https://github.com/e2e-inc/e2e/blob/main/.github/workflows/mobile.yml)
 adds a cached Expo build per native fingerprint, two simulators for two
 workers, and a `--last-failed` rerun.
 

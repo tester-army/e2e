@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import type { LocatorExpression } from '../engine/surface.ts';
 import { TestError } from '../internal/errors.ts';
 import type { ImageTolerance } from '../internal/image.ts';
+import { checkStepTimeout } from '../internal/time.ts';
 import { isPlainObject, rejectUnknownOptions } from '../internal/options.ts';
 import { locatorInternals } from '../locator/screen.ts';
 import type { ScreenshotContext } from '../run/screenshots.ts';
@@ -54,9 +55,7 @@ export function parseScreenshotCall(
     throw new TestError('INVALID_ARGUMENT', `${api} option maxDiffPixels must be a whole number of pixels, 0 or more`);
   }
   const timeout: unknown = options?.timeout;
-  if (timeout !== undefined && !(typeof timeout === 'number' && Number.isFinite(timeout) && timeout > 0)) {
-    throw new TestError('INVALID_ARGUMENT', `${api} option timeout must be a positive number of milliseconds`);
-  }
+  checkStepTimeout(timeout, `${api} option`);
   return {
     stem: named ? namedStem(api, nameOrOptions) : unnamedStem(store),
     tolerance: {

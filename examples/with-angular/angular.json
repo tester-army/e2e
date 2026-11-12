@@ -19,9 +19,8 @@
             "tsConfig": "tsconfig.app.json",
             "assets": [{ "glob": "**/*", "input": "public" }],
             "styles": [
-              "@fontsource/stack-sans-notch/400.css",
               "@fontsource/inter/400.css",
-              "@fontsource/dm-mono/400.css",
+              "@fontsource/jetbrains-mono/400.css",
               "src/styles.css"
             ]
           },

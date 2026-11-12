@@ -1,15 +1,17 @@
 /**
  * The examples registry, `examples/examples.json`: every example on
- * https://e2e.tester.army/examples, official, partner, and community. The site
- * (tester-army/e2e-site) downloads the file at build time and renders a page
+ * https://e2e.com/examples, official, partner, and community. The site
+ * (e2e-inc/e2e-site) downloads the file at build time and renders a page
  * per entry from it and the README at its `repository` (or its `readme`);
  * `site.yml` redeploys
- * the site when the file changes on `main`.
+ * the site when the file changes on `main` (the docs, unlike the registry,
+ * come from the newest `e2e@X.Y.Z` tag).
  *
  * `examples.schema.json` pins the shape; `registryProblems` checks what a
  * schema cannot: unique slugs and tags, tags an example names but the
  * registry does not define, icons that are not in `examples/icons/`, official
- * examples living under the tester-army organization (and, in this
+ * examples living under the e2e-inc organization on GitHub or the e2e_inc
+ * group on GitLab (and, in this
  * repository, matching the folders under `examples/` and the ones
  * `e2e init --example` can copy), partner and community examples living
  * outside it, partner examples in their author's own repository, community
@@ -34,24 +36,48 @@ const ICONS_DIR = join(EXAMPLES_DIR, 'icons');
 const INIT_EXAMPLES_PATH = join(REPO_ROOT, 'packages/e2e/src/cli/init/examples.ts');
 
 /** An official example in this repository: its folder under `examples/` on `main`. */
-const FOLDER_URL = /^https:\/\/github\.com\/tester-army\/e2e\/tree\/main\/examples\/([a-z0-9-]+)$/;
+const FOLDER_URL = /^https:\/\/github\.com\/(?:e2e-inc|tester-army)\/e2e\/tree\/main\/examples\/([a-z0-9-]+)$/;
 /** Any URL into this repository. */
-const THIS_REPO_URL = /^https:\/\/github\.com\/tester-army\/e2e(?:\/|$)/i;
-/** Any URL into the tester-army organization: official examples live there, and only they do. */
-const ORG_URL = /^https:\/\/github\.com\/tester-army\//i;
+const THIS_REPO_URL = /^https:\/\/github\.com\/(?:e2e-inc|tester-army)\/e2e(?:\/|$)/i;
+/**
+ * Any URL into the e2e-inc organization on GitHub or the e2e_inc group on
+ * GitLab: official examples live there, and only they do.
+ */
+const ORG_URL = /^https:\/\/(?:github\.com\/(?:e2e-inc|tester-army)|gitlab\.com\/e2e_inc)\//i;
+const ORG_NAMES = 'https://github.com/e2e-inc/ or https://gitlab.com/e2e_inc/';
+/** The owner of a github.com URL, lowercased. A partner's repository must be on GitHub, under its `author.github`. */
 function ownerOf(repository: string): string | undefined {
   return repository.match(/^https:\/\/github\.com\/([^/]+)\//)?.[1]?.toLowerCase();
 }
-/** `owner/repo` of a github.com URL, lowercased. */
-function repoOf(url: string): string | undefined {
-  return url.match(/^https:\/\/github\.com\/([^/]+\/[^/]+)/)?.[1]?.toLowerCase();
+
+/**
+ * A github.com or gitlab.com URL split into its project and what follows it.
+ * A GitHub project is `<owner>/<repo>`; a GitLab one runs up to the `-`
+ * segment (`/-/tree/`, `/-/blob/`), since GitLab groups nest.
+ */
+function splitUrl(url: string): { host: 'github.com' | 'gitlab.com'; project: string; rest: string[] } | undefined {
+  const match = url.match(/^https:\/\/(github\.com|gitlab\.com)\/(.+)$/);
+  if (!match) return undefined;
+  const host = match[1] as 'github.com' | 'gitlab.com';
+  const segments = match[2]!.split('/').filter(Boolean);
+  const end = host === 'github.com' ? 2 : segments.includes('-') ? segments.indexOf('-') : segments.length;
+  const rest = segments.slice(host === 'github.com' ? end : end + 1);
+  return { host, project: segments.slice(0, end).join('/'), rest };
 }
-/** The ref of a `/tree/<ref>` or `/blob/<ref>` URL. */
+/** `<host>/<project>` of a github.com or gitlab.com URL, lowercased. */
+function repoOf(url: string): string | undefined {
+  const parts = splitUrl(url);
+  return parts && `${parts.host}/${parts.project}`.toLowerCase();
+}
+/** The ref of a `/tree/<ref>` or `/blob/<ref>` URL (`/-/tree/<ref>` on GitLab). */
 function refOf(url: string): string | undefined {
-  return url.match(/^https:\/\/github\.com\/[^/]+\/[^/]+\/(?:tree|blob)\/([^/]+)/)?.[1];
+  const [kind, ref] = splitUrl(url)?.rest ?? [];
+  return kind === 'tree' || kind === 'blob' ? ref : undefined;
 }
 /** A folder URL whose ref is a full commit SHA. */
-const PINNED_URL = /^https:\/\/github\.com\/[^/]+\/[^/]+\/tree\/[0-9a-f]{40}(?:\/|$)/;
+function isPinned(url: string): boolean {
+  return splitUrl(url)?.rest[0] === 'tree' && /^[0-9a-f]{40}$/.test(refOf(url) ?? '');
+}
 
 /** Folders under `examples/` that are not examples: the site's logos. */
 const UNLISTED_FOLDERS = new Set(['icons']);
@@ -150,11 +176,11 @@ export function registryProblems(registry: Registry, env: RegistryEnvironment): 
     const folder = example.repository.match(FOLDER_URL)?.[1];
     if (example.source === 'official') {
       if (!ORG_URL.test(example.repository)) {
-        problems.push(`${name}: an official example lives under https://github.com/tester-army/`);
+        problems.push(`${name}: an official example lives under ${ORG_NAMES}`);
       } else if (THIS_REPO_URL.test(example.repository)) {
         // In this repository, an official example is one of the folders under examples/.
         if (!folder) {
-          problems.push(`${name}: an official example in tester-army/e2e must point at its folder, https://github.com/tester-army/e2e/tree/main/examples/<folder>`);
+          problems.push(`${name}: an official example in e2e-inc/e2e must point at its folder, https://github.com/e2e-inc/e2e/tree/main/examples/<folder>`);
         } else if (!env.folders.includes(folder)) {
           problems.push(`${name}: examples/${folder} does not exist`);
         } else if (folder !== example.slug) {
@@ -164,17 +190,19 @@ export function registryProblems(registry: Registry, env: RegistryEnvironment): 
         }
       }
     } else if (ORG_URL.test(example.repository)) {
-      problems.push(`${name}: a ${example.source} example lives in its own repository, outside the tester-army organization`);
+      problems.push(`${name}: a ${example.source} example lives in its own repository, outside the e2e-inc organization and the e2e_inc group`);
     } else if (example.source === 'partner' && ownerOf(example.repository) !== example.author.github.toLowerCase()) {
       // The site's partner seal credits author.name, so the partner must own the repository.
       problems.push(`${name}: a partner example lives in its author's repository, https://github.com/${example.author.github}/`);
-    } else if (example.source === 'community' && !PINNED_URL.test(example.repository)) {
+    } else if (example.source === 'community' && !isPinned(example.repository)) {
       // The page renders the README live: a branch could change under a reviewed entry.
-      problems.push(`${name}: a community example pins its repository to a commit, https://github.com/<owner>/<repo>/tree/<commit sha>/<path>`);
+      problems.push(
+        `${name}: a community example pins its repository to a commit, https://github.com/<owner>/<repo>/tree/<commit sha>/<path> or https://gitlab.com/<group>/<project>/-/tree/<commit sha>/<path>`,
+      );
     }
     if (typeof example.readme === 'string') {
       if (repoOf(example.readme) !== repoOf(example.repository)) {
-        problems.push(`${name}: readme must be a file in the example's repository, https://github.com/${repoOf(example.repository)}/`);
+        problems.push(`${name}: readme must be a file in the example's repository, https://${repoOf(example.repository)}/`);
       } else if (readmeUrl({ repository: example.repository, readme: example.readme }) === readmeUrl({ repository: example.repository })) {
         problems.push(`${name}: readme names the folder's own README.md; leave it out`);
       } else if (example.source === 'community' && refOf(example.readme) !== refOf(example.repository)) {
@@ -211,11 +239,11 @@ export function isLocalFolder(repository: string): boolean {
  */
 export function readmeUrl(example: Pick<RegistryExample, 'repository' | 'readme'>): string | undefined {
   if (example.readme === false) return undefined;
-  if (example.readme) {
-    const [, owner, repo, ref, path] = example.readme.match(/^https:\/\/github\.com\/([^/]+)\/([^/]+)\/blob\/([^/]+)\/(.+)$/) ?? [];
-    return `https://raw.githubusercontent.com/${owner}/${repo}/${ref}/${path}`;
-  }
-  const [, owner, repo, ref = 'HEAD', path = ''] =
-    example.repository.match(/^https:\/\/github\.com\/([^/]+)\/([^/]+)(?:\/tree\/([^/]+)(?:\/(.+))?)?$/) ?? [];
-  return `https://raw.githubusercontent.com/${owner}/${repo}/${ref}/${path ? `${path}/` : ''}README.md`;
+  const parts = splitUrl(example.readme || example.repository);
+  if (!parts) return undefined;
+  const [, ref = 'HEAD', ...rest] = parts.rest;
+  const path = example.readme ? rest.join('/') : [...rest, 'README.md'].join('/');
+  return parts.host === 'github.com'
+    ? `https://raw.githubusercontent.com/${parts.project}/${ref}/${path}`
+    : `https://gitlab.com/${parts.project}/-/raw/${ref}/${path}`;
 }

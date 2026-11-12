@@ -22,30 +22,30 @@ export function GreetingForm() {
 
   return (
     <form className="form" onSubmit={greet}>
-      <label className="label" htmlFor="name">
-        Name
-      </label>
-      <div className="row">
+      <div className="field">
         <input
           id="name"
-          className="field"
+          className="field-input"
           autoComplete="off"
-          placeholder="Ada Lovelace"
+          aria-invalid={error}
           value={name}
           onChange={(event) => setName(event.target.value)}
         />
-        <button className="button" type="submit">
-          Greet
-        </button>
+        <label className="field-label" htmlFor="name">
+          name
+        </label>
       </div>
+      <button className="button" type="submit">
+        greet
+      </button>
       {error ? (
         <p className="error" role="alert">
-          Enter a name first.
+          enter a name first.
         </p>
       ) : null}
       {greeted !== null ? (
         <p className="status" role="status">
-          Hello, {greeted}!
+          hello, {greeted}!
         </p>
       ) : null}
     </form>

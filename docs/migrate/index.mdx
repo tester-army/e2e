@@ -1,8 +1,7 @@
 ---
 title: Migrating to e2e
 sidebarTitle: Overview
-description: Move a Playwright, Cypress, Selenium, Detox, Maestro, or TesterArmy suite to e2e one test at a time.
-icon: "right-left"
+description: Move a Playwright, Cypress, Selenium, Appium, Detox, Maestro, or TesterArmy suite to e2e one test at a time.
 ---
 
 A migration guide maps one test runner's config, API, and commands to e2e.
@@ -21,6 +20,9 @@ suite installed while you move one test at a time, so both suites stay green.
   </Card>
   <Card title="Selenium" icon="/images/integrations/selenium.svg" href="/migrate/selenium">
     Web. WebDriver calls and page objects, rewritten in TypeScript.
+  </Card>
+  <Card title="Appium" icon="/images/integrations/appium.png" href="/migrate/appium">
+    Mobile. Capabilities, selectors, and `mobile:` commands, without a server.
   </Card>
   <Card title="Detox" icon="/images/integrations/detox.png" href="/migrate/detox">
     Mobile. Your app build and testIDs, with no Detox framework.
@@ -59,11 +61,10 @@ records progress in a `MIGRATION.md` file and keeps the old suite running.
 
 ## Migrate from a runner with no guide
 
-WebdriverIO and Appium have no guide. Map WebDriver calls with the
-[Selenium](/migrate/selenium) guide. Map Appium device commands with the
-[Detox](/migrate/detox) and [Maestro](/migrate/maestro) guides, on the
-[mobile engine](/mobile). These mappings are partial: no guide covers the
-WebdriverIO or Appium APIs themselves.
+WebdriverIO for the web has no guide. Map its WebDriver calls with the
+[Selenium](/migrate/selenium) guide. The mapping is partial: no guide covers
+the WebdriverIO API itself. For WebdriverIO with Appium on a mobile app, see
+[From Appium](/migrate/appium).
 
 ## Next
 

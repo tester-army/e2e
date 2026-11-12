@@ -18,6 +18,7 @@ import type { ResolvedConfig } from '../config/resolve.ts';
 import type { McpClient } from '../mcp/server.ts';
 import type { McpSessionSummary } from '../mcp/usage.ts';
 import type { Report1Document, ReportError, ReportExplore, ReportStep, ReportUsage } from '../report/build.ts';
+import { memberRan } from '../run/records.ts';
 import { STEP_KINDS } from '../run/steps.ts';
 import type { JsonValue } from '../types.ts';
 import { failureKind } from './failure-kind.ts';
@@ -249,7 +250,7 @@ function testSteps(report: Report1Document): ReportStep[][] {
     const members = new Map<number, ReportStep[]>();
     for (const attempt of group.attempts) {
       for (const member of attempt.members) {
-        if (member.status === 'skipped') continue;
+        if (!memberRan(member)) continue;
         members.set(member.index, [...(members.get(member.index) ?? []), ...member.steps]);
       }
     }
@@ -454,6 +455,7 @@ export function runCompletedEvent(report: Report1Document, context: RunContext):
       tests_interrupted: run.summary.interrupted,
       tests_flaky: run.summary.flaky,
       tests_skipped: run.summary.skipped,
+      tests_failed_as_expected: run.results.filter((result) => result.attempts.at(-1)?.expectedFailure?.error !== undefined).length,
       filters_run: run.filters?.length ?? 0,
       filters_timed_out: run.filters?.filter((record) => record.outcome === 'timed-out').length ?? 0,
       filters_failed: run.filters?.filter((record) => record.outcome === 'failed').length ?? 0,

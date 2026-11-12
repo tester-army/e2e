@@ -24,7 +24,7 @@ import { PlaywrightSurface, type WebOptions } from './surface.ts';
 import { createBrowserFixture } from './browser.ts';
 import { validateInitScripts } from './init-scripts.ts';
 import { MEDIA_KEYS, mediaProblem } from './media.ts';
-import { FIELD_VALUE_CONTROL, headerProblem } from './protected-app.ts';
+import { FIELD_VALUE_CONTROL, headerProblem, originProblem } from './protected-app.ts';
 import { validatePermissions } from './permissions.ts';
 import type { BrowserName } from './browser-connection.ts';
 
@@ -84,6 +84,7 @@ export function web(options: WebOptions = {}): EngineHandle {
   }
   if (options.headers !== undefined) validateHeaders(options.headers);
   if (options.basicAuth !== undefined) validateBasicAuth(options.basicAuth);
+  if (options.credentialOrigins !== undefined) validateCredentialOrigins(options);
   if (options.testIdAttribute !== undefined) validateTestIdAttribute(options.testIdAttribute);
   if (options.userAgent !== undefined) validateUserAgent(options.userAgent, options.headers);
   if (options.locale !== undefined) validateLocale(options.locale, options.headers);
@@ -110,6 +111,7 @@ export function web(options: WebOptions = {}): EngineHandle {
     platform: 'web',
     prepare: (info) => surface.prepare(info),
     finish: (info) => surface.finish(info),
+    doctor: (info) => surface.doctor(info),
     init: (info) => surface.init(info),
     startAttempt: (context) => surface.startAttempt(context),
     settleAttempt: (context) => surface.settleAttempt(context),
@@ -135,6 +137,7 @@ export function web(options: WebOptions = {}): EngineHandle {
     session: {
       open: (url, operation) => surface.open(url, operation),
       back: (operation) => surface.back(operation),
+      resize: (size, operation) => surface.resize(size, operation),
       restart: (operation) => surface.restart(operation),
       reset: recoverable ? () => Promise.reject(persistentContextLimit('app.clearState()', mode, provider !== undefined)) : (operation) => surface.reset(operation),
     },
@@ -167,6 +170,7 @@ const WEB_OPTION_KEYS: readonly string[] = Object.keys({
   connect: true,
   headers: true,
   basicAuth: true,
+  credentialOrigins: true,
   testIdAttribute: true,
   userAgent: true,
   locale: true,
@@ -269,9 +273,27 @@ function validateBasicAuth(basicAuth: unknown): void {
 }
 
 /**
+ * Refuses extra credential origins without headers or basic auth to send
+ * them, a list that is not an array, and any entry that is not an exact
+ * `http:` or `https:` origin, naming the entry.
+ */
+function validateCredentialOrigins({ credentialOrigins, headers, basicAuth }: WebOptions): void {
+  if (headers === undefined && basicAuth === undefined) {
+    throw new ConfigurationError('INVALID_CONFIG', 'web({ credentialOrigins }) requires headers or basicAuth: it lists more origins that receive them');
+  }
+  if (!Array.isArray(credentialOrigins)) {
+    throw new ConfigurationError('INVALID_CONFIG', 'web({ credentialOrigins }) must be an array of origins such as "https://preview.example.com"');
+  }
+  for (const [index, origin] of credentialOrigins.entries()) {
+    const problem = originProblem(origin);
+    if (problem !== undefined) throw new ConfigurationError('INVALID_CONFIG', `web({ credentialOrigins })[${index}] ${problem}`);
+  }
+}
+
+/**
  * Refuses a user agent the browser could not send (not a string, empty, or
  * carrying a control character) and one a `user-agent` header would override
- * on the app's site while `navigator.userAgent` kept reporting it.
+ * on the app's origin while `navigator.userAgent` kept reporting it.
  */
 function validateUserAgent(userAgent: unknown, headers: Readonly<Record<string, string>> | undefined): void {
   if (typeof userAgent !== 'string' || userAgent === '') {
@@ -287,7 +309,7 @@ function validateUserAgent(userAgent: unknown, headers: Readonly<Record<string, 
 
 /**
  * Refuses a locale that is not a BCP 47 tag, and one an `accept-language`
- * header would override on the app's site while `navigator.language` kept
+ * header would override on the app's origin while `navigator.language` kept
  * reporting it.
  */
 function validateLocale(locale: unknown, headers: Readonly<Record<string, string>> | undefined): void {

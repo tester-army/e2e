@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ExecutorActions, ExecutorNode } from 'e2e';
 import { actionSpace } from '../src/elements.ts';
+import { targetRequest } from '../src/questions.ts';
 import { context } from './helpers.ts';
 
 function tree(children: ExecutorNode[]): ExecutorNode {
@@ -82,11 +83,11 @@ describe('element table', () => {
       ],
     }));
     const space = spaceFor(children);
-    expect(space.elements).toHaveLength(255);
-    expect(space.targets.get('select')?.size).toBe(255);
-    // Only the 5 rows past the element cap count: scrolling can reveal a
+    expect(space.elements).toHaveLength(254);
+    expect(space.targets.get('select')?.size).toBe(254);
+    // Only the 6 rows past the element cap count: scrolling can reveal a
     // row, never an option the per-question cap dropped.
-    expect(space.omitted).toBe(5);
+    expect(space.omitted).toBe(6);
   });
   it('keeps password fields under typeSecret only', () => {
     const space = spaceFor([{ id: 'p', role: 'textbox', name: 'Password', inputPurpose: 'password' }]);
@@ -167,7 +168,7 @@ describe('element table', () => {
     expect(root.elements[0]?.operations).not.toContain('drag');
     const children = Array.from({ length: 256 }, (_, index) => ({ id: `b${index}`, role: 'button', name: `Button ${index}`, rect: { x: 0, y: 10, width: 50, height: 20 } }));
     const capped = spaceFor([...children, { id: 'done', role: 'region', name: 'Done column' }]);
-    expect(capped.elements).toHaveLength(255);
+    expect(capped.elements).toHaveLength(254);
     expect([...capped.destinations.values()].map((destination) => destination.id)).not.toContain('done');
   });
   it('uses the placeholder as the label when there is no name', () => {
@@ -193,7 +194,7 @@ describe('element table', () => {
     // A field takes a tap too: it focuses the field and opens what the app attaches there.
     expect([...(space.targets.get('tap')?.keys() ?? [])]).toEqual(['1', '2']);
   });
-  it('caps the table past 255, viewport first, and counts the omitted', () => {
+  it('caps the table past 254, viewport first, and counts the omitted', () => {
     // Out-of-viewport nodes come first in tree order, so only a real
     // viewport-first sort puts the ten visible rows at the head.
     const children = Array.from({ length: 300 }, (_, index) => ({
@@ -201,12 +202,28 @@ describe('element table', () => {
       rect: { x: 0, y: index < 290 ? 5000 : 10, width: 50, height: 20 },
     }));
     const space = spaceFor(children);
-    expect(space.elements).toHaveLength(255);
-    expect(space.omitted).toBe(45);
+    expect(space.elements).toHaveLength(254);
+    expect(space.omitted).toBe(46);
     expect(space.elements.slice(0, 10).map((element) => element.label)).toEqual(
       Array.from({ length: 10 }, (_, position) => `Button ${290 + position}`),
     );
-    expect([...(space.targets.get('tap')?.keys() ?? [])]).toHaveLength(255);
+    expect([...(space.targets.get('tap')?.keys() ?? [])]).toHaveLength(254);
+  });
+  it('keeps every target question on a dense page within 255 choices, none included', () => {
+    const fixture = context();
+    const buttons = Array.from({ length: 300 }, (_, index) => ({ id: `b${index}`, role: 'button', name: `Button ${index}` }));
+    const selects = Array.from({ length: 300 }, (_, index) => ({
+      id: `s${index}`, role: 'combobox', name: `Size ${index}`, children: [{ id: `o${index}`, role: 'option', name: 'Small' }],
+    }));
+    for (const [operation, children] of [['tap', buttons], ['drag', buttons], ['select', selects]] as const) {
+      const space = actionSpace(fixture.ctx, { path: '/runs', viewport: { width: 800, height: 600 }, tree: tree([...children]) }, true);
+      const { questions } = targetRequest(fixture.ctx, space, operation, [], '/runs');
+      for (const question of Object.values(questions)) {
+        const criteria = question.type === 'choice' ? Object.keys(question.criteria) : [];
+        expect(criteria).toHaveLength(255);
+        expect(criteria).toContain('none');
+      }
+    }
   });
   it('offers scroll and back controls when the engine declares them', () => {
     const full = spaceFor([{ id: 'a', role: 'button', name: 'Add' }]);

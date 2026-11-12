@@ -1,9 +1,8 @@
 ---
 title: MCP server
 description: Let your coding agent use your app and check its own work.
-icon: "plug"
-"og:image": "https://e2e.tester.army/docs/images/og/mcp-server.png?v=17998906c0"
-"twitter:image": "https://e2e.tester.army/docs/images/og/mcp-server.png?v=17998906c0"
+"og:image": "https://e2e.com/docs/images/og/mcp-server.png?v=17998906c0"
+"twitter:image": "https://e2e.com/docs/images/og/mcp-server.png?v=17998906c0"
 ---
 
 `e2e mcp` gives a coding agent such as Claude Code, Codex, or Cursor a live
@@ -18,6 +17,7 @@ acts on it, and checks its work.
 | Change the UI | Done when it compiles | Opens the page and checks the result |
 | Reproduce a bug | Guesses from the code | Follows the steps in the app |
 | Fix a failing test | Clicks through the flow again | Runs the test and stops on the failure |
+| Run the suite | Needs a shell for `e2e run` | Runs it with `run_tests` |
 | Show a change in a PR | Describes it | Records a video |
 
 The server needs no model. A test it runs needs one only for an agent
@@ -25,8 +25,10 @@ step with no recording.
 
 ## Set it up
 
-`e2e init` offers to register the server in `.mcp.json` (Claude Code) and
-`.cursor/mcp.json` (Cursor). By hand:
+`e2e init` offers to register the server in `.mcp.json` (Claude Code),
+`.cursor/mcp.json` (Cursor), and `.codex/config.toml` (Codex). Install the
+project dependencies and start the MCP client in the project directory so
+`npx` (`bunx` in a Bun project) uses the installed e2e version. By hand:
 
 <Tabs>
   <Tab title="Claude Code">
@@ -45,8 +47,9 @@ step with no recording.
     </CodeGroup>
   </Tab>
   <Tab title="Codex">
-    Add the server to `.codex/config.toml`, trust the project, and start a
-    new session:
+    Run `e2e init --yes --skills none --mcp .codex/config.toml` with the installed CLI,
+    or add the entry below. Trust the project and start a new Codex session.
+    `codex mcp list`, run in the project, shows the registration:
 
     ```toml title=".codex/config.toml"
     [mcp_servers.e2e]
@@ -71,6 +74,19 @@ step with no recording.
 A session starts the target's app command, if it has one, and names it
 with its URL and port. The config reads the server's environment, not the
 agent's shell.
+
+## Try it without a config
+
+In a directory with no e2e config file, the agent names the engine when it
+opens a session:
+
+```txt
+open_session {engine: "@e2e-dev/web", app: {url: "http://localhost:3000"}}
+```
+
+`run_tests` still needs a config. For engine options, device providers, and
+installing an engine, see
+[Without a config](/reference/mcp#without-a-config).
 
 ## Ask the agent
 
@@ -151,8 +167,8 @@ limits.
 
 A session writes no test results, and only a test it runs with
 `open_session {test}` uses the replay cache. The agent runs suites with
-`e2e run` and, when a run can go beside the session, keeps the session
-open between runs. After a failed run, it goes to the failing screen in
+[`run_tests`](/reference/mcp#run_tests), the same run as `e2e run`, and,
+when a run can go beside the session, keeps the session open between runs. After a failed run, it goes to the failing screen in
 that session instead of opening a new one.
 
 On web, a run next to a session depends on the target's `app`:

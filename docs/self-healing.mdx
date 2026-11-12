@@ -1,7 +1,6 @@
 ---
 title: Self-healing tests
 description: How a replayed agent step recovers when the UI changed, and how the recording repairs itself.
-icon: "bandage"
 ---
 
 A self-healing test keeps passing when the UI changes under a recorded
@@ -102,7 +101,7 @@ clicks. If the discount button moved, the agent finds it. If discounts stop
 working, the step or the check after it fails.
 
 A goal can still pass in a way you didn't intend, for example with a
-different discount. Follow each `act` with a deterministic check of the
+different discount. End the test with a deterministic check of the
 result, such as the `toHaveText('10% off')` above. That check runs on every
 run, replayed or healed.
 

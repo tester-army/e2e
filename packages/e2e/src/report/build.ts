@@ -11,10 +11,11 @@ import type { ErrorCategory, ErrorDetails, ErrorPhase, HookScope, SerializedErro
 import { resultId, timestamp } from '../internal/ids.ts';
 import { obj } from '../internal/objects.ts';
 import { packageVersion } from '../internal/package-version.ts';
+import { onBun } from '../internal/runtime.ts';
 import { projectRelativePath } from '../internal/source.ts';
 import type { VcsInfo } from '../internal/vcs.ts';
 import type { SkipInfo } from '../collect/select.ts';
-import { someSkippedAfterFailure } from '../run/records.ts';
+import { expectedFailureOf, memberRan, someSkippedAfterFailure } from '../run/records.ts';
 import type {
   ArtifactRecord,
   AttemptRecord,
@@ -115,7 +116,7 @@ export type ReportChanges =
       files?: undefined;
     };
 
-/** Why a filter left nothing out without answering: it threw or answered with something other than `{ exclude, note? }`, or ran past 5 minutes. */
+/** Why a filter left nothing out without answering: it threw or answered with something other than `{ exclude, relevance?, note? }`, or ran past 5 minutes. */
 export type FilterOutcome = 'failed' | 'timed-out';
 
 /** One test filter the run applied, in order. */
@@ -131,7 +132,7 @@ export interface ReportFilter {
   /**
    * Set when the filter left nothing out because the call did not answer:
    * `failed` when it threw or answered with something other than
-   * `{ exclude, note? }`, `timed-out` when it ran past 5 minutes and the run
+   * `{ exclude, relevance?, note? }`, `timed-out` when it ran past 5 minutes and the run
    * stopped waiting. Absent when it answered.
    */
   outcome?: FilterOutcome | undefined;
@@ -265,6 +266,13 @@ export interface ReportAttempt extends ReportAttemptBase {
   failure?: FailureEvidence | undefined;
   /** Why the body skipped itself; present when `status` is `skipped`, and on an attempt that failed after skipping. */
   skip?: SkipInfo | undefined;
+  /**
+   * Present when the attempt was marked `test.fail`: the reason, and the
+   * failure that made a `passed` attempt pass. A marked attempt that passed
+   * is `failed` with `UNEXPECTED_PASS`; one that failed with an error the
+   * mark does not cover keeps that error and has no `error` here.
+   */
+  expectedFailure?: { reason: string; error?: ReportError } | undefined;
 }
 
 export interface ReportSerialMember {
@@ -350,6 +358,8 @@ export interface ReportResult {
   serialGroupId?: string | undefined;
   status: ResultRecord['status'];
   skip?: SkipInfo | undefined;
+  /** Why the test was expected to fail, when its last attempt was marked `test.fail`; the attempt holds the failure. */
+  expectedFailure?: { reason: string } | undefined;
   attempts: readonly ReportAttempt[];
 }
 
@@ -532,6 +542,14 @@ function serializeAttempt(attempt: AttemptRecord): ReportAttempt {
     ...serializeAttemptBase(attempt),
     ...(attempt.failure === undefined ? {} : { failure: attempt.failure }),
     ...(attempt.skip === undefined ? {} : { skip: attempt.skip }),
+    ...(attempt.expectedFailure === undefined
+      ? {}
+      : {
+          expectedFailure: {
+            reason: attempt.expectedFailure.reason,
+            ...(attempt.expectedFailure.error === undefined ? {} : { error: serializeErrorRecord(attempt.expectedFailure.error) }),
+          },
+        }),
     steps: attempt.steps.map(serializeStep),
     ...(attempt.appLog === undefined ? {} : { appLog: attempt.appLog }),
   };
@@ -601,8 +619,15 @@ function serializeResult(config: ResolvedConfig | undefined, result: ResultRecor
     serialGroupId: result.serialGroupId,
     status: result.status,
     skip: result.status === 'skipped' ? result.skip : undefined,
+    ...expectedFailureField(result),
     attempts: result.serialGroupId !== undefined ? [] : result.attempts.map(serializeAttempt),
   };
+}
+
+/** The result's `expectedFailure` field, from its last attempt's mark. */
+function expectedFailureField(result: ResultRecord): Pick<ReportResult, 'expectedFailure'> {
+  const mark = expectedFailureOf(result);
+  return mark === undefined ? {} : { expectedFailure: { reason: mark.reason } };
 }
 
 function serializeTarget(
@@ -624,8 +649,17 @@ function serializeTarget(
   };
 }
 
-/** Computes report-1 summary counts from results; the status counts are over the selected ones. */
-function computeSummary(results: readonly ResultRecord[]): ReportSummary {
+/**
+ * Computes report-1 summary counts from results; the status counts are over
+ * the selected ones. A result executed when it made an attempt; a serial
+ * member's attempts are its records in its group's attempts.
+ */
+function computeSummary(results: readonly ResultRecord[], serialGroups: readonly SerialGroupRecord[]): ReportSummary {
+  const ranMembers = new Set(
+    serialGroups.flatMap((group) =>
+      group.attempts.flatMap((attempt) => attempt.members.filter(memberRan).map((member) => `${group.id}\u0000${member.testId}`)),
+    ),
+  );
   let selected = 0;
   let executed = 0;
   let passed = 0;
@@ -634,7 +668,7 @@ function computeSummary(results: readonly ResultRecord[]): ReportSummary {
   let flaky = 0;
   let skipped = 0;
   for (const result of results) {
-    if (result.attempts.length > 0 || (result.serialGroupId !== undefined && result.status !== 'skipped')) {
+    if (result.attempts.length > 0 || (result.serialGroupId !== undefined && ranMembers.has(`${result.serialGroupId}\u0000${result.test.id}`))) {
       executed += 1;
     }
     if (!result.selected) continue;
@@ -805,7 +839,7 @@ export function buildReport(options: BuildReportOptions): Report1Document {
     .toSorted((a, b) => compareSerialGroups(a, b, targetIndex))
     .map(serializeSerialGroup);
 
-  const summary = computeSummary(options.results);
+  const summary = computeSummary(options.results, options.serialGroups);
 
   return {
     schemaVersion: 'report-1',
@@ -830,7 +864,7 @@ export function buildReport(options: BuildReportOptions): Report1Document {
         trustNoticeShown: false,
         os: `${os.platform()} ${os.release()}`,
         arch: os.arch(),
-        runtime: `node ${process.version}`,
+        runtime: onBun ? `bun v${process.versions['bun']}` : `node ${process.version}`,
       },
       ...(options.vcs === undefined ? {} : { vcs: options.vcs }),
       targets,

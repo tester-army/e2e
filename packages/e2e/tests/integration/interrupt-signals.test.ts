@@ -7,12 +7,13 @@
  */
 
 import { spawn, type ChildProcess } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import type { Report1Document } from '../../src/report/build.ts';
 import { startFixtureApp } from '../helpers/fixture-app.ts';
+import { freePort } from '../helpers/free-port.ts';
 import { createProject } from '../helpers/run-project.ts';
 
 const PACKAGE_ROOT = path.resolve(fileURLToPath(import.meta.url), '..', '..', '..');
@@ -29,8 +30,12 @@ const LOG_HELPER =
  * A fixture config around the file-logging fake engine; `app` is the
  * target's app source, empty by default.
  */
-function config(app = '', disposal = `log(context.reuseSignal === undefined || context.reuseSignal.aborted ? 'dispose.final' : 'dispose.reusable');
-      await new Promise((resolve) => setImmediate(resolve));`): string {
+function config(
+  app = '',
+  disposal = `log(context.reuseSignal === undefined || context.reuseSignal.aborted ? 'dispose.final' : 'dispose.reusable');
+      await new Promise((resolve) => setImmediate(resolve));`,
+  endAttempt = '',
+): string {
   return `import { appendFileSync } from 'node:fs';
 import type { E2EConfig } from 'e2e';
 import { defineEngine } from 'e2e/engine';
@@ -48,7 +53,7 @@ export default {
     async finish() { log('finish'); },
     async init() { log('init'); },
     async startAttempt() { log('startAttempt'); },
-    async endAttempt() { log('endAttempt'); },
+    async endAttempt() { log('endAttempt'); ${endAttempt} },
     async dispose(context) { log('dispose'); ${disposal}
       log('dispose.end'); },
     async observe() { return { location: 'app://fake/Home', root: node, viewport: { width: 1280, height: 720 } }; },
@@ -280,6 +285,62 @@ describe('interrupt signals against the CLI', () => {
         expect(run.output()).toContain('interrupted: stopping the running test');
         expect(alive(run.workerPid)).toBe(false);
       }),
+    60_000,
+  );
+
+  it(
+    'Ctrl-C still exits 130 when the managed app exits during graceful attempt teardown',
+    async () => {
+      const port = await freePort();
+      await withRunningCli({
+        files: {
+          'e2e.config.ts': config(`app: { url: 'http://127.0.0.1:${port}', command: {
+    executable: process.execPath,
+    args: ['service.cjs', '${port}'],
+    env: { SIGNAL_LOG: process.env.SIGNAL_LOG! },
+  } },`, undefined, `
+      const { existsSync, writeFileSync } = await import('node:fs');
+      writeFileSync('exit-now', 'requested');
+      log('endAttempt.waiting');
+      while (!existsSync('endAttempt.release')) await new Promise((resolve) => setTimeout(resolve, 10));`),
+          'service.cjs': `const { appendFileSync, existsSync } = require('node:fs');
+${LOG_HELPER}
+require('node:http').createServer((_request, response) => response.end('ready'))
+  .listen(Number(process.argv[2]), '127.0.0.1', () => log('service.ready'));
+setInterval(() => {
+  if (!existsSync('exit-now')) return;
+  log('service.exit');
+  process.exit(23);
+}, 10);
+`,
+          'tests/sleep.e2e.ts': SLEEPING_TEST,
+        },
+        until: 'test.start',
+      }, async (run) => {
+        const [servicePid] = run.pids('service.ready');
+        if (servicePid === undefined) throw new Error('the service never became ready');
+        try {
+          expect(alive(servicePid)).toBe(true);
+
+          run.child.kill('SIGINT');
+          await waitFor(() => run.events().includes('endAttempt.waiting'), 10_000, 'attempt teardown to request the app exit');
+          await waitFor(() => !alive(servicePid), 10_000, 'the managed app to exit during attempt teardown');
+          writeFileSync(path.join(run.projectDir, 'endAttempt.release'), 'released');
+
+          expect(await run.exit, run.output()).toBe(130);
+          const report = JSON.parse(readFileSync(path.join(run.projectDir, '.e2e', 'report.json'), 'utf8')) as Report1Document;
+          expect(report.run.errors, run.output()).toEqual([]);
+          expect(report.run.results.map((result) => result.status)).toEqual(['interrupted']);
+          expect(run.output()).not.toContain('APP_UNREACHABLE');
+          expect(run.events()).toContain('service.exit');
+          expect(run.events()).toContain('dispose.end');
+        } finally {
+          try {
+            process.kill(-servicePid, 'SIGKILL');
+          } catch {}
+        }
+      });
+    },
     60_000,
   );
 

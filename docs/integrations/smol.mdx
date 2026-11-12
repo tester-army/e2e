@@ -2,9 +2,8 @@
 title: smol machines browsers
 sidebarTitle: smol machines
 description: Run each web test attempt in its own branch of a warm Chromium microVM on your computer with the smol() browser provider from @e2e-dev/smol.
-icon: "/images/icons/smol.png"
-"og:image": "https://e2e.tester.army/docs/images/og/integrations/smol.png?v=93b61e0399"
-"twitter:image": "https://e2e.tester.army/docs/images/og/integrations/smol.png?v=93b61e0399"
+"og:image": "https://e2e.com/docs/images/og/integrations/smol.png?v=93b61e0399"
+"twitter:image": "https://e2e.com/docs/images/og/integrations/smol.png?v=93b61e0399"
 ---
 
 `smol()` from `@e2e-dev/smol` is a
@@ -85,21 +84,21 @@ where attempts run. Disconnect before `prepare` resolves, and leave the
 browser running.
 
 <Accordion title="Sign in with Playwright">
-Install the `playwright-core` version that `@e2e-dev/web` pins, 1.64.1
+Install the `playwright-core` version that `@e2e-dev/web` pins, 1.65.0
 today, and match it when you upgrade. pnpm doesn't let your config import
 a dependency's dependency.
 
 <CodeGroup>
 ```bash npm
-npm install --save-dev playwright-core@1.64.1
+npm install --save-dev playwright-core@1.65.0
 ```
 
 ```bash pnpm
-pnpm add -D playwright-core@1.64.1
+pnpm add -D playwright-core@1.65.0
 ```
 
 ```bash bun
-bun add -d playwright-core@1.64.1
+bun add -d playwright-core@1.65.0
 ```
 </CodeGroup>
 

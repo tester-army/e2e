@@ -15,7 +15,7 @@
           "query": [
             {
               "key": "prompt",
-              "value": "Read this documentation page, so I can ask questions about it:\n\nhttps://e2e.tester.army/docs$path.md"
+              "value": "Read this documentation page, so I can ask questions about it:\n\nhttps://e2e.com/docs$path.md"
             }
           ]
         }
@@ -30,7 +30,7 @@
           "query": [
             {
               "key": "q",
-              "value": "Read this documentation page, so I can ask questions about it:\n\nhttps://e2e.tester.army/docs$path.md"
+              "value": "Read this documentation page, so I can ask questions about it:\n\nhttps://e2e.com/docs$path.md"
             }
           ]
         }
@@ -44,7 +44,7 @@
           "query": [
             {
               "key": "text",
-              "value": "Read this documentation page, so I can ask questions about it:\n\nhttps://e2e.tester.army/docs$path.md"
+              "value": "Read this documentation page, so I can ask questions about it:\n\nhttps://e2e.com/docs$path.md"
             }
           ]
         }
@@ -63,6 +63,7 @@
               "index",
               "quickstart",
               "core-concepts",
+              "agentic-vs-deterministic",
               "coding-agents",
               "mcp-server",
               "ci"
@@ -99,9 +100,11 @@
             "group": "Run in CI",
             "pages": [
               "ci/github-actions",
+              "ci/gitlab",
               "ci/eas-workflows",
               "ci/bitrise",
               "ci/codemagic",
+              "ci/norrix",
               "github"
             ]
           },
@@ -115,7 +118,8 @@
               "integrations/smol",
               "integrations/limrun",
               "integrations/testmu",
-              "integrations/browserstack"
+              "integrations/browserstack",
+              "integrations/e2b"
             ]
           },
           {
@@ -154,6 +158,7 @@
               "migrate/playwright",
               "migrate/cypress",
               "migrate/selenium",
+              "migrate/appium",
               "migrate/detox",
               "migrate/maestro",
               "migrate/testerarmy"

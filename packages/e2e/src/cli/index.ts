@@ -1,4 +1,9 @@
-/** e2e CLI. */
+/**
+ * e2e CLI. A command that needs a heavy dependency, such as the MCP server,
+ * the prompt library, or the schema library, imports its module when it
+ * runs, so `e2e run`, `e2e list`, and `--help` load none of them. What a flag
+ * needs to be defined, such as its bounds or its choices, lives in a module of its own.
+ */
 
 import { existsSync } from 'node:fs';
 import { dirname, isAbsolute, normalize, resolve as resolvePath, sep } from 'node:path';
@@ -12,7 +17,7 @@ import type { Shard, TagMode } from '../collect/select.ts';
 import { listSelection, run, type ListedPair, type RunOptions, type RunOutcome } from '../run/runner.ts';
 import { claimRunnerOutput } from './run-output.ts';
 import { writeTerminal } from '../run/process-output.ts';
-import { explore, STEP_BOUNDS, TIMEOUT_BOUNDS } from '../explore/index.ts';
+import { STEP_BOUNDS, TIMEOUT_BOUNDS } from '../explore/bounds.ts';
 import { BUILTIN_REPORTERS, isBuiltinReporter } from '../report/builtin.ts';
 import { bounded, failureLine } from '../report/format.ts';
 import type { BuiltinReporter, RecordingMode } from '../types.ts';
@@ -24,21 +29,22 @@ import { initCompletedEvent, runCompletedEvent, upgradeCompletedEvent, USAGE_ERR
 import { Telemetry } from '../telemetry/telemetry.ts';
 import { CACHE_DIR_DESCRIPTION, registerCacheCommand } from './cache.ts';
 import { docsLine, examples, helpSection, pc } from './help.ts';
+import { EXIT_CODES } from './exit-codes.ts';
+import type { DoctorReport } from './doctor.ts';
 import { ERROR_CODE_LIMIT, feedback, FEEDBACK_LIMITS, FEEDBACK_TYPES, type FeedbackReport } from './feedback.ts';
 import { guide } from './guide.ts';
-import { init } from './init.ts';
 import { addInitOptions, checkInitFlags, type InitFlagValues } from './init/flags.ts';
-import { mcp } from './mcp.ts';
 import { parseList, parseNames } from './parse-names.ts';
-import { SESSION_BOUNDS } from '../mcp/session.ts';
-import { PROVIDER_IDS } from '../oauth/providers.ts';
-import { runLogin, runLogout, runModels, type LoginFlags } from '../oauth/cli.ts';
+import { SESSION_BOUNDS } from '../mcp/bounds.ts';
+import { PROVIDER_IDS } from '../oauth/provider-ids.ts';
+import type { LoginFlags } from '../oauth/cli.ts';
+import { Keyboard } from './keyboard.ts';
 import { SignalLadder } from './signals.ts';
+import { StepGate, stepKeyOf } from './step.ts';
 import { skillTopics } from './skill.ts';
-import { watchSession } from './watch.ts';
 import { UpdateCheck } from './update-check.ts';
 import { telemetry as telemetryCommand, TELEMETRY_ACTIONS, type TelemetryAction } from './telemetry.ts';
-import { parseUpgradeTarget, upgrade, type UpgradeTarget } from './upgrade.ts';
+import { parseUpgradeTarget, type UpgradeTarget } from './upgrade-target.ts';
 import { wordmarkBanner } from './wordmark.ts';
 
 /** An integer of at least one, for `--max-failures` and `--repeat-each`. */
@@ -258,16 +264,6 @@ function formatListedPair(pair: ListedPair): string {
   return pair.disposition === 'skip' ? `${line} (skipped: ${pair.reason ?? 'skipped'})` : line;
 }
 
-/** The exit-code table of the CLI reference; the runner decides which one applies. */
-const EXIT_CODES: readonly (readonly [code: string, meaning: string])[] = [
-  ['0', 'every selected test passed, was flaky, or was skipped'],
-  ['1', 'a test failed or timed out'],
-  ['2', 'CLI, config, or agent policy error'],
-  ['3', 'engine, app process, model provider, or artifact failure'],
-  ['4', 'internal runner error'],
-  ['130', 'interrupted by Ctrl-C or a CI signal'],
-];
-
 /** `explore` exits as `run` does; only what a pass and a failure mean differs. */
 const EXPLORE_EXIT_MEANINGS: Readonly<Record<string, string>> = {
   '0': 'the exploration ran and reported no issue (warnings do not count)',
@@ -347,6 +343,39 @@ function rejectWatchIn(command: Command, reporters: readonly Reporter[] | undefi
 }
 
 /**
+ * Where `--step` cannot work: it reads keys, so it needs a terminal on both
+ * ends and no CI; its prompt is one at a time, so one worker; and it cannot
+ * share the keyboard with `--watch` or stdout with the json reporter.
+ */
+function rejectStepIn(command: Command, options: { watch?: boolean; workers?: number; reporter?: readonly Reporter[] }): void {
+  const refuse = (why: string): never => command.error(`error: --step ${why}`, { exitCode: 2 });
+  if (isCiMode(process.env)) refuse('waits for a key at every step, so it is refused in CI (CI is set)');
+  if (process.stdin.isTTY !== true || process.stdout.isTTY !== true) refuse('reads keys from the terminal, so stdin and stdout must both be one');
+  if (options.watch === true) refuse('cannot be combined with --watch: both read the keyboard');
+  if (options.workers !== undefined && options.workers > 1) refuse('runs one test at a time, so it cannot be combined with --workers above 1');
+  if (options.reporter?.includes('json') === true) refuse('cannot be combined with --reporter json: the prompt would land in its stdout document');
+}
+
+/**
+ * One run stepped through from the keyboard: raw-mode keys for the run's
+ * whole length, so Ctrl-C (a keypress then, not a signal) still climbs the
+ * ladder while a step runs, and `q` is the ladder's first rung.
+ */
+async function stepped(options: RunOptions, signals: SignalLadder): Promise<RunOutcome> {
+  const gate = new StepGate(() => signals.escalate());
+  const keyboard = new Keyboard(process.stdin, stepKeyOf);
+  keyboard.listen((key) => {
+    if (key === 'suspend') keyboard.suspend();
+    else gate.press(key);
+  });
+  try {
+    return await run({ ...options, beforeStep: gate.beforeStep });
+  } finally {
+    keyboard.close();
+  }
+}
+
+/**
  * Runs the watch loop under the Ctrl-C ladder, armed once for every run of
  * the session; each run is recorded for telemetry as it ends, and the exit
  * code is the last run's. What throws before a run starts prints as a
@@ -403,6 +432,7 @@ async function initBeforeExplore(telemetry: Telemetry, command: Command): Promis
   }
   // The invocation as typed, goal and flags included, for the line that tells the user what to run next.
   const continueWith = ['e2e', ...(command.parent?.args ?? [command.name()])];
+  const { init } = await import('./init.ts');
   const { exitCode, ready, ...outcome } = await init(cwd, { interactive: true, continueWith });
   telemetry.record(initCompletedEvent(outcome));
   if (!ready) process.exitCode = exitCode;
@@ -455,6 +485,7 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
           'e2e run --tag smoke --reporter list,junit',
           "e2e explore 'Explore checkout like a first-time buyer and find bugs'",
           'e2e list --tag smoke',
+          'e2e doctor',
           'e2e cache ls',
           'e2e guide',
           'e2e upgrade',
@@ -507,8 +538,10 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
       ].join('\n'),
     )
     .action(async (directory: string | undefined, options: InitFlagValues, command: Command) => {
+      const flags = checkInitFlags(options, command);
+      const { init } = await import('./init.ts');
       const { exitCode, ...outcome } = await init(resolvePath(process.cwd(), directory ?? '.'), {
-        ...checkInitFlags(options, command),
+        ...flags,
         ...(directory === undefined ? {} : { directory }),
         // Prompts need a terminal on both ends; a pipe or a CI log has neither.
         interactive: process.stdin.isTTY === true && process.stdout.isTTY === true,
@@ -533,6 +566,7 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
       ['', examples(['e2e login openai', 'e2e login github-copilot --from-gh', 'e2e login opencode-console', 'e2e login spacexai', 'e2e login']), '', docsLine('/subscriptions')].join('\n'),
     )
     .action(async (provider: string | undefined, options: LoginFlags) => {
+      const { runLogin } = await import('../oauth/cli.ts');
       process.exitCode = await runLogin(provider, options);
     });
 
@@ -543,6 +577,7 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
     .addArgument(new Argument('[provider]', 'openai, github-copilot, opencode-console, or spacexai; omitted, a picker').choices(PROVIDER_IDS))
     .addHelpText('after', ['', examples(['e2e logout', 'e2e logout openai']), '', docsLine('/subscriptions')].join('\n'))
     .action(async (provider: string | undefined) => {
+      const { runLogout } = await import('../oauth/cli.ts');
       process.exitCode = await runLogout(provider);
     });
 
@@ -555,6 +590,7 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
     .addArgument(new Argument('[provider]', 'openai, github-copilot, opencode-console, or spacexai; omitted, every stored login').choices(PROVIDER_IDS))
     .addHelpText('after', ['', examples(['e2e models', 'e2e models openai']), '', docsLine('/subscriptions#pick-a-model')].join('\n'))
     .action(async (provider: string | undefined) => {
+      const { runModels } = await import('../oauth/cli.ts');
       process.exitCode = await runModels(provider);
     });
 
@@ -584,7 +620,7 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
     .addOption(new Option('--headless').hideHelp())
     .option(
       '--max-sessions <n>',
-      `sessions open at once, each with its own browser or device, ${SESSION_BOUNDS.min} through ${SESSION_BOUNDS.max} (default: ${SESSION_BOUNDS.default})`,
+      `sessions open at once, each with its own browser or device, ${SESSION_BOUNDS.min} through ${SESSION_BOUNDS.max} (default: ${SESSION_BOUNDS.default}; 1 on Bun)`,
       parseBoundedInt(SESSION_BOUNDS),
     )
     .addHelpText(
@@ -597,6 +633,7 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
       ].join('\n'),
     )
     .action(async (options: { config?: string; target?: string; headed?: boolean; maxSessions?: number }) => {
+      const { mcp } = await import('./mcp.ts');
       process.exitCode = await mcp(version, options, telemetry);
     });
 
@@ -629,10 +666,12 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
     .option('--strict-cache', 'fail a step whose recording no longer replays (REPLAY_STALE) instead of handing it to the agent; never writes the cache')
     .option('-u, --update-snapshots', 'write the stored screenshots toHaveScreenshot finds missing or different, and pass')
     .option('-w, --watch', 'run, then run again whenever a test or source file or the config changes or a key asks: a (all), r (current), f (failed), u, p, t, q; not in CI')
+    .option('--step', 'run the first step, then hold each later one until a key: enter runs it, n runs to the next test, a runs all, h lists the keys, q stops; one worker, a terminal, not in CI')
     .optionsGroup('Output:')
     .option('--reporter <ids>', `comma-separated reporters: ${BUILTIN_REPORTERS.join(', ')}`, parseReporters)
     .option('--output <dir>', 'results directory: report, artifacts, sessions (default: output in the config, else .e2e)')
     .option('--cache-dir <dir>', CACHE_DIR_DESCRIPTION)
+    .option('--timings <file>', 'the timings history file a run updates when it ends, and with more than one worker starts files longest first by (default: <output>/timings.json)')
     .addOption(new Option('--artifacts <dir>').hideHelp().argParser(removedArtifactsFlag))
     .option('--debug', 'print phase timings and the agent step table to stderr')
     .option('--ai-trace', 'record every model call to <output>/ai-trace.json (unbox-ai)')
@@ -645,6 +684,7 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
         examples([
           'e2e run',
           'e2e run tests/signup.e2e.ts --headed',
+          'e2e run tests/checkout.e2e.ts --step --headed',
           'e2e run --watch',
           "e2e run 'tests/**/*.smoke.e2e.ts' --target web --tag smoke",
           'e2e run --tag smoke,billing --tag-mode all',
@@ -690,11 +730,13 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
           reporter?: Reporter[];
           output?: string;
           cacheDir?: string;
+          timings?: string;
           /** Commander negation: `--no-cache` parses as `cache: false`. */
           cache?: boolean;
           strictCache?: boolean;
           updateSnapshots?: boolean;
           watch?: boolean;
+          step?: boolean;
           debug?: boolean;
           aiTrace?: boolean;
           trace?: RecordingMode | true;
@@ -711,7 +753,8 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
           headed: options.headed,
           agent: options.agent,
           retries: options.retries,
-          workers: options.workers,
+          // A stepped run is one test at a time, so there is one prompt at a time.
+          workers: options.step === true ? 1 : options.workers,
           actionTimeout: options.actionTimeout,
           assertionTimeout: options.assertionTimeout,
           maxFailures: options.maxFailures,
@@ -720,6 +763,7 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
           reporters: options.reporter,
           output: options.output,
           cacheDir: options.cacheDir,
+          timings: options.timings,
           noCache: options.cache === false,
           strictCache: options.strictCache,
           updateSnapshots: options.updateSnapshots,
@@ -729,11 +773,13 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
           video: recordingOption(options.video),
         };
         if (options.watch === true) rejectWatchIn(command, options.reporter);
+        if (options.step === true) rejectStepIn(command, options);
         const output = claimRunnerOutput();
         try {
           if (options.watch === true) {
-            await watchToOutcome(telemetry, command, (signals, record) =>
-              watchSession({
+            await watchToOutcome(telemetry, command, async (signals, record) => {
+              const { watchSession } = await import('./watch.ts');
+              return watchSession({
                 base: runOptions,
                 cwd: process.cwd(),
                 signals,
@@ -749,13 +795,14 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
                 writeError: (text) => void process.stderr.write(text),
                 pc: picocolors.createColors(process.stdout.isTTY === true),
                 clear: process.stdout.isTTY === true,
-              }),
-            );
+              });
+            });
             return;
           }
-          await runToOutcome(telemetry, command, (signals) =>
-            run({ ...runOptions, interruptSignal: signals.interruptSignal, forceSignal: signals.forceSignal, processOutput: output }),
-          );
+          await runToOutcome(telemetry, command, (signals) => {
+            const base = { ...runOptions, interruptSignal: signals.interruptSignal, forceSignal: signals.forceSignal, processOutput: output };
+            return options.step === true ? stepped(base, signals) : run(base);
+          });
         } finally {
           output.end();
         }
@@ -834,8 +881,9 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
         command: Command,
       ) => {
         if (options.config === undefined && !(await initBeforeExplore(telemetry, command))) return;
-        await runToOutcome(telemetry, command, (signals) =>
-          explore({
+        await runToOutcome(telemetry, command, async (signals) => {
+          const { explore } = await import('../explore/index.ts');
+          return explore({
             goal,
             configPath: options.config,
             target: options.target,
@@ -853,8 +901,8 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
             interruptSignal: signals.interruptSignal,
             forceSignal: signals.forceSignal,
             notice: (message) => process.stderr.write(`e2e explore: ${message}\n`),
-          }),
-        );
+          });
+        });
       },
     );
 
@@ -932,6 +980,52 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
       },
     );
 
+  program
+    .command('doctor')
+    .summary('check that e2e run can start here, without starting anything')
+    .description(
+      'Check the runtime, load and resolve the config, ask each target\'s engine what it needs on this machine, and name the model each agent resolved to. Starts no app and no worker, only the server of an engine that runs in its own process, and calls no model unless --check-model is given. Ctrl-C stops the checks and reports what ran. A model on an e2e login passes when the login is stored; any other model reads its own credential, which doctor reports as unknown. Exits 0 when no check failed, 2 otherwise, and 130 when interrupted.',
+    )
+    .option('--config <path>', 'config file (default: the nearest e2e.config.ts, .mts, .js, or .mjs)')
+    .option('--target <ids>', 'target names, comma-separated or repeated (default: all targets)', parseNames('target'))
+    .option('--headed', 'check for what a headed run needs, when the engine tells the two apart')
+    .option('--check-model', "call each agent's model once to prove it answers; costs one small request per model")
+    .option('--json', 'print the doctor-1 report as JSON instead of one line per check')
+    .addHelpText(
+      'after',
+      ['', examples(['e2e doctor', 'e2e doctor --json', 'e2e doctor --check-model', 'e2e doctor --target web --headed']), '', docsLine('/reference/cli#e2e-doctor')].join('\n'),
+    )
+    .action(async (options: { config?: string; target?: string[]; headed?: boolean; checkModel?: boolean; json?: boolean }) => {
+      const { doctor, formatDoctorReport } = await import('./doctor.ts');
+      const output = claimRunnerOutput();
+      if (options.json === true) output.keepStdoutForReport();
+      // Ctrl-C stops the checks, which then report: an engine server is
+      // shut down before the process exits instead of left running.
+      const signals = new SignalLadder();
+      const disarm = signals.arm();
+      let report: DoctorReport;
+      try {
+        report = await doctor({
+          version,
+          cwd: process.cwd(),
+          env: process.env,
+          config: options.config,
+          targets: options.target,
+          headed: options.headed === true,
+          checkModel: options.checkModel === true,
+          signal: signals.interruptSignal,
+          output,
+          notice: (targetName, line) => process.stderr.write(`${bounded(`[${targetName}] ${line}`)}\n`),
+        });
+      } finally {
+        disarm();
+      }
+      output.end();
+      if (options.json === true) writeTerminal('stdout', `${JSON.stringify(report, null, 2)}\n`);
+      else process.stdout.write(formatDoctorReport(report));
+      process.exitCode = signals.interruptSignal.aborted ? 130 : report.ok ? 0 : 2;
+    });
+
   registerCacheCommand(program);
 
   program
@@ -953,6 +1047,7 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
       ].join('\n'),
     )
     .action(async (target: UpgradeTarget | undefined, options: { dryRun?: boolean }) => {
+      const { upgrade } = await import('./upgrade.ts');
       const { exitCode, ...outcome } = await upgrade({
         target: target ?? { kind: 'tag', tag: 'latest' },
         ...(options.dryRun === undefined ? {} : { dryRun: options.dryRun }),

@@ -45,6 +45,12 @@ name: mobile
 # plans: a suite that cannot run is left out instead of booting a device for
 # nothing.
 on:
+  workflow_call:
+    inputs:
+      agent-device-version:
+        description: Exact driver version for compatibility runs
+        type: string
+        default: ''
   pull_request:
   merge_group:
   push:
@@ -69,7 +75,7 @@ permissions:
   actions: write
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-mobile-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -91,14 +97,14 @@ jobs:
       # before it, which the action fetches itself.
       - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
         id: filter
-        if: ${{ github.event_name != 'workflow_dispatch' }}
+        if: ${{ github.event_name != 'workflow_dispatch' && inputs.agent-device-version == '' }}
         with:
           filters: .github/filters.yml
           predicate-quantifier: some-with-excludes
       - name: Plan
         id: plan
         env:
-          EVENT: ${{ github.event_name }}
+          EVENT: ${{ inputs.agent-device-version != '' && 'workflow_dispatch' || github.event_name }}
           MOBILE: ${{ steps.filter.outputs.mobile }}
           # Dependabot's pull requests come from this repository but run with
           # Dependabot's secrets, which hold no model key: the agentic suite
@@ -142,8 +148,9 @@ jobs:
         with:
           node-version: 26
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
-        working-directory: .
+      - uses: ./.github/actions/workspace-install
+        with:
+          agent-device-version: ${{ inputs.agent-device-version }}
       - name: Build
         run: pnpm run build
         working-directory: .
@@ -164,7 +171,7 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.agent-device/apple-runner/derived
-          key: agent-device-runner-${{ runner.os }}-${{ hashFiles('packages/mobile/package.json') }}
+          key: agent-device-runner-${{ inputs.agent-device-version }}-${{ runner.os }}-${{ hashFiles('packages/mobile/package.json') }}
       # `bootstatus -b` boots a device when it is not up yet and waits for it.
       # Two simulators, the picked one and a clone of it, so the run drives
       # two workers (e2e.config.ts reads the comma-separated UDIDs). The
@@ -210,7 +217,7 @@ jobs:
       - name: Run the suite
         env:
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
-          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ inputs.agent-device-version == '' && github.token || '' }}
           E2E_MOBILE_BENCHMARK_IOS_APP: ${{ steps.app.outputs.app-path }}
           E2E_MOBILE_BENCHMARK_COMMENT: ios${{ matrix.suite == 'agentic' && ' agent' || '' }}
           E2E_RUN: node node_modules/e2e/dist/cli/bin.js run --target ios-simulator ${{ matrix.suite == 'agentic' && '--config e2e.agent.config.ts --output .e2e/agent' || '' }}
@@ -272,7 +279,7 @@ jobs:
         with:
           node-version: 26
           cache: pnpm
-      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
         with:
           distribution: temurin
           java-version: 17
@@ -281,7 +288,9 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/workspace-install
+        with:
+          agent-device-version: ${{ inputs.agent-device-version }}
       - name: Build
         run: pnpm run build
       - name: Expo app
@@ -307,7 +316,7 @@ jobs:
           script: $E2E_RUN || $E2E_RUN --last-failed
         env:
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
-          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ inputs.agent-device-version == '' && github.token || '' }}
           E2E_MOBILE_BENCHMARK_ANDROID_APP: ${{ steps.app.outputs.app-path }}
           E2E_MOBILE_BENCHMARK_COMMENT: android${{ matrix.suite == 'agentic' && ' agent' || '' }}
           E2E_RUN: node node_modules/e2e/dist/cli/bin.js run --target android-emulator ${{ matrix.suite == 'agentic' && '--config e2e.agent.config.ts --output .e2e/agent --strict-cache' || '' }}
@@ -358,12 +367,14 @@ jobs:
         with:
           node-version: 26
           cache: pnpm
-      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
         if: ${{ matrix.platform == 'android' }}
         with:
           distribution: temurin
           java-version: 17
-      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/workspace-install
+        with:
+          agent-device-version: ${{ inputs.agent-device-version }}
       - name: Expo app
         uses: ./.github/actions/expo-app
         with:

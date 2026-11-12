@@ -11,13 +11,14 @@
  */
 
 import { isKeyModifier, KEY_MODIFIERS, type KeyModifier } from '../engine/contract.ts';
-import type { LocatorAction, LocatorActionKind, SemanticNode, ViewportPoint } from '../engine/surface.ts';
+import type { LocatorAction, LocatorActionKind, SemanticNode, ViewportPoint, ViewportSize } from '../engine/surface.ts';
 import { asEngineError, TestError } from '../internal/errors.ts';
 import { requireKey } from '../internal/keys.ts';
-import { clampToViewport, requireFinitePoint, viewportShare } from '../internal/geometry.ts';
+import { sleep } from '../internal/time.ts';
+import { clampToViewport, requireFinitePoint, requireViewportSize, viewportShare } from '../internal/geometry.ts';
 import { resolveNavigationUrl } from '../internal/urls.ts';
 import type { ActionEvent, ActionHook, BeforeActionHook, ClickOptions, JsonValue, Momentum, ScrollDirection, Secret } from '../types.ts';
-import { PROJECT_TOOL_EVENT_PREFIX, type GrammarActionName } from './action-names.ts';
+import { PROJECT_TOOL_EVENT_PREFIX, READ_ONLY_GRAMMAR, type GrammarActionName } from './action-names.ts';
 import { actionEvent, containerKey, describeAction, type PlacedPoint, type Placement, type RecordableAction } from './actions.ts';
 import { describePosition } from '../cache/relocate.ts';
 import { appNavigation } from '../cache/route.ts';
@@ -38,13 +39,16 @@ import { resolveScrollTarget } from './scroll-target.ts';
 import type { OperationQueue } from './operation-queue.ts';
 import { instrumentPhase, recordPolicyEvent } from './phases.ts';
 import { describePointAction, describePointDrag, describePointHit, hitTest, POINT_VERBS, type PointProse } from './point-tap.ts';
-import { nodeReading, normalizeReading, readingShape } from './reading.ts';
-import type { AgentObservation, RedactedNode, SemanticAgentObservation } from './observation.ts';
+import { nodeReading, normalizeReading, pageLanded, pageMoved, readPage, type PageReading } from './reading.ts';
+import { SETTLE_POLL_MS, type AgentObservation, type RedactedNode, type SemanticAgentObservation } from './observation.ts';
 import { authorizeSecretFill } from './secrets.ts';
-import { SETTLE_AFTER } from './settle-policy.ts';
+import { HELD_STILL_MS, SETTLE_AFTER } from './settle-policy.ts';
 import type { StepAccounting } from './step-accounting.ts';
 import type { StepTraceSession } from './step-cache.ts';
 import { authorizeUploadPaths } from './upload-paths.ts';
+
+/** Actions available during assertions, shared by every dispatcher. */
+const ASSERTION_ACTIONS = new Set<string>(Object.values(READ_ONLY_GRAMMAR).flat());
 
 /**
  * How many times a targeted action re-finds its node after the engine reports
@@ -111,6 +115,8 @@ function requireClickModifiers(value: readonly KeyModifier[], verb: NodeActionNa
 }
 
 export interface ActionDispatcherOptions {
+  /** Whether this step may only inspect the app. */
+  readonly readOnly?: boolean;
   readonly instruction: string;
   readonly params: Readonly<Record<string, JsonValue>> | undefined;
   /** Secrets declared in the step's params, by stable name; the only ones `typeSecret` may fill. */
@@ -159,6 +165,7 @@ export class ActionDispatcher {
       scrollUntil: (text, direction, list) => this.scrollUntil(text, direction, list),
       navigate: (url) => this.navigate(url),
       back: () => this.back(),
+      resize: (size) => this.resize(size),
       tapAt: (point) => this.pointVerb('tapAt', point),
       hoverAt: (point) => this.pointVerb('hoverAt', point),
       dragAt: (from, to) => this.pointDrag(from, to),
@@ -356,6 +363,7 @@ export class ActionDispatcher {
       this.accounting.checkpoint();
       if (this.accounting.closed) throw new AgentError('CANCELLED', 'the step has ended');
       if (call.mutates) {
+        this.assertAllowed('tool');
         this.accounting.reserveAction();
         await this.before();
         this.options.trace()?.recordGap(call.name);
@@ -442,6 +450,16 @@ export class ActionDispatcher {
     return this.runAction('back', async () => {
       await this.session.app.back(this.accounting.operation());
       return { name: 'back' };
+    });
+  }
+
+  /** Sets the viewport to whole CSS pixels within `VIEWPORT_LIMITS`, for a layout at another width. */
+  private async resize(size: ViewportSize): Promise<void> {
+    const { width, height } = requireViewportSize(size);
+    await this.runAction('resize', async () => {
+      await this.session.app.resize({ width, height }, this.accounting.operation());
+      this.runtime.steps.attachViewport({ width, height, scale: 1 });
+      return { name: 'resize', size: { width, height } };
     });
   }
 
@@ -537,7 +555,7 @@ export class ActionDispatcher {
     await this.runAction('scrollUntil', async () => {
       let observation = this.feed.requireLatest();
       let paged: Pick<Extract<RecordableAction, { name: 'scrollUntil' }>, 'node' | 'spans'> = {};
-      let previous: string | undefined;
+      let previous: PageReading | undefined;
       let still = 0;
       let within = list;
       for (let screens = 0; ; screens += 1) {
@@ -557,22 +575,51 @@ export class ActionDispatcher {
           if (isInViewport(found.rect, observation.viewport)) return { name: 'scrollUntil', text, direction, screens, ...paged };
         }
         if (screens >= MAX_SCROLL_UNTIL_SCREENS) throw notFound(`within ${String(MAX_SCROLL_UNTIL_SCREENS)} screens ${direction}`);
-        const shape = observation.kind === 'semantic' ? readingShape(observation) : undefined;
-        still = shape !== undefined && shape === previous ? still + 1 : 0;
+        const reading = observation.kind === 'semantic' ? readPage(observation) : undefined;
+        still = reading !== undefined && previous !== undefined && !pageMoved(previous, reading) ? still + 1 : 0;
         if (still >= SCROLL_UNTIL_STILL_PAGES) throw notFound(`before the screen stopped moving ${direction}, after ${String(screens)} screens`);
         if (still >= SCROLL_UNTIL_WRONG_LIST_PAGES && within !== undefined) {
           within = undefined;
           still = 0;
         }
-        previous = shape;
+        previous = reading;
         const turned = await this.page(direction, within);
         paged = turned.paged;
         within = turned.within;
-        // A settled look: a browser scrolls on a later frame than the wheel
-        // event, and a raw read right after it sees the page as it was.
-        observation = await this.feed.look('held-still');
+        // A page at least a third (two lines at least) of whose lines are new,
+        // and no sparser, has landed and is read once. Anything else is read
+        // until it holds. A screen that still matches the one before the swipe
+        // is not done holding after two polls: a list that appends when it
+        // reaches the end does so after that, and those polls would call the
+        // list ended. It is re-read for the held-still beat.
+        observation = await this.readScrolledPage(previous);
       }
     });
+  }
+
+  /**
+   * The screen after one page of a scroll to text. A landed page, or one that
+   * changed and then held, is returned as the held-still look reads it. A page
+   * that has not moved at all is re-read until it does, or the beat runs out.
+   */
+  private async readScrolledPage(previous: PageReading | undefined): Promise<AgentObservation> {
+    const landed = (seen: AgentObservation): boolean =>
+      previous !== undefined && seen.kind === 'semantic' && pageLanded(previous, readPage(seen));
+    /** The screen still reads as the one from before the swipe, so a late append may still be coming. */
+    const stillThere = (seen: AgentObservation): boolean =>
+      previous !== undefined && seen.kind === 'semantic' && !pageMoved(previous, readPage(seen));
+    let observation = await this.feed.look('held-still', landed);
+    // The beat starts when that look returns. The look can itself spend a
+    // second on a shape that never settles, and that second is not the wait
+    // for a list that appends after the screen has held.
+    const beatEnds = Date.now() + HELD_STILL_MS;
+    while (stillThere(observation) && this.accounting.remainingMs() > SETTLE_POLL_MS) {
+      const pause = Math.min(SETTLE_POLL_MS, beatEnds - Date.now());
+      if (pause <= 0) break;
+      await sleep(pause, this.accounting.signal);
+      observation = await this.feed.look('raw');
+    }
+    return observation;
   }
 
   /**
@@ -656,7 +703,15 @@ export class ActionDispatcher {
     return this.queue.run(() => this.runActionNow(name, body));
   }
 
+  /** Assertions may move the viewport but cannot interact with application state. */
+  private assertAllowed(name: string): void {
+    if (this.options.readOnly === true && !ASSERTION_ACTIONS.has(name)) {
+      throw this.accounting.fatalize(new AgentError('POLICY_DENIED', `agent.assert cannot perform ${name}`));
+    }
+  }
+
   private async runActionNow(name: GrammarActionName, body: () => Promise<RecordableAction>): Promise<void> {
+    this.assertAllowed(name);
     this.accounting.reserveAction();
     await this.before();
     const redaction = { redact: this.runtime.redact, redactCut: this.runtime.redactCut };

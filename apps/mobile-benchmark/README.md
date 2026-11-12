@@ -8,7 +8,7 @@ button, virtualized lists whose off-screen rows are not in the tree, a
 WebView, an OS permission dialog, out-of-process payment sheets. A test
 either handles that surface or fails for exactly that reason.
 
-The app is copied from `apps/mobile-benchmark` in the tester-army monorepo,
+The app is copied from `apps/mobile-benchmark` in the e2e-inc monorepo,
 where the same scenarios gate the autonomous QA agent. Keep diffs against
 that source minimal so scenarios port both ways. Scenarios distilled from
 real production apps name no company: describe the surface, never the
@@ -29,8 +29,9 @@ from the directory it runs in.
   the two Apple Pay scenarios.
 - `e2e.config.ts` + `tests/`: the deterministic suite, locators only.
 - `e2e.agent.config.ts` + `tests-agent/`: the agentic suite, derived from the
-  deterministic config. One `agent.act` per scenario with the catalog
-  description as its goal and a deterministic check on the success message.
+  deterministic config. One `agent.act` per scenario (Control Inventory
+  excepted) with the catalog description as its goal and a deterministic
+  check on the success message.
   A scenario whose tree is merged or hidden on purpose tells the model so
   and is judged from a screenshot; one whose surface renders out of process
   (PassKit, the photo picker) says the sheet is not in the tree, and the
@@ -89,7 +90,7 @@ The configs pin the app by bundle id (`dev.e2e.benchmark`) and expect it
 installed. To install a build first, point `E2E_MOBILE_BENCHMARK_IOS_APP` at
 a simulator `.app` or `E2E_MOBILE_BENCHMARK_ANDROID_APP` at an `.apk`; the
 `build` fixture in `tests/fixtures.ts` installs it once per device. `eas build --profile benchmark` produces
-both (link your own EAS project first with `eas init`).
+both (link your own Expo project first with `eas init`).
 
 Run one target or one file at a time from the package directory while
 authoring:
@@ -109,6 +110,11 @@ accessibility tree is intact, the terminal element carries
 `testID="success-message"`. The adversarial scenarios (Broken Accessibility,
 Vision Only, Flattened Registration Form, Flattened Login) omit test ids and
 hide or merge the tree on purpose, so success is only visible in pixels.
+
+Control Inventory is the exception: it is not a hard surface and has no
+success state. It holds plain controls with every state exposed, for the
+deterministic suite (`tests/controls.e2e.ts`, `tests/device-fixture.e2e.ts`);
+the agentic suite leaves it out.
 
 The Login Form and Flattened Login account is declared as the `benchmark`
 credential in `e2e.config.ts`, so tests reach it through
@@ -140,6 +146,7 @@ credential in `e2e.config.ts`, so tests reach it through
 | Sequential Onboarding       | Auto-focused wizard steps where the keyboard covers Continue                |
 | Apple Pay (iOS)             | Out-of-process PassKit sheet the agent must authorize                       |
 | Apple Pay Billing (iOS)     | PassKit sheet requiring a billing address filled from vision before paying  |
+| Control Inventory           | Plain controls, one exercise per runner verb, read, and matcher             |
 
 ### Apple Pay fixture
 

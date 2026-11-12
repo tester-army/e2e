@@ -1,9 +1,8 @@
 ---
 title: Bug bashes
 description: Run many explore sessions at the same time, then prove each bug with a failing test.
-icon: "bug"
-"og:image": "https://e2e.tester.army/docs/images/og/bug-bash.png?v=eb59f8290c"
-"twitter:image": "https://e2e.tester.army/docs/images/og/bug-bash.png?v=eb59f8290c"
+"og:image": "https://e2e.com/docs/images/og/bug-bash.png?v=eb59f8290c"
+"twitter:image": "https://e2e.com/docs/images/og/bug-bash.png?v=eb59f8290c"
 ---
 
 import { ShowMore } from './snippets/show-more.jsx';
@@ -42,15 +41,15 @@ which `e2e init` installs. To install it without `init`:
 
 <CodeGroup>
 ```bash npm
-npx skills add tester-army/e2e
+npx skills add e2e-inc/e2e
 ```
 
 ```bash pnpm
-pnpm dlx skills add tester-army/e2e
+pnpm dlx skills add e2e-inc/e2e
 ```
 
 ```bash bun
-bunx skills add tester-army/e2e
+bunx skills add e2e-inc/e2e
 ```
 </CodeGroup>
 
@@ -76,11 +75,12 @@ Bug bash the checkout and account settings on this branch.
 5. Rejects findings that have a known cause. The cause can be a limit of
    the explorer (for example, a link that opens a new tab), the local
    environment, the intended design, or the seed data.
-6. Writes a repro test that asserts the expected behavior for each
-   remaining finding. It can start one subagent per area, each with its own
-   [`e2e mcp` session](/mcp-server) to check locators.
-7. Runs each repro test. The finding is a bug only when the test fails with
-   `ASSERTION_FAILED`.
+6. Writes a repro test for each remaining finding: the finding's steps as
+   `agent.act` calls and its expected behavior as the closing
+   `agent.assert`. It can start one subagent per area.
+7. Runs the repro tests. The finding is a bug only when its test fails on
+   the reported defect: `ASSERTION_FAILED` from the closing check, or an
+   `act` that fails on the defect itself.
 8. Reports, in this order: confirmed bugs, production risks that it cannot
    verify locally, rejected findings by reason, and warnings.
 

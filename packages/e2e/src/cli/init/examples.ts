@@ -11,7 +11,6 @@ import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:
 import path from 'node:path';
 import { USER_AGENT } from '../../internal/client-identity.ts';
 import { packageVersion } from '../../internal/package-version.ts';
-import { readPackage, serializePackage } from './package.ts';
 import { dependencyRange, recordedSiblingRange } from './versions.ts';
 
 export interface ExamplePreset {
@@ -46,7 +45,7 @@ export function findExample(name: string): ExamplePreset | undefined {
   return EXAMPLES.find((example) => example.id === id);
 }
 
-const REPOSITORY = 'tester-army/e2e';
+const REPOSITORY = 'e2e-inc/e2e';
 /** Entries a directory may hold and still count as empty for an example. */
 const IGNORED_ENTRIES = new Set(['.git', '.DS_Store', 'Thumbs.db']);
 /**
@@ -145,7 +144,7 @@ export async function copyExample(example: ExamplePreset, destination: string, {
       body.destroy();
     }
     if (files === 0) throw new ExampleDownloadError(`${REPOSITORY}@${ref} has no examples/${example.id}`);
-    adaptManifest(path.join(destination, example.project), packageName(destination, example));
+    await adaptManifest(path.join(destination, example.project), packageName(destination, example));
     return { ref, remove };
   } catch (cause) {
     remove();
@@ -177,9 +176,12 @@ function packageName(destination: string, example: ExamplePreset): string | unde
  * Names the copied project after its directory and points `e2e` and the
  * `@e2e-dev/*` packages at the ranges this CLI writes. An example's pins are
  * bumped by hand and can trail the release its tag marks by several minors.
+ * The manifest module, and the schema library it brings, loads here: the CLI
+ * reads this file to define `--example` before any copy.
  */
-function adaptManifest(projectDir: string, name: string | undefined): void {
+async function adaptManifest(projectDir: string, name: string | undefined): Promise<void> {
   if (!existsSync(path.join(projectDir, 'package.json'))) return;
+  const { readPackage, serializePackage } = await import('./package.ts');
   const { manifest, original } = readPackage(projectDir);
   const runner = packageVersion(import.meta.url, '../../../package.json', '0.0.0');
   const pin = (section: Readonly<Record<string, string>> | undefined) => section === undefined ? undefined : Object.fromEntries(

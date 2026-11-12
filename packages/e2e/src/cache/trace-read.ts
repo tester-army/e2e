@@ -9,6 +9,7 @@
 
 import { isKeyModifier, KEY_MODIFIERS, type KeyModifier } from '../engine/contract.ts';
 import type { ScrollDirection } from '../types.ts';
+import { VIEWPORT_LIMITS } from '../internal/geometry.ts';
 import { readBoundedText, readRecordedModel } from './trace-fields.ts';
 import {
   DESCRIPTOR_FIELDS,
@@ -293,6 +294,11 @@ function readRecordedAction(document: unknown): RecordedAction | undefined {
     }
     case 'back':
       return { name: 'back', summary };
+    case 'resize': {
+      const size = readViewport(raw['size']);
+      const fits = (side: number) => side >= VIEWPORT_LIMITS.min && side <= VIEWPORT_LIMITS.max;
+      return size === undefined || !fits(size.width) || !fits(size.height) ? undefined : { name: 'resize', summary, size };
+    }
     case 'typeText': {
       const value = readTypedValue(raw['value']);
       if (value === undefined || typeof raw['replace'] !== 'boolean') return undefined;
@@ -388,7 +394,7 @@ function readPosition(document: unknown): TracePosition | undefined {
   if (typeof document !== 'object' || document === null || Array.isArray(document)) return undefined;
   const { index, of } = document as Record<string, unknown>;
   if (!Number.isSafeInteger(index) || !Number.isSafeInteger(of)) return undefined;
-  // `of: 1` is an anonymous target counted alone (`describePosition`); a named target never records a position under two.
+  // `of: 1` is an anonymous or minted-test-id target counted alone (`describePosition`); a named target never records a position under two.
   if ((of as number) < 1 || (of as number) > MAX_TRACE_POSITION_OF) return undefined;
   if ((index as number) < 0 || (index as number) >= (of as number)) return undefined;
   return { index: index as number, of: of as number };

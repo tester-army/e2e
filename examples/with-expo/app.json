@@ -6,7 +6,7 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
-    "backgroundColor": "#111111",
+    "backgroundColor": "#000000",
     "ios": {
       "bundleIdentifier": "dev.e2e.examples.expo",
       "supportsTablet": false
@@ -14,7 +14,7 @@
     "android": {
       "package": "dev.e2e.examples.expo",
       "adaptiveIcon": {
-        "backgroundColor": "#111111",
+        "backgroundColor": "#1A5FFF",
         "foregroundImage": "./assets/adaptive-icon.png"
       },
       "predictiveBackGestureEnabled": false

@@ -299,15 +299,17 @@ describe('explicit fixture operations', () => {
         gadget: (context) => context.fixture('gadget', {
           async lost(): Promise<void> { throw new EngineError('INVALID_STATE', 'appstate requires an active session', { retryable: false }); },
           async slow(): Promise<void> { throw new EngineError('OPERATION_TIMEOUT', 'appstate timed out', { retryable: false }); },
+          async wait(_pattern: string): Promise<void> { throw new EngineError('OPERATION_TIMEOUT', 'wait timed out', { retryable: false }); },
           async denied(): Promise<void> { throw new TestError('POLICY_DENIED', 'no'); },
           async plain(): Promise<void> { throw new Error('plain failure'); },
-        }, { lost: { kind: 'resource' }, slow: { kind: 'resource' }, denied: { kind: 'resource' }, plain: { kind: 'resource' } }),
+        }, { lost: { kind: 'resource' }, slow: { kind: 'resource' }, wait: { kind: 'resource', label: (pattern) => JSON.stringify(pattern) }, denied: { kind: 'resource' }, plain: { kind: 'resource' } }),
       },
     });
     const { fixtures } = runtime(engine);
-    const gadget = (fixtures as unknown as { gadget: Record<'lost' | 'slow' | 'denied' | 'plain', () => Promise<void>> }).gadget;
+    const gadget = (fixtures as unknown as { gadget: Record<'lost' | 'slow' | 'denied' | 'plain', () => Promise<void>> & { wait(pattern: string): Promise<void> } }).gadget;
     await expect(gadget.lost()).rejects.toMatchObject({ code: 'APP_NOT_OPEN', category: 'test', message: 'appstate requires an active session' });
     await expect(gadget.slow()).rejects.toMatchObject({ code: 'ACTION_FAILED', message: 'operation timed out in gadget.slow' });
+    await expect(gadget.wait('foo.css')).rejects.toMatchObject({ code: 'ACTION_FAILED', message: 'operation timed out in gadget.wait "foo.css"' });
     await expect(gadget.denied()).rejects.toMatchObject({ code: 'POLICY_DENIED' });
     await expect(gadget.plain()).rejects.toThrow('plain failure');
   });
@@ -678,6 +680,7 @@ describe('coordinate input', () => {
   function pointer(options: { rect?: false; hidden?: true } = {}) {
     const performed: string[] = [];
     const performedAt: string[] = [];
+    const pointTimeouts: number[] = [];
     const locates: number[] = [];
     const node = {
       ref: { id: 'pad', revision: '' }, role: 'img', name: 'Pad',
@@ -690,14 +693,15 @@ describe('coordinate input', () => {
       locate: async () => { locates.push(1); return [node]; },
       actions: ['tap', 'scrollIntoView'],
       perform: async (_ref, action) => { performed.push(action.kind); },
-      pointerActions: ['tap', 'swipeTo'],
-      performAt: async (point, action) => {
+      pointerActions: ['tap', 'doubleTap', 'swipeTo'],
+      performAt: async (point, action, operation) => {
+        pointTimeouts.push(operation.timeoutMs);
         const duration = action.kind === 'swipeTo' && action.durationMs !== undefined ? ` for ${action.durationMs}ms` : '';
         const path = action.kind === 'swipeTo' ? ` -> ${action.target.x},${action.target.y}${duration}` : '';
         performedAt.push(`${action.kind} @ ${point.x},${point.y}${path}`);
       },
     });
-    return { engine, performed, performedAt, locates };
+    return { engine, performed, performedAt, locates, pointTimeouts };
   }
 
   it('screen.tapAt dispatches a pointer tap at the viewport point, with no locate, and records the step', async () => {
@@ -709,18 +713,33 @@ describe('coordinate input', () => {
     expect(steps.all().at(-1)).toMatchObject({ kind: 'screen', api: 'screen.tapAt', label: '(12.5, 40)', status: 'passed' });
   });
 
+  it('screen.doubleTapAt dispatches a bare double tap and records the step', async () => {
+    const { engine, performedAt, locates, pointTimeouts } = pointer();
+    const { fixtures, steps } = runtime(engine, { actionTimeout: 5_000 });
+    await fixtures.screen.doubleTapAt({ x: 12.5, y: 40 }, { timeout: 1_000 });
+    expect(performedAt).toEqual(['doubleTap @ 12.5,40']);
+    expect(pointTimeouts[0]).toBeGreaterThan(0);
+    expect(pointTimeouts[0]).toBeLessThanOrEqual(1_000);
+    expect(locates).toEqual([]);
+    expect(steps.all().at(-1)).toMatchObject({
+      kind: 'screen', api: 'screen.doubleTapAt', label: '(12.5, 40)', status: 'passed',
+    });
+  });
+
   it('rejects a point off the plane and an unknown option before any engine call', async () => {
     const { engine, performedAt } = pointer();
     const { fixtures } = runtime(engine);
-    for (const point of [{ x: Number.NaN, y: 1 }, { x: Number.POSITIVE_INFINITY, y: 1 }, { x: 1 }, { x: '1', y: 2 }, undefined]) {
-      await expect(fixtures.screen.tapAt(point as never)).rejects.toMatchObject({
-        code: 'INVALID_ARGUMENT', message: 'tapAt requires a point { x, y } of finite numbers',
+    for (const method of ['tapAt', 'doubleTapAt'] as const) {
+      for (const point of [{ x: Number.NaN, y: 1 }, { x: Number.POSITIVE_INFINITY, y: 1 }, { x: 1 }, { x: '1', y: 2 }, undefined]) {
+        await expect(fixtures.screen[method](point as never)).rejects.toMatchObject({
+          code: 'INVALID_ARGUMENT', message: `${method} requires a point { x, y } of finite numbers`,
+        });
+      }
+      await expect(fixtures.screen[method]({ x: -1, y: 0 })).rejects.toMatchObject({
+        code: 'INVALID_ARGUMENT', message: `${method} requires a point { x, y } of non-negative numbers`,
       });
+      await expect(fixtures.screen[method]({ x: 1, y: 1 }, { force: true } as never)).rejects.toMatchObject({ code: 'INVALID_ARGUMENT' });
     }
-    await expect(fixtures.screen.tapAt({ x: -1, y: 0 })).rejects.toMatchObject({
-      code: 'INVALID_ARGUMENT', message: 'tapAt requires a point { x, y } of non-negative numbers',
-    });
-    await expect(fixtures.screen.tapAt({ x: 1, y: 1 }, { force: true } as never)).rejects.toMatchObject({ code: 'INVALID_ARGUMENT' });
     expect(() => fixtures.screen.getByLabel('Pad').tap({ position: { x: -1, y: 0 } })).toThrow(
       expect.objectContaining({ code: 'INVALID_ARGUMENT', message: 'tap position requires a point { x, y } of non-negative numbers' }),
     );
@@ -742,6 +761,9 @@ describe('coordinate input', () => {
       message: 'the "tap" action at a point is not available on this target: its engine declares no pointer actions',
     };
     await expect(fixtures.screen.tapAt({ x: 1, y: 1 })).rejects.toMatchObject(unsupported);
+    await expect(fixtures.screen.doubleTapAt({ x: 1, y: 1 })).rejects.toMatchObject({
+      code: 'UNSUPPORTED_CAPABILITY', message: expect.stringContaining('the "doubleTap" action at a point'),
+    });
     await expect(fixtures.screen.getByLabel('Pad').tap({ position: { x: 1, y: 1 } })).rejects.toMatchObject(unsupported);
     await expect(fixtures.screen.swipe({ from: { x: 1, y: 1 }, to: { x: 1, y: 9 } })).rejects.toMatchObject({
       code: 'UNSUPPORTED_CAPABILITY', message: expect.stringContaining('the "swipeTo" action at a point'),

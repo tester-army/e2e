@@ -23,15 +23,12 @@ import { run, type RunOutcome } from '../run/runner.ts';
 import { registerStaticSecrets, staticSecretLedger } from '../run/secrecy.ts';
 import type { AgentConfig, BuiltinReporter, E2EConfig, RecordingMode } from '../types.ts';
 import { createExploreBody } from './body.ts';
+import { STEP_BOUNDS, TIMEOUT_BOUNDS } from './bounds.ts';
 import { explorerAgent, withFindingTool } from './executor.ts';
 import { signedInContext, type PlanAccount } from './plan.ts';
 import { ExploreState } from './state.ts';
 
 const DEFAULT_GOAL = 'Explore the app and find bugs';
-/** Exploration steps per run: breadth first, and diminishing returns come fast. */
-export const STEP_BOUNDS = { min: 1, max: 12, default: 8 } as const;
-/** The run's wall clock in milliseconds: three to fifteen minutes. */
-export const TIMEOUT_BOUNDS = { min: 180_000, max: 900_000, default: 600_000 } as const;
 const MAX_GOAL_CHARS = 2_000;
 /** Each step's action and model-call budget when the config sets none: a charter is longer than a scripted step. */
 const DEFAULT_STEP_BUDGET = 40;

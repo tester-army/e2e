@@ -1,17 +1,16 @@
-/* e2e brand: dark canvas, square corners, hairlines instead of shadows, white text at falling alphas.
-   next/font in app/layout.tsx sets --font-display, --font-sans, and --font-mono. */
+/* e2e design system: black canvas, square corners, e2e blue for the one action,
+   green and mint accents, an 8px spacing grid, and lowercase headings and UI.
+   Inter and JetBrains Mono stand in for the brand's own typefaces; next/font in
+   app/layout.tsx sets --font-sans and --font-mono. */
 :root {
-  --canvas: #111111;
-  --panel: #161616;
-  --field-fill: #1a1a1a;
-  --hairline: #ffffff1f;
-  --field-stroke: #ffffff4d;
-  --button-fill: #f9f8f7;
-  --text-primary: #f9f8f7;
-  --text-secondary: #ffffffb3;
-  --text-faint: #ffffff80;
-  --text-on-light: #161616;
-  --accent: #ff8001;
+  --e2e-black: #000000;
+  --e2e-off-white: #f7f7f7;
+  --e2e-neutral-800: #1c1c1c;
+  --e2e-neutral-500: #8d8d8d;
+  --e2e-neutral-400: #b1b1b1;
+  --e2e-blue: #1a5fff;
+  --e2e-green: #64ff9d;
+  --e2e-mint: #8af9ff;
 }
 
 * {
@@ -20,9 +19,9 @@
 }
 
 body {
-  background: var(--canvas);
-  color: var(--text-primary);
-  font: 400 16px/24px var(--font-sans);
+  background: var(--e2e-black);
+  color: var(--e2e-off-white);
+  font: 400 16px/1.4 var(--font-sans);
   -webkit-font-smoothing: antialiased;
 }
 
@@ -30,7 +29,7 @@ body {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
-  max-width: 1200px;
+  max-width: 1248px;
   margin: 0 auto;
   padding: 0 24px;
 }
@@ -38,124 +37,156 @@ body {
 .nav {
   display: flex;
   align-items: center;
-  height: 84px;
-  border-bottom: 1px solid var(--hairline);
+  height: 48px;
+  border-bottom: 1px solid var(--e2e-neutral-800);
+}
+
+.nav img {
+  display: block;
+  width: auto;
+  height: 24px;
 }
 
 .hero {
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: 16px;
-  padding: 64px 0;
   max-width: 640px;
+  padding: 48px 0;
 }
 
 .eyebrow {
-  color: var(--text-secondary);
-  font: 400 12px/23px var(--font-mono);
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
+  color: var(--e2e-green);
+  font: 400 12px/1.2 var(--font-mono);
+  letter-spacing: 0.04em;
 }
 
 .title {
-  font: 400 38px/43px var(--font-display);
+  margin-top: 8px;
+  font: 400 39px/0.95 var(--font-sans);
+  letter-spacing: -0.03em;
 }
 
 .lede {
-  color: var(--text-secondary);
+  margin-top: 24px;
+  color: var(--e2e-neutral-500);
+  font-size: 18px;
 }
 
 .form {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding-top: 24px;
+  gap: 16px;
+  max-width: 495px;
+  margin-top: 40px;
 }
 
-.label {
-  color: var(--text-faint);
-  font: 400 11px/16px var(--font-mono);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-}
-
-.row {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
+/* The design system's text field: the label sits inside the field, above the value. */
 .field {
-  flex: 1 1 auto;
-  min-width: 0;
-  height: 40px;
-  padding: 0 12px;
+  position: relative;
+  background: var(--e2e-neutral-800);
+}
+
+.field-input {
+  display: block;
+  width: 100%;
+  height: 56px;
+  padding: 22px 16px 12px;
   border: 0;
   border-radius: 0;
   outline: none;
-  background: var(--field-fill);
-  box-shadow: inset 0 0 0 0.5px var(--field-stroke);
-  color: var(--text-primary);
-  font: 400 13px/20px var(--font-mono);
+  background: transparent;
+  color: var(--e2e-off-white);
+  font: 400 16px/1 var(--font-sans);
 }
 
-.field::placeholder {
-  color: var(--text-faint);
+.field-input:focus-visible {
+  outline: 2px solid var(--e2e-green);
 }
 
-.field:focus-visible {
-  box-shadow: inset 0 0 0 1px var(--text-primary);
+.field-input[aria-invalid='true'] {
+  outline: 2px solid var(--e2e-mint);
 }
 
+.field-label {
+  position: absolute;
+  top: 6px;
+  left: 16px;
+  color: var(--e2e-neutral-400);
+  font: 400 12px/15px var(--font-mono);
+  pointer-events: none;
+}
+
+/* Buttons change no colour on hover; a press scales them a little. */
 .button {
-  height: 40px;
-  padding: 0 20px;
+  height: 48px;
+  padding: 0 24px;
   border: 0;
   border-radius: 0;
-  background: var(--button-fill);
-  color: var(--text-on-light);
-  font: 400 13px/20px var(--font-mono);
-  text-transform: uppercase;
+  background: var(--e2e-blue);
+  color: var(--e2e-off-white);
+  font: 400 15px/15px var(--font-mono);
   cursor: pointer;
 }
 
-.button:hover,
+.button:active {
+  transform: scale(0.98);
+}
+
 .button:focus-visible {
-  background: #ffffff;
+  outline: 2px solid var(--e2e-green);
+  outline-offset: 4px;
 }
 
 .error {
-  color: var(--accent);
+  color: var(--e2e-mint);
   font-size: 14px;
 }
 
 .status {
-  padding: 12px 16px;
-  background: var(--panel);
-  box-shadow: inset 0 0 0 0.5px var(--hairline);
-  font-size: 14px;
+  padding: 16px;
+  background: var(--e2e-neutral-800);
 }
 
 .footer {
   padding: 24px 0;
-  border-top: 1px solid var(--hairline);
-  color: var(--text-faint);
-  font: 400 12px/16px var(--font-mono);
-  letter-spacing: 0.1em;
+  border-top: 1px solid var(--e2e-neutral-800);
+  color: var(--e2e-neutral-500);
+  font: 400 12px/1.2 var(--font-mono);
+  letter-spacing: 0.04em;
 }
 
 @media (min-width: 768px) {
+  .page {
+    padding: 0 48px;
+  }
+
   .hero {
-    padding: 120px 0;
+    padding: 96px 0;
   }
 
   .title {
-    font-size: 60px;
-    line-height: 68px;
+    font-size: 71px;
   }
 
-  .row {
-    flex-direction: row;
+  /* The field and the button share a row; the error and the greeting span it. */
+  .form {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .error,
+  .status {
+    grid-column: 1 / -1;
+  }
+
+  .button {
+    height: 56px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .button:active {
+    transform: none;
   }
 }

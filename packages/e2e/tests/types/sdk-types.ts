@@ -369,6 +369,12 @@ const jev = {
 ({ targets, filters: [{ filter: () => ({ exclude: {} }) }] }) satisfies E2EConfig;
 // @ts-expect-error a filter leaves tests out by id with a reason; it never lists the ones to keep
 ({ name: 'jev', filter: () => ({ keep: [] }) }) satisfies TestFilter;
+// A filter may also score the tests it was handed, by id, from 0 to 1, so the likeliest to fail start first.
+({ name: 'jev', filter: (tests) => ({ exclude: {}, relevance: Object.fromEntries(tests.map((candidate) => [candidate.id, 0.8])), note: 'one call' }) }) satisfies TestFilter;
+// @ts-expect-error a score is a number, not a label
+({ name: 'jev', filter: () => ({ exclude: {}, relevance: { 'tests/a.e2e.ts::a': 'high' } }) }) satisfies TestFilter;
+// @ts-expect-error relevance is a record of scores by test id, not a list of ids
+({ name: 'jev', filter: () => ({ exclude: {}, relevance: ['tests/a.e2e.ts::a'] }) }) satisfies TestFilter;
 declare const filterCandidate: TestFilterCandidate;
 // @ts-expect-error a candidate names a test, never its body
 filterCandidate.fn;
@@ -532,6 +538,14 @@ expect.soft.any(Number);
 test.skip(true, 'not today');
 test.skip('not today');
 test.skip('later', async () => {});
+// fail takes the same three shapes and returns nothing inside a body; describe and setup take no fail option.
+test.fail(true, 'known gap');
+test.fail('known gap');
+test.fail('gap', async () => {}) satisfies ReturnType<typeof test>;
+void (test.fail(false) satisfies void);
+test('gap', { fail: 'known gap' }, async () => {});
+// @ts-expect-error a group cannot expect failure; mark each test
+test.describe('gaps', { fail: true }, () => {});
 void screen.getByLabel('Plan').selectOption({ value: 'pro' });
 // @ts-expect-error one of label, value, or index, never two
 void screen.getByLabel('Plan').selectOption({ value: 'pro', index: 1 });
@@ -546,6 +560,11 @@ void (executorContext.actions.dragAt(point, point) satisfies Promise<PointDragRe
 // @ts-expect-error a point drag names both ends
 void executorContext.actions.dragAt(point);
 void screen.tapAt(point, { timeout: 1_000 });
+void (screen.doubleTapAt(point, { timeout: 1_000 }) satisfies Promise<void>);
+// @ts-expect-error a point has both coordinates.
+void screen.doubleTapAt({ x: 1 });
+// @ts-expect-error viewport double-taps accept action timeout, not locator modifiers.
+void screen.doubleTapAt(point, { modifiers: ['Shift'] });
 void screen.swipe({ direction: 'up', momentum: 'fast' });
 void screen.swipe({ from: point, to: point });
 void screen.swipe({ from: point, to: point, duration: 300 });
@@ -754,6 +773,8 @@ report.run.carried satisfies
 // A run test filters narrowed records each filter by name, and every row one left out names it.
 report.run.filters satisfies readonly { name: string; candidates: number; excluded: number; note?: string | undefined }[] | undefined;
 report.run.results[0]!.skip?.filter satisfies string | undefined;
+report.run.results[0]!.expectedFailure?.reason satisfies string | undefined;
+report.run.results[0]!.attempts[0]!.expectedFailure?.error?.code satisfies string | undefined;
 report.run.filters?.[0]?.outcome satisfies 'failed' | 'timed-out' | undefined;
 // @ts-expect-error only a filtered skip names the test filter that left the test out
 ({ cause: 'explicit', reason: 'not on CI', filter: 'jev' }) satisfies NonNullable<Report['run']['results'][number]['skip']>;
@@ -1015,3 +1036,5 @@ void (connectEngine({ manifest: protocolManifest, transport: socketTransport({ h
 void ({ ...protocolManifest, methods: ['engine/teleport'] } satisfies EngineManifest);
 // @ts-expect-error initialization options cross the wire, so they are JSON
 void connectEngine({ manifest: protocolManifest, transport: socketTransport({ host: '127.0.0.1', port: 7000 }), initializationOptions: { onReady: () => {} } });
+
+await agent.assert('all settings are reachable', { explore: true, maxSteps: 10, maxModelCalls: 6, vision: 'only' });

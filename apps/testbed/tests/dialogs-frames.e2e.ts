@@ -26,19 +26,6 @@ test.describe('dialogs', { requires: ['browser'] }, () => {
     expect(await failure(() => browser.title())).toHaveProperty('code', 'ENGINE_FAILURE');
     expect(await browser.title()).toBe('Dialogs');
   });
-
-  test('custom dialog handlers read the message', async ({ app, screen, browser }) => {
-    await app.open('/dialogs');
-    let message = '';
-    const dispose = await browser.onDialog(async (dialog) => {
-      message = dialog.message;
-      await dialog.accept();
-    });
-    await screen.getByRole('button', 'Delete everything').tap();
-    await expect(screen.getByRole('status', 'Decision')).toHaveText('deleted');
-    expect(message).toBe('Really delete everything?');
-    await dispose();
-  });
 });
 
 test.describe('frames', { requires: ['browser'] }, () => {

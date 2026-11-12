@@ -1,9 +1,8 @@
 ---
 title: e2e/engine
 description: Build an engine with observations, actions, lifecycle hooks, and fixtures.
-icon: "gear"
-"og:image": "https://e2e.tester.army/docs/images/og/reference/engine.png?v=d82cf186db"
-"twitter:image": "https://e2e.tester.army/docs/images/og/reference/engine.png?v=d82cf186db"
+"og:image": "https://e2e.com/docs/images/og/reference/engine.png?v=d82cf186db"
+"twitter:image": "https://e2e.com/docs/images/og/reference/engine.png?v=d82cf186db"
 ---
 
 `e2e/engine` is the contract an engine implements to drive a user interface,
@@ -90,7 +89,7 @@ rules:
 | `spiVersion` | Anything but `1`. |
 | `platform` | Empty. |
 | `workers` | Not a positive safe integer. |
-| `observe`, `locate`, `perform`, `performAt`, `prepare`, `finish`, `init`, `startAttempt`, `settleAttempt`, `endAttempt`, `dispose`, `validateApp` | Not a function. |
+| `observe`, `locate`, `perform`, `performAt`, `prepare`, `finish`, `doctor`, `init`, `startAttempt`, `settleAttempt`, `endAttempt`, `dispose`, `validateApp` | Not a function. |
 | any other top-level key | On an object literal, `app` included: declare the app on the target and check it in `validateApp`. A class instance's own fields are not checked. |
 | `perform`, `locate`, `performAt`, `keyboard` | Declared without `observe`. |
 | `perform`, `actions` | One without the other. An `actions` list that is empty, repeats a kind, or names one outside `LOCATOR_ACTION_KINDS`. |
@@ -131,7 +130,7 @@ The body of one target. Every member but `name`, `version`, and
 | [`validateApp`](#app) | method |
 | [`secrets`](#startattempt) | `Secret[]` |
 | [`session`](#session) | `EngineSession` |
-| [`prepare`, `finish`, `init`, `startAttempt`, `settleAttempt`, `endAttempt`, `dispose`](#lifecycle) | hooks |
+| [`prepare`, `finish`, `doctor`, `init`, `startAttempt`, `settleAttempt`, `endAttempt`, `dispose`](#lifecycle) | hooks |
 
 ```ts
 /** The body of one target: typed, model-free, capability-graded. */
@@ -250,7 +249,7 @@ export interface Engine {
    * no value reaches the config digest.
    */
   readonly secrets?: readonly Secret[];
-  /** Steering hooks: open, back, restart, reset. */
+  /** Steering hooks: open, back, resize, restart, reset. */
   readonly session?: EngineSession;
   /**
    * Runs once per target in the runner, after collection and before workers,
@@ -272,6 +271,14 @@ export interface Engine {
    * failure is a cleanup-phase run error.
    */
   finish?(info: EngineFinishInfo): Promise<void>;
+  /**
+   * Checks this machine for what a run on the target needs, for
+   * `e2e doctor`. Read-only and quick: never install, launch, lease, or
+   * start anything a check could instead look up, and never call `prepare`.
+   * A check that cannot tell reports nothing rather than guess. A throw is
+   * reported as one failed check of the target.
+   */
+  doctor?(info: EngineDoctorInfo): Promise<readonly EngineDoctorCheck[]>;
   /**
    * Once per worker, before the first step; boot devices here, not in a step
    * budget. The same handle can be booted again after `dispose`: a config-held
@@ -363,7 +370,7 @@ member. Three gaps end differently:
 | `state` | `state` | - | `test.setup` sessions and the `session:` option. |
 | `artifacts` | `artifacts` | - | Screenshots and videos. |
 | `validateApp` | - | - | A config-load check of the target's `app`. |
-| `session` | - | - | The `app` steering methods and the agent's `navigate` and `back` verbs. |
+| `session` | - | - | The `app` steering methods and the agent's `navigate`, `back`, and `resize_viewport` verbs. |
 
 #### Agent verbs
 
@@ -388,6 +395,7 @@ An undeclared verb is absent from the toolset.
 | `upload` | `setInputFiles` |
 | `navigate` | `session.open` |
 | `back` | `session.back` |
+| `resize_viewport` | `session.resize` |
 | `tap_at`, `hover_at` | the `tap` or `hover` kind, in `actions` or in `pointerActions` |
 | `drag_at` | the `dragTo` kind, in `actions` or in `pointerActions` |
 | `type_at` | `fill` or `keyboard` |
@@ -420,6 +428,7 @@ engine.
 | `screen.swipe()` | `perform` with `swipe` on the observation root |
 | `modifiers` on a tap (`row.click({ modifiers: ['Shift'] })`) | `tapModifiers: true`; the keys are held for the click |
 | `screen.tapAt`, `tap({ position })` | `performAt` with the `tap` pointer kind |
+| `screen.doubleTapAt` | `performAt` with the `doubleTap` pointer kind |
 | `screen.swipe({ from, to })` | `performAt` with the `swipeTo` pointer kind |
 | `locator.pressSequentially` | the `focus` action and `keyboard`; the harness composes `focus` then `keyboard.type` |
 | `test.setup` sessions, the `session:` option | `state` |
@@ -516,6 +525,7 @@ optional. The `Engine` declaration's JSDoc above states each hook's contract.
 | --- | --- |
 | [`prepare(info)`](#prepare) | Once per target, before any worker |
 | [`finish(info)`](#finish) | After the target's last worker is gone |
+| [`doctor(info)`](#doctor) | Once per target in `e2e doctor`, never in a run |
 | [`init(info)`](#init) | Once per worker, before its first step |
 | [`startAttempt(context)`](#startattempt) | Before each attempt |
 | [`settleAttempt(context)`](#settleattempt) | After the body and after teardown |
@@ -637,6 +647,60 @@ export interface EngineFinishInfo extends EngineCleanupContext {
 }
 ```
 
+#### `doctor`
+
+Runs once per target when [`e2e doctor`](/reference/cli#e2e-doctor) checks
+the project, never during a run. Report what a run on this machine needs and
+whether it's there. Each finding becomes a check under the target. Without the
+hook, the target gets one `engine` check with status `skip`.
+
+```ts
+async doctor(info) {
+  const sdk = await findToolchain(info.env);
+  if (sdk === undefined) return [{ id: 'toolchain', status: 'fail', message: 'install the toolchain' }];
+  return [{ id: 'toolchain', status: 'pass', message: `toolchain ${sdk.version}` }];
+},
+```
+
+`e2e doctor` gives the hook 30 seconds, starting a protocol engine's
+server included. A throw, a timeout, a finding that isn't an
+`EngineDoctorCheck`, or one with an id `e2e doctor` uses itself (`node`,
+`config`, `engine`, `model`) becomes an `engine` check with status `fail`.
+
+```ts
+/** Facts handed to `doctor`, once per target in the process `e2e doctor` runs in. */
+export interface EngineDoctorInfo {
+  /** The target being checked. */
+  readonly targetName: string;
+  /** Directory relative paths in the config resolve against; see `EngineInitInfo.projectRoot`. */
+  readonly projectRoot: string;
+  /** The app the target declares, as `prepare` receives it. */
+  readonly app: EngineAppInfo;
+  /** The environment a run would start with. */
+  readonly env: Readonly<Record<string, string | undefined>>;
+  /** Whether the run would show the surface (`--headed`), as `prepare` receives it. */
+  readonly headed: boolean;
+  /** Aborts 30 seconds in, when the checks fail as timed out, or when `e2e doctor` is interrupted; return within 5 seconds of it, when the connection closes. */
+  readonly signal: AbortSignal;
+  /** Reports one line of progress; `e2e doctor` prints it to stderr. */
+  readonly log: (line: string) => void;
+}
+
+/** One finding of `doctor`. */
+export interface EngineDoctorCheck {
+  /** What was checked, in kebab case: `browser`, `toolchain`. */
+  readonly id: string;
+  /**
+   * `pass`; `warn` for something a run handles on its own, slower (a
+   * first-run download); `fail` for something that stops a run; `skip` for
+   * a check that does not apply to this target.
+   */
+  readonly status: 'pass' | 'warn' | 'fail' | 'skip';
+  /** One line: what was found and, unless it passed, what to do. */
+  readonly message?: string;
+}
+```
+
 #### `init`
 
 Runs once per worker, before the first step. Boot devices here, not in a step
@@ -666,7 +730,7 @@ export interface EngineInitInfo {
    * `process.cwd()`, which an in-process run does not change.
    */
   readonly projectRoot: string;
-  /** The app the target declares: the site policy of its URL, and what a device launches. */
+  /** The app the target declares: the origin and site policy of its URL, and what a device launches. */
   readonly app: EngineAppInfo;
   /**
    * This worker's environment: the run's, plus what this target's `prepare`
@@ -1022,7 +1086,7 @@ honors in `actions` and `pointerActions`.
 | `hover` | - | yes | yes |
 | `scrollIntoView` | - | yes | - |
 | `selectOption` | `value` | yes | - |
-| `setInputFiles` | `paths` | yes | - |
+| `setInputFiles` | `paths`; empty clears the input | yes | - |
 | `dragTo` | `target`: a `NodeRef` or a `ViewportPoint` | yes | yes |
 | `swipe` | `direction`, `momentum?` | yes | yes |
 | `swipeTo` | `target`, `durationMs?` | - | yes |
@@ -1228,6 +1292,7 @@ the declaration to [`validateApp`](#validateapp) at config load.
 | Target field | Reaches the engine as |
 | --- | --- |
 | `url` | `validateApp` only. The harness opens it through `session.open`. |
+| the origin of `url`, on the run's port | `info.app.origin` in `prepare` and `init` |
 | the site of `url` | `info.app.site` in `prepare` and `init` |
 | `bundleId`, `appPath`, `launchArguments`, `permissions` | `validateApp`, and `info.app` in `prepare` and `init`, as the target declared them |
 | `command`, `readyUrl` | Never. The runner starts the app. |
@@ -1279,26 +1344,33 @@ export type AppPermissionState = 'grant' | 'deny' | 'reset';
 #### `EngineAppInfo`
 
 The resolved app, as `EnginePrepareInfo.app` and `EngineInitInfo.app`: the
-site of the URL and the device fields as the target declared them. Apply the
-site to a URL with [`sameSite`](#site-helpers).
+origin and site of the URL, and the device fields as the target declared
+them. Scope a credential the engine injects to the exact origin. Apply the
+site to observed frames with [`sameSite`](#site-helpers).
 
 ```ts
-if (sameSite(request.url, info.app.site ?? '')) request.headers.set('x-api-key', key);
+if (new URL(request.url).origin === info.app.origin) request.headers.set('x-api-key', key);
 ```
 
 ```ts
 /**
  * The app the harness resolved from the target's declaration, handed to
- * `prepare` and `init`: the site policy for the decisions only a surface can
- * make (which nested documents enter an observation, which requests carry
- * injected credentials), and what a device launches.
+ * `prepare` and `init`: the origin and site policy for the decisions only a
+ * surface can make (which requests carry injected credentials, which nested
+ * documents enter an observation), and what a device launches.
  */
 export interface EngineAppInfo {
   /**
+   * The app URL's origin on the run's port (`scheme://host:port`, as
+   * `URL.origin` serializes it): where injected request credentials go.
+   * Absent when the app has no URL, and for a free port the run has not
+   * assigned (`e2e doctor`).
+   */
+  readonly origin?: string;
+  /**
    * The app URL's registrable domain, as read by `siteOf`. Use `sameSite`
-   * to scope secret fills, injected headers, and observed child frames.
-   * Absent when the app has no URL. The runner passes navigation URLs
-   * separately through `session.open`.
+   * to scope observed child frames. Absent when the app has no URL. The
+   * runner passes navigation URLs separately through `session.open`.
    */
   readonly site?: string;
   /** The installed app to launch, as the target declared it. */
@@ -1314,13 +1386,14 @@ export interface EngineAppInfo {
 
 ### Session
 
-Steering hooks behind the universal `app` fixture and the agent's `navigate`
-and `back` verbs.
+Steering hooks behind the universal `app` fixture and the agent's `navigate`,
+`back`, and `resize_viewport` verbs.
 
 | Hook | Behind |
 | --- | --- |
 | `open(url)` | `app.open()`, the agent's `navigate` verb, the reopen after `restart` and `reset` |
 | `back()` | `app.back()`, the agent's `back` verb |
+| `resize(size)` | the agent's `resize_viewport` verb; `size` is `{ width, height }` in CSS pixels and holds for the rest of the attempt |
 | `restart()` | `app.restart()` |
 | `reset()` | `app.clearState()` |
 
@@ -1353,6 +1426,8 @@ export interface EngineSession {
   open?(url: string, context: OperationContext): Promise<void>;
   /** Navigates back once in the surface's history. */
   back?(context: OperationContext): Promise<void>;
+  /** Sets the viewport to `size` in CSS pixels, for this page and every page the attempt opens after it. */
+  resize?(size: ViewportSize, context: OperationContext): Promise<void>;
   /** Recreates the execution context, keeping persisted state. */
   restart?(context: OperationContext): Promise<void>;
   /** Clears persisted client state and recreates the execution context. */
@@ -1680,6 +1755,7 @@ obj({ a: 1, b: undefined, c: 3 }); // { a: 1, c: 3 }
 ```ts
 export function raceAbort<T>(work: Promise<T> | (() => Promise<T>), signal: AbortSignal, label: string): Promise<T>;
 export function withTimeout<T>(promise: Promise<T>, timeoutMs: number, onTimeout: () => Error): Promise<T>;
+export function stepTimeout(timeout: unknown, api: string): number | undefined;
 export function withinCleanupBudget(
   promise: Promise<unknown>,
   budget: { readonly signal: AbortSignal; readonly timeoutMs: number },
@@ -1688,12 +1764,16 @@ export function withinCleanupBudget(
 
 ```ts
 await raceAbort(() => client.tap(ref.id), context.signal, 'kiosk tap');
+const operation = context.operation(stepTimeout(options?.timeout, 'kiosk.print'));
 ```
 
 - `raceAbort` abandons the wait when `signal` aborts. Pass a thunk to check
   cancellation before dispatch.
 - `withTimeout` races a promise against a timeout and throws what
   `onTimeout` builds.
+- `stepTimeout` turns a call's own `timeout` option into a budget for
+  `context.operation`: `0` waits until the test timeout, or `cleanupTimeout` in `afterEach`, and a negative,
+  `NaN`, or infinite one is `INVALID_ARGUMENT`.
 - `withinCleanupBudget` never rejects. It resolves when the promise settles,
   failures included, when `signal` aborts, or when `timeoutMs` passes.
 
@@ -2206,6 +2286,13 @@ export interface SemanticNode {
     readonly width: number;
     readonly height: number;
   };
+  /**
+   * The point an offset into the node is measured from, in `rect`'s space,
+   * when it is not `rect`'s top-left corner: a document element's padding
+   * box, inside its border, or the corner of a box a frame clipped `rect`
+   * from. `tap({ position })` adds the offset to it.
+   */
+  readonly origin?: ViewportPoint;
   /**
    * Platform selector that addresses this node within its own document, when
    * the platform has one. It is structural, not semantic: it survives the

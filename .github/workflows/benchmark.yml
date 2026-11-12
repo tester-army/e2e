@@ -17,6 +17,12 @@ name: benchmark
 # runs the agentic suite for every pull request. Never switch this workflow to `pull_request_target` to get the key
 # onto fork branches: that hands the secret to untrusted code.
 on:
+  workflow_call:
+    inputs:
+      agent-device-version:
+        description: Exact driver version for compatibility runs
+        type: string
+        default: ''
   pull_request:
   merge_group:
   push:
@@ -32,7 +38,7 @@ permissions:
   pull-requests: write
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-benchmark-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -43,7 +49,7 @@ jobs:
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 5
     outputs:
-      web: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.web == 'true' }}
+      web: ${{ inputs.agent-device-version != '' || github.event_name == 'workflow_dispatch' || steps.filter.outputs.web == 'true' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # A pull request's files come from the API; a merge queue entry is
@@ -51,7 +57,7 @@ jobs:
       # before it, which the action fetches itself.
       - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
         id: filter
-        if: ${{ github.event_name != 'workflow_dispatch' }}
+        if: ${{ github.event_name != 'workflow_dispatch' && inputs.agent-device-version == '' }}
         with:
           filters: .github/filters.yml
           predicate-quantifier: some-with-excludes
@@ -68,15 +74,17 @@ jobs:
         with:
           node-version: 26
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/workspace-install
+        with:
+          agent-device-version: ${{ inputs.agent-device-version }}
       - name: Install browsers
-        run: pnpm --filter @e2e-dev/web exec playwright-core install chromium --with-deps
+        uses: ./.github/actions/chromium
       - name: Build
         run: pnpm run build
       - name: Run test
         env:
           # The reporter posts the comment with the job's token.
-          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ inputs.agent-device-version == '' && github.token || '' }}
         run: pnpm --filter @e2e-dev/web-benchmark run test
       # The engine's tree against Chrome's accessibility tree and Playwright's
       # getByRole on every scenario, against the disagreements committed in
@@ -133,16 +141,18 @@ jobs:
               "The agentic suite needs a real provider credential."
             exit 1
           fi
-      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/workspace-install
+        with:
+          agent-device-version: ${{ inputs.agent-device-version }}
       - name: Install browsers
-        run: pnpm --filter @e2e-dev/web exec playwright-core install chromium --with-deps
+        uses: ./.github/actions/chromium
       - name: Build
         run: pnpm run build
       - name: Run test:agent
         env:
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
           # The reporter posts the comment with the job's token.
-          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ inputs.agent-device-version == '' && github.token || '' }}
         # --strict-cache: a committed recording that no longer replays fails
         # the job instead of spending model calls on every run.
         run: pnpm --filter @e2e-dev/web-benchmark run test:agent --strict-cache

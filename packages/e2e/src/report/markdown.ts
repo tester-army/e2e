@@ -44,7 +44,7 @@ import {
 import { cell, code, formatDuration, link, MAX_ID_CHARS, MAX_PATH_CHARS, MAX_TITLE_CHARS, plural } from './markdown-text.ts';
 import { outcome, type Outcome } from './outcome.ts';
 import { isExploreVerdict } from './traces.ts';
-import { toPosixPath, writeTextReport } from './write.ts';
+import { posixRelative, writeTextReport } from './write.ts';
 import type { Reporter, ReporterSummary } from '../types.ts';
 
 type ReportRun = Report1Document['run'];
@@ -92,7 +92,7 @@ const MAX_EVIDENCE_PATHS = 4;
 const MAX_ASSESSMENT_CHARS = 2_000;
 const MAX_GOAL_CHARS = 400;
 const MAX_LEFT_OUT_ROWS = 50;
-const SITE_URL = 'https://e2e.tester.army';
+const SITE_URL = 'https://e2e.com';
 const TRUNCATED_NOTE = '_Truncated to fit a pull request comment; the full report is in `report.json`._';
 
 /** A result with what it left behind, read once. */
@@ -437,10 +437,17 @@ function row(cells: readonly string[]): string {
   return `| ${cells.join(' | ')} |`;
 }
 
-/** `⚠️ | title (1 failed attempt first) | 1 step · 4 calls | 3.4s`: one test's row, how it ended noted when it did not simply pass. The file's row above names the target. */
+/** `⚠️ | title (1 failed attempt first) | 1 step · 4 calls | 3.4s`: one test's row, how it ended noted when it did not simply pass or failed as `test.fail` expected. The file's row above names the target. */
 function testRow({ result, final }: Entry, withAgent: boolean): string {
   const skipped = result.status === 'skipped';
-  const note = skipped ? `skipped: ${cell(result.skip?.reason ?? 'skipped')}` : result.status === 'flaky' ? `${plural(final.failedAttempts, 'failed attempt')} first` : '';
+  const expected = result.attempts.at(-1)?.expectedFailure;
+  const note = skipped
+    ? `skipped: ${cell(result.skip?.reason ?? 'skipped')}`
+    : expected?.error !== undefined
+      ? `failed as expected: ${cell(expected.reason)}, ${cell(expected.error.code)}: ${cell(expected.error.message)}`
+      : result.status === 'flaky'
+        ? `${plural(final.failedAttempts, 'failed attempt')} first`
+        : '';
   const name = `${testName(result)}${note === '' ? '' : ` (${note})`}`;
   return row([ICON[statusBucket(result.status)], name, ...(withAgent ? [agentCell(final.final.steps)] : []), skipped ? '' : formatDuration(final.durationMs)]);
 }
@@ -629,7 +636,7 @@ export const markdownReporter: Reporter = {
   name: 'markdown',
   async onRunFinished(run) {
     if (run.reportPath === undefined) return;
-    const artifactsDir = toPosixPath(path.relative(run.projectRoot, run.artifactsRoot)) || '.';
+    const artifactsDir = posixRelative(run.projectRoot, run.artifactsRoot);
     const summary = path.join(path.dirname(run.reportPath), 'summary.md');
     await writeTextReport(summary, renderMarkdownReport(run.report, { artifactsDir, traces: run.traces }));
     const rows: ReporterSummary = [{ label: 'Markdown', text: path.relative(run.projectRoot, summary) || summary }];

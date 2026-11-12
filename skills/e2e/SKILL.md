@@ -1,6 +1,17 @@
 ---
 name: e2e
 description: Writes, runs, and debugs end-to-end tests for web and mobile apps with e2e, the agentic test runner, which mixes agent.act goals with exact locator assertions on a Playwright browser or an iOS or Android device. Also drives a project's running app live over the e2e MCP server to look at a screen, check a UI change, take a screenshot or record a video, and try a locator; and runs bug bashes, parallel e2e explore runs with each bug proven by a repro test. Use when a project depends on e2e or has an e2e.config.ts, when asked for end-to-end, browser, mobile, or agentic UI tests, to check a change in the running app, to QA or bug bash an app or branch, or when an e2e run fails.
+metadata:
+  openclaw:
+    homepage: https://e2e.com
+    requires:
+      bins:
+        - node
+        - npx
+    envVars:
+      - name: AI_GATEWAY_API_KEY
+        required: false
+        description: Model key for agent steps when the project's e2e config uses the Vercel AI Gateway; other providers read their own key.
 ---
 
 # e2e: agentic end-to-end tests
@@ -35,7 +46,7 @@ the `docs/` directory of the installed `e2e` package
 (`node_modules/e2e/docs` in a single-package project); a link such as
 `/reference/cli` is `docs/reference/cli.mdx`. Complete projects for Vite,
 Next.js, Astro, Angular, Expo, SwiftUI, Jetpack Compose, Kotlin Multiplatform,
-Flutter, and .NET MAUI are in https://github.com/tester-army/e2e/tree/main/examples.
+Flutter, and .NET MAUI are in https://github.com/e2e-inc/e2e/tree/main/examples.
 
 ## Quick start
 
@@ -70,14 +81,18 @@ export default {
 
 ```ts
 // tests/billing.e2e.ts
-import { test } from '@e2e-dev/web';
+import { describe, test } from '@e2e-dev/web';
 import { expect } from 'e2e';
 
-test('a member upgrades to Pro', async ({ app, agent, screen, browser }) => {
-  await app.open('/settings/billing');
-  await agent.act('upgrade the workspace to the Pro plan');
-  await expect(screen.getByRole('status')).toContainText('Pro');
-  await expect(browser).toHaveURL('/settings/billing');
+describe('billing', () => {
+  test('a member upgrades to Pro', async ({ app, agent, screen, browser }) => {
+    await app.open('/settings/billing');
+
+    await agent.act('upgrade the workspace to the Pro plan');
+
+    await expect(screen.getByRole('status')).toContainText('Pro');
+    await expect(browser).toHaveURL('/settings/billing');
+  });
 });
 ```
 
@@ -95,21 +110,29 @@ test('a member upgrades to Pro', async ({ app, agent, screen, browser }) => {
    path's actions stay out of the test. A `screen` line is the `Test line:`
    its action printed, copied as is. When the outcome shows, run its
    `expect` with `run_code` and add it once it passes; a passing statement
-   also joins `test_lines`. The walk ends with the test written. Without a
+   also joins `test_lines`; checks go in the test's assert block at the end.
+   The walk ends with the test written. Without a
    server, learn the accessible names the app renders from the components or
    a `--headed` run.
-3. A step is an `agent.act` goal or `screen` lines. Drive the flow with
-   `agent.act`, one atomic goal per call, and pin each outcome right after
-   with `expect` or `agent.assert`. A test with three goals makes three
-   calls. Start the test on the screen it covers, since every rerun pays
+3. Shape the file before the steps (topic `writing-tests`, "Structure"):
+   one top-level `describe` per feature, and in it one test per behavior,
+   titled with the outcome it verifies. Each test runs arrange, act, assert,
+   in that order: reach the starting state, do the one thing under test,
+   then every `expect` or `agent.assert` at the end. A second outcome worth
+   checking is a second test, so a failing title says what broke.
+   A step is an `agent.act` goal or `screen` lines. Drive the flow with
+   `agent.act`, one atomic goal per call; three goals make three calls.
+   Start the test on the screen it covers, since every rerun pays
    for the steps before: in a browser a saved session instead of the
    sign-in form and `app.open` on that screen's path, on a device
    `device.openLink`, and data from the app's API (topic `writing-tests`).
    Exact values go through `screen`: a sign-in form in a setup test, a field
    that must receive one specific string, a count that must be one number.
 4. Run only the test you are working on:
-   `npx e2e run tests/<feature>.e2e.ts:<line>`, the line its `test(` opens
-   on, with the flags in "Rerunning a test while you fix it" below. Agent
+   `npx e2e run tests/<feature>.e2e.ts:<line>` (over MCP,
+   `run_tests {files: ["tests/<feature>.e2e.ts:<line>"]}`, the flags as
+   camelCase fields such as `retries: 0`), the line its `test(` opens on,
+   with the flags in "Rerunning a test while you fix it" below. Agent
    steps need a model in the config and that provider's authentication (a
    saved subscription login, an API key); a local endpoint may need none.
    Tests without agent steps need no model.
@@ -168,7 +191,8 @@ lines you changed:
   call's own `{ timeout }` still wins. An `expect` already gives up after
   5 s by default (`assertionTimeout`).
 - Keep the replay cache on. A failed run keeps the recording of every goal
-  whose check passed, and the next run replays those with no model call.
+  a later check or wait confirmed (the wait closing the arrange block, topic
+  `writing-tests`), and the next run replays those with no model call.
   New, changed, and failed goals run live, and so does a replay the trace
   page shows as handed off. `agent.assert`, `agent.waitFor`, and
   `agent.extract` always call the model. Leave `--no-cache` off: it sends every goal to the model
@@ -195,7 +219,10 @@ lines you changed:
 - In a project without e2e, set it up when the user requests it. Otherwise
   ask before adding a test framework, and name any existing framework.
 - Live MCP tools need the project's own `e2e mcp` server registered in the
-  client (topic `mcp`); writing and running tests use the CLI directly.
+  client (topic `mcp`). In a directory with no e2e config, a live look still
+  works: `open_session {engine: "@e2e-dev/web", app: {url: "http://localhost:3000"}}` opens a session
+  on the engine's defaults. Tests need a config. Tests run with the CLI, or with the server's
+  `run_tests`, the same run without a shell.
   Keep a session open across runs while you write or fix a web test; topic
   `mcp` says when a run can go beside it, and what to do on
   `APP_ALREADY_RUNNING`.
@@ -221,14 +248,23 @@ lines you changed:
   `credentials.user(name).password` or `secrets.get(name)` (separate
   namespaces: `secrets.get` never returns a password), and hand the opaque
   `Secret` only to `fill()` or `agent.act` params.
+- Tests: one top-level `describe` per feature, one behavior per test,
+  arrange, act, assert with every assertion last (topic `writing-tests`).
+  Bad: one test that adds a todo, checks it, marks it done, and checks
+  again. Good: `'adds a todo to the list'` and `'marks a todo as done'`,
+  the second adding its todo in its arrange block.
 - Agent instructions: one goal per `act`, the wording on screen, real values
   in params. A goal is atomic: one outcome that one check confirms. Two
-  outcomes worth checking are two goals, so split them into two `act` calls
-  (topic `agent`). Bad: `'add a todo and mark it done'`. Good: `'add a
-  todo'`, check, then `'mark the todo as done'`, check. Judge meaning, not
-  phrasing: `toContain('Pro')`, not an exact sentence a model produced.
-- Check each agent goal's outcome. A passing `act` with a recorded check can
-  be cached and replayed without model calls (topic `agent`).
+  outcomes are two goals in two `act` calls (topic `agent`), never `'add a
+  todo and mark it done'`. Judge meaning, not phrasing: `toContain('Pro')`,
+  not an exact sentence a model produced.
+- End every test that runs an agent goal with a verifying check: a
+  locator matcher (`expect(locator)`), an engine matcher
+  (`expect(browser).toHaveURL`), or `agent.assert`. A passing one confirms
+  every `act` before it, so they can be cached and replayed without model
+  calls, and so do `locator.waitFor`, `browser.waitForURL`, and
+  `agent.waitFor`. Reads, `expect.poll`, and plain-value `expect` confirm
+  nothing (topic `agent`, "The replay cache").
 - Shape the agent for this app: `context` for vocabulary the screens use,
   `system` for how it works, tools for a test API, named personas under
   `agents`. When a step fails, tighten the goal first, then the context, then
@@ -249,8 +285,8 @@ you worked around it or gave up. Never report:
 - anything on an outdated e2e: the command refuses it, so upgrade
   (`npx e2e@latest upgrade`) and check the problem still happens first.
 
-Search [existing issues](https://github.com/tester-army/e2e/issues) first
-(`gh issue list -R tester-army/e2e --search "<words>"`); comment on a match
+Search [existing issues](https://github.com/e2e-inc/e2e/issues) first
+(`gh issue list -R e2e-inc/e2e --search "<words>"`); comment on a match
 instead of sending a new report.
 
 A `bug` needs `--repro`, steps that reproduce it every time without app

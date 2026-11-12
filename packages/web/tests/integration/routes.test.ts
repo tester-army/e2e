@@ -1,11 +1,12 @@
 /**
  * Route decisions against a server that counts what reaches it: `continue`
  * goes to the network past every other route and carries the configured
- * site headers itself, `fallback` hands the request to the route before it,
- * the overrides each decision implements reach the wire, and an option it
- * does not implement fails the next step instead of being dropped. Also the
- * one call beside routing that takes a URL the same way: a relative cookie
- * URL.
+ * headers itself (to the app's origin and the one `credentialOrigins` lists,
+ * not another port on the same host), `fallback` hands the request to the
+ * route before it, the overrides each decision implements reach the wire,
+ * and an option it does not implement fails the next step instead of being
+ * dropped. Also the one call beside routing that takes a URL the same way: a
+ * relative cookie URL.
  */
 
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -28,9 +29,12 @@ interface Echo {
   readonly body: string;
 }
 
+/** Every byte value once, which no text decoding keeps intact. */
+const ALL_BYTES = Uint8Array.from({ length: 256 }, (_, index) => index);
+
 /**
- * `/echo` answers with what it received; `/api/*` answers `network:<path>`.
- * Every request is counted by path.
+ * `/echo` answers with what it received; `/api/*` answers `network:<path>`;
+ * `/binary` answers `ALL_BYTES`. Every request is counted by path.
  */
 function startCountingServer(hits: Map<string, number>): Promise<{ server: Server; port: number }> {
   const server = createServer((request, response) => {
@@ -39,6 +43,11 @@ function startCountingServer(hits: Map<string, number>): Promise<{ server: Serve
     if (pathname === '/redirect') {
       response.writeHead(302, { location: '/echo' });
       response.end();
+      return;
+    }
+    if (pathname === '/binary') {
+      response.writeHead(200, { 'content-type': 'application/octet-stream' });
+      response.end(ALL_BYTES);
       return;
     }
     if (pathname === '/stream-download') {
@@ -73,14 +82,20 @@ function startCountingServer(hits: Map<string, number>): Promise<{ server: Serve
 }
 
 describe('browser.route decisions', () => {
-  const surface = new PlaywrightSurface({ headers: { 'X-Gate': 'open-sesame' } });
+  let surface: PlaywrightSurface;
   const projectRoot = mkdtempSync(path.join(tmpdir(), 'e2e-routes-'));
   const signal = new AbortController().signal;
   const hits = new Map<string, number>();
   const attached: string[] = [];
+  /** The app's server, then the unlisted and listed ports. */
   let server: Server;
+  let servers: Server[];
   let origin: string;
-  let otherSite: string;
+  let otherOrigin: string;
+  /** Another port on the app's host: the same site, another origin, not listed. */
+  let unlistedOrigin: string;
+  /** A third port on the app's host, in `credentialOrigins`. */
+  let listedOrigin: string;
   let page: Page;
   let browser: Browser;
 
@@ -94,13 +109,17 @@ describe('browser.route decisions', () => {
   };
 
   beforeAll(async () => {
-    const started = await startCountingServer(hits);
+    const [started, unlisted, listed] = await Promise.all([startCountingServer(hits), startCountingServer(hits), startCountingServer(hits)]);
     server = started.server;
+    servers = [server, unlisted.server, listed.server];
     origin = `http://127.0.0.1:${started.port}`;
-    // The same server under another host name: `localhost` is a site of its own.
-    otherSite = `http://localhost:${started.port}`;
+    // The same server under another host name: another origin.
+    otherOrigin = `http://localhost:${started.port}`;
+    unlistedOrigin = `http://127.0.0.1:${unlisted.port}`;
+    listedOrigin = `http://127.0.0.1:${listed.port}`;
+    surface = new PlaywrightSurface({ headers: { 'X-Gate': 'open-sesame' }, credentialOrigins: [listedOrigin] });
     writeFileSync(path.join(projectRoot, 'quote.json'), '{"cents":4200}\n');
-    await surface.init({ runId: 'routes', targetName: 'web', projectRoot, app: { site: '127.0.0.1' },
+    await surface.init({ runId: 'routes', targetName: 'web', projectRoot, app: { origin, site: '127.0.0.1' },
       env: {}, headed: false, workerSlot: 0, signal, log: () => undefined });
   });
 
@@ -111,8 +130,9 @@ describe('browser.route decisions', () => {
     page = await surface.ensurePage();
     await page.goto(`${origin}/`);
     browser = createBrowserFixture(surface, {
-      app: { site: '127.0.0.1', resolveUrl },
+      app: { origin, site: '127.0.0.1', resolveUrl },
       operation: (timeoutMs = 5_000) => ({ signal, timeoutMs, runId: 'routes', attemptId: 'routes', origin: 'test' }),
+      timeouts: { test: 5_000, assertion: 5_000 },
       expectable: (target: object) => target,
       fixture: (_name: string, target: object) => target,
       attachArtifact: (_kind: string, relative: string) => attached.push(relative),
@@ -125,7 +145,7 @@ describe('browser.route decisions', () => {
 
   afterAll(async () => {
     await surface.dispose({ signal, timeoutMs: 5_000 });
-    await new Promise<void>((resolve) => server.close(() => resolve()));
+    await Promise.all(servers.map((each) => new Promise<void>((resolve) => each.close(() => resolve()))));
     rmSync(projectRoot, { recursive: true, force: true });
   });
 
@@ -140,6 +160,10 @@ describe('browser.route decisions', () => {
       return { contentType: reply.headers.get('content-type'), body: await reply.text() };
     }, url);
 
+  /** Fetches `url` from the page and returns its body bytes. */
+  const fetchBytes = async (url: string): Promise<number[]> =>
+    page.evaluate((target) => fetch(target).then(async (reply) => [...new Uint8Array(await reply.arrayBuffer())]), url);
+
   /** Fetches `url` from the page and parses what `/echo` received. */
   const fetchEcho = async (url: string, init?: { method: string; body: string }): Promise<Echo> =>
     JSON.parse(
@@ -153,7 +177,7 @@ describe('browser.route decisions', () => {
   /** Waits for the latched route failure the next step reports. */
   const nextStepFailure = (): Promise<unknown> => browser.url().then(() => undefined, (error: unknown) => error);
 
-  it('fetches upstream once, keeps site headers, then fulfills an amended response', async () => {
+  it('fetches upstream once, keeps configured headers, then fulfills an amended response', async () => {
     await browser.route('**/echo', async route => {
       const upstream = await route.fetch();
       expect(upstream.status).toBe(200);
@@ -207,6 +231,31 @@ describe('browser.route decisions', () => {
     expect(await fetchText(`${origin}/redirect`)).toBe('inspected redirect');
     expect(hits.get('/redirect')).toBe(1);
     expect(hits.get('/echo')).toBeUndefined();
+  });
+
+  it('hands timeout 0 to the operation as a budget only the test deadline caps, and refuses a negative one', async () => {
+    const asked: (number | undefined)[] = [];
+    const recording = createBrowserFixture(surface, {
+      app: { site: '127.0.0.1', resolveUrl },
+      operation: (timeoutMs?: number) => {
+        asked.push(timeoutMs);
+        return { signal, timeoutMs: Math.min(timeoutMs ?? 5_000, 5_000), runId: 'routes', attemptId: 'routes', origin: 'test' };
+      },
+      timeouts: { test: 5_000, action: 5_000, assertion: 5_000 },
+      expectable: (target: object) => target,
+      fixture: (_name: string, target: object) => target,
+      attachArtifact: () => undefined,
+    } as unknown as EngineFixtureContext);
+    await recording.goto(`${origin}/`, { timeout: 0 });
+    await recording.waitForURL(`${origin}/`, { timeout: 0 });
+    expect(asked.slice(0, 2)).toEqual([Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY]);
+    for (const call of [
+      async () => recording.goto(`${origin}/`, { timeout: -1 }),
+      async () => recording.waitForURL(`${origin}/`, { timeout: Number.NaN }),
+      async () => recording.waitForDownload(async () => undefined, { timeout: Number.POSITIVE_INFINITY }),
+    ]) {
+      await expect(call()).rejects.toMatchObject({ code: 'INVALID_ARGUMENT' });
+    }
   });
 
   it('rejects an invalid download count before running the trigger', async () => {
@@ -302,7 +351,7 @@ describe('browser.route decisions', () => {
     expect((page as unknown as EventEmitter).listenerCount('download')).toBe(listeners);
   });
 
-  it('clears every test route, keeps configured site headers, and can register again', async () => {
+  it('clears every test route, keeps configured headers, and can register again', async () => {
     await browser.route('**/api/**', route => route.fulfill({ body: 'mock-api' }));
     await browser.route(/\/echo$/, route => route.fulfill({ json: { intercepted: true } }));
     expect(await fetchText(`${origin}/api/quote`)).toBe('mock-api');
@@ -362,17 +411,33 @@ describe('browser.route decisions', () => {
   it.each([
     ['continue', (route: WebRoute) => route.continue()],
     ['fallback', (route: WebRoute) => route.fallback()],
-  ])('keeps the configured site header through %s', async (_name, decide) => {
+  ])('keeps the configured header through %s', async (_name, decide) => {
     await browser.route('**/echo', decide);
     const echo = await fetchEcho(`${origin}/echo`);
     expect(echo.headers['x-gate']).toBe('open-sesame');
   });
 
-  it('continue replaces the request headers and adds the site header on top', async () => {
+  it('continue replaces the request headers and adds the configured header on top', async () => {
     await browser.route('**/echo', (route) =>
       route.continue({ headers: { ...route.request.headers, 'X-Added': 'yes', 'X-GATE': 'forged' } }));
     const echo = await fetchEcho(`${origin}/echo`);
     expect(echo.headers['x-added']).toBe('yes');
+    expect(echo.headers['x-gate']).toBe('open-sesame');
+  });
+
+  it.each([
+    ['the request', '/echo'],
+    ['a redirect', '/redirect'],
+  ])('continue drops a header set to undefined on %s', async (_name, target) => {
+    await browser.route(`**${target}`, (route) =>
+      route.continue({ headers: { ...route.request.headers, 'x-drop': undefined, 'x-keep': 'yes' } }));
+    const echo = JSON.parse(await page.evaluate(
+      (url) => fetch(url, { headers: { 'x-drop': 'a' } }).then((reply) => reply.text()),
+      `${origin}${target}`,
+    )) as Echo;
+    expect(echo.path).toBe('/echo');
+    expect(echo.headers['x-drop']).toBeUndefined();
+    expect(echo.headers['x-keep']).toBe('yes');
     expect(echo.headers['x-gate']).toBe('open-sesame');
   });
 
@@ -386,8 +451,29 @@ describe('browser.route decisions', () => {
     expect(hits.get('/echo')).toBe(1);
   });
 
-  it('continue to another site leaves the site header behind', async () => {
-    await browser.route('**/api/quote', (route) => route.continue({ url: `${otherSite}/echo` }));
+  it('continue to another port on the same host leaves the configured header behind, and to a listed origin keeps it', async () => {
+    await browser.route('**/api/unlisted', (route) => route.continue({ url: `${unlistedOrigin}/echo` }));
+    await browser.route('**/api/listed', (route) => route.continue({ url: `${listedOrigin}/echo` }));
+    expect((await fetchEcho(`${origin}/api/unlisted`)).headers['x-gate']).toBeUndefined();
+    expect((await fetchEcho(`${origin}/api/listed`)).headers['x-gate']).toBe('open-sesame');
+  });
+
+  it('fetch sends the configured header to a listed origin, not another port on the same host', async () => {
+    const sent = new Map<string, string | undefined>();
+    await browser.route('**/echo', async (route) => {
+      const echo = await (await route.fetch()).json<Echo>();
+      sent.set(new URL(route.request.url).origin, echo.headers['x-gate']);
+      await route.fulfill({ body: '' });
+    });
+    // Cross-origin from the page, so the fulfilled reply fails CORS; the route has already read the echo.
+    for (const target of [unlistedOrigin, listedOrigin]) {
+      await page.evaluate((url) => fetch(url).then(() => undefined, () => undefined), `${target}/echo`);
+    }
+    expect(Object.fromEntries(sent)).toEqual({ [unlistedOrigin]: undefined, [listedOrigin]: 'open-sesame' });
+  });
+
+  it('continue to another origin leaves the configured header behind', async () => {
+    await browser.route('**/api/quote', (route) => route.continue({ url: `${otherOrigin}/echo` }));
     const echo = await fetchEcho(`${origin}/api/quote`);
     expect(echo.headers.host).toBe(`localhost:${new URL(origin).port}`);
     expect(echo.headers['x-gate']).toBeUndefined();
@@ -410,6 +496,29 @@ describe('browser.route decisions', () => {
     await browser.route('**/api/quote', (route) => route.fulfill({ path: 'quote.json' }));
     expect(await fetchReply(`${origin}/api/quote`)).toEqual({ contentType: 'application/json', body: '{"cents":4200}\n' });
     expect(hits.get('/api/quote')).toBeUndefined();
+  });
+
+  it.each([
+    ['a Buffer', Buffer.from(ALL_BYTES)],
+    ['a Uint8Array view', new Uint8Array([0xff, ...ALL_BYTES, 0xff]).subarray(1, 257)],
+  ])('fulfills %s body byte for byte', async (_name, body) => {
+    await browser.route('**/api/quote', (route) => route.fulfill({ body }));
+    expect(await fetchBytes(`${origin}/api/quote`)).toEqual([...ALL_BYTES]);
+  });
+
+  it('fetches upstream bytes and fulfills them unchanged', async () => {
+    await browser.route('**/binary', async (route) => {
+      const upstream = await route.fetch();
+      await route.fulfill({ headers: upstream.headers, body: await upstream.body() });
+    });
+    expect(await fetchBytes(`${origin}/binary`)).toEqual([...ALL_BYTES]);
+  });
+
+  it('fulfills a newline-joined set-cookie as one cookie per line', async () => {
+    await browser.route('**/api/quote', (route) =>
+      route.fulfill({ headers: { 'Set-Cookie': 'a=b\nc=d; Path=/' }, body: '' }));
+    await fetchText(`${origin}/api/quote`);
+    expect((await browser.cookies()).map(({ name, value }) => `${name}=${value}`).toSorted()).toEqual(['a=b', 'c=d']);
   });
 
   it('fulfills under the given contentType or a content-type header', async () => {
@@ -436,6 +545,14 @@ describe('browser.route decisions', () => {
       'route.continue has an invalid header name: "x a"'],
     ['a line break in a fulfill header value', (route: WebRoute) => route.fulfill({ headers: { 'x-a': 'b\r\nset-cookie: c=d' } }),
       'route.fulfill header "x-a" must not contain a control character'],
+    ['a carriage return in a set-cookie line', (route: WebRoute) => route.fulfill({ headers: { 'set-cookie': 'a=b\r\nx-a: c' } }),
+      'route.fulfill header "set-cookie" must not contain a control character'],
+    ['an undefined fulfill header', (route: WebRoute) => untyped(route.fulfill, { headers: { 'x-a': undefined } }),
+      'route.fulfill header "x-a" must be a string, got undefined'],
+    ['a line break in a continue header value', (route: WebRoute) => route.continue({ headers: { 'set-cookie': 'a=b\nc=d' } }),
+      'route.continue header "set-cookie" must not contain a control character'],
+    ['a fulfill body that is neither text nor bytes', (route: WebRoute) => untyped(route.fulfill, { body: 42 }),
+      'route.fulfill body must be a string, Buffer, or Uint8Array'],
     ['an abort error code', (route: WebRoute) => untyped(route.abort, 'failed'),
       'route.abort() takes no arguments'],
   ])('rejects %s before deciding, and aborts the request', async (_name, decide, message) => {
@@ -465,6 +582,23 @@ describe('browser.route decisions', () => {
       code: 'ACTION_FAILED',
       message: 'route handler already decided; fulfill called twice',
     });
+  });
+
+  it('fails a navigation its route aborted as an action failure, not an engine fault', async () => {
+    await browser.route('**/aborted', (route) => route.abort());
+    await expect(browser.goto(`${origin}/aborted`)).rejects.toMatchObject({
+      code: 'ACTION_FAILED',
+      message: expect.stringContaining(`navigation failed: a route aborted the request for ${origin}/aborted`),
+    });
+  });
+
+  it('fails a navigation with the route error that aborted it', async () => {
+    await browser.route('**/refused', (route) => route.fulfill({ headers: { 'bad name': 'x' } }));
+    await expect(browser.goto(`${origin}/refused`)).rejects.toMatchObject({
+      code: 'INVALID_ARGUMENT',
+      message: expect.stringContaining('invalid header name: "bad name"'),
+    });
+    await expect(browser.url()).resolves.toBe(`${origin}/`);
   });
 
   it('takes the decision the moment fulfill is called, awaited or not', async () => {

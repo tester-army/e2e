@@ -1,5 +1,46 @@
 # @e2e-dev/web
 
+## 0.15.5
+
+### Patch Changes
+
+- [#1479](https://github.com/tester-army/e2e/pull/1479) [`d15a98e`](https://github.com/tester-army/e2e/commit/d15a98e0711a185873a7a57a108dd254673e327c) Thanks [@okwasniewski](https://github.com/okwasniewski)! - `app.baseUrl` no longer ends in a slash, so `${app.baseUrl}/api/users` requests `/api/users` instead of `//api/users`. With `test` from `@e2e-dev/web`, `app.baseUrl` is typed `string`, since a `web()` target always declares `app.url`. A test that relied on the trailing slash, such as `${app.baseUrl}api/users` or `new URL('users', app.baseUrl)` on a URL with a path, adds the slash itself.
+
+- [#1553](https://github.com/tester-army/e2e/pull/1553) [`9267248`](https://github.com/tester-army/e2e/commit/9267248c4c45716f87bda581563023c9c6b4a067) Thanks [@okwasniewski](https://github.com/okwasniewski)! - `browser.evaluate` returns its result when the evaluated code deletes or replaces page globals such as `Map` or `Object`, and on pages that delete `Array` or `JSON`. When a page replaces a built-in the engine's in-page code needs, such as `Map`, later evaluates and locators fail with `EVALUATE_FAILED` instead of `ENGINE_FAILURE`.
+  
+  `browser.evaluate` now returns plain JSON only, or `undefined` when the code returns nothing. A class instance such as a `DOMRect` or an element fails with `INVALID_ARGUMENT` instead of arriving as a partial object; return `rect.toJSON()` or the fields you need.
+
+- [#1549](https://github.com/tester-army/e2e/pull/1549) [`08b102a`](https://github.com/tester-army/e2e/commit/08b102a08ea9635e7f3482e15664e26a6e1b2408) Thanks [@okwasniewski](https://github.com/okwasniewski)! - An element inside a hidden `<iframe>` now reads as hidden, cross-origin frames included: `isVisible()` returns false, `toBeHidden()` passes, `getByRole` and `{ visible: true }` skip it, and actions wait until the frame shows.
+
+- [#1576](https://github.com/tester-army/e2e/pull/1576) [`33a1541`](https://github.com/tester-army/e2e/commit/33a154157975bb38a421a912052e4d0e436067c8) Thanks [@kdy1](https://github.com/kdy1)! - Start faster by loading heavy dependencies when a command or session needs them. The CLI no longer loads the MCP server, the prompt library, or the schema library until `mcp`, `init`, `login`, `logout`, `models`, `explore`, `upgrade`, `doctor`, or `--watch` runs, so `e2e --version` and `--help` take about 25% less time. `@e2e-dev/web` imports Playwright when a browser is first launched or looked up, so a process that only reads the config skips it: `e2e list` on a web project takes about 44% less time, and importing the package half as long. A worker loads Playwright for its first browser instead of before its first test, so that test's reported duration grows by about 0.14 s while the run takes no longer. `e2e/runner` no longer loads the explorer when imported. `@e2e-dev/acp` loads the ACP and MCP SDKs when its first session starts, and `@e2e-dev/limrun` loads `@limrun/api` when its first device is leased.
+
+- [#1571](https://github.com/tester-army/e2e/pull/1571) [`4c44e44`](https://github.com/tester-army/e2e/commit/4c44e44957076350798c54bdcca7442fbf935327) Thanks [@kdy1](https://github.com/kdy1)! - An observation no longer creates and releases an element handle for every node it lists. The reader keeps its elements in one in-page array per document, and an action makes the handle for its node the first time it reaches for it. Reading a 3000-node page takes about 80 ms instead of about 360 ms, and the engine stops blocking its event loop for around 100 ms releasing the previous observation's handles. References still name the element the walk read.
+
+- [#1552](https://github.com/tester-army/e2e/pull/1552) [`d2556bc`](https://github.com/tester-army/e2e/commit/d2556bc23fd01afe8f72a2e94e5fc18b4787b433) Thanks [@okwasniewski](https://github.com/okwasniewski)! - **Breaking:** `inputValue()` on a node with no value, such as a heading or a button, and `isChecked()` on a node with no checked state throw `ACTION_FAILED`, as in Playwright, instead of returning `""` and `false`. A field with no value still reads `""`, and a checkable role with no state reported still reads `false`. `uncheck()` on an ARIA `role="radio"` now clicks it, as in Playwright; a native radio still refuses.
+
+- [#1544](https://github.com/tester-army/e2e/pull/1544) [`8f17ad3`](https://github.com/tester-army/e2e/commit/8f17ad3ab75637ed24c9752611bc9f7083af4eb1) Thanks [@okwasniewski](https://github.com/okwasniewski)! - Two `toHaveScreenshot` calls (or other screen reads) running at once on one page no longer fail with `LOCATOR_NOT_FOUND: node became stale`. The engine now takes concurrent observations in turn.
+
+- [#1548](https://github.com/tester-army/e2e/pull/1548) [`40826e4`](https://github.com/tester-army/e2e/commit/40826e47050730c53469427317312bf17911e2b6) Thanks [@okwasniewski](https://github.com/okwasniewski)! - `route.fulfill` takes a `Buffer` or `Uint8Array` body and sends the bytes unchanged, and sets every cookie of a `set-cookie` header that joins them with `\n`. A `route.continue` header set to `undefined` is dropped, also on redirects. `WebResponse` adds `body()`, which returns the bytes, so `route.fetch()` and `waitForResponse` can hand binary bodies on.
+
+- [#1551](https://github.com/tester-army/e2e/pull/1551) [`e99a6fa`](https://github.com/tester-army/e2e/commit/e99a6fa83dd35af4b13cde7c2b31475cadb8787f) Thanks [@okwasniewski](https://github.com/okwasniewski)! - In Chromium, screenshots, `toHaveScreenshot`, and observations no longer wait on an iframe whose first navigation has not committed, such as one whose request a route handler holds. Before, they timed out with no screenshot.
+
+- [#1547](https://github.com/tester-army/e2e/pull/1547) [`4dce5a7`](https://github.com/tester-army/e2e/commit/4dce5a7685a8867d0e584a27e7dfa325688ca183) Thanks [@okwasniewski](https://github.com/okwasniewski)! - `tap({ position })` measures the offset from inside the node's border, as Playwright's `click({ position })` does. Before, a bordered element shifted the tap by its border width. Engines can report that point as the new optional `SemanticNode.origin`.
+
+- [#1505](https://github.com/tester-army/e2e/pull/1505) [`bdf769b`](https://github.com/tester-army/e2e/commit/bdf769bc270061b93f11847c204a9d40de737bc4) Thanks [@okwasniewski](https://github.com/okwasniewski)! - A fixture call that times out names what it waited for: `browser.waitForResponse('foo.css')` fails with `operation timed out in browser.waitForResponse "foo.css"`. Steps for `waitForURL`, `waitForResponse`, `route`, and `unroute` show a string pattern in quotes and a RegExp as its literal.
+
+- [#1554](https://github.com/tester-army/e2e/pull/1554) [`d2953bb`](https://github.com/tester-army/e2e/commit/d2953bb9bb3bddbfdfb4c854aa993f2cf21ddc64) Thanks [@okwasniewski](https://github.com/okwasniewski)! - A call's `timeout: 0` now means no deadline of its own, as in Playwright: locator actions, `waitFor`, matchers, `toHaveScreenshot`, `expect.poll`, contributed fixture calls, and `browser.goto`, `waitForResponse`, and `waitForDownload` wait until the test timeout (`cleanupTimeout` in `afterEach`) instead of failing at once or being refused. A negative, `NaN`, or infinite `timeout` is `INVALID_ARGUMENT` on every call, locator actions included (`INVALID_CONFIG` on `expect.poll`, as before). `expect.poll` with `timeout: 0` outside a test is `INVALID_CONFIG`. Engine authors get `stepTimeout` from `e2e/engine` to give a contributed call's `timeout` option the same rules.
+
+- [#1493](https://github.com/tester-army/e2e/pull/1493) [`91bd614`](https://github.com/tester-army/e2e/commit/91bd61490d20c7536a77ed5ed74e556a856da738) Thanks [@okwasniewski](https://github.com/okwasniewski)! - `e2e doctor` reports whether the browser a run launches is installed, or that the first run will download it. Requires e2e 0.22.1 or newer.
+
+- [#1550](https://github.com/tester-army/e2e/pull/1550) [`4e7e8b8`](https://github.com/tester-army/e2e/commit/4e7e8b8412ca532894311e155deed953987e02f2) Thanks [@okwasniewski](https://github.com/okwasniewski)! - Two failures caused by the test or the page no longer report as `ENGINE_FAILURE`:
+  
+  - A `browser.goto` whose request a route aborted fails with `ACTION_FAILED`. When the route aborted it because the handler threw, such as a `route.fulfill` with an invalid header, the `goto` fails with the handler's error.
+  - `app.screenshot()` taken while the page navigates captures the document showing, masked.
+  
+  A closed page or browser is still `ENGINE_FAILURE`.
+
+- [#1524](https://github.com/tester-army/e2e/pull/1524) [`cba5e0e`](https://github.com/tester-army/e2e/commit/cba5e0ecfbb7a1b0c61d0328dad9485cc87c2ab6) Thanks [@okwasniewski](https://github.com/okwasniewski)! - The web engine implements `session.resize`, so the agent's `resize_viewport` tool is available on web targets. Requires e2e 0.22.1 or newer.
+
 ## 0.15.4
 
 ### Patch Changes

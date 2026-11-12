@@ -35,7 +35,7 @@ export interface OperationMethod {
 /** A method that carries one lifecycle hook, whose single argument is an info or cleanup object. */
 export interface LifecycleMethod {
   readonly kind: 'lifecycle';
-  readonly member: 'prepare' | 'finish' | 'init' | 'startAttempt' | 'settleAttempt' | 'endAttempt' | 'dispose';
+  readonly member: 'prepare' | 'finish' | 'doctor' | 'init' | 'startAttempt' | 'settleAttempt' | 'endAttempt' | 'dispose';
 }
 
 const operation = (member: string, args: readonly string[], result?: OperationMethod['result']): OperationMethod =>
@@ -62,10 +62,12 @@ export const METHODS = {
   'artifacts/stopVideo': operation('artifacts.stopVideo', ['operation']),
   'session/open': operation('session.open', ['url', 'operation']),
   'session/back': operation('session.back', ['operation']),
+  'session/resize': operation('session.resize', ['size', 'operation']),
   'session/restart': operation('session.restart', ['operation']),
   'session/reset': operation('session.reset', ['operation']),
   'lifecycle/prepare': lifecycle('prepare'),
   'lifecycle/finish': lifecycle('finish'),
+  'lifecycle/doctor': lifecycle('doctor'),
   'lifecycle/init': lifecycle('init'),
   'lifecycle/startAttempt': lifecycle('startAttempt'),
   'lifecycle/settleAttempt': lifecycle('settleAttempt'),
@@ -112,8 +114,8 @@ export interface EngineManifest {
   readonly tapModifiers?: boolean;
 }
 
-/** Which of a worker's two lives a connection serves. */
-export type ConnectionRole = 'run' | 'worker';
+/** What a connection serves: a run's provisioning, a worker, or `e2e doctor`'s checks. */
+export type ConnectionRole = 'run' | 'worker' | 'doctor';
 
 /** Params of `initialize`. */
 export interface InitializeParams {
@@ -122,7 +124,8 @@ export interface InitializeParams {
   /**
    * `run` for the runner's connection, which only ever carries `prepare` and
    * `finish`; `worker` for a worker's, which carries everything from `init`
-   * to `dispose`.
+   * to `dispose`; `doctor` for `e2e doctor`'s, which carries `doctor` alone
+   * and must not install, launch, or lease anything.
    */
   readonly role: ConnectionRole;
   /** Engine options the config passed through, as JSON. */

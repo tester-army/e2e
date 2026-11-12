@@ -6,6 +6,14 @@
  * can check a project tool's name without loading the grammar.
  */
 
+/** Assertion tool names and the dispatcher actions each may perform. */
+export const READ_ONLY_GRAMMAR = {
+  observe: [],
+  screenshot: [],
+  scroll: ['scroll', 'scrollUntil'],
+  scroll_to: ['scrollIntoView'],
+} as const;
+
 /** The name of each grammar action, as the dispatcher records it. */
 export const GRAMMAR_ACTION_NAMES = [
   'back',
@@ -20,6 +28,7 @@ export const GRAMMAR_ACTION_NAMES = [
   'navigate',
   'press',
   'pressKey',
+  'resize',
   'scroll',
   'scrollIntoView',
   'scrollUntil',
@@ -83,6 +92,7 @@ export const GRAMMAR_TOOL_NAMES: ReadonlySet<string> = new Set([
   'upload',
   'navigate',
   'back',
+  'resize_viewport',
   'screenshot',
   'tap_at',
   'hover_at',

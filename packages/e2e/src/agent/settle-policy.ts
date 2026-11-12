@@ -97,6 +97,8 @@ export const SETTLE_AFTER: Record<RecordedAction['name'], SettleAfter> = {
   scrollUntil: { changeWaitMs: BRIEF_CHANGE_WAIT_MS, look: 'held-still' },
   navigate: { changeWaitMs: FULL_CHANGE_WAIT_MS, look: 'held-still' },
   back: { changeWaitMs: FULL_CHANGE_WAIT_MS, look: 'held-still' },
+  // A layout may reflow at the new size or stay as it was, like a scroll.
+  resize: { changeWaitMs: BRIEF_CHANGE_WAIT_MS, look: 'held-still' },
   tapAt: { changeWaitMs: FULL_CHANGE_WAIT_MS, look: 'held-still' },
   hoverAt: { changeWaitMs: FULL_CHANGE_WAIT_MS, look: 'held-still' },
   dragAt: { changeWaitMs: FULL_CHANGE_WAIT_MS, look: 'held-still' },

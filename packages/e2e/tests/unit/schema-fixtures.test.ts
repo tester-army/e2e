@@ -34,6 +34,14 @@ describe.each(schemas)('%s schema', (name) => {
     expect(validate(readJson('fixtures', `${name}.invalid.json`))).toBe(false);
   });
 
+  if (name === 'engine-manifest-v1') {
+    it('rejects a method listed twice', () => {
+      const manifest = readJson('fixtures', 'engine-manifest-v1.valid.json') as { methods: string[] };
+      manifest.methods.push('lifecycle/doctor');
+      expect(validate(manifest)).toBe(false);
+    });
+  }
+
   if (name === 'report-v1') {
     it('accepts optional runner cut-retry decisions and rejects other types', () => {
       const report = readJson('fixtures', 'report-v1.valid.json') as {

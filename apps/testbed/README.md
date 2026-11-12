@@ -17,6 +17,9 @@ here.
   `controls` (control states, scrolling, the browser fixture's page, the
   speed counter, about). `app/pages/index.mjs` merges them and
   `app/layout.mjs` renders the nav from that registry.
+- `app/playwright/`: Playwright's test assets (v1.64.1, Apache-2.0, with its
+  `LICENSE` and `NOTICE`) and the dynamic routes its test server sets, served
+  by the playground for any path it has no page for.
 - `app/bug-garden.mjs` — a bookshop with planted defects, for `e2e explore`.
 - `dogfood/server.mjs` — an expense-claims app with a test API, for the
   executor dogfoods.
@@ -27,12 +30,25 @@ here.
   states and the failure codes (`controls`), pointer coordinates and path
   swipes (`pointer`), viewport and node scrolling (`scroll`), the `browser`
   fixture's own verbs (`browser`), and the per-action speed floor (`speed`).
-  `tests/helpers.ts` holds the shared `failure`, `boxOf`, and `centerOf`.
+  The files tagged `playwright` are Playwright's own `tests/page` specs (and
+  `tests/library/download.spec.ts`) at v1.64.1, ported to the public API:
+  each header names its source and the tests left out. `fail: 'reason'`
+  marks a gap to close; `skip: 'reason'` one that fails with an error `fail`
+  does not cover. A difference e2e keeps on purpose is left out in the
+  header and stated in `docs/migrate/playwright.mdx`. `--tag playwright` runs only them, and
+  CI runs them on every pull request.
+  `tests/helpers.ts` holds the shared `failure`, `boxOf`, and `centerOf`,
+  and the ported tests' `content`, `asset`, `PREFIX`, and `CROSS`.
 - `e2e.lightpanda.config.ts` and `e2e.lightpanda-agent.config.ts`: the
   local suite and the agent suite on `@e2e-dev/lightpanda`, which starts
   [Lightpanda](https://lightpanda.io) from `LIGHTPANDA_PATH` (or `PATH`),
   run by hand to see which features its nightly covers; the docs page
   `integrations/lightpanda` lists the result.
+- `e2e.scroll.config.ts` + `tests-scroll/` — `scroll_to` by text over the
+  windowed `/scroll` page, driven by a scripted executor, so it needs no model.
+  Its own config, since it makes the default agent the scripted executor; it
+  runs as `test:scroll`, its own CI step, and never inside `test`, whose
+  forwarded arguments (`--changed-since`) would not reach it.
 - `e2e.agent.config.ts` + `tests-agent/` — opt-in agentic suite against the
   playground: `agent.act` flows, assisted polling, judgments,
   schema-validated extraction with zod, and the pixel tools on the canvas
@@ -85,7 +101,7 @@ identical, so these tests assert on meaning (`toContain`) and pair every
 agentic step with a deterministic locator check.
 
 To see where the tokens went, record the run and open the trace in
-[unbox-ai](https://github.com/tester-army/unbox-ai):
+[unbox-ai](https://github.com/e2e-inc/unbox-ai):
 
 ```bash
 AI_GATEWAY_API_KEY=... pnpm --filter @e2e-dev/testbed test:agent -- --ai-trace

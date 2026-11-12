@@ -14,8 +14,9 @@ import type { SerializedError } from '../internal/errors.ts';
 import { resultId } from '../internal/ids.ts';
 import { packageVersion } from '../internal/package-version.ts';
 import type { RunEvent, RunEventFact, RunEventOf, RunEventResult, SetupStep } from '../run/events.ts';
+import type { StepPrompt } from '../run/step-hold.ts';
 import type { AppLogRecord, StepRecord } from '../run/steps.ts';
-import { cleanupErrorsOf, failureBeforeSkip, type ArtifactRecord, type AttemptRecord, type FailureEvidence, type ResultStatus, type SerialGroupRecord } from '../run/records.ts';
+import { cleanupErrorsOf, expectedFailureOf, failureBeforeSkip, type ArtifactRecord, type AttemptRecord, type AttemptStatus, type FailureEvidence, type ResultStatus, type SerialGroupRecord } from '../run/records.ts';
 import type { Reporter, ReporterSummary } from '../types.ts';
 import { projectSource } from './build.ts';
 import { codeFrame, userFrame } from './code-frame.ts';
@@ -39,6 +40,7 @@ import {
   formatClock,
   formatTime,
   modelsText,
+  notSavedCount,
   padTitle,
   rule,
   stateString,
@@ -60,8 +62,8 @@ import {
 } from './format.ts';
 import { leftOutTests } from './left-out.ts';
 import { ExploreView } from './list-explore.ts';
-import { isShownEvent, type ConfiguredModel, type FileGroup, type ReplayNotice, type RunningTest, type TestLine } from './list-model.ts';
-import { replayLine, replayNotices, stepLine } from './list-steps.ts';
+import { isShownEvent, type ConfiguredModel, type FileGroup, type PausedTest, type ReplayNotice, type RunningTest, type TestLine } from './list-model.ts';
+import { replayLine, replayNotices, stepLine, stepPromptLine } from './list-steps.ts';
 import { LiveWindow } from './live-window.ts';
 import { repeatGroups, repeatLine, repeatSummary, type RepeatRun } from './repeats.ts';
 import { RunningTree } from './running-tree.ts';
@@ -97,6 +99,8 @@ export interface ListReporterOptions {
   live?: boolean;
   /** Emit ANSI colors; defaults to picocolors' detection (TTY, CI, FORCE_COLOR). */
   colors?: boolean;
+  /** The run holds its steps (`e2e run --step`): the live window lists every finished step, not only agent ones. */
+  stepping?: boolean;
 }
 
 /**
@@ -150,8 +154,19 @@ function appLogSummary(appLog: readonly AppLogRecord[]): AppLogSummary | undefin
   return parts.length === 0 ? undefined : { tally: parts.join(', '), errors };
 }
 
+/**
+ * The steps a passed or flaky result counts as not saved: its latest passing
+ * run's, since a retry may have saved what an earlier attempt did not.
+ */
+function passingRunSteps(
+  runs: readonly ({ readonly status: AttemptStatus; readonly steps: readonly StepRecord[] } | undefined)[],
+  passed: boolean,
+): readonly StepRecord[] {
+  return (passed ? runs.findLast((run) => run?.status === 'passed')?.steps : undefined) ?? [];
+}
+
 /** Details of an ordinary result: summed over its attempts, the error from the last. */
-function attemptDetails(attempts: readonly AttemptRecord[], configured: ConfiguredModel | undefined): ResultDetails {
+function attemptDetails(attempts: readonly AttemptRecord[], passed: boolean, configured: ConfiguredModel | undefined): ResultDetails {
   const steps = attempts.map((attempt) => attempt.steps);
   // A retry the run interrupted tells nothing; the failure before it is the verdict.
   const told = attempts.findLast((attempt) => attempt.status !== 'interrupted') ?? attempts.at(-1);
@@ -159,7 +174,7 @@ function attemptDetails(attempts: readonly AttemptRecord[], configured: Configur
     durationMs: attempts.reduce((total, attempt) => total + attempt.durationMs, 0),
     usage: stepsUsage(steps),
     models: stepsModelTally(steps),
-    cache: stepsCacheTally(steps),
+    cache: { ...stepsCacheTally(steps), notSaved: notSavedCount(passingRunSteps(attempts, passed)) },
     error: told?.error,
     videos: videoPaths(attempts),
     screenshots: attempts.flatMap((attempt) => requestedScreenshots(attempt.steps, attempt.artifacts)),
@@ -213,7 +228,7 @@ function requestedScreenshots(steps: readonly StepRecord[], artifacts: readonly 
  * that attempt never ran (skipped, or absent after a launch failure) inherits
  * the attempt's error, since that is what stopped it.
  */
-function serialMemberDetails(group: SerialGroupRecord, testId: string, configured: ConfiguredModel | undefined): ResultDetails {
+function serialMemberDetails(group: SerialGroupRecord, testId: string, passed: boolean, configured: ConfiguredModel | undefined): ResultDetails {
   const runs = group.attempts.map((attempt) => ({
     attempt,
     member: attempt.members.find((member) => member.testId === testId),
@@ -226,7 +241,7 @@ function serialMemberDetails(group: SerialGroupRecord, testId: string, configure
     durationMs: runs.reduce((total, run) => total + (run.member?.durationMs ?? 0), 0),
     usage: stepsUsage(steps),
     models: stepsModelTally(steps),
-    cache: stepsCacheTally(steps),
+    cache: { ...stepsCacheTally(steps), notSaved: notSavedCount(passingRunSteps(runs.map((run) => run.member), passed)) },
     error: own?.error ?? (neverRan ? last?.attempt.error : undefined),
     // The group's recording covers every member, so a failed member points at it.
     videos: videoPaths(group.attempts),
@@ -237,6 +252,14 @@ function serialMemberDetails(group: SerialGroupRecord, testId: string, configure
     skipReason: neverRan ? undefined : own.skip?.reason,
     replays: replayNotices(steps, configured),
   };
+}
+
+/** The list row's mark for a result whose `test.fail` mark covered its last attempt's failure. */
+function expectedFailureLine(result: RunEventResult): Pick<TestLine, 'expectedFailure'> {
+  const mark = expectedFailureOf(result);
+  if (mark?.error === undefined) return {};
+  const [first = ''] = bounded(`${mark.error.code}: ${mark.error.message}`).split('\n');
+  return { expectedFailure: { reason: bounded(mark.reason), errorLine: first } };
 }
 
 /** One failed pair, held for the `Failed Tests` section, or a skipped one for `Skipped After Failure`. */
@@ -292,6 +315,11 @@ export class ListReporter implements Reporter {
   private readonly pairs = new Map<string, RunningTest>();
   /** Whether a live window paints; without one, finished steps stream permanently. */
   private readonly live: boolean;
+  private readonly stepping: boolean;
+  /** The `e2e run --step` prompt up now, shown under its test. */
+  private prompt: StepPrompt | undefined;
+  /** The prompt line printed last without a live window, so `h`, which changes nothing there, prints nothing. */
+  private promptLine: string | undefined;
   private readonly failures: Failure[] = [];
   private readonly skippedFailures: Failure[] = [];
   /** Every result a test filter left out, in the order they arrived, for the `Left out` row. */
@@ -364,6 +392,7 @@ export class ListReporter implements Reporter {
   ) {
     const live = (options.live ?? process.stdout.isTTY === true) && output.raw !== undefined;
     this.live = live;
+    this.stepping = options.stepping ?? false;
     this.pc = picocolors.createColors(options.colors ?? (live || picocolors.isColorSupported));
     this.separator = this.pc.dim(' > ');
     this.tree = new RunningTree(this.pc, (target) => this.badge(target));
@@ -429,6 +458,21 @@ export class ListReporter implements Reporter {
         break;
     }
   };
+
+  /**
+   * Shows the `e2e run --step` prompt under its test in the live window, or
+   * takes it down. Without a window it prints once, as a permanent line.
+   */
+  showStepPrompt(prompt: StepPrompt | undefined): void {
+    this.prompt = prompt;
+    if (!this.live) {
+      const line = prompt === undefined ? undefined : stepPromptLine(prompt);
+      if (line !== undefined && line !== this.promptLine) this.print(line);
+      this.promptLine = line;
+      return;
+    }
+    this.window.redraw();
+  }
 
   /** Writes one permanent line without disturbing the live window. */
   private print(line: string): void {
@@ -655,6 +699,7 @@ export class ListReporter implements Reporter {
       executing: true,
       current: undefined,
       steps: this.pairs.get(key)?.steps ?? [],
+      ran: this.stepping ? (this.pairs.get(key)?.ran ?? []) : undefined,
     });
     this.window.redraw();
   }
@@ -707,6 +752,7 @@ export class ListReporter implements Reporter {
       }
       case 'end': {
         running.current = undefined;
+        running.ran?.push({ api: progress.api, label: progress.label, status: progress.status, durationMs: progress.durationMs, modelCalls: progress.modelCalls });
         if (progress.kind !== 'agent') {
           this.window.redraw();
           break;
@@ -739,12 +785,13 @@ export class ListReporter implements Reporter {
    */
   private detailsOf(result: RunEventResult): ResultDetails {
     const configured = this.configuredModel?.agent === result.agent ? this.configuredModel : undefined;
-    if (result.serialGroupId === undefined) return attemptDetails(result.attempts, configured);
+    const passed = result.status === 'passed' || result.status === 'flaky';
+    if (result.serialGroupId === undefined) return attemptDetails(result.attempts, passed, configured);
     const pending = this.pendingSerial.get(result.serialGroupId);
-    if (pending === undefined) return attemptDetails([], configured);
+    if (pending === undefined) return attemptDetails([], passed, configured);
     pending.remaining -= 1;
     if (pending.remaining <= 0) this.pendingSerial.delete(result.serialGroupId);
-    return serialMemberDetails(pending.group, result.test.id, configured);
+    return serialMemberDetails(pending.group, result.test.id, passed, configured);
   }
 
   private testFinished(result: RunEventResult): void {
@@ -789,6 +836,7 @@ export class ListReporter implements Reporter {
       usage,
       firstErrorLine: error === undefined ? undefined : bounded(error.message).split('\n')[0],
       skipReason: result.skip === undefined ? undefined : bounded(result.skip.reason),
+      ...expectedFailureLine(result),
       cleanupErrors,
       steps,
       replays,
@@ -901,12 +949,14 @@ export class ListReporter implements Reporter {
     switch (line.status) {
       case 'passed':
         return [
-          `   ${pc.green(F_CHECK)} ${title} ${duration}${ai}`,
+          `   ${pc.green(F_CHECK)} ${title}${this.expectedTag(line)} ${duration}${ai}`,
+          ...this.expectedFailureLines(line),
           ...this.cleanupLines(line),
         ];
       case 'flaky':
         return [
-          `   ${pc.yellow(F_CHECK)} ${title} ${pc.yellow('(flaky)')} ${duration}${ai}`,
+          `   ${pc.yellow(F_CHECK)} ${title} ${pc.yellow('(flaky)')}${this.expectedTag(line)} ${duration}${ai}`,
+          ...this.expectedFailureLines(line),
           ...this.cleanupLines(line),
         ];
       case 'skipped': {
@@ -930,6 +980,19 @@ export class ListReporter implements Reporter {
         return rows;
       }
     }
+  }
+
+  /** ` (failed as expected)` after the title of a test whose `test.fail` mark covered its failure. */
+  private expectedTag(line: TestLine): string {
+    return line.expectedFailure === undefined ? '' : ` ${this.pc.dim('(failed as expected)')}`;
+  }
+
+  /** The reason and the covered failure's first line under a test that failed as expected. */
+  private expectedFailureLines(line: TestLine): string[] {
+    const mark = line.expectedFailure;
+    if (mark === undefined) return [];
+    const glance = fitColumns(`${mark.reason}: ${mark.errorLine}`, terminalColumns() - ERROR_GLANCE_INDENT);
+    return [`     ${this.pc.dim(`${F_RIGHT} ${glance}`)}`];
   }
 
   /** One yellow glance line per cleanup failure under the test. */
@@ -1038,13 +1101,22 @@ export class ListReporter implements Reporter {
     if (this.explore !== undefined) {
       return this.explore.liveRows(this.exploreBadge(), running[0]?.current?.events, this.summaryRows(false), Date.now(), room);
     }
-    return this.tree.render(running, this.summaryRows(false), Date.now(), room, this.inFlight);
+    return this.tree.render(running, this.summaryRows(false), Date.now(), room, { setup: this.inFlight, paused: this.paused() });
+  }
+
+  /** The running test the `--step` prompt holds, with the prompt. */
+  private paused(): PausedTest | undefined {
+    const { prompt } = this;
+    if (prompt === undefined) return undefined;
+    const { testId, agent, target, repeat } = prompt.steps[0].step;
+    const test = this.pairs.get(pairKey(testId, agent, target, repeat));
+    return test === undefined ? undefined : { test, prompt };
   }
 
   /**
    * The badge of the explored target: an exploration runs on exactly one,
-   * the one its test started on. `targets` lists every configured target,
-   * so the first of those is only right when `--target` named it.
+   * the one its test started on. `targets` lists every target the run
+   * selected, so the first of those is only right when it is the only one.
    */
   private exploreBadge(): string {
     this.exploredTarget ??= [...this.pairs.values()].find((test) => test.executing)?.group.target;

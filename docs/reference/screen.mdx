@@ -1,9 +1,8 @@
 ---
 title: screen and Locator
 description: Queries, refinement, actions, and reads.
-icon: "display"
-"og:image": "https://e2e.tester.army/docs/images/og/reference/screen.png?v=1b21c45d37"
-"twitter:image": "https://e2e.tester.army/docs/images/og/reference/screen.png?v=1b21c45d37"
+"og:image": "https://e2e.com/docs/images/og/reference/screen.png?v=1b21c45d37"
+"twitter:image": "https://e2e.com/docs/images/og/reference/screen.png?v=1b21c45d37"
 ---
 
 The `screen` fixture builds locators. A `Locator` stores a query and resolves
@@ -271,6 +270,8 @@ and `waitFor()`: what renders, as Playwright reads it.
 - A child that sets `visibility: visible` under a hidden parent is visible.
 - On the web, text directly under a `display: contents` element with
   `visibility: hidden` is hidden, where Playwright calls it visible.
+- On the web, everything inside a hidden `<iframe>` is hidden, cross-origin
+  frames included.
 - It works with scopes, `filter`, `first`, `last`, and `nth`:
   `getByText('Save', { visible: true }).first()` is the first visible match.
 
@@ -375,10 +376,11 @@ await screen.getByRole('row').nth(2).getByRole('checkbox').check();
 | Method | Returns |
 | --- | --- |
 | [`screen.tapAt`](#screen-tapat) | `Promise<void>` |
+| [`screen.doubleTapAt`](#screen-doubletapat) | `Promise<void>` |
 | [`screen.swipe`](#screen-swipe) | `Promise<void>` |
 | [`screen.scrollUntilVisible`](#screen-scrolluntilvisible) | `Promise<void>` |
 
-`tapAt` and `swipe` act on the viewport.
+`tapAt`, `doubleTapAt`, and `swipe` act on the viewport.
 
 #### `screen.tapAt`
 
@@ -408,6 +410,32 @@ await screen.tapAt({ x: map.x + 360, y: map.y + 70 });
 
 <Note>
 `tapAt` is not scoped: on a locator it still taps a viewport point.
+</Note>
+
+#### `screen.doubleTapAt`
+
+Use it to double-tap a viewport point when the tree does not list the target.
+
+```ts
+/** Double-taps a viewport point, with no node behind it. */
+doubleTapAt(point: Point, options?: ActionOptions): Promise<void>;
+```
+
+```ts
+await screen.doubleTapAt({ x: 120, y: 240 }, { timeout: 1_000 });
+```
+
+- Use viewport coordinates in the same units as `boundingBox()`.
+- The page or device decides what receives the gesture. On web, this sends a primary-button double-click.
+- Defaults to `config.actionTimeout`.
+
+| Throws | When |
+| --- | --- |
+| `INVALID_ARGUMENT` | A negative or non-finite coordinate, or an unknown option. |
+| `UNSUPPORTED_CAPABILITY` | The engine does not list `doubleTap` in its pointer actions. |
+
+<Note>
+`doubleTapAt` is not scoped: on a locator it still double-taps a viewport point.
 </Note>
 
 #### `screen.swipe`
@@ -485,6 +513,9 @@ await screen.getByTestId('feed').scrollUntilVisible(row);
   whole scroll, each swipe included.
 - On a locator each step swipes that node. So a feed or a table that is its
   own scroll container pages without the pointer hovering it first.
+- It stops at the first match that is not hidden. On a device, a node under
+  the soft keyboard is hidden, so the scroll goes on
+  ([Mobile visibility](/reference/mobile#visibility)).
 
 | Throws | When |
 | --- | --- |
@@ -572,13 +603,14 @@ await screen.debug();
 Each action resolves one node, waits for actionability, and performs one
 operation. The timeout is
 [`config.actionTimeout`](/reference/config#actiontimeout), and every action
-takes `{ timeout }` to override it. An action takes only the options its
-signature names.
+takes `{ timeout }` to override it: `0` waits until
+the test timeout, or `cleanupTimeout` in `afterEach`. An
+action takes only the options its signature names.
 
 | Throws | When |
 | --- | --- |
 | `UNSUPPORTED_CAPABILITY` | The engine does not list the action's kind in `actions`; thrown before reaching the engine. |
-| `INVALID_ARGUMENT` | An option key the action does not take, Playwright's `trial`, `force`, or `noWaitAfter` included. Thrown before the node is resolved, so the control is never touched. |
+| `INVALID_ARGUMENT` | An option key the action does not take, Playwright's `trial`, `force`, or `noWaitAfter` included, or a negative, `NaN`, or infinite `timeout`. Thrown before the node is resolved, so the control is never touched. |
 | `LOCATOR_NOT_FOUND` | No match before the timeout. |
 | `LOCATOR_AMBIGUOUS` | More than one match. |
 | `ACTION_FAILED` | The action may already have committed; it is never repeated. |
@@ -601,11 +633,11 @@ await row.click({ modifiers: ['Shift'] });
 The options are [`TapOptions`](#types):
 
 - `modifiers`: the browser engine holds them.
-- `position`: an offset from the node's top-left corner, in CSS pixels. The
-  engine scrolls the node into view when it lists `scrollIntoView`. Then it
-  reads the node's box and dispatches the pointer at the point. No node is
-  behind the gesture, so the platform's other actionability checks (enabled,
-  not covered) do not run.
+- `position`: an offset from the node's top-left corner, inside its border,
+  in CSS pixels. The engine scrolls the node into view when it lists
+  `scrollIntoView`. Then it reads the node's box and dispatches the pointer at
+  the point. No node is behind the gesture, so the platform's other
+  actionability checks (enabled, not covered) do not run.
 
 | Throws | When |
 | --- | --- |
@@ -758,6 +790,10 @@ check(options?: ActionOptions): Promise<void>;
 await screen.getByRole('checkbox', 'Remember me').check();
 ```
 
+On the web engine, a checkbox or radio hidden under its own label (as in
+Element Plus) is clicked through that label. Anything else on top of the
+point the click lands on still fails `ACTION_FAILED`.
+
 #### `uncheck`
 
 ```ts
@@ -768,6 +804,10 @@ uncheck(options?: ActionOptions): Promise<void>;
 ```ts
 await screen.getByRole('checkbox', 'Remember me').uncheck();
 ```
+
+| Throws | When |
+| --- | --- |
+| `ACTION_FAILED` | A checked native radio button, which only another radio in its group clears. |
 
 #### `selectOption`
 
@@ -814,20 +854,22 @@ await screen.getByRole('button', 'Account').hover();
 #### `setInputFiles`
 
 ```ts
-/** Sets the files of exactly one file input, or of a control that opens a file chooser; paths resolve from the project root. */
+/** Sets the files of exactly one file input, or of a control that opens a file chooser; paths resolve from the project root, and an empty array clears the input. */
 setInputFiles(paths: string | readonly string[], options?: ActionOptions): Promise<void>;
 ```
 
 ```ts
 await screen.getByLabel('Receipt').setInputFiles('fixtures/receipt.pdf');
+await screen.getByLabel('Receipt').setInputFiles([]);
 ```
 
-On the web it also takes a button that opens a file chooser.
+Web only. An empty array clears the input and fires `input` and `change`. It also takes a button that opens a file chooser.
 
 | Throws | When |
 | --- | --- |
-| `INVALID_ARGUMENT` | An empty list or a blank entry. |
-| `ACTION_FAILED` | On the web, a button that opens no file chooser. |
+| `INVALID_ARGUMENT` | A blank path. |
+| `UNSUPPORTED_CAPABILITY` | On a device, which has no file input. |
+| `ACTION_FAILED` | A button that opens no file chooser. |
 
 #### `dragTo`
 
@@ -930,6 +972,10 @@ On a checkbox or radio, `inputValue()` and `toHaveValue` read its value
 attribute, `on` when it has none, whatever its checked state. `isChecked()`
 reads the state.
 
+| Throws | When |
+| --- | --- |
+| `ACTION_FAILED` | A node with no value, such as a heading or a button. A field with no value reads `""`. |
+
 #### `getAttribute`
 
 ```ts
@@ -1018,8 +1064,12 @@ isChecked(): Promise<boolean>;
 const remembered = await screen.getByRole('checkbox', 'Remember me').isChecked();
 ```
 
-`false` on a node with no checked state, such as a button or a heading. It
-does not throw.
+A checkable role with no state reported, such as an ARIA switch without
+`aria-checked`, reads `false`.
+
+| Throws | When |
+| --- | --- |
+| `ACTION_FAILED` | A node with no checked state, such as a button or a heading. |
 
 #### `boundingBox`
 
@@ -1291,9 +1341,10 @@ export interface SwipePathOptions {
 }
 
 /**
- * A point in CSS pixels. For `screen.tapAt` and `screen.swipe` the origin is
+ * A point in CSS pixels. For `screen.tapAt`, `screen.doubleTapAt`, and `screen.swipe` the origin is
  * the viewport's top-left corner, the space `boundingBox()` reports in; for
- * `tap({ position })` it is the node's own top-left corner.
+ * `tap({ position })` it is the node's own top-left corner, inside its
+ * border on a document platform.
  */
 export type Point = ViewportPoint; // { x: number; y: number }
 
@@ -1314,11 +1365,11 @@ export type KeyModifier = 'Shift' | 'Control' | 'Alt' | 'Meta' | 'ControlOrMeta'
 /** `tap` and `click` options. */
 export interface TapOptions extends ClickOptions {
   /**
-   * Where to tap, relative to the node's top-left corner. Without it the
-   * platform picks a point of the node, usually its center, behind its own
-   * actionability checks; with it the pointer is dispatched at that point
-   * once the node is in view and has a box, which needs the engine's `tap`
-   * pointer action.
+   * Where to tap, relative to the node's top-left corner, inside its border
+   * on a document platform. Without it the platform picks a point of the
+   * node, usually its center, behind its own actionability checks; with it
+   * the pointer is dispatched at that point once the node is in view and has
+   * a box, which needs the engine's `tap` pointer action.
    */
   position?: Point;
 }

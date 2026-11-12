@@ -2,6 +2,13 @@
 name: create-verification-skill
 description: Generate a project-local verify-<app> skill on top of e2e, so any coding agent can launch the app, check it is worth driving, exercise a feature the way a user does, keep evidence, and bug bash it. Writes the skill, a feature map with one explore charter per feature, and proves it once. Use for /create-verification-skill, "make a verification skill for this repo", or when a project has no scripted way to prove UI behavior.
 disable-model-invocation: true
+metadata:
+  openclaw:
+    homepage: https://e2e.com
+    requires:
+      bins:
+        - node
+        - npx
 ---
 
 # Create a verification skill
@@ -17,7 +24,7 @@ mid-task, by an agent that has never seen the app.
 The e2e skill is the reference for everything e2e does. Read it first and
 link to it rather than restate it. It is the sibling
 [e2e skill](../e2e/SKILL.md), wherever this skill was installed from; when
-it is missing, `npx skills add tester-army/e2e` or `npx e2e init` installs
+it is missing, `npx skills add e2e-inc/e2e` or `npx e2e init` installs
 it. `npx e2e guide <topic>` prints a reference from the project's installed
 package; prefer that version when the two differ. Topics
 named below (`setup`, `writing-tests`, `mcp`, `explore`, `bug-bash`,
@@ -32,7 +39,7 @@ observe.
 | --- | --- | --- |
 | Surface | What a user touches. A web UI, an iOS or Android app, an API | One skill per primary surface; name the others for a later run. Web goes through `@e2e-dev/web`, iOS and Android through `@e2e-dev/mobile`. An API with no UI still gets a `web()` target with `app.url` and `app.command` so the runner starts it, and its tests take only `app` and use `fetch` (topic `writing-tests`). A native desktop app has no e2e engine yet, say so and stop. So does a project where no engine has a surface to drive: a CLI, a library, or a batch job, and a desktop frontend whose only browser output is a native-runtime notice. An HTTP service with no UI is not one of those; this row drives it through `web()`. Stop on the observation, not after a write: name the entry point, the engine that cannot drive it, and that no skill was generated |
 | Run | The documented dev command, its ports, env vars, seed data, auth | The target's `app.command` (topic `setup`). A dev server that compiles a route on first visit reads as broken to an agent, so prefer a production build command when the repo has one |
-| e2e state | `e2e.config.ts`, the `tests` glob, `e2e` in `package.json`, `.agents/skills/e2e/`, the MCP server in `.codex/config.toml`, `.mcp.json`, or `.cursor/mcp.json`, and any Playwright or Cypress suite | Nothing there, once the Surface row found something an engine can drive, means `npx e2e init` first (topic `setup`). Running this skill requests that setup. Init registers MCP for Claude Code and Cursor; Codex needs its own project entry (topic `mcp`). Check that the session has the e2e tools before a live drive. An existing Playwright or Cypress suite is the best source of locators, seeds, and sign-in steps; read it. A config with no model runs the deterministic steps and the MCP tools, and nothing else |
+| e2e state | `e2e.config.ts`, the `tests` glob, `e2e` in `package.json`, `.agents/skills/e2e/`, the MCP server in `.codex/config.toml`, `.mcp.json`, or `.cursor/mcp.json`, and any Playwright or Cypress suite | Nothing there, once the Surface row found something an engine can drive, means `npx e2e init` first (topic `setup`). Running this skill requests that setup. Init registers MCP for Claude Code, Cursor, and Codex. Codex loads its project entry after the project is trusted and a new session starts (topic `mcp`). Check that the session has the e2e tools before a live drive. An existing Playwright or Cypress suite is the best source of locators, seeds, and sign-in steps; read it. A config with no model runs the deterministic steps and the MCP tools, and nothing else |
 | Observe | The trace page, screenshots, video, the report, and what the app leaves behind in files, rows, sent messages, logs | The side-effect stores the Evidence section names. Find them now |
 | Isolate | Can two instances run side by side? | Port `0` in `app.url` gives each run its own app; `command.reuseExisting: true` attaches to one already running on the port. A shared instance that cannot be duplicated (one database, one simulator) becomes a rule in the generated skill. Refusing to double-drive it beats corrupting the user's session |
 | Name | The package name or the repo name | `<app>` in `verify-<app>`, lowercase, no scope |
@@ -64,7 +71,7 @@ found, no placeholders.
 | Doctor | One read-only check that answers "is this instance worth driving?". `npx e2e list` loads the config and prints every test-target pair without starting anything, so a config error shows here first. Then the smoke test, a model-free test that opens the app and pins one landmark; exit `0` means the app starts, the engine runs, and the landmark renders. No smoke test in the project: write `tests/smoke.e2e.ts` now. A signed-in app's auth doctor is an ordinary signed-in smoke test that consumes a named session: selecting that test runs its setup and checks the restored state, so one command proves the app starts, the session restores, and a signed-in landmark renders. Running the setup file alone selects no test and exits `NO_TESTS`, so it is not the doctor. An agent runs Doctor first whenever anything looks off |
 | Drive | Two lanes and when to use each. Live over MCP: `open_session`, `observe`, the verbs, and `locate` before any locator is written (topic `mcp`); list the project tools and credentials the session's catalog offers. Scripted: a test under the `tests` glob, `screen` where the name on screen is known, `agent.act` where the flow varies (topic `writing-tests`). Prefer stable handles, roles and accessible names, labels, test ids, routes. Name the credentials and sessions a signed-in drive starts from |
 | Evidence | What a proof keeps and where. Every run writes `.e2e/report.json`; a failed test gets `.e2e/results/<test>/trace.md`, `--trace on` gives one to passing tests too, `--video` records the attempt (topic `running`), `app.screenshot('<name>')` saves a named frame (topic `writing-tests`). The next run clears `.e2e/results/`, Doctor included, so a proof that must outlive it runs with `--output .e2e/proof/<name>` or its attempt directory is copied out before anything else runs. State the proof standards (below) |
-| Bug bash | How this app is bashed (topic `bug-bash`): the bug-bash config to write (what the local app cannot do, the postures, the isolation choice from the interview), the accounts to seed, `.e2e/bugbash/` added to `.gitignore`, and the rule that the charters come from the feature map (section 3). The verification bar: a finding is a bug only once `tests/bugbash/<slug>.e2e.ts` fails with `ASSERTION_FAILED` on the assertion that encodes it |
+| Bug bash | How this app is bashed (topic `bug-bash`): the bug-bash config to write (what the local app cannot do, the postures, the isolation choice from the interview), the accounts to seed, `.e2e/bugbash/` added to `.gitignore`, and the rule that the charters come from the feature map (section 3). The verification bar: a finding is a bug only once `tests/bugbash/<slug>.e2e.ts` fails on the reported defect, as topic `bug-bash` step 6 reads it |
 | Cleanup | What to tear down. The runner stops the app it started and `close_session` stops the one a session started; a server the user started stays theirs. Never kill by process name; stop what you started. Cleanup removes instances and scratch state (seeded accounts, scaffolding, charters whose findings were all rejected), never the evidence; name where the evidence is |
 | Helpers | Any script the skill ships is executable and its invocation is in the skill body. A helper the reader has to reverse-engineer is not a helper. Most projects need none; the e2e CLI is the helper |
 
@@ -80,11 +87,14 @@ skips by watching files, network, and refs rather than trusting its name.
 
 Create `.agents/skills/verify-<app>/features/README.md` plus one file per
 user-facing feature you can identify, the top three to five first, from
-routes, navigation, commands, or docs. Follow
-[references/example/verify-playground/](references/example/verify-playground/),
-the skill this generator produced and ran for the e2e playground app. Its
-entry point is `SKILL.example.md` so clients do not discover it as another
-installable skill. The
+routes, navigation, commands, or docs. Follow the example skill this
+generator produced and ran for the e2e playground app. Its entry point is
+[SKILL.example.md](references/example/verify-playground/SKILL.example.md)
+so clients do not discover it as another installable skill, and its feature
+map is [features/README.md](references/example/verify-playground/features/README.md)
+with [todos.md](references/example/verify-playground/features/todos.md),
+[forms.md](references/example/verify-playground/features/forms.md), and
+[login.md](references/example/verify-playground/features/login.md). The
 index is a table of feature, route, test file, and status (`tested` or
 `untested`). Each feature file has these H2s, from the user's point of
 view.

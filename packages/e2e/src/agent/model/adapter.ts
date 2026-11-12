@@ -62,6 +62,8 @@ export interface ModelCall<Value> {
   readonly providerOptions?: ProviderOptions | undefined;
   readonly signal: AbortSignal;
   readonly timeoutMs: number;
+  /** Provider transport retries; default `TRANSPORT_RETRIES`. */
+  readonly maxRetries?: number | undefined;
 }
 
 export interface ModelResult<Value> {

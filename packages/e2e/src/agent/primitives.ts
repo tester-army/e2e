@@ -15,11 +15,14 @@ import { isTapActionName, type NodeActionName, type PointActionName } from '../c
 import { KEY_MODIFIERS, type KeyModifier } from '../engine/contract.ts';
 import type { ViewportPoint } from '../engine/surface.ts';
 import { codedMessage, hasCause, TestError } from '../internal/errors.ts';
+import { VIEWPORT_LIMITS } from '../internal/geometry.ts';
 import type { AgentErrorCode } from '../types.ts';
+import { READ_ONLY_GRAMMAR } from './action-names.ts';
 import { isRuntimeHardStop, BLOCKABLE_CODES, type StepExecutorContext, type StepVerdict } from './executor.ts';
 import { cacheTokenFields, readCost } from './model/sdk.ts';
 import { OperationQueue } from './operation-queue.ts';
 import { imagePointToViewport, POINT_VERBS } from './point-tap.ts';
+import { SAMPLE_NAMES, SAMPLE_PREFIX } from './sample-files.ts';
 import { ScreenPresenter, type ScreenOutput, type ScreenUpdateOptions } from './screen-update.ts';
 
 /** Codes the model may pick when concluding; runtime codes are runtime-assigned. */
@@ -27,6 +30,7 @@ const MODEL_ERROR_CODES = [
   'ACTION_FAILED',
   'AUTOMATION_UNSUPPORTED',
   'ASSERTION_FAILED',
+  'ASSERTION_INCONCLUSIVE',
   'AUTHENTICATION_FAILED',
   'AUTH_CREDENTIAL_UNAVAILABLE',
   'AUTH_CREDENTIAL_INVALID',
@@ -145,8 +149,12 @@ export interface VerdictTool {
  * dropped and the result says so, never refused: one model attaches
  * `ACTION_FAILED` to about half of its passes, and a schema refusal had it
  * resend the identical call until the turn budget ran out.
+ *
+ * @param kind The step's kind. On `act`, `ASSERTION_INCONCLUSIVE` is dropped
+ * from a failed verdict the same way, since only an assertion can be
+ * inconclusive. Omit it to keep every code a failed verdict sends.
  */
-export function createVerdictTool(): VerdictTool {
+export function createVerdictTool(kind?: 'act' | 'assert'): VerdictTool {
   let verdict: StepVerdict | undefined;
   const tool = schemaTool({
     description:
@@ -178,16 +186,16 @@ export function createVerdictTool(): VerdictTool {
           'If the application itself misbehaved, use status "failed" instead.'
         );
       }
+      const ignored = input.status === 'passed' || (kind === 'act' && input.errorCode === 'ASSERTION_INCONCLUSIVE');
       verdict = {
         status: input.status,
         summary: input.summary,
-        ...(input.errorCode === undefined || input.status === 'passed'
-          ? {}
-          : { errorCode: input.errorCode }),
+        ...(input.errorCode === undefined || ignored ? {} : { errorCode: input.errorCode }),
       };
-      return input.status === 'passed' && input.errorCode !== undefined
+      if (input.errorCode === undefined || !ignored) return 'Step concluded.';
+      return input.status === 'passed'
         ? `Step concluded as passed; the errorCode ${input.errorCode} you sent does not apply to a passed verdict and was ignored.`
-        : 'Step concluded.';
+        : `Step concluded as ${input.status}; the errorCode ${input.errorCode} you sent applies only to assertions and was ignored.`;
     },
   });
   return {
@@ -522,7 +530,7 @@ export function grammarTools(
   if (verbs.has('upload')) {
     tools['upload'] = screenTool({
       description:
-        'Attach one or more files to a file input node, or to a control that opens a file chooser when clicked (an upload button). Paths are relative to the project root, e.g. "fixtures/photo.png"; use the paths the step gives you. A file outside the project, a hidden one, or one that does not exist is refused.',
+        `Attach one or more files to a file input node, or to a control that opens a file chooser when clicked (an upload button). Use the project-relative paths the step gives you; when it names none, attach a sample: ${SAMPLE_NAMES.map((name) => `${SAMPLE_PREFIX}${name}`).join(', ')}. Any other file outside the project, a hidden one, or one that does not exist is refused.`,
       inputSchema: z.object({ target, files: z.array(z.string().min(1)).min(1) }),
       execute: ({ target: id, files }) =>
         acting(
@@ -582,6 +590,20 @@ export function grammarTools(
       execute: () => acting({ done: 'Navigated back.', attempt: 'back' }, () => context.actions.back()),
     });
   }
+  if (verbs.has('resize')) {
+    const side = (what: string) => z.number().int().min(VIEWPORT_LIMITS.min).max(VIEWPORT_LIMITS.max).describe(`Viewport ${what} in CSS pixels.`);
+    tools['resize_viewport'] = screenTool({
+      description:
+        'Resize the viewport to check how the page lays out at another screen size, e.g. 1440x900 desktop, 768x1024 tablet, 390x844 phone. It stays at that size until resized again. The result shows the screen at the new size; take a screenshot to check the layout itself (overflow, overlap, clipped or hidden content).',
+      inputSchema: z.object({ width: side('width'), height: side('height') }),
+      execute: ({ width, height }) =>
+        acting(
+          { done: `Resized the viewport to ${String(width)}x${String(height)}.`, attempt: `resize_viewport ${String(width)}x${String(height)}` },
+          () => context.actions.resize({ width, height }),
+          { expectChange: false },
+        ),
+    });
+  }
   // The pixel verbs are the fallback for a target the tree does not list: a
   // tap, hover, or drag reaches the engine as bare points where it takes
   // them, and a type, press, or select acts on a listed control under the
@@ -626,7 +648,11 @@ export function grammarTools(
         ),
     });
   }
-  return tools;
+  if (context.step.kind !== 'assert') return tools;
+  // An assertion only looks: the read-only tools, and no screenshot when it asked for the tree alone.
+  return Object.fromEntries(
+    Object.entries(tools).filter(([name]) => name in READ_ONLY_GRAMMAR && (name !== 'screenshot' || context.step.vision !== false)),
+  );
 }
 
 /**

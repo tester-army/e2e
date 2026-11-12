@@ -1,9 +1,8 @@
 ---
 title: Security
 description: What the model can see and do, how secrets stay out of it, and what you still need to watch.
-icon: "shield-halved"
-"og:image": "https://e2e.tester.army/docs/images/og/security.png?v=6c43d95c56"
-"twitter:image": "https://e2e.tester.army/docs/images/og/security.png?v=6c43d95c56"
+"og:image": "https://e2e.com/docs/images/og/security.png?v=6c43d95c56"
+"twitter:image": "https://e2e.com/docs/images/og/security.png?v=6c43d95c56"
 ---
 
 e2e trusts the code you write and treats everything the app shows as
@@ -36,8 +35,11 @@ Redaction matches strings, and screenshots mask secure fields only:
   pass through. Assert the outcome, not the secret.
 - **Values not filled as a secret.** Only a configured secret's value is
   redacted. A value a sign-in sets in a cookie is not.
-- **Request credentials.** `basicAuth` answers a `401` from any origin.
-  `headers` reach every host under a shared domain such as `vercel.app`.
+- **Request credentials.** `headers` go on every request that starts at the
+  app's origin or one you list, even one a third-party page starts, and stay
+  on its redirects to any origin. `basicAuth` answers a `401` from those
+  origins, and from any origin on WebKit when one of those is on a default
+  port or has an IPv6 host.
 - **Committed recordings.** Cache entries store typed values verbatim, except
   secret fills. They aren't signed and replay with your permissions, so
   review them as you would test code.
@@ -71,16 +73,16 @@ opt out, [telemetry](/telemetry) at `eu.i.posthog.com`. There is no crash
 reporting. A CLI command on a terminal checks `registry.npmjs.org` for a
 newer release at most once a day, `e2e feedback` checks before each
 report unless `--allow-outdated`, and `e2e upgrade` reads the versions of
-the e2e packages the project lists. Integrations such as Kernel, EAS Simulators, Limrun, and smol add
+the e2e packages the project lists. Integrations such as Kernel, Expo Simulators, Limrun, and smol add
 their own destinations, listed with the rest under
 [Outbound connections](/reference/security#outbound-connections).
 
 ## Report a vulnerability
 
 Report privately through
-[GitHub security advisories](https://github.com/tester-army/e2e/security/advisories/new)
-or by mail to security@tester.army. The
-[security policy](https://github.com/tester-army/e2e/blob/main/SECURITY.md)
+[GitHub security advisories](https://github.com/e2e-inc/e2e/security/advisories/new)
+or by mail to security@e2e.com. The
+[security policy](https://github.com/e2e-inc/e2e/blob/main/SECURITY.md)
 states response times and supported versions.
 
 ## Next
@@ -89,7 +91,7 @@ states response times and supported versions.
   <Card title="Security rules" icon="lock" href="/reference/security">
     Every rule behind this page, as the code enforces it.
   </Card>
-  <Card title="Signing in" icon="key" href="/authentication">
+  <Card title="Authentication" icon="key" href="/authentication">
     Pass secrets to tests and agent steps, and save sessions.
   </Card>
   <Card title="Continuous integration" icon="rotate" href="/ci">

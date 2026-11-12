@@ -10,6 +10,8 @@
 # built from `src/` only. Every list includes this file and its workflow, so a
 # change to the gate runs what it gates.
 runner: &runner
+  - '.github/actions/workspace-install/**'
+  - '.github/scripts/agent-device.cjs'
   - 'packages/e2e/**'
   - '!packages/*/tests/**'
   - '!**/*.md'
@@ -26,6 +28,7 @@ web:
   - 'packages/github/**'
   - 'apps/web-benchmark/**'
   - '.github/workflows/benchmark.yml'
+  - '.github/actions/chromium/**'
 
 mobile:
   - *runner

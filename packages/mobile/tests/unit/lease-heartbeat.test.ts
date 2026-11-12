@@ -11,7 +11,7 @@ it("renews the lease on the lease's own daemon until stopped", async () => {
   vi.useFakeTimers();
   mocks.heartbeat.mockResolvedValue({});
   const stop = await startHeartbeat('/state', scope, vi.fn());
-  expect(mocks.create).toHaveBeenCalledWith({ stateDir: '/state', daemonBaseUrl: '', daemonAuthToken: '', daemonTransport: 'auto' });
+  expect(mocks.create).toHaveBeenCalledWith({ stateDir: '/state', session: expect.stringMatching(/^e2e-lease-[0-9a-f]{8}$/), daemonBaseUrl: '', daemonAuthToken: '', daemonTransport: 'auto' });
   await vi.advanceTimersByTimeAsync(140_000);
   expect(mocks.heartbeat).toHaveBeenCalledTimes(8);
   expect(mocks.heartbeat).toHaveBeenLastCalledWith({ ...scope, ttlMs: 60_000, signal: expect.any(AbortSignal) });

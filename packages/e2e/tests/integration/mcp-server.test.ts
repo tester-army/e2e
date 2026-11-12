@@ -1,12 +1,13 @@
 /**
  * `e2e mcp` end to end: the built CLI serving a fixture project over stdio to
- * a real MCP client. The server's tool list is four tools; everything the
+ * a real MCP client. The server's tool list is five tools; everything the
  * session can do is a catalog behind `call`. Covers the catalog, a live
  * session driven through `call`, argument validation, the secret and pixel
  * invariants, a second session open beside the first, a second session after
  * the first closed, an explicit config path, a config with two targets, a
  * custom engine, and project tools (each session's catalog is what its own
- * target can do), and stdout hygiene: a config that prints to stdout must not
+ * target can do), a session on a named engine in a directory with no config,
+ * and stdout hygiene: a config that prints to stdout must not
  * corrupt the protocol.
  */
 
@@ -175,9 +176,9 @@ describe('e2e mcp', { timeout: 120_000 }, () => {
     await app?.close();
   });
 
-  it('serves four fixed tools and the guide resources', async () => {
+  it('serves five fixed tools and the guide resources', async () => {
     const { tools } = await client.listTools();
-    expect(tools.map((tool) => tool.name)).toEqual(['open_session', 'tools', 'call', 'close_session']);
+    expect(tools.map((tool) => tool.name)).toEqual(['open_session', 'tools', 'call', 'close_session', 'run_tests']);
     const callTool = tools.find((tool) => tool.name === 'call')!;
     expect(callTool.description).toContain('call {tool: "tap", args: {target: "n42"}, session: "<id>"}');
     expect(callTool.inputSchema).toMatchObject({ type: 'object', required: ['tool'] });
@@ -185,6 +186,7 @@ describe('e2e mcp', { timeout: 120_000 }, () => {
     expect(tools.find((tool) => tool.name === 'open_session')?.inputSchema).toMatchObject({ properties: { target: {}, config: {}, headed: { type: 'boolean' } } });
     expect(client.getInstructions()).toContain('call {tool, args} runs any catalog tool');
     expect(client.getInstructions()).toContain('Several sessions can be open at once');
+    expect(client.getInstructions()).toContain('Before you write or edit a test, read the writing-tests guide: the resource e2e://guide/writing-tests, or npx e2e guide writing-tests in a shell.');
 
     const { resources } = await client.listResources();
     expect(resources.map((resource) => resource.uri)).toEqual(
@@ -228,6 +230,7 @@ describe('e2e mcp', { timeout: 120_000 }, () => {
     expect(opened.text).toContain(`App: ${app.url}/`);
     expect(opened.text).toContain('Credentials: "admin" (username "admin", password secret "admin.password")');
     expect(opened.text).toContain('Tools (run one with call {tool, args}; tools {tool} shows a tool\'s arguments):');
+    expect(opened.text).toContain('Before you write or edit a test, read the writing-tests guide: the resource e2e://guide/writing-tests, or npx e2e guide writing-tests in a shell.');
     expect(catalogNames(opened.text)).toEqual([
       'observe',
       'tap',
@@ -245,6 +248,7 @@ describe('e2e mcp', { timeout: 120_000 }, () => {
       'scroll',
       'navigate',
       'back',
+      'resize_viewport',
       'screenshot',
       'tap_at',
       'hover_at',
@@ -267,7 +271,7 @@ describe('e2e mcp', { timeout: 120_000 }, () => {
 
     const listed = await invoke('tools');
     expect(listed.isError, listed.text).toBe(false);
-    expect(listed.text).toContain(`Session ${sessionId} on target "web": 29 tools.`);
+    expect(listed.text).toContain(`Session ${sessionId} on target "web": 30 tools.`);
     expect(catalogLines(listed.text)).toEqual(catalogLines(opened.text));
     const detail = await invoke('tools', { tool: 'type_secret' });
     expect(detail.text).toContain('"admin.password" (password)');
@@ -397,6 +401,11 @@ describe('e2e mcp', { timeout: 120_000 }, () => {
     const unknown = await invoke('open_session', { target: 'nope' });
     expect(unknown.isError).toBe(true);
     expect(unknown.text).toContain('UNKNOWN_TARGET');
+
+    const named = await invoke('open_session', { engine: '@e2e-dev/web', app: { url: app.url } });
+    expect(named.isError).toBe(true);
+    expect(named.text).toContain('INVALID_ARGUMENT');
+    expect(named.text).toContain(`${path.join(project.dir, 'e2e.config.ts')} exists; leave engine out`);
 
     const absent = await invoke('open_session', { config: 'missing.config.ts' });
     expect(absent.isError).toBe(true);
@@ -537,6 +546,35 @@ describe('e2e mcp', { timeout: 120_000 }, () => {
       } finally {
         await other.close();
       }
+    }
+  });
+
+  it('opens a session on a named engine in a directory with no config, and says how to get one otherwise', async () => {
+    const bare = createProject({ 'README.md': 'no config here\n' });
+    const other = new Client({ name: 'e2e-mcp-bare-test', version: '0.0.0' });
+    await other.connect(new StdioClientTransport({ command: process.execPath, args: [CLI, 'mcp'], cwd: bare.dir, env: { ...(process.env as Record<string, string>), CI: '' }, stderr: 'ignore' }));
+    const open = async (args: Record<string, unknown>): Promise<{ text: string; isError: boolean }> => {
+      const result = (await other.callTool({ name: 'open_session', arguments: args }, { timeout: 110_000 })) as { content: { text?: string }[]; isError?: boolean };
+      return { text: result.content.map((part) => part.text ?? '').join('\n'), isError: result.isError === true };
+    };
+    try {
+      const empty = await open({});
+      expect(empty.isError).toBe(true);
+      expect(empty.text).toContain('CONFIG_NOT_FOUND');
+      expect(empty.text).toContain('pass engine to open_session to open a session without one: {engine: "@e2e-dev/web", app: {url: "<app URL>"}}');
+
+      const absent = await open({ engine: '@e2e-dev/absent' });
+      expect(absent.isError).toBe(true);
+      expect(absent.text).toContain('ENGINE_NOT_INSTALLED');
+      expect(absent.text).toMatch(/npm install --prefix ".*engines" @e2e-dev\/absent/);
+
+      const opened = await open({ engine: '@e2e-dev/web', app: { url: app.url } });
+      expect(opened.isError, opened.text).toBe(false);
+      expect(opened.text).toMatch(/^Session \S+ open on target "web" \(platform web, engine web [^)]+\), headless; no config file: one target on @e2e-dev\/web, every other setting at its default\./);
+      expect(opened.text).toContain('button "Increment"');
+    } finally {
+      await other.close();
+      bare.cleanup();
     }
   });
 

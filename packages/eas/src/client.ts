@@ -1,5 +1,5 @@
 /**
- * EAS Simulators' sessions through Expo's GraphQL API over `fetch`, the API
+ * Expo Simulators' sessions through Expo's GraphQL API over `fetch`, the API
  * `eas simulator:*` uses, so the integration installs no SDK.
  */
 
@@ -8,7 +8,7 @@ import { isRecord } from './json.ts';
 
 const GRAPHQL_URL = 'https://api.expo.dev/graphql';
 
-/** What the provider asks EAS for: one agent-device session on one platform. */
+/** What the provider asks Expo for: one agent-device session on one platform. */
 export interface EasSessionParams {
   readonly appId: string;
   readonly platform: 'ios' | 'android';
@@ -20,7 +20,7 @@ export interface EasSessionParams {
   readonly deviceIdentifier?: string | undefined;
   readonly maxIdleTimeMinutes?: number | undefined;
   readonly maxRunTimeMinutes?: number | undefined;
-  /** The agent-device version EAS starts the daemon at. */
+  /** The agent-device version Expo starts the daemon at. */
   readonly packageVersion?: string | undefined;
 }
 
@@ -49,7 +49,7 @@ export interface EasSessions {
    * Stops the session, and cancels its job when it is still queued: a stopped
    * session's queued job still starts later and holds one of the account's
    * concurrent sessions while it does. Stopping one already stopped, or one
-   * EAS no longer knows, succeeds.
+   * Expo no longer knows, succeeds.
    */
   stop(id: string, signal: AbortSignal): Promise<void>;
 }
@@ -79,11 +79,11 @@ const QUEUED_JOB = new Set(['NEW', 'IN_QUEUE']);
 /** Job run states after which the session never becomes ready. */
 const ENDED_JOB = new Set(['ERRORED', 'CANCELED', 'FINISHED', 'PENDING_CANCEL']);
 
-/** EAS Simulators sessions for one Expo access token or eas-cli session. */
+/** Expo Simulators sessions for one Expo access token or eas-cli session. */
 export function easSessions(credentials: ExpoCredentials): EasSessions {
   const auth: Record<string, string> =
     'accessToken' in credentials ? { Authorization: `Bearer ${credentials.accessToken}` } : { 'expo-session': credentials.sessionSecret };
-  /** Runs one operation and returns its unchecked `data`; a GraphQL error throws with EAS's message and error code. */
+  /** Runs one operation and returns its unchecked `data`; a GraphQL error throws with Expo's message and error code. */
   const graphql = async (query: string, variables: Record<string, unknown>, signal: AbortSignal): Promise<unknown> => {
     const response = await fetch(GRAPHQL_URL, {
       method: 'POST',
@@ -96,7 +96,7 @@ export function easSessions(credentials: ExpoCredentials): EasSessions {
     try {
       body = JSON.parse(text);
     } catch {
-      throw new Error(`EAS: HTTP ${response.status}, ${text.trim().slice(0, 200)}`);
+      throw new Error(`Expo: HTTP ${response.status}, ${text.trim().slice(0, 200)}`);
     }
     const errors = field(body, 'errors');
     const error: unknown = Array.isArray(errors) ? errors[0] : undefined;
@@ -106,7 +106,7 @@ export function easSessions(credentials: ExpoCredentials): EasSessions {
       throw new EasError(typeof message === 'string' ? message : `HTTP ${response.status}`, typeof code === 'string' ? code : undefined);
     }
     const data = field(body, 'data');
-    if (!response.ok || data == null) throw new Error(`EAS: HTTP ${response.status}, no data`);
+    if (!response.ok || data == null) throw new Error(`Expo: HTTP ${response.status}, no data`);
     return data;
   };
   return {
@@ -179,15 +179,15 @@ function field(value: unknown, key: string): unknown {
 
 /** The error for an answer without the fields an operation reads; it names no value, since the answer can hold a daemon token. */
 function unexpected(operation: string): Error {
-  return new Error(`EAS: unexpected response to ${operation}`);
+  return new Error(`Expo: unexpected response to ${operation}`);
 }
 
-/** An error EAS answered with, its `errorCode` kept. */
+/** An error Expo answered with, its `errorCode` kept. */
 class EasError extends Error {
   constructor(
     message: string,
     readonly code: string | undefined,
   ) {
-    super(`EAS: ${message}`);
+    super(`Expo: ${message}`);
   }
 }

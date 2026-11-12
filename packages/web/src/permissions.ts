@@ -6,7 +6,7 @@
 import { ConfigurationError, rejectUnknownKeys, type AppPermissionState } from 'e2e/engine';
 import type { BrowserName } from './browser-connection.ts';
 
-/** The permission names Playwright grants on each browser (playwright-core 1.64). */
+/** The permission names Playwright grants on each browser (playwright-core 1.65). */
 const BROWSER_PERMISSIONS = {
   chromium: [
     'accelerometer', 'ambient-light-sensor', 'background-sync', 'camera', 'clipboard-read', 'clipboard-write',

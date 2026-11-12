@@ -22,7 +22,7 @@ const allocate = { tenant: 'browserstack', runId: 'run', leaseProvider: 'browser
 it('allocates from the daemon in its state directory and reports the grant', async () => {
   mocks.allocate.mockResolvedValue({ leaseId: 'lease', tenantId: 'browserstack', runId: 'run', backend: 'ios-instance', retainOnClose: true });
   await expect(answer({ stateDir: '/daemon', allocate })).resolves.toEqual({ grant: { leaseId: 'lease', tenantId: 'browserstack', runId: 'run', retainOnClose: true } });
-  expect(mocks.create).toHaveBeenCalledWith({ stateDir: '/daemon' });
+  expect(mocks.create).toHaveBeenCalledWith({ stateDir: '/daemon', session: expect.stringMatching(/^e2e-lease-[0-9a-f]{8}$/) });
   expect(mocks.allocate).toHaveBeenCalledWith(allocate);
 });
 

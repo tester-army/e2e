@@ -17,6 +17,8 @@ import {
   type SerializedError,
 } from '../internal/errors.ts';
 import { isRuntimeSkip, type RuntimeSkip } from '../internal/skip.ts';
+import { lateExpectedFailureError } from '../internal/expected-failure.ts';
+import { settleExpectedFailure } from './expected-failure.ts';
 import type { ExecutorAttempt } from '../agent/executor.ts';
 import { isModelUnreachable } from '../agent/error.ts';
 import { withAiTraceScope } from '../internal/ai-trace.ts';
@@ -57,7 +59,8 @@ import { interruptedInPhase, interruptedSkip, pairKey, pairResult, unstartedResu
 import { adoptSecrets, carriedSecrets, processSecrets, registerDerivedSecrets, redactForSession, resolveSecretValue, sessionLedger, staticSecretLedger } from './secrecy.ts';
 import { isSecret } from '../secrets.ts';
 import { SessionStaging, SessionStore, targetIdentity, type SessionIdentity } from './sessions.ts';
-import { StepRecorder, type StepProgress } from './steps.ts';
+import { StepRecorder, type StepHoldRequest, type StepProgress } from './steps.ts';
+import { AttemptHolds, type HeldStep } from './step-hold.ts';
 import { EngineError } from '../engine/contract.ts';
 import { hostedVideoUrl } from '../engine/recording.ts';
 import { sessionRecordings } from './recordings.ts';
@@ -79,8 +82,15 @@ export interface ExecutionEvents {
   onPairStart?(pair: TestTargetPair): void;
   /** Live step progress of one running attempt, for reporters. */
   onProgress?(pair: TestTargetPair, progress: StepProgress): void;
-  /** An attempt's test timeout started, as its `beforeEach` hooks and body begin. */
-  onAttemptDeadline?(pair: TestTargetPair, attempt: { readonly index: number; readonly id: string; readonly startedAt: string }): void;
+  /**
+   * An attempt's test timeout started, as its `beforeEach` hooks and body
+   * begin; again with `remainingMs` each time its test clock runs again
+   * after `e2e run --step` held a step.
+   */
+  onAttemptDeadline?(
+    pair: TestTargetPair,
+    attempt: { readonly index: number; readonly id: string; readonly startedAt: string; readonly remainingMs?: number },
+  ): void;
   /** The attempt `onAttemptDeadline` announced has ended, or one that never got that far has. */
   onAttemptEnd?(): void;
   /** One line of progress the engine's `init` reported, already naming the target and worker slot. */
@@ -119,6 +129,12 @@ export interface TargetExecutorOptions {
    */
   readonly isolated: boolean;
   readonly interruptSignal: AbortSignal;
+  /**
+   * Holds each top-level step of a test's first attempt until the runner
+   * lets it run (`e2e run --step`); it resolves to run the step. Setup tests
+   * and retries never wait.
+   */
+  readonly holdStep?: ((step: HeldStep, signal: AbortSignal) => Promise<void>) | undefined;
   readonly debug?: DebugTrace;
   readonly events?: ExecutionEvents;
   /** The virtual file of tests registered in memory, and the agents they run as; see `InMemoryAttempts`. */
@@ -469,10 +485,11 @@ export class TargetExecutor implements SerialHost {
         });
         attempts.push(attempt);
         this.options.events?.onAttempt?.(pair, attempt);
-        if (isFailedStatus(attempt.status)) {
+        if (isFailedStatus(attempt.status) || attempt.expectedFailure?.error !== undefined) {
           // A failed realm is never reused, but afterAll still runs for every
           // scope whose beforeAll started in it. A body that skipped itself
-          // left the suite instance as it found it, so the next test keeps it.
+          // left the suite instance as it found it, so the next test keeps it;
+          // one that failed as expected still failed.
           await this.realms.leave(realm);
           realm = null;
         }
@@ -849,7 +866,11 @@ export class TargetExecutor implements SerialHost {
     // step label; the ledger is live, so a value resolved mid-attempt is
     // covered too. Before a session opens, the static values still are.
     const redact = (text: string): string => redactForSession(openSession ?? undefined, this.config.allSecrets, text);
+    // Set once the test clock exists, before the first step that could wait.
+    let holds: AttemptHolds | undefined;
+    const holdStep = context.kind === 'setup' || attemptIndex > 0 ? undefined : this.options.holdStep;
     const steps = new StepRecorder(attemptId, {
+      ...(holdStep === undefined ? {} : { hold: (step: StepHoldRequest, signal: AbortSignal) => holds?.hold(step, signal) ?? Promise.resolve() }),
       attempt: { id: shared?.attemptId ?? attemptId, index: attemptIndex },
       maxEventsPerStep: this.config.limits.maxEventsPerStep,
       projectRoot: this.config.projectRoot,
@@ -921,11 +942,14 @@ export class TargetExecutor implements SerialHost {
     let failurePhase: AttemptPhase | undefined;
     /** Set when the body (or a beforeEach) skipped the test with `test.skip(...)`. */
     let skipped: RuntimeSkip | undefined;
+    /** Why the attempt is expected to fail: the `fail` option, else the first `test.fail(...)` that marked it. */
+    let expectedFailure = pair.options.expectedFailure;
     let phase: AttemptPhase = 'launch';
     /** Moves the attempt to `next`, and the steps it records into the hook they run in (none for the body). */
     const enter = (next: AttemptPhase): void => {
       phase = next;
       steps.phase = next === 'beforeEach' || next === 'afterEach' ? next : undefined;
+      steps.holdable = next === 'beforeEach' || next === 'body';
     };
     let timedOut = false;
     // The polls the fixtures, the beforeEach hooks, and the body start.
@@ -1023,6 +1047,21 @@ export class TargetExecutor implements SerialHost {
       const testDeadline = new Deadline(pair.options.timeout);
       this.options.events?.onAttemptDeadline?.(pair, { index: attemptIndex, id: attemptId, startedAt });
       const budget = new AttemptBudget(attemptAbort.signal, testDeadline);
+      if (holdStep !== undefined) {
+        const title = pair.test.titlePath.join(' › ');
+        holds = new AttemptHolds({
+          budget,
+          signal: attemptAbort.signal,
+          ask: (step, signal) =>
+            holdStep(
+              { target: this.target.name, testId: pair.test.id, agent: pair.agent, repeat: pair.repeat, title, api: step.api, label: step.label, ...(step.source === undefined ? {} : { source: step.source }) },
+              signal,
+            ),
+          // The runner's watchdog keeps the test deadline too; it gets what is left.
+          onResume: (remainingMs) =>
+            this.options.events?.onAttemptDeadline?.(pair, { index: attemptIndex, id: attemptId, startedAt, remainingMs }),
+        });
+      }
       const saveSession =
         context.kind !== 'setup'
           ? undefined
@@ -1065,7 +1104,22 @@ export class TargetExecutor implements SerialHost {
       // run on is published here and cleared when `attemptEnd` fires in `finally`.
       const soft = new SoftFailures();
       publishAttempt(
-        { attemptId, owner: 'suite', testKind: pair.test.kind, assertionTimeout: this.config.assertionTimeout, budget, soft },
+        {
+          attemptId,
+          owner: 'suite',
+          testKind: pair.test.kind,
+          assertionTimeout: this.config.assertionTimeout,
+          budget,
+          soft,
+          ...(context.kind === 'ordinary'
+            ? {
+                expectFailure: (reason: string) => {
+                  if (phase === 'afterEach') throw lateExpectedFailureError();
+                  expectedFailure ??= reason;
+                },
+              }
+            : {}),
+        },
         attemptEnd.signal,
       );
 
@@ -1160,18 +1214,13 @@ export class TargetExecutor implements SerialHost {
         }),
       ]);
       try {
+        const onTimeout = (): Error => {
+          timedOut = true;
+          attemptAbort.abort();
+          return new TestTimeoutError(`test timed out after ${pair.options.timeout} ms in phase ${phase}`);
+        };
         await this.debug.time('test.body', () =>
-          withTimeout(
-            body,
-            Math.max(1, testDeadline.remaining()),
-            () => {
-              timedOut = true;
-              attemptAbort.abort();
-              return new TestTimeoutError(
-                `test timed out after ${pair.options.timeout} ms in phase ${phase}`,
-              );
-            },
-          ),
+          holds === undefined ? withTimeout(body, Math.max(1, testDeadline.remaining()), onTimeout) : holds.race(body, onTimeout),
         );
       } catch (cause) {
         // The race has settled: a rejection surfacing while the evidence is
@@ -1262,6 +1311,11 @@ export class TargetExecutor implements SerialHost {
         // A failure that first landed in teardown has had no look yet.
         await captureEvidence();
       }
+      // The cache below still settles on what the attempt did, read off `failure`.
+      settleExpectedFailure(record, expectedFailure, {
+        serialize: (error) => serializeError(error, { phase: 'body', projectRoot: this.config.projectRoot, redact }),
+        redact,
+      });
       // A serial member's recording ends with the member, not the group.
       if (openSession !== null && shared !== undefined) {
         await this.stopRunningRecording(openSession, attemptId, record, artifacts.sink, secondaryErrors);

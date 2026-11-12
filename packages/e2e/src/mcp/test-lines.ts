@@ -22,6 +22,7 @@ import { z } from 'zod';
 import type { ExecutorNode, ExecutorObservation, ExecutorObserveOptions, StepExecutorContext } from '../agent/executor.ts';
 import { isFailedResult } from '../agent/loop-guards.ts';
 import { typedThroughKeyboard } from '../agent/primitives.ts';
+import { SAMPLE_PREFIX } from '../agent/sample-files.ts';
 import type { ScreenOutput } from '../agent/screen-update.ts';
 import type { LocatorExpression, NodeRef, SemanticNode } from '../engine/surface.ts';
 import { codedMessage, InfrastructureError } from '../internal/errors.ts';
@@ -135,7 +136,7 @@ interface Probe {
 /** The grammar tools that print a line or say why they print none; the point tools print nothing. */
 const LINE_TOOLS: ReadonlySet<string> = new Set([
   'tap', 'double_tap', 'long_press', 'right_click', 'hover', 'type', 'type_secret', 'press', 'select', 'check',
-  'drag', 'upload', 'scroll', 'scroll_to', 'navigate', 'back', 'dismiss_keyboard',
+  'drag', 'upload', 'scroll', 'scroll_to', 'navigate', 'back', 'resize_viewport', 'dismiss_keyboard',
 ]);
 
 /** The locator method each node verb's tool repeats as. */
@@ -307,6 +308,7 @@ export class SessionTestLines {
         return this.onTarget(target, (locator) => `${locator}.${input['checked'] === false ? 'uncheck' : 'check'}()`);
       case 'upload': {
         const files = Array.isArray(input['files']) ? input['files'].filter((file): file is string => typeof file === 'string') : [];
+        if (files.some((file) => file.startsWith(SAMPLE_PREFIX))) return { reason: 'a sample file exists only for the agent; save a file in the project and upload its path for a line' };
         return this.onTarget(target, (locator) => `${locator}.setInputFiles(${JSON.stringify(files.length === 1 ? files[0] : files)})`);
       }
       case 'drag':
@@ -322,6 +324,8 @@ export class SessionTestLines {
         return { line: navigationLine(stringField(input, 'url') ?? '', this.options.appBase) };
       case 'back':
         return { line: 'await app.back();' };
+      case 'resize_viewport':
+        return { reason: `set ${String(input['width'])}x${String(input['height'])} with the engine fixture's viewport call` };
       default:
         return { reason: `${name} has no test line` };
     }

@@ -26,6 +26,8 @@ import {
   withinCleanupBudget,
   type EngineAttemptContext,
   type EngineCleanupContext,
+  type EngineDoctorCheck,
+  type EngineDoctorInfo,
   type EngineInitInfo,
   type EngineObserveOptions,
   type EngineSnapshot,
@@ -49,6 +51,8 @@ import { pointerInteraction, DEFAULT_LONG_PRESS_MS } from './actions.ts';
 import { resolveExpression } from './locate.ts';
 import {
   isWithin,
+  KEYBOARD_KINDS,
+  keyboardBand,
   mayTakeText,
   normalizeKind,
   projectSnapshot,
@@ -61,9 +65,10 @@ import {
 import { keyboardDragStart } from './keyboard.ts';
 import { DEVICE_PERMISSIONS, type AgentDeviceClient, type ClientFactory, type DevicePermission, type LaunchPermissions, type MobileOptions, type PermissionState } from './options.ts';
 import { maskPng } from './png.ts';
+import { mobileDoctor } from './doctor.ts';
 import { deviceLabel, pinnedApp, type SlotBinding } from './bindings.ts';
 import { assertAppId } from './links.ts';
-import { DevicePool, deviceSelection, type DeviceSelection } from './pool.ts';
+import { bootRequest, DevicePool, deviceSelection, type DeviceSelection } from './pool.ts';
 import { recordLease, travelledLease, type DeviceLease, type RecordingDeviceProvider } from './provider.ts';
 import {
   invalidState,
@@ -136,9 +141,6 @@ export interface OpenAppOptions {
  */
 type RawSnapshot = Partial<Pick<CaptureSnapshotResult, 'nodes' | 'viewport' | 'truncated' | 'appName' | 'appBundleId' | 'snapshotQuality' | 'keyboard' | 'refsGeneration'>>;
 
-/** Platform element types that are the soft keyboard or one of its keys, as agent-device names them. */
-const KEYBOARD_TYPES: ReadonlySet<string> = new Set(['keyboard', 'key']);
-
 /**
  * How far the dismissing drag travels, as a share of the viewport: short
  * enough that a list under the finger barely moves, long enough for a scroll
@@ -157,7 +159,7 @@ const KEYBOARD_ALTERNATIVES = 'Tap the app\'s own Done or close control, or pres
  */
 function keyboardTop(raw: RawSnapshot, viewport: ViewportSize): number {
   if (raw.keyboard?.kind === 'visible' || raw.keyboard?.kind === 'derived') return raw.keyboard.frame.y;
-  const keys = (raw.nodes ?? []).filter((node) => node.rect !== undefined && KEYBOARD_TYPES.has(normalizeKind(node.type ?? '')));
+  const keys = (raw.nodes ?? []).filter((node) => node.rect !== undefined && KEYBOARD_KINDS.has(normalizeKind(node.type ?? '')));
   return Math.min(viewport.height, ...keys.map((node) => node.rect!.y));
 }
 
@@ -182,7 +184,7 @@ function measuredKeyboard(raw: RawSnapshot): boolean | undefined {
  * tap refuses against by name.
  */
 function keyboardShowing(raw: RawSnapshot): boolean {
-  return measuredKeyboard(raw) ?? (raw.nodes ?? []).some((node) => KEYBOARD_TYPES.has(normalizeKind(node.type ?? '')));
+  return measuredKeyboard(raw) ?? (raw.nodes ?? []).some((node) => KEYBOARD_KINDS.has(normalizeKind(node.type ?? '')));
 }
 
 /**
@@ -221,6 +223,17 @@ interface NodeBinding {
  * stayed the same; a visible keyboard can precede the app's relayout.
  */
 const DEFAULT_TRANSITION_MS = 500;
+
+/**
+ * How long after a test's swipe or scroll skipped agent-device's stabilization
+ * wait the next action on a control first confirms the control stopped moving.
+ * A list still coasting swallows a tap to stop itself, so the press would
+ * report success and change nothing.
+ */
+const GESTURE_STEADY_MS = 2_000;
+
+/** Pause between the reads that confirm a control stopped moving after a gesture. */
+const GESTURE_STEADY_POLL_MS = 100;
 
 /** How one screenshot is taken. */
 interface ScreenshotCapture {
@@ -262,6 +275,8 @@ interface ScreenRecording {
   readonly relative: string;
   readonly absolute: string;
   startedAt: string;
+  /** Shared finalization survives a caller's cancelled wait, including its successful result. */
+  stopping?: Promise<{ readonly outPath?: unknown }> | undefined;
 }
 
 /** The device provider's recording of the leased device, as its `record` is starting it or started it. */
@@ -315,6 +330,14 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
 /** What agent-device is told about settling after an action. */
 type SettleOptions = { readonly settle: true; readonly settleQuietMs: number } | Record<never, never>;
 
+/**
+ * Whether agent-device holds the next read after a scroll or swipe until the
+ * tree stops moving. A test's gesture opts out: its `expect` polls the screen
+ * itself, and agent-device otherwise waits up to 3.5 s for a swipe that left
+ * the tree unchanged. An agent keeps the wait, since it reads the screen next.
+ */
+type GestureStabilizationOptions = { readonly postGestureStabilization: false } | Record<never, never>;
+
 const DEFAULT_SETTLE_QUIET_MS = 150;
 
 /** Every option `mobile()` takes, kept equal to `MobileOptions` by the compiler. */
@@ -340,20 +363,36 @@ const PERMISSION_STATES: readonly string[] = Object.keys({ grant: true, deny: tr
  * skips it.
  */
 export function assertPermissions(label: string, permissions: unknown, code: 'INVALID_CONFIG' | 'INVALID_ARGUMENT'): void {
-  const fail = (message: string): never => {
-    throw code === 'INVALID_CONFIG' ? new ConfigurationError(code, message) : new TestError(code, message);
-  };
   // A Map or class instance carries no own keys to check, and the preset would apply none of it.
   const prototype: unknown = typeof permissions === 'object' && permissions !== null ? Object.getPrototypeOf(permissions) : undefined;
   if (prototype !== Object.prototype && prototype !== null) {
-    fail(`${label} must be a plain object of permission names to ${PERMISSION_STATES.join(', ')}`);
+    permissionError(code, `${label} must be a plain object of permission names to ${PERMISSION_STATES.join(', ')}`);
   }
   rejectUnknownKeys(label, permissions as object, DEVICE_PERMISSIONS, code);
   for (const [name, state] of Object.entries(permissions as Record<string, unknown>)) {
-    if (state !== undefined && !PERMISSION_STATES.includes(state as string)) {
-      fail(`${label}.${name} must be one of ${PERMISSION_STATES.join(', ')}, got ${typeof state === 'string' ? `"${state}"` : String(state)}`);
-    }
+    if (state !== undefined) assertPermission(label, name, state, code);
   }
+}
+
+/**
+ * Refuses one permission before any device command: a name that is not a
+ * string or not one agent-device sets, naming the nearest, or a state other
+ * than grant, deny, or reset, `undefined` included. The one owner of the
+ * permission messages, for `assertPermissions` and `device.setPermission`.
+ */
+function assertPermission(label: string, name: unknown, state: unknown, code: 'INVALID_CONFIG' | 'INVALID_ARGUMENT'): void {
+  if (typeof name !== 'string') {
+    permissionError(code, `${label} permission must be one of ${DEVICE_PERMISSIONS.join(', ')}, got type ${typeof name}`);
+  }
+  if (!(DEVICE_PERMISSIONS as readonly string[]).includes(name)) rejectUnknownKeys(label, { [name]: state }, DEVICE_PERMISSIONS, code);
+  if (!PERMISSION_STATES.includes(state as string)) {
+    permissionError(code, `${label}.${name} must be one of ${PERMISSION_STATES.join(', ')}, got ${typeof state === 'string' ? `"${state}"` : String(state)}`);
+  }
+}
+
+/** Throws a permission refusal as the error class its code belongs to. */
+function permissionError(code: 'INVALID_CONFIG' | 'INVALID_ARGUMENT', message: string): never {
+  throw code === 'INVALID_CONFIG' ? new ConfigurationError(code, message) : new TestError(code, message);
 }
 
 /** Resolves the `transition` option: the default budget or a custom one. */
@@ -363,6 +402,17 @@ function transitionMs(transition: MobileOptions['transition']): number {
     throw new ConfigurationError('INVALID_CONFIG', 'mobile: `transition` must be a non-negative integer of milliseconds');
   }
   return budget;
+}
+
+/** The stabilization wait a gesture carries: none for a test's own step, agent-device's default for the agent. */
+function gestureStabilization(operation: OperationContext): GestureStabilizationOptions {
+  return operation.origin === 'test' ? { postGestureStabilization: false } : {};
+}
+
+/** True when two bounds are the same; a control without bounds has nothing to compare, so it counts as unmoved. */
+function sameBounds(a: NodeBinding['node']['rect'], b: NodeBinding['node']['rect']): boolean {
+  if (a === undefined || b === undefined) return true;
+  return a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height;
 }
 
 /** Resolves the `settle` option: the default window, a custom one, or no wait at all. */
@@ -432,6 +482,8 @@ export class AgentDeviceSurface {
   readonly settleOptions: SettleOptions;
   /** When this surface last acted on the device (an input or an app launch); the screen may be in transition for a while after. */
   private lastActionAt = 0;
+  /** When a test's swipe or scroll last went out without agent-device's stabilization wait; 0 when nothing is pending. */
+  private skippedStabilizationAt = 0;
   /** The screen as last projected before that action, to tell controls that were already there from ones that came with it. */
   private screenBeforeAction: ProjectedScreen | undefined;
   /** The most recent projection of the screen, from any observe or locate. */
@@ -461,6 +513,11 @@ export class AgentDeviceSurface {
   /** Whether the target pins an app for `app.open()`, `app.restart()`, and `app.clearState()` to launch. */
   private get managesApp(): boolean {
     return this.app.bundleId !== undefined || this.app.appPath !== undefined;
+  }
+
+  /** The checks of `e2e doctor`, under the session a run's first slot uses; see `mobileDoctor`. */
+  doctor(info: EngineDoctorInfo): Promise<readonly EngineDoctorCheck[]> {
+    return mobileDoctor(this.options, this.createClient, this.pool.session(info.targetName, 0), info);
   }
 
   /** The app `app.open()` launches: the target's `bundleId`, else the app its build `appPath` installed. */
@@ -567,7 +624,7 @@ export class AgentDeviceSurface {
       provider === undefined || lease === undefined
         ? undefined
         : { provider, lease, runId: info.runId, targetName: info.targetName, env: info.env };
-    const booted = await this.command('boot', (client) => client.devices.boot(this.selection()), info.signal);
+    const booted = await this.command('boot', (client) => client.devices.boot(bootRequest(this.selection())), info.signal);
     this.bound = { session, deviceId: booted.id, deviceName: booted.device };
     // Nothing is installed here: a device provider that installed the build
     // from `appPath` says so on the binding, and otherwise the suite installs
@@ -686,12 +743,18 @@ export class AgentDeviceSurface {
    * `closeApp` leaves it.
    */
   private async stopScreenRecording(video: ScreenRecording, signal: AbortSignal): Promise<{ readonly outPath?: unknown }> {
-    const result = await this.command('stop video recording', (client) => client.recording.record({ ...this.selection(), action: 'stop' }), signal);
-    if (this.recording === video) this.recording = undefined;
-    if (result.recordOnlySession === true) {
-      this.screenReplaced();
-    }
-    return result;
+    return raceAbort(() => {
+      // Cleanup must wait for this bookkeeping as well as the SDK request.
+      video.stopping ??= this.track(this.command('stop video recording', (client) => client.recording.record({ ...this.selection(), action: 'stop' })).then((result) => {
+        if (this.recording === video) this.recording = undefined;
+        if (result.recordOnlySession === true) this.screenReplaced();
+        return result;
+      }, (cause: unknown) => {
+        video.stopping = undefined;
+        throw cause;
+      }));
+      return video.stopping;
+    }, signal, 'stop video recording');
   }
 
   /**
@@ -813,8 +876,13 @@ export class AgentDeviceSurface {
     for (const [permission, state] of entries) await this.permission(permission, state, app, signal);
   }
 
-  /** One permission change for `device.setPermission`: on the pinned app, else on the app agent-device's session is on. */
+  /**
+   * One permission change for `device.setPermission`: on the pinned app, else
+   * on the app agent-device's session is on. The name and state are checked
+   * before any device command, a missing state refused rather than skipped.
+   */
   async setPermission(permission: DevicePermission, state: PermissionState, signal: AbortSignal): Promise<void> {
+    assertPermission('device.setPermission', permission, state, 'INVALID_ARGUMENT');
     await this.permission(permission, state, this.pinnedApp, signal);
   }
 
@@ -1027,6 +1095,7 @@ export class AgentDeviceSurface {
         },
         viewport: raw.viewport,
         refsGeneration: raw.refsGeneration,
+        keyboard: keyboardBand(raw.nodes ?? [], raw.keyboard, raw.viewport),
       }),
       keyboardVisible: keyboardShowing(raw),
     };
@@ -1229,29 +1298,72 @@ export class AgentDeviceSurface {
     return best;
   }
 
+  /** Waits for the transition without exceeding the action's remaining budget. */
+  private async waitOutTransition(operation: OperationContext, budget: InputBudget): Promise<void> {
+    await raceAbort(async () => {
+      const remaining = this.transitionMs - (Date.now() - this.lastActionAt);
+      if (remaining <= 0) return;
+      const available = budget.remainingMs();
+      if (available > 0) await sleep(Math.min(remaining, available), operation.signal);
+      // A capped timer can wake before the clock reaches the deadline. It
+      // still could not fit the transition, so it must never send input.
+      if (available < remaining) {
+        throw new EngineError('OPERATION_TIMEOUT', 'transition could not finish within the action budget', { retryable: false });
+      }
+    }, operation.signal, 'transition wait');
+  }
+
   /**
    * Waits for a control that arrived or moved with the last action, returning
-   * whether it waited. Controls already present at the same place need no wait,
-   * unless keyboard state changed: a keyboard change can precede the app's relayout.
+   * whether it needs a fresh capture. Controls already present at the same
+   * place need no wait, unless keyboard state changed: a keyboard change can
+   * precede the app's relayout.
    */
-  private async waitForTransition(entry: NodeBinding, operation: OperationContext): Promise<boolean> {
+  private async waitForTransition(entry: NodeBinding, operation: OperationContext, budget: InputBudget): Promise<boolean> {
     const since = Date.now() - this.lastActionAt;
     const remaining = this.transitionMs - since;
     if (remaining <= 0) return false;
     const before = this.screenBeforeAction;
     if (before !== undefined && before.keyboardVisible === entry.keyboardVisible && this.samePlace(entry, before.index) !== undefined) return false;
-    await sleep(remaining, operation.signal);
-    // The sleep resolves on abort; the action behind it must not go out once
-    // the caller has already been told the operation was cancelled.
-    if (operation.signal.aborted) {
-      throw new EngineError('CANCELLED', 'transition wait cancelled', { retryable: false });
-    }
+    await this.waitOutTransition(operation, budget);
     return true;
+  }
+
+  /** Records that a test's gesture skipped the stabilization wait, so the next action on a control checks it stopped moving. */
+  private noteGesture(operation: OperationContext): void {
+    if (operation.origin === 'test') this.skippedStabilizationAt = Date.now();
+  }
+
+  /**
+   * After a gesture that skipped the stabilization wait, re-reads the control
+   * until two reads agree on where it is, so an action does not land on a list
+   * still coasting. Costs one extra snapshot when the screen already rests,
+   * and nothing once GESTURE_STEADY_MS has passed. An input action keeps the
+   * checks `relocated` makes on every read, and the poll never outlasts the
+   * action's budget.
+   */
+  private async steadied(entry: NodeBinding, operation: OperationContext, budget: InputBudget, input: boolean): Promise<NodeBinding> {
+    const deadline = this.skippedStabilizationAt + GESTURE_STEADY_MS;
+    if (this.skippedStabilizationAt === 0 || Date.now() >= deadline) return entry;
+    let current = entry;
+    for (;;) {
+      const next = await this.relocated(current, operation, budget, input);
+      const steady = sameBounds(current.node.rect, next.node.rect);
+      current = next;
+      if (steady || Date.now() >= deadline) break;
+      if (budget.remainingMs() <= GESTURE_STEADY_POLL_MS) {
+        throw new EngineError('OPERATION_TIMEOUT', 'the control kept moving until the action budget ran out', { retryable: false });
+      }
+      await sleep(GESTURE_STEADY_POLL_MS, operation.signal);
+      if (operation.signal.aborted) throw new EngineError('CANCELLED', 'gesture wait cancelled', { retryable: false });
+    }
+    this.skippedStabilizationAt = 0;
+    return current;
   }
 
   /** Refreshes a control after a transition wait, keeping the binding when no wait was needed. */
   private async settled(entry: NodeBinding, operation: OperationContext, budget: InputBudget): Promise<NodeBinding> {
-    if (await this.waitForTransition(entry, operation)) return this.relocated(entry, operation, budget);
+    if (await this.waitForTransition(entry, operation, budget)) return this.relocated(entry, operation, budget);
     return entry;
   }
 
@@ -1301,11 +1413,18 @@ export class AgentDeviceSurface {
     // at `0.5 + amount / 2` of the height, and a larger amount lands it in
     // bottom chrome (a sticky footer, a tab bar) that swallows the drag. A
     // live iOS run lost every `slow` scroll of the mobile benchmark's sticky
-    // chrome flow that way. Only the settle wait varies here, by origin.
+    // chrome flow that way.
     if (ref.id === ROOT_ID) {
       if (action.kind !== 'swipe') throw notActionable(`the screen root takes swipe only, not ${action.kind}; act on a node`);
+      if (deterministic) await this.waitOutTransition(operation, input);
       const before = this.latestScreen;
-      await this.command('swipe', (client) => input.send(() => client.interactions.scroll({ direction: action.direction, ...settle })), operation.signal);
+      const stabilization = gestureStabilization(operation);
+      await this.command(
+        'swipe',
+        (client) => input.send(() => client.interactions.scroll({ direction: action.direction, ...settle, ...stabilization })),
+        operation.signal,
+      );
+      this.noteGesture(operation);
       this.markAction(before);
       return;
     }
@@ -1325,11 +1444,15 @@ export class AgentDeviceSurface {
     const run = async (): Promise<unknown> => {
       let target = entry;
       if (filling) {
-        if (deterministic) await this.waitForTransition(entry, operation);
+        if (deterministic) await this.waitForTransition(entry, operation, input);
         target = await this.relocated(entry, operation, input, true);
         if (!target.takesText) throw refuseFill(target);
       } else if (deterministic) {
         target = await this.settled(entry, operation, input);
+      }
+      if (deterministic) {
+        target = await this.steadied(target, operation, input, filling);
+        if (filling && !target.takesText) throw refuseFill(target);
       }
       switch (action.kind) {
         case 'tap':
@@ -1360,7 +1483,8 @@ export class AgentDeviceSurface {
         case 'uncheck': {
           const wanted = action.kind === 'check';
           const checked = target.node.states?.checked;
-          // A toggle whose state the tree does not expose (Android switches)
+          // A toggle whose state the tree does not expose (a radio or checkbox
+          // the app gives no checked state)
           // cannot be set, only flipped; flipping blind could undo a correct state.
           if (checked === undefined) {
             throw unsupported(`agent-device cannot read whether node ${target.id} is checked; tap it instead`);
@@ -1373,7 +1497,10 @@ export class AgentDeviceSurface {
         case 'swipe': {
           const rect = target.node.rect;
           if (rect === undefined) throw notActionable(`node ${target.id} has no bounds to swipe within`);
-          return input.send(() => client.interactions.swipe(swipeWithin(rect, action.direction, action.momentum)));
+          const stabilization = gestureStabilization(operation);
+          const sent = await input.send(() => client.interactions.swipe({ ...swipeWithin(rect, action.direction, action.momentum), ...stabilization }));
+          this.noteGesture(operation);
+          return sent;
         }
         case 'dragTo': {
           // A test locates the drop target in a capture of its own, after the
@@ -1441,7 +1568,8 @@ export class AgentDeviceSurface {
     const settle = operation.origin === 'test' ? {} : this.settleOptions;
     const before = this.latestScreen;
     const holdMs = action.kind === 'longPress' ? (action.durationMs ?? DEFAULT_LONG_PRESS_MS) : action.kind === 'swipeTo' ? action.durationMs : undefined;
-    await this.command(`${action.kind} at point`, (client) => input.send(() => pointerInteraction(client, point, action, settle), holdMs), operation.signal);
+    await this.command(`${action.kind} at point`, (client) => input.send(() => pointerInteraction(client, point, action, settle, gestureStabilization(operation)), holdMs), operation.signal);
+    if (action.kind === 'swipeTo') this.noteGesture(operation);
     this.markAction(before);
   }
 

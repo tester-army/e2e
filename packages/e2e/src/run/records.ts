@@ -1,6 +1,7 @@
 /** Execution result data model shared by the executor and reporters. */
 
 import type { SerializedError } from '../internal/errors.ts';
+import type { ExpectedFailureInfo } from '../internal/expected-failure.ts';
 import { resultId } from '../internal/ids.ts';
 import type { TestIdentity } from '../collect/collect.ts';
 import type { SkipInfo } from '../collect/select.ts';
@@ -82,6 +83,8 @@ export interface AttemptRecord {
    * after a soft failure, or whose teardown failed after the skip.
    */
   skip?: SkipInfo;
+  /** Set when the attempt was marked expected to fail (`test.fail`); see `settleExpectedFailure`. */
+  expectedFailure?: ExpectedFailureInfo;
   secondaryErrors: SerializedError[];
   /** What the engine said the attempt ran on (`EngineAttemptContext.environment`), redacted. */
   environment?: Record<string, string>;
@@ -169,7 +172,16 @@ export function isFailedStatus(status: AttemptStatus | ResultStatus): status is 
   return status !== 'passed' && status !== 'skipped' && status !== 'flaky';
 }
 
-/** Whether an attempt keeps its trace, by the rule its video follows too (`keeps`). */
+/**
+ * Whether a serial member's record is a run of its body: every record but a
+ * skip the runner wrote for a member it never started. A member that skipped
+ * itself started its body.
+ */
+export function memberRan(member: { readonly status: string; readonly skip?: { readonly cause: string } | undefined }): boolean {
+  return member.status !== 'skipped' || member.skip?.cause === 'explicit';
+}
+
+/** Whether an attempt keeps its trace, by the rule its video follows too (`keeps`): a `test.fail` verdict, not what the body did. */
 function keepsTrace(attempt: Pick<AttemptRecord, 'status' | 'trace'>): boolean {
   return attempt.trace !== undefined && keeps(attempt.trace, attempt.status);
 }
@@ -205,6 +217,14 @@ export interface ResultRecord {
  * every other field is plain data.
  */
 export type WireResultRecord = Omit<ResultRecord, 'target'>;
+
+/**
+ * The expected-failure mark of a result's verdict: its last attempt's. A
+ * serial member is never marked.
+ */
+export function expectedFailureOf(result: { readonly attempts: readonly { readonly expectedFailure?: ExpectedFailureInfo | undefined }[] }): ExpectedFailureInfo | undefined {
+  return result.attempts.at(-1)?.expectedFailure;
+}
 
 /** The failure a runtime skip followed, with the evidence its attempt captured. */
 export interface FailureBeforeSkip {

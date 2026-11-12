@@ -1,18 +1,17 @@
 /**
- * Fails when a vendor page in the docs is missing its logo.
+ * Fails when a vendor page in the docs is missing its logo, or when any page
+ * sets a sidebar icon.
  *
  * Every page under `docs/integrations/`, `docs/ci/`, and `docs/migrate/`
- * (except an `index.mdx`) is about one vendor, so it needs both logos:
+ * (except an `index.mdx`) is about one vendor, so every `<Card>` on any page
+ * that links to it names a file under `/images/integrations/`, the
+ * brand-colored mark.
  *
- * - a sidebar icon: `icon:` in the frontmatter names a file under
- *   `/images/icons/`, the black silhouette the docs site greys out (our own
- *   `testerarmy.png` is the one grey-shaded exception, see authoring-docs);
- * - a card logo: every `<Card>` on any page that links to it names a file
- *   under `/images/integrations/`, the brand-colored mark.
+ * The sidebar shows no icons, so no page's frontmatter sets `icon:`.
  *
- * Pages under `docs/integrations/` and `docs/ci/` must also have a card on
- * their overview (`docs/integrations/index.mdx`, `docs/ci.mdx`), so a new
- * page cannot ship without the card that shows its logo.
+ * Every vendor page must also have a card on its section's overview
+ * (`docs/integrations/index.mdx`, `docs/ci.mdx`, `docs/migrate/index.mdx`),
+ * so a new page cannot ship without the card that shows its logo.
  *
  * Usage: `node scripts/check-docs-logos.ts`, part of `pnpm docs:check`.
  * Exits 1 listing every problem.
@@ -24,15 +23,14 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const DOCS = join(ROOT, 'docs');
-const SITE = 'https://e2e.tester.army/docs';
-const SIDEBAR_DIR = '/images/icons/';
+const SITE = 'https://e2e.com/docs';
 const CARD_DIR = '/images/integrations/';
 
 /** Vendor sections, and the overview page that must hold a card for each of their pages. */
-const SECTIONS: { dir: string; overview?: string }[] = [
+const SECTIONS: { dir: string; overview: string }[] = [
   { dir: 'integrations', overview: 'integrations/index.mdx' },
   { dir: 'ci', overview: 'ci.mdx' },
-  { dir: 'migrate' },
+  { dir: 'migrate', overview: 'migrate/index.mdx' },
 ];
 
 const CARD = /<Card\b[^>]*>/g;
@@ -76,10 +74,10 @@ function rendered(source: string): string {
   return lines.join('\n').replace(JSX_COMMENT, (comment) => comment.replace(/[^\n]/g, ''));
 }
 
-/** The `icon:` value in a page's frontmatter, without quotes. */
-function frontmatterIcon(source: string): string | undefined {
+/** Whether a page's frontmatter sets `icon:`. */
+function hasFrontmatterIcon(source: string): boolean {
   const frontmatter = /^---\n([\s\S]*?)\n---/.exec(source)?.[1] ?? '';
-  return /^icon:\s*"?([^"\n]*)"?\s*$/m.exec(frontmatter)?.[1];
+  return /^["']?icon["']?\s*:/m.test(frontmatter);
 }
 
 /** One attribute of a JSX tag. */
@@ -109,13 +107,14 @@ for (const { dir } of SECTIONS) {
     if (basename(path) === 'index.mdx') continue;
     const file = relative(ROOT, path);
     vendorPages.set(`/${docsPath(path).replace(/\.mdx$/, '')}`, file);
-    problems.push(...checkLogo(file, 'sidebar icon', frontmatterIcon(read(path)), SIDEBAR_DIR));
   }
 }
 
 const carded = new Map<string, Set<string>>();
 for (const path of pages(DOCS)) {
-  const source = rendered(read(path));
+  const raw = read(path);
+  if (hasFrontmatterIcon(raw)) problems.push(`${relative(ROOT, path)}: remove \`icon:\` from the frontmatter; the sidebar shows no icons`);
+  const source = rendered(raw);
   const page = docsPath(path);
   for (const match of source.matchAll(CARD)) {
     const href = attribute(match[0], 'href');
@@ -131,7 +130,6 @@ for (const path of pages(DOCS)) {
 }
 
 for (const { dir, overview } of SECTIONS) {
-  if (!overview) continue;
   for (const [target, file] of vendorPages) {
     if (!target.startsWith(`/${dir}/`) || carded.get(overview)?.has(target)) continue;
     problems.push(`${file}: no <Card href="${target}"> on docs/${overview}; add one with its logo under docs${CARD_DIR}`);
@@ -142,5 +140,5 @@ if (problems.length > 0) {
   process.stderr.write(`${problems.join('\n')}\n`);
   process.exitCode = 1;
 } else {
-  process.stdout.write(`docs logos: ${vendorPages.size} vendor pages have a sidebar icon and card logos\n`);
+  process.stdout.write(`docs logos: ${vendorPages.size} vendor pages have card logos, no page sets a sidebar icon\n`);
 }

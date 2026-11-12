@@ -25,8 +25,9 @@
 
 import type { RedactedNode } from '../agent/observation.ts';
 import { describeTarget } from '../agent/actions.ts';
+import { CLOCK_TIME, DAY_MONTH_DATE, ISO_DATE, MONTH_DAY_DATE } from '../internal/dates.ts';
 import { bound, collapseText } from '../internal/text.ts';
-import { descriptorTiers, fieldsEqual, type DescriptorField } from './relocate.ts';
+import { descriptorTiers, fieldsEqual, tierView, type DescriptorField, type DescriptorTier } from './relocate.ts';
 import {
   MAX_TRACE_ANCHORS,
   MAX_TRACE_DESCRIPTOR_CHARS,
@@ -90,6 +91,12 @@ const ALERT_ROLES: ReadonlySet<string> = new Set(['alert', 'alertdialog']);
  * "Express" the pick replaced with a status reading "Express" vanished, but
  * an anchor of that text would still match the status, and the recording
  * would fail its own check on every replay.
+ *
+ * An anchor made of text that never repeats (`VOLATILE_TEXT`, a bare number)
+ * is dropped whenever either side of the delta has a stable anchor: a clock
+ * is never a step's result. A count is dropped only from a side that has a
+ * stable anchor of its own, since `3 records imported` is how an import
+ * reports its result. With no stable anchor anywhere the volatile ones stay.
  */
 export function describeDelta(
   startNodes: ReadonlyMap<string, RedactedNode>,
@@ -100,10 +107,20 @@ export function describeDelta(
   const end = projectAnchors(endNodes);
   const startKeys = new Set(start.map((anchor) => anchor.key));
   const endKeys = new Set(end.map((anchor) => anchor.key));
-  return {
-    appeared: deltaSide(end, start, (anchor) => startKeys.has(anchor.key), routeMoved),
-    gone: deltaSide(start, end, (anchor) => endKeys.has(anchor.key) || anchorIn(anchor.descriptor, end), routeMoved),
+  const appeared = deltaSide(end, start, (anchor) => startKeys.has(anchor.key), routeMoved);
+  const gone = deltaSide(start, end, (anchor) => endKeys.has(anchor.key) || anchorIn(anchor.descriptor, end), routeMoved);
+  const pick = (side: DeltaSide, other: DeltaSide) => {
+    const kept = side.stable.length > 0 ? side.stable : other.stable.length > 0 ? side.withCounts : side.all;
+    return kept.slice(0, MAX_TRACE_ANCHORS).map((anchor) => anchor.descriptor);
   };
+  return { appeared: pick(appeared, gone), gone: pick(gone, appeared) };
+}
+
+/** One side of the delta in recording order: all of it, the part that is not volatile, and all but the text that never repeats. */
+interface DeltaSide {
+  readonly all: readonly AnchorNode[];
+  readonly stable: readonly AnchorNode[];
+  readonly withCounts: readonly AnchorNode[];
 }
 
 /** One projected anchor with the node it came from. */
@@ -113,13 +130,13 @@ interface AnchorNode {
   readonly leaf: boolean;
 }
 
-/** The side of the delta `nodes` holds and `other` does not (`inOther`), ordered and capped. */
+/** The side of the delta `nodes` holds and `other` does not (`inOther`), ordered and not yet capped. */
 function deltaSide(
   nodes: readonly AnchorNode[],
   other: readonly AnchorNode[],
   inOther: (anchor: AnchorNode) => boolean,
   routeMoved: boolean,
-): TraceTargetDescriptor[] {
+): DeltaSide {
   const otherShapes = new Set(other.map((anchor) => countShape(anchor.descriptor)));
   const volatile = (anchor: TraceTargetDescriptor) => isVolatileAnchor(anchor, (count) => routeMoved || otherShapes.has(countShape(count)));
   const seen = new Set<string>();
@@ -133,27 +150,30 @@ function deltaSide(
     (ANNOUNCEMENT_ROLES.has(role) ? announcements : anchor.leaf ? leaves : containers).push(anchor);
   }
   const all = [...announcements, ...leaves, ...containers];
-  const stable = all.filter((anchor) => isAlert(anchor.descriptor) || !volatile(anchor.descriptor));
-  return (stable.length > 0 ? stable : all).slice(0, MAX_TRACE_ANCHORS).map((anchor) => anchor.descriptor);
+  return {
+    all,
+    stable: all.filter((anchor) => isAlert(anchor.descriptor) || !volatile(anchor.descriptor)),
+    withCounts: all.filter((anchor) => isAlert(anchor.descriptor) || !isTextVolatile(anchor.descriptor)),
+  };
 }
 
 /**
  * Text that cannot read the same on the next run: a minted key prefix or id,
- * a countdown or age, a date, an ISO 8601 instant, a clock time, a timing in milliseconds. An
- * anchor made of it hands every replay off, so it is skipped while some
- * stable anchor exists; with nothing else, the volatile ones stay, because a
- * replay that always hands off is still safer than one that passes on
- * mechanics alone. An alert keeps it, and is compared with these parts read
- * as placeholders (`alertShape`).
+ * a countdown or age, a date, an ISO 8601 instant, a clock time, a timing in
+ * milliseconds. An anchor made of it hands every replay off, so it is skipped
+ * while some stable anchor exists on either side of the delta; with nothing else, the
+ * volatile ones stay, because a replay that always hands off is still safer
+ * than one that passes on mechanics alone. An alert keeps it, and is
+ * compared with these parts read as placeholders (`alertShape`).
  */
 const VOLATILE_TEXT: readonly RegExp[] = [
   /\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}(?::?\d{2})?)?/,
   /\b(?=[A-Za-z0-9_-]*\d)(?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9_-]{12,}\b/,
   /\b\d+\s*(?:ms|s|secs?|seconds?|m|mins?|minutes?|h|hrs?|hours?|d|days?|weeks?|months?|years?)\b/i,
-  /\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{1,2}(?:,?\s+\d{4})?\b/i,
-  /\b\d{1,2}\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?(?:\s+\d{4})?\b/i,
-  /\b\d{4}-\d{2}-\d{2}\b/,
-  /\b\d{1,2}:\d{2}(?::\d{2})?\b/,
+  MONTH_DAY_DATE,
+  DAY_MONTH_DATE,
+  ISO_DATE,
+  CLOCK_TIME,
 ];
 
 /**
@@ -182,11 +202,20 @@ function isBareNumber(anchor: TraceTargetDescriptor): boolean {
   return label !== undefined && /^\d+$/.test(label) && anchor.testId === undefined && (anchor.name === undefined || anchor.text === undefined || anchor.name === anchor.text);
 }
 
-/** Whether an anchor's text cannot read the same on the next run; `countIsData` decides an anchor holding a count. */
+/** Whether an anchor's text, or a minted test id that is all it has, cannot read the same on the next run; `countIsData` decides an anchor holding a count. */
 function isVolatileAnchor(anchor: TraceTargetDescriptor, countIsData: (anchor: TraceTargetDescriptor) => boolean): boolean {
-  const texts = [anchor.text, anchor.name, anchor.value].filter((value): value is string => value !== undefined);
-  if (isBareNumber(anchor) || texts.some((value) => VOLATILE_TEXT.some((pattern) => pattern.test(value)))) return true;
-  return texts.some((value) => COUNT_TEXT.some((pattern) => pattern.test(value))) && countIsData(anchor);
+  if (isTextVolatile(anchor)) return true;
+  return anchorTexts(anchor).some((value) => COUNT_TEXT.some((pattern) => pattern.test(value))) && countIsData(anchor);
+}
+
+/** Whether an anchor is a clock, date, minted id or bare number: never a step's result, whatever the other side shows. */
+function isTextVolatile(anchor: TraceTargetDescriptor): boolean {
+  return isBareNumber(anchor) || descriptorTiers(anchor).some((tier) => tier.kind === 'shape') || anchorTexts(anchor).some((value) => VOLATILE_TEXT.some((pattern) => pattern.test(value)));
+}
+
+/** The texts an anchor can say its text in: its text, name and value. */
+function anchorTexts(anchor: TraceTargetDescriptor): string[] {
+  return [anchor.text, anchor.name, anchor.value].filter((value): value is string => value !== undefined);
 }
 
 /** An anchor with every digit run read as one placeholder: the text a running count keeps while its numbers move. */
@@ -247,7 +276,7 @@ export function deltaMismatch(
 ): DeltaMismatch | undefined {
   const live = projectAnchors(nodes);
   const appeared = delta.endAnchors ?? [];
-  const missing = appeared.filter((anchor) => !anchorIn(anchor, live));
+  const missing = appeared.filter((anchor) => !appearedIn(anchor, live));
   const present = (delta.goneAnchors ?? []).filter((anchor) => anchorIn(anchor, live));
   const before = projectAnchors(beforeNodes).filter((anchor) => isAlert(anchor.descriptor));
   const unrecordedAlerts = live
@@ -255,7 +284,7 @@ export function deltaMismatch(
       (anchor) =>
         isAlert(anchor.descriptor) &&
         !before.some((earlier) => anchorIn(anchor.descriptor, [earlier])) &&
-        !appeared.some((recorded) => anchorIn(recorded, [anchor])),
+        !appeared.some((recorded) => appearedIn(recorded, [anchor])),
     )
     .map((anchor) => anchor.descriptor);
   return missing.length === 0 && present.length === 0 && unrecordedAlerts.length === 0 ? undefined : { missing, present, unrecordedAlerts };
@@ -295,7 +324,7 @@ export function deltaEvidenced(
   const counted = (anchor: TraceTargetDescriptor) => !outcome || !echoes(anchor);
   const baseline = projectAnchors(baselineNodes);
   return (
-    appeared.some((anchor) => counted(anchor) && !anchorIn(anchor, baseline)) ||
+    appeared.some((anchor) => counted(anchor) && !appearedIn(anchor, baseline)) ||
     gone.some((anchor) => counted(anchor) && anchorIn(anchor, baseline))
   );
 }
@@ -307,21 +336,44 @@ function identityKey(descriptor: TraceTargetDescriptor): string {
 }
 
 /**
- * Whether some tier of a recorded anchor equals some projected node on every
- * anchor field, and on its value and states exactly: an empty field is not
- * the field filled in, nor an unchecked switch the switch turned on. An
- * alert is compared by its shape (`alertShape`).
+ * Whether a recorded anchor is on screen, on every tier but a test id shape
+ * (`descriptorTiers`): a vanished anchor stays exact, as entries recorded
+ * beside siblings of its shape expect.
  */
 function anchorIn(anchor: TraceTargetDescriptor, nodes: readonly AnchorNode[]): boolean {
+  return anchorOnTiers(anchor, nodes, (tier) => tier.kind !== 'shape');
+}
+
+/** Whether an anchor that appeared is on screen, on any tier: a minted test id matches any node of its shape. */
+function appearedIn(anchor: TraceTargetDescriptor, nodes: readonly AnchorNode[]): boolean {
+  return anchorOnTiers(anchor, nodes, () => true);
+}
+
+/**
+ * Whether some tier of a recorded anchor that `tried` admits equals some
+ * projected node on every anchor field, and on its value and states exactly:
+ * an empty field is not the field filled in, nor an unchecked switch the
+ * switch turned on. An alert is compared by its shape (`alertShape`).
+ */
+function anchorOnTiers(
+  anchor: TraceTargetDescriptor,
+  nodes: readonly AnchorNode[],
+  tried: (tier: DescriptorTier) => boolean,
+): boolean {
   const states = statesKey(anchor.states);
   const shape = isAlert(anchor) ? alertShape : (descriptor: TraceTargetDescriptor) => descriptor;
-  return descriptorTiers(anchor).some((tier) =>
-    nodes.some(
-      (node) =>
-        node.descriptor.value === anchor.value &&
-        statesKey(node.descriptor.states) === states &&
-        fieldsEqual(shape(tier), shape(node.descriptor), ANCHOR_FIELDS),
-    ),
+  return descriptorTiers(anchor).some(
+    (tier) =>
+      tried(tier) &&
+      nodes.some((node) => {
+        const view = tierView(tier, node.descriptor);
+        return (
+          view !== undefined &&
+          node.descriptor.value === anchor.value &&
+          statesKey(node.descriptor.states) === states &&
+          fieldsEqual(shape(tier.descriptor), shape(view), ANCHOR_FIELDS)
+        );
+      }),
   );
 }
 
@@ -373,12 +425,13 @@ function statesKey(states: readonly TraceAnchorState[] | undefined): string {
  * whenever it identifies the node means an app that mints test ids per
  * render cannot make every unchanged control look new after a re-render and
  * crowd the real effect out of the capped list; a node only a test id
- * identifies keeps it. The states make a control that changed state a node
- * of the delta on both sides: the switch as it was, gone, and as it is,
- * appeared; the value does the same for a field typed into.
+ * identifies keeps it, as its shape when minted. The states make a control
+ * that changed state a node of the delta on both sides: the switch as it
+ * was, gone, and as it is, appeared; the value does the same for a field
+ * typed into.
  */
 function anchorKey(descriptor: TraceTargetDescriptor): string {
   const tiers = descriptorTiers(descriptor);
-  const loosest = tiers[tiers.length - 1] ?? descriptor;
+  const loosest = tiers[tiers.length - 1]?.descriptor ?? descriptor;
   return JSON.stringify([...ANCHOR_FIELDS.map((field) => loosest[field]), descriptor.value, statesKey(descriptor.states)]);
 }

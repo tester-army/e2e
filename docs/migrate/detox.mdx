@@ -1,21 +1,20 @@
 ---
 title: From Detox
 description: Use your existing app build and testIDs with screen, expect, and agent goals.
-icon: "/images/icons/detox.svg"
-"og:image": "https://e2e.tester.army/docs/images/og/migrate/detox.png?v=1715664ae0"
-"twitter:image": "https://e2e.tester.army/docs/images/og/migrate/detox.png?v=1715664ae0"
+"og:image": "https://e2e.com/docs/images/og/migrate/detox.png?v=1715664ae0"
+"twitter:image": "https://e2e.com/docs/images/og/migrate/detox.png?v=1715664ae0"
 ---
 
 import { SetupPrompt } from '../snippets/setup-prompt-card.jsx';
 
-export const migrationPrompt = `Migrate this project's Detox tests to e2e, one spec at a time. Docs: \`https://e2e.tester.army/docs/migrate/detox.md\` and \`https://e2e.tester.army/docs/mobile.md\`
+export const migrationPrompt = `Migrate this project's Detox tests to e2e, one spec at a time. Docs: \`https://e2e.com/docs/migrate/detox.md\` and \`https://e2e.com/docs/mobile.md\`
 
 1. Read the migration guide above. It maps \`.detoxrc.js\` and the Detox API to e2e. The mobile guide covers devices and app builds.
 2. If the project has no e2e config (\`e2e.config.ts\`, \`.mts\`, \`.js\`, or \`.mjs\`), run \`npx e2e init --yes --engine mobile\` (or the pnpm or bun equivalent). It writes a mobile config with one target for this machine's platform and an example test against the Settings app, and installs nothing yet. Rewrite \`tests/example.e2e.ts\` for your app or delete it.
 3. Read the e2e skill (\`npx e2e guide\` prints it, \`npx e2e guide <topic>\` prints a topic) and follow it for every step below.
 4. If you ran init, ask me which model to use for agent steps: a ChatGPT, GitHub Copilot, OpenCode Console, or SuperGrok subscription, an API key, or a local model. Configure it with its provider package. If it needs a sign-in, give me the \`npx e2e login\` command and wait until I confirm.
 5. Port \`.detoxrc.js\` into the e2e config: one target per platform with \`mobile({ platform })\`, the app's \`bundleId\` and \`appPath\` on the target, and the device type as \`mobile({ device })\`. e2e uses the normal debug or release build, with no Detox framework.
-6. Install dependencies, then run \`npx agent-device doctor\` and fix what it reports.
+6. Install dependencies, then run \`npx e2e doctor\` (e2e 0.23.0 or newer) and fix what it reports.
 7. List the Detox specs and ask me which one to move first. Suggest a flow that needs frequent maintenance.
 8. Rewrite that spec as a \`.e2e.ts\` file under \`tests/\` (e2e runs \`tests/**/*.e2e.ts\` by default), not in the Detox folder, with the guide's tables. Start it with \`app.open()\`, since nothing launches on its own. Narrow queries that match several nodes.
 9. Keep the launch and the final assertions deterministic, with \`app.open()\` and locator assertions. Where a run of scripted interactions breaks often, propose an \`agent.act\` goal for it instead.
@@ -48,6 +47,7 @@ For a migration that spans several sessions, the [`migrate-to-e2e` skill](/codin
 | `detox build` | Your normal build |
 | `device.launchApp({ permissions })` | `app.permissions` on the target, set before every fresh launch, or `device.openApp(app, { relaunch: true, permissions })` for one; `grant`, `deny`, `reset` for `YES`, `NO`, `unset` |
 | `device.launchApp({ launchArgs })` | `app.launchArguments` on the target, or `device.openApp(app, { relaunch: true, launchArguments })` for one; a list of strings the platform launch command takes, not a map |
+| `device.launchApp({ languageAndLocale })` | `app.launchArguments: ['-AppleLanguages', '(fr)', '-AppleLocale', 'fr_FR']` on an iOS target; see [Run the app in another language](/mobile#run-the-app-in-another-language) |
 
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
@@ -73,8 +73,10 @@ export default {
 ## Rewrite one spec
 
 Start with a flow that needs frequent maintenance. If its screens take time
-to settle, set the engine's
-[`settle` and `transition` options](/reference/mobile#engine).
+to settle after agent actions, raise the engine's
+[`settle` option](/reference/mobile#settle); for deterministic test steps, raise
+its [`transition` option](/reference/mobile#transition) when a control is still
+arriving.
 
 ```js title="Detox"
 describe('login', () => {
@@ -108,6 +110,9 @@ password comes from [configured credentials](/authentication).
 
 ## Map each Detox call
 
+"Not yet" marks a call e2e doesn't have today, and "No equivalent" one it
+leaves out on purpose.
+
 | Detox | e2e |
 | --- | --- |
 | `by.id('x')` | `screen.getByTestId('x')` |
@@ -121,28 +126,42 @@ password comes from [configured credentials](/authentication).
 | `.typeText(t)`, `.replaceText(t)` | `.fill(t)` replaces the content |
 | `.clearText()` | `.clear()` |
 | `.tapReturnKey()` | `.press('Enter')` |
+| `.tapBackspaceKey()` | Not yet. `.fill(t)` with the shorter text |
 | `.swipe('up', 'fast')` | `.swipe({ direction: 'down', momentum: 'fast' })`: Detox names the finger's direction, e2e the content's |
 | `.scroll(200, 'down')` | `screen.swipe({ direction: 'down' })` |
-| `waitFor(el).toBeVisible().whileElement(list).scroll(...)` | `screen.scrollUntilVisible(el)` |
+| `waitFor(el).toBeVisible().whileElement(list).scroll(...)` | `list.scrollUntilVisible(el)`, with `{ direction: 'up' }` when Detox scrolls up |
+| `list.scrollTo('bottom')` | `list.scrollUntilVisible(lastRow)`; for `'top'`, `list.scrollUntilVisible(firstRow, { direction: 'up' })` |
+| `.adjustSliderToPosition()` | Not yet. Drag with `screen.swipe({ from, to })`, the points taken from the slider's `.boundingBox()`; on Android, `.tap({ position })` on the track also works |
+| `.setDatePickerDate()` | Not yet |
+| `.getAttributes()` | One call per field: `.textContent()`, `.inputValue()`, `.isEnabled()`, `.isVisible()`, `.isChecked()`, `.boundingBox()`, and `.getAttribute('placeholder')`, the only attribute a device node has |
 | `waitFor(el).toBeVisible().withTimeout(ms)` | `await expect(el).toBeVisible({ timeout: ms })` |
 | `expect(el).toBeVisible()`, `.toExist()` | `.toBeVisible()` for visibility; `.toHaveCount(1)` for existence |
 | `expect(el).not.toBeVisible()` | `.toBeHidden()` |
 | `expect(el).toHaveText(t)` | `.toHaveText(t)` |
 | `expect(el).toHaveToggleValue(true)` | `.toBeChecked()` |
 | `expect(el).toHaveValue(v)` | `.toHaveValue(v)` |
+| `expect(el).toHaveLabel(l)` | `.toHaveAccessibleName(l)` |
 | `device.launchApp({ newInstance: true })` | `app.restart()` |
 | `device.launchApp({ delete: true })` | `app.clearState()` |
+| `device.launchApp({ newInstance: false })` | `device.openApp(id)` without `relaunch` |
+| `device.launchApp({ url })`, `device.openURL({ url })` | `device.openLink(url)` |
+| `device.terminateApp()` | `device.closeApp()` |
+| `device.uninstallApp()` | Not yet. `device.unstable_raw.client.apps.uninstall({ ...device.unstable_raw.selection, app: 'com.example.app' })` removes it, see [`unstable_raw`](/reference/mobile#unstable_raw); `device.installApp(path, { reinstall: true })` installs with no data |
+| `device.resetContentAndSettings()` | Not yet. `app.clearState()` resets the app; on iOS, `device.clearKeychain()` clears the simulator keychain for every app |
 | `device.reloadReactNative()` | No equivalent. `app.restart()` is the nearest |
 | `device.sendToHome()`, `device.pressBack()` | `device.home()`, `device.back()` |
 | `device.setLocation(lat, lon)` | `device.setLocation({ latitude, longitude })` |
 | `device.setOrientation('landscape')` | `device.setOrientation('landscape-left')` |
 | `device.setBiometricEnrollment(true)` | `device.enrollBiometrics('faceid', true)` |
 | `device.matchFace()`, `device.unmatchFace()` | `device.setBiometrics('faceid', 'match' \| 'nonmatch')` |
-| `device.setStatusBar`, `device.setURLBlacklist` | No equivalent |
+| `device.setStatusBar` | No equivalent. `toHaveScreenshot` holds the status bar fixed |
+| `device.setURLBlacklist` | No equivalent |
+| `device.shake()`, `device.sendUserNotification()` | Not yet |
 | `device.disableSynchronization()` | No equivalent. Actions wait and assertions retry |
 | `device.takeScreenshot()` | `app.screenshot('label')`, secure fields masked |
 | `device.takeScreenshot()` compared with an image snapshot library | `await expect(screen).toHaveScreenshot('name.png')`, see [Visual comparison](/visual-testing) |
 | `:ios:` / `:android:` in a test name | `{ platforms: ['ios'] }` on the test |
+| `device.getPlatform()` | the `platform` fixture: `async ({ platform }) => ...` |
 
 Two things differ from Detox:
 

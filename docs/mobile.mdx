@@ -1,9 +1,8 @@
 ---
 title: Mobile
 description: Set up a simulator, emulator, or connected phone as a target, write a device test, and know what differs from the web.
-icon: "mobile-screen"
-"og:image": "https://e2e.tester.army/docs/images/og/mobile.png?v=0a8bfea0a3"
-"twitter:image": "https://e2e.tester.army/docs/images/og/mobile.png?v=0a8bfea0a3"
+"og:image": "https://e2e.com/docs/images/og/mobile.png?v=0a8bfea0a3"
+"twitter:image": "https://e2e.com/docs/images/og/mobile.png?v=0a8bfea0a3"
 ---
 
 `@e2e-dev/mobile` runs tests on iOS simulators, Android emulators, and
@@ -14,28 +13,33 @@ same `agent`, `screen`, and `expect` APIs as browser tests.
 ## Set up
 
 Install Xcode with an iOS simulator runtime, or the Android SDK with an
-emulator. Then check your setup:
+emulator. Then follow the [Quickstart](/quickstart) and choose **Mobile
+(iOS/Android)**. The wizard selects iOS on macOS and Android elsewhere, and
+targets the Settings app with one worker, so a test runs before you point it
+at your app. Device boot happens before test timing starts and doesn't count
+toward `launchTimeout`. See the [example projects](/example-projects) for
+finished setups.
+
+Check your setup:
 
 <CodeGroup>
 ```bash npm
-npx agent-device doctor
+npx e2e doctor
 ```
 
 ```bash pnpm
-pnpm exec agent-device doctor
+pnpm exec e2e doctor
 ```
 
 ```bash bun
-bunx agent-device doctor
+bunx e2e doctor
 ```
 </CodeGroup>
 
-Follow the [Quickstart](/quickstart) and choose **Mobile (iOS/Android)**.
-The wizard selects iOS on macOS and Android elsewhere, and targets the
-Settings app with one worker, so a test runs before you point it at your
-app. Device boot happens before test timing starts and doesn't count toward
-`launchTimeout`. See the [example projects](/example-projects) for finished
-setups.
+It checks agent-device, Xcode or the Android SDK, each device the target
+names, and the `appPath` build. Without `appPath`, it checks that the
+`bundleId` is installed when one device is booted. See
+[`e2e doctor`](/reference/cli#e2e-doctor).
 
 ## Point at your app
 
@@ -93,6 +97,28 @@ it doesn't pass keep the target's values:
 ```ts
 await device.openApp('com.example.app', { relaunch: true, permissions: { camera: 'deny' } });
 ```
+
+### Run the app in another language
+
+On iOS, launch arguments set the app's language and region for that launch.
+The device keeps its own language. Add one target per language:
+
+```ts
+{
+  name: 'ios-fr',
+  engine: mobile({ platform: 'ios' }),
+  app: {
+    bundleId: 'com.example.app',
+    launchArguments: ['-AppleLanguages', '(fr)', '-AppleLocale', 'fr_FR'],
+  },
+}
+```
+
+- The app must ship the language. If it doesn't, iOS shows its development
+  language.
+- Android has no launch argument for the language. On a hosted device, set
+  `language` and `locale` on `browserstack()` or `testmu()`. On a local
+  device, set the device's language before the run.
 
 ### Expo development builds
 
@@ -163,12 +189,14 @@ on Android. Each UI framework sets them its own way:
 
 | Framework | Set the id with | Example |
 | --- | --- | --- |
-| React Native | `testID` | [with-expo](https://github.com/tester-army/e2e/tree/main/examples/with-expo) |
-| SwiftUI | `.accessibilityIdentifier()` | [with-swiftui](https://github.com/tester-army/e2e/tree/main/examples/with-swiftui) |
-| Jetpack Compose | `Modifier.testTag()` | [with-compose](https://github.com/tester-army/e2e/tree/main/examples/with-compose) |
-| Compose Multiplatform | `Modifier.testTag()` | [with-kotlin-multiplatform](https://github.com/tester-army/e2e/tree/main/examples/with-kotlin-multiplatform) |
-| Flutter | `Semantics(identifier:)` | [with-flutter](https://github.com/tester-army/e2e/tree/main/examples/with-flutter) |
-| .NET MAUI | `AutomationId` | [with-maui](https://github.com/tester-army/e2e/tree/main/examples/with-maui) |
+| React Native | `testID` | [with-expo](https://github.com/e2e-inc/e2e/tree/main/examples/with-expo) |
+| SwiftUI | `.accessibilityIdentifier()` | [with-swiftui](https://github.com/e2e-inc/e2e/tree/main/examples/with-swiftui) |
+| UIKit | `view.accessibilityIdentifier`, or Identifier in Interface Builder's Identity inspector | - |
+| Jetpack Compose | `Modifier.testTag()` | [with-compose](https://github.com/e2e-inc/e2e/tree/main/examples/with-compose) |
+| Compose Multiplatform | `Modifier.testTag()` | [with-kotlin-multiplatform](https://github.com/e2e-inc/e2e/tree/main/examples/with-kotlin-multiplatform) |
+| Flutter | `Semantics(identifier:)` | [with-flutter](https://github.com/e2e-inc/e2e/tree/main/examples/with-flutter) |
+| .NET MAUI | `AutomationId` | [with-maui](https://github.com/e2e-inc/e2e/tree/main/examples/with-maui) |
+| NativeScript | `testID` | [Norrix guide](https://docs.norrix.net/guides/e2e-testing/#3-write-a-first-test) |
 
 - On Android, a native `android:id` and a .NET MAUI `AutomationId` read as
   `<package>:id/<id>`. `getByTestId('greet')` finds them without the app's
@@ -178,8 +206,20 @@ on Android. Each UI framework sets them its own way:
   `Modifier.semantics { testTagsAsResourceId = true }`. Without it,
   `getByTestId` finds nothing. iOS reads a Compose Multiplatform tag as is,
   so a shared screen sets the flag in its Android activity.
+- In SwiftUI, an `.accessibilityIdentifier()` on a container such as a
+  `VStack` replaces the ids of every element inside it. `getByTestId` then
+  fails with `LOCATOR_AMBIGUOUS` on the container's id and finds nothing for
+  the children's ids. Put `.accessibilityElement(children: .contain)` before
+  the identifier to keep both.
 - In Flutter, wrap a button's `Semantics` in `MergeSemantics` so the id and
   the button role land on one node.
+- In NativeScript, `testID` and `accessibilityIdentifier` set the same id:
+  `getByTestId('login-button')` finds
+  `<Button text="Login" testID="login-button" />` on both platforms.
+  `accessibilityLabel` sets the name, not the id. On Android, NativeScript
+  puts it before the text, so `<Button text="Help" accessibilityLabel="Open help" />`
+  is named `Open help. Help`. Match it with
+  `getByRole('button', /^Open help/)`.
 
 ## The device fixture
 
@@ -240,8 +280,9 @@ next launch. It is iOS only.
 
 For anything `device` doesn't cover, `device.unstable_raw` has an
 [agent-device](https://github.com/callstack/agent-device) client
-bound to the test's session, plus the session name and the device's id and
-name. It is unstable and may change or go away in any release:
+bound to the test's session, plus the session name, the device's id and
+name, and a `selection` to spread into a client call. It is unstable and
+may change or go away in any release:
 
 ```ts
 const { client, deviceId } = device.unstable_raw;
@@ -251,6 +292,88 @@ const { nodes } = await client.capture.snapshot({});
 Client calls aren't steps: the report and trace leave them out, the agent
 cache doesn't replay them, secrets passed to them aren't redacted, and
 nothing waits for the screen to settle after one.
+
+<Accordion title="Text size and animations">
+`device` has no method for the system text size or animations, so set them
+through `unstable_raw`. Change the text size before `app.open()`. A running
+app can keep the old size until it launches again, so call `app.restart()`
+after a change mid-test:
+
+```ts
+import { afterEach, test } from '@e2e-dev/mobile';
+import { expect } from 'e2e';
+
+afterEach(async ({ app, device }) => {
+  const { client, selection } = device.unstable_raw;
+  await client.settings.update({ ...selection, setting: 'text-size', state: 'large' });
+});
+
+test('the checkout button shows at the largest text size', async ({ app, device, screen }) => {
+  const { client, selection } = device.unstable_raw;
+  await client.settings.update({ ...selection, setting: 'text-size', state: 'accessibility-extra-extra-extra-large' });
+  await app.open();
+  await expect(screen.getByRole('button', 'Checkout')).toBeVisible();
+});
+```
+
+`text-size` works on iOS simulators and Android; `large` is the default on
+both. `setting: 'animations'` with `state: 'off'` or `'on'` is Android only
+and fails on iOS. On Android it sets the window, transition, and animator
+scales to 0 or 1. Both settings outlast the test, so put them back in `afterEach`. The next
+test's `app.open()` relaunches the app, so restoring the setting is enough.
+</Accordion>
+
+<Accordion title="Photos for a picker test">
+`device` can't add photos to the library, so add them from the host before
+`app.open()`. On an iOS simulator, `xcrun simctl addmedia` does it, and
+`deviceId` is the simulator's UDID. `addmedia` adds a copy on every call, and
+an agent step can't tell identical photos apart, so the sample leaves a marker
+file in the simulator's own data directory and adds the photo once. The marker
+goes with the library when the simulator is erased:
+
+```ts
+import { execFileSync } from 'node:child_process';
+import { existsSync, writeFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { test, type Device } from '@e2e-dev/mobile';
+import { expect } from 'e2e';
+
+// Put a JPEG named receipt.jpg beside this test.
+const receipt = resolve(import.meta.dirname, 'receipt.jpg');
+
+function addPhotoOnce(device: Device, file: string): void {
+  const { deviceId } = device.unstable_raw;
+  const listing = execFileSync('xcrun', ['simctl', 'list', 'devices', '-j'], { encoding: 'utf8' });
+  const { devices } = JSON.parse(listing) as {
+    devices: Record<string, { udid: string; dataPath: string }[]>;
+  };
+  const simulator = Object.values(devices).flat().find((d) => d.udid === deviceId);
+  if (!simulator) throw new Error(`No simulator ${deviceId}`);
+  const marker = resolve(simulator.dataPath, 'tmp', 'receipt-photo-added');
+  if (existsSync(marker)) return;
+  execFileSync('xcrun', ['simctl', 'addmedia', deviceId, file]);
+  writeFileSync(marker, file);
+}
+
+test('attaches the receipt from the photo library', { platforms: ['ios'] }, async ({ app, device, screen }) => {
+  addPhotoOnce(device, receipt);
+  await app.open();
+  await screen.getByLabel('Choose photo').tap();
+  await screen.getByRole('image', /^Photo, /).first().tap();
+  await expect(screen.getByText(/^Receipt attached/)).toBeVisible();
+});
+```
+
+The system picker runs outside the app, but its photos are in the screen
+tree, each an `image` named `Photo, ` and the date it was taken. The picker
+sorts by that date, newest first, which is the date in the photo's EXIF data,
+not the day you added it.
+
+An Android emulator needs the file pushed with `adb` and a media scan, and
+its picker is another app with its own names. This page has not been checked
+on Android, so read the picker's tree in the trace before you write that
+locator.
+</Accordion>
 
 <Accordion title="Foldable simulators and emulators">
 `device.fold(pose)` puts the iPhone Duo simulator or a foldable Android
@@ -334,7 +457,8 @@ mobile({ platform: 'ios', device: ['iPhone 17', 'iPhone 17 Pro'] })
 ```
 
 Without `device`, the engine uses booted devices, up to the worker limit.
-If none are booted, it boots one. Two workers never drive the same device.
+If none are booted, it boots a shut-down one: newest OS first, then name
+order. Two workers never drive the same device.
 
 ## Agent tools
 
@@ -459,10 +583,11 @@ service that runs an agent-device daemon next to a simulator, an emulator,
 or a phone works. The provider leases one device per worker slot when the
 run starts, and releases it when the run ends.
 
-For [EAS Simulators](/integrations/eas), use `easSimulators()` from
+For [Expo Simulators](/integrations/eas), use `expoSimulators()` from
 `@e2e-dev/eas`. For [TestMu AI](/integrations/testmu), use `testmu()` from
 `@e2e-dev/testmu`. For [BrowserStack](/integrations/browserstack), use
-`browserstack()` from `@e2e-dev/browserstack`. For another service, write a provider of a few dozen lines,
+`browserstack()` from `@e2e-dev/browserstack`. For Android on [E2B](/integrations/e2b), use `e2b()` from
+`@e2e-dev/e2b`. For another service, write a provider of a few dozen lines,
 such as `hostedDevices` in the example below:
 
 ```ts
@@ -670,6 +795,10 @@ export function cloudDevices(options: { provider: string; device: string; osVers
   detector a window of 350 ms or more.
 - On iOS, `device.foregroundApp()` still names the session's app after
   `device.home()`. Check the screen instead.
+- On an Android build with no shell command for the clipboard service (the
+  Android 16 emulator is one), `device.clipboard()` and
+  `device.setClipboard()` throw `UNSUPPORTED_CAPABILITY`. To check a copy,
+  paste into a field and read the field back.
 - On an iPhone Duo, `--video` records the display that was lit when the
   recording started. After `device.fold` moves the app to the other display,
   the rest of the video is black.
@@ -727,19 +856,19 @@ still passes. An element that never shows up fails as
 
 <CodeGroup>
 ```bash npm
-npx agent-device doctor          # the toolchain, the daemon, the booted devices
+npx e2e doctor                   # agent-device, the toolchain, the devices, the app
 npx agent-device daemon stop     # after a wedge: drops every session, the next run starts the daemon
 xcrun simctl shutdown <udid> && xcrun simctl boot <udid>
 ```
 
 ```bash pnpm
-pnpm exec agent-device doctor          # the toolchain, the daemon, the booted devices
+pnpm exec e2e doctor                   # agent-device, the toolchain, the devices, the app
 pnpm exec agent-device daemon stop     # after a wedge: drops every session, the next run starts the daemon
 xcrun simctl shutdown <udid> && xcrun simctl boot <udid>
 ```
 
 ```bash bun
-bunx agent-device doctor          # the toolchain, the daemon, the booted devices
+bunx e2e doctor                   # agent-device, the toolchain, the devices, the app
 bunx agent-device daemon stop     # after a wedge: drops every session, the next run starts the daemon
 xcrun simctl shutdown <udid> && xcrun simctl boot <udid>
 ```

@@ -1,5 +1,21 @@
 # @e2e-dev/mobile
 
+## 0.12.6
+
+### Patch Changes
+
+- [#1516](https://github.com/tester-army/e2e/pull/1516) [`0410fc9`](https://github.com/tester-army/e2e/commit/0410fc9c74ffac45d5174b7a3a5b3e6f15fdf32f) Thanks [@okwasniewski](https://github.com/okwasniewski)! - Bump agent-device to 0.21.36, @agentclientprotocol/sdk to 2.4.0, @vitest/expect to 5.1.0, and oxc to 0.157.0.
+
+- [#1493](https://github.com/tester-army/e2e/pull/1493) [`91bd614`](https://github.com/tester-army/e2e/commit/91bd61490d20c7536a77ed5ed74e556a856da738) Thanks [@okwasniewski](https://github.com/okwasniewski)! - `e2e doctor` checks a mobile target: agent-device, the platform toolchain, each configured device, an installed `bundleId`, and the `appPath` build. Requires e2e 0.22.1 or newer.
+  
+  `mobile({ device })` now rejects a blank device name at config load instead of failing the run's boot.
+
+- [#1464](https://github.com/tester-army/e2e/pull/1464) [`57f9ed9`](https://github.com/tester-army/e2e/commit/57f9ed9eda7469535fba72bd24f9ff2ce7ad023e) Thanks [@okwasniewski](https://github.com/okwasniewski)! - Snapshots and screenshots now run within the timeout of the call that takes them (an action's `timeout`, an `expect` timeout), so a device that stops answering fails the step instead of holding it until the test timeout. Requires `e2e` 0.22.0 or later.
+
+- [#1559](https://github.com/tester-army/e2e/pull/1559) [`8f425b1`](https://github.com/tester-army/e2e/commit/8f425b116cfb6f0611a1f515c6ae62c2f23d0140) Thanks [@shamilovtim](https://github.com/shamilovtim)! - Share a pending screen-recording stop with cleanup after a caller cancels its wait, so finalization is not repeated and a confirmed stop clears the recording state.
+
+- [#1513](https://github.com/tester-army/e2e/pull/1513) [`383c0bc`](https://github.com/tester-army/e2e/commit/383c0bca467c3cc4d55b02eec07919efa8a99012) Thanks [@thymikee](https://github.com/thymikee)! - Device-cloud leases are allocated and renewed under a named agent-device session, so a newer agent-device that refuses a provider lease to an unnamed client keeps working with BrowserStack, TestMu AI, and Limrun.
+
 ## 0.12.5
 
 ### Patch Changes

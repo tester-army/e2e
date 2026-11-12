@@ -403,6 +403,16 @@
         "error": { "$ref": "#/$defs/error" },
         "failure": { "$ref": "#/$defs/failureEvidence" },
         "skip": { "$ref": "#/$defs/skip" },
+        "expectedFailure": {
+          "description": "Present when the attempt was marked test.fail: the reason, and the failure that made a passed attempt pass. Absent in older reports.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["reason"],
+          "properties": {
+            "reason": { "type": "string", "maxLength": 8192 },
+            "error": { "$ref": "#/$defs/error" }
+          }
+        },
         "secondaryErrors": { "type": "array", "items": { "$ref": "#/$defs/error" } },
         "cleanup": { "enum": ["complete", "failed", "forced"] },
         "environment": { "$ref": "#/$defs/environment" },
@@ -411,7 +421,7 @@
       "allOf": [
         {
           "if": { "properties": { "status": { "const": "skipped" } } },
-          "then": { "required": ["skip"] }
+          "then": { "required": ["skip"], "properties": { "expectedFailure": false } }
         },
         {
           "if": { "properties": { "status": { "const": "passed" } } },
@@ -551,6 +561,13 @@
         "serialGroupId": { "type": "string", "minLength": 1 },
         "status": { "enum": ["passed", "flaky", "failed", "timed-out", "interrupted", "skipped"] },
         "skip": { "$ref": "#/$defs/skip" },
+        "expectedFailure": {
+          "description": "Why the test was expected to fail, when its last attempt was marked test.fail. Absent in older reports.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["reason"],
+          "properties": { "reason": { "type": "string", "maxLength": 8192 } }
+        },
         "attempts": { "type": "array", "items": { "$ref": "#/$defs/attempt" } },
         "extensions": { "$ref": "#/$defs/extensions" }
       },
@@ -594,7 +611,16 @@
         },
         {
           "if": { "properties": { "status": { "const": "skipped" } } },
+          "then": { "properties": { "expectedFailure": false } },
           "else": { "properties": { "skip": false } }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "setup" } } },
+          "then": { "properties": { "expectedFailure": false } }
+        },
+        {
+          "if": { "required": ["serialGroupId"] },
+          "then": { "properties": { "expectedFailure": false } }
         }
       ]
     },
@@ -749,7 +775,7 @@
         "candidates": { "type": "integer", "minimum": 0 },
         "excluded": { "type": "integer", "minimum": 0 },
         "note": { "type": "string", "maxLength": 1024 },
-        "outcome": { "description": "Set when the filter left nothing out because the call did not answer: failed when it threw or answered with something other than { exclude, note? }, timed-out when it ran past 5 minutes and the run stopped waiting. Absent when it answered.", "enum": ["failed", "timed-out"] }
+        "outcome": { "description": "Set when the filter left nothing out because the call did not answer: failed when it threw or answered with something other than { exclude, relevance?, note? }, timed-out when it ran past 5 minutes and the run stopped waiting. Absent when it answered.", "enum": ["failed", "timed-out"] }
       }
     },
     "changes": {

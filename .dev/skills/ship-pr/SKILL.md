@@ -1,6 +1,6 @@
 ---
 name: ship-pr
-description: Take finished work in tester-army/e2e to a PR a human can review without fighting CI or bots - checks, verification against the built packages, a fresh-context self-review, the PR itself, then babysitting to the Ready for Human Review label. Use whenever you are asked to open, create, ship, or submit a PR, or when implementation is done and the next step is review.
+description: Take finished work in e2e-inc/e2e to a PR a human can review without fighting CI or bots - checks, verification against the built packages, a fresh-context self-review, the PR itself, then babysitting to the Ready for Human Review label. Use whenever you are asked to open, create, ship, or submit a PR, or when implementation is done and the next step is review.
 metadata:
   internal: true
 ---
@@ -49,9 +49,9 @@ Then the repo rules `pnpm check` cannot see (`AGENTS.md`, "Contracts"):
   both fixtures, and the producer together.
 - A new build input or benchmark dependency goes into `.github/filters.yml`.
 - A new integration, CI service, or migration guide gets the vendor's logo
-  as its sidebar icon and on every card that links to it, never a Font
-  Awesome placeholder. An integration or CI page also gets a card on its
-  overview ([authoring-docs, Page icons](../authoring-docs/SKILL.md#page-icons)).
+  on every card that links to it, never a Font Awesome placeholder, and a
+  card on its section's overview
+  ([authoring-docs, Vendor logos](../authoring-docs/SKILL.md#vendor-logos)).
   A package PR needs this as much as a docs PR.
 
 ## 2. Verify

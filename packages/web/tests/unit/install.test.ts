@@ -3,9 +3,28 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { chromium } from 'playwright-core';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { ensureBrowsersInstalled, installArgs } from '../../src/install.ts';
-import { browserType, type BrowserName } from '../../src/browser-connection.ts';
+import { browserCheck, ensureBrowsersInstalled, installArgs } from '../../src/install.ts';
+import type { BrowserName } from '../../src/browser-connection.ts';
+
+describe('browserCheck', () => {
+  const firstRun = [
+    { id: 'browser', status: 'warn', message: 'firefox is not installed; the first run downloads it, or run "npx @e2e-dev/web install firefox" now' },
+  ];
+
+  it('passes an installed browser, warns of a first-run download, and reports nothing it cannot tell', async () => {
+    expect(await browserCheck('chromium', {}, false, () => true)).toEqual([{ id: 'browser', status: 'pass', message: 'chromium is installed' }]);
+    expect(await browserCheck('firefox', {}, false, () => false)).toEqual(firstRun);
+    expect(await browserCheck('chromium', {}, false, () => undefined)).toEqual([]);
+  });
+
+  it('reads the verdict of a detection that answers later, not the promise', async () => {
+    expect(await browserCheck('chromium', {}, false, async () => true)).toEqual([{ id: 'browser', status: 'pass', message: 'chromium is installed' }]);
+    expect(await browserCheck('firefox', {}, false, async () => false)).toEqual(firstRun);
+    expect(await browserCheck('chromium', {}, false, async () => undefined)).toEqual([]);
+  });
+});
 
 describe('ensureBrowsersInstalled', () => {
   it('does nothing when every browser is installed', async () => {
@@ -149,7 +168,7 @@ describe('ensureBrowsersInstalled', () => {
   describe('the built-in detection', () => {
     // The revision the installed Playwright declares: the reported executable
     // names it, and a cache under another revision is not the one a run reads.
-    const reported = browserType('chromium').executablePath();
+    const reported = chromium.executablePath();
     const revision = reported.slice(reported.lastIndexOf('chromium-') + 'chromium-'.length).split(path.sep)[0] ?? '';
     // The child runs the built package, the same one a user gets, so the check it
     // exercises is the one that ships.

@@ -66,6 +66,8 @@ export interface Lookup {
 }
 
 export interface ObservationFeedOptions {
+  /** False when the step asked for semantic evidence only. */
+  readonly pixelsAllowed: boolean;
   /** The agent's observation byte ceiling, clamped per capture by the token limit. */
   readonly maxObservationBytes: number;
   /** The agent's per-request input token ceiling. */
@@ -168,7 +170,7 @@ export class ObservationFeed {
     }
     return this.queue.run(async () => {
       this.accounting.checkpoint();
-      const pixels = options.pixels === true;
+      const pixels = options.pixels === true && this.options.pixelsAllowed;
       const opening = this.opening;
       this.opening = undefined;
       const reusable = opening !== undefined && opening === this.newest && this.accounting.metrics.actionSteps === 0 &&
@@ -184,7 +186,7 @@ export class ObservationFeed {
       viewport: observation.viewport,
       ...(observation.path === undefined ? {} : { path: observation.path }),
     };
-    const pixels = options.pixels === true || observation.kind === 'pixels' ? this.pixelsFor(observation) : {};
+    const pixels = this.options.pixelsAllowed && (options.pixels === true || observation.kind === 'pixels') ? this.pixelsFor(observation) : {};
     if (observation.kind === 'pixels') {
       return { ...metadata, text: observation.text, treeUnavailable: true, truncated: true, ...pixels };
     }
@@ -283,12 +285,12 @@ export class ObservationFeed {
    * list reads between its pages. Direct rather than queued, like
    * `relocate`, since the queue is held by this very caller.
    */
-  async look(mode: SettleMode): Promise<AgentObservation> {
+  async look(mode: SettleMode, settledWhen?: (observation: AgentObservation) => boolean): Promise<AgentObservation> {
     this.accounting.checkpoint();
     const observation = await instrumentPhase(
       this.runtime,
       { api: this.accounting.api, kind: 'observation', phase: 'agent.observe', name: 'page' },
-      () => this.captureSettled(mode, false),
+      () => this.captureSettled(mode, false, settledWhen),
       observationDetail,
     );
     this.publish(observation);
@@ -324,9 +326,14 @@ export class ObservationFeed {
    * screen to leave the pre-action shape once, so later looks read the screen
    * as is; held still, it then proves the new shape holds for a beat, while
    * after-change reads the first post-change capture, which is all a fill's
-   * own field needs.
+   * own field needs. A held-still look the caller can already vouch for
+   * (`settledWhen`) returns that capture without the proof.
    */
-  private captureSettled(mode: SettleMode, pixels: boolean): Promise<AgentObservation> {
+  private captureSettled(
+    mode: SettleMode,
+    pixels: boolean,
+    settledWhen?: (observation: AgentObservation) => boolean,
+  ): Promise<AgentObservation> {
     if (mode === 'raw') return this.capture(pixels);
     const changedFrom = this.pendingChange;
     this.pendingChange = undefined;
@@ -343,6 +350,7 @@ export class ObservationFeed {
       {
         changedFrom,
         stableWaitMs: mode === 'held-still' ? HELD_STILL_MS : 0,
+        ...(mode === 'held-still' && settledWhen !== undefined ? { settledWhen } : {}),
         changeShapeOf: changeShape,
         transitional: isTransitionalObservation,
       },
@@ -386,7 +394,7 @@ export class ObservationFeed {
   private async capture(pixels: boolean): Promise<AgentObservation> {
     this.opening = undefined;
     const raw = await retryingObserve({
-      capture: () => this.runtime.engine.session.observe(this.accounting.operation(), { pixels, pixelFallback: true }),
+      capture: () => this.runtime.engine.session.observe(this.accounting.operation(), { pixels, pixelFallback: this.options.pixelsAllowed }),
       guard: (cause) => this.accounting.checkpoint(cause),
       signal: this.runtime.engine.signal,
     });
@@ -399,7 +407,7 @@ export class ObservationFeed {
       redact: this.runtime.redact,
       redactCut: this.runtime.redactCut,
       maxBytes: this.byteBudget(pixels || raw.kind === 'pixels'),
-      pixelsAllowed: true,
+      pixelsAllowed: this.options.pixelsAllowed,
       appOrigin: this.runtime.app.base?.origin,
     });
     return prepared;

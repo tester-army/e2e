@@ -1,18 +1,21 @@
 /**
- * Protected-preview access, scoped to the app's site: the configured headers
- * ride only requests bound for the site, and basic-auth credentials answer
- * a challenge wherever one is issued. The surface calls these on every
- * context it creates; nothing here holds state.
+ * Protected-preview access, scoped to exact origins: the app's own and the
+ * extras `credentialOrigins` lists. The configured headers ride requests
+ * that start at one of them, and basic-auth credentials answer only a
+ * challenge one of them issues (on WebKit, see `httpCredentials`). The
+ * surface calls these on every context it creates; nothing here holds state.
  */
 
 import type { BrowserContext } from 'playwright-core';
-import { sameSite, type ResolveSecretOptions, type Secret } from 'e2e/engine';
+import type { ResolveSecretOptions, Secret } from 'e2e/engine';
+import type { BrowserName } from './browser-connection.ts';
 import type { WebBasicAuth } from './surface.ts';
 
-/** The credentials Playwright answers an HTTP authentication challenge with. */
+/** The credentials Playwright answers an HTTP authentication challenge from `origin` with, or from any origin without one. */
 export interface PlaywrightHttpCredential {
   readonly username: string;
   readonly password: string;
+  readonly origin?: string;
 }
 
 /** An HTTP header field name: one or more `token` characters (RFC 9110). */
@@ -41,36 +44,52 @@ export function lowercaseNames(headers: Readonly<Record<string, string>>): Reado
 }
 
 /**
- * The configured headers a request to `url` carries: all of them for the
- * app's site, none for any other site or when there is no site policy.
+ * The origin of `url` as `URL.origin` serializes it (scheme and host
+ * lowercased, a default port dropped), or `undefined` when it does not parse.
  */
-export function siteHeadersFor(
-  url: string | URL,
-  site: string | undefined,
-  headers: Readonly<Record<string, string>> | undefined,
-): Readonly<Record<string, string>> | undefined {
-  if (headers === undefined || site === undefined) return undefined;
-  return sameSite(url, site) ? headers : undefined;
+function originOf(url: string | URL): string | undefined {
+  try {
+    return (typeof url === 'string' ? new URL(url) : url).origin;
+  } catch {
+    return undefined;
+  }
 }
 
 /**
- * Adds the configured headers to every request bound for the app's site,
- * via a context route that falls back to the network. A request for any
- * other site is not routed at all; without a site there is no policy and
- * nothing is routed. Registered before any test route, so it runs last: a
- * test route's `fallback` reaches it, and a `continue`, which skips it,
- * merges the same headers itself (`siteHeadersFor`). Nothing awaits a route
- * handler, so a fallback that fails (the page closed under the request) is
- * dropped rather than left to surface as an unhandled rejection.
+ * The configured headers a request to `url` carries: all of them when its
+ * origin is one of `origins`, none otherwise.
  */
-export async function installSiteHeaders(
+export function configuredHeadersFor(
+  url: string | URL,
+  origins: ReadonlySet<string>,
+  headers: Readonly<Record<string, string>> | undefined,
+): Readonly<Record<string, string>> | undefined {
+  if (headers === undefined) return undefined;
+  const origin = originOf(url);
+  return origin !== undefined && origins.has(origin) ? headers : undefined;
+}
+
+/**
+ * Adds the configured headers to every request bound for one of `origins`,
+ * via a context route that falls back to the network. A request for any
+ * other origin is not routed at all. Redirect hops are never routed either:
+ * Playwright carries a routed request's headers onto them, whatever origin
+ * they name, and a request that started elsewhere stays without them.
+ * Registered before any test route, so it
+ * runs last: a test route's `fallback` reaches it, and a `continue`, which
+ * skips it, merges the same headers itself (`configuredHeadersFor`). Nothing
+ * awaits a route handler, so a fallback that fails (the page closed under
+ * the request) is dropped rather than left to surface as an unhandled
+ * rejection.
+ */
+export async function installConfiguredHeaders(
   context: BrowserContext,
-  site: string | undefined,
+  origins: ReadonlySet<string>,
   headers: Readonly<Record<string, string>> | undefined,
 ): Promise<void> {
-  if (headers === undefined || site === undefined) return;
+  if (headers === undefined || origins.size === 0) return;
   await context.route(
-    (url) => siteHeadersFor(url, site, headers) !== undefined,
+    (url) => configuredHeadersFor(url, origins, headers) !== undefined,
     async (route) => {
       await route.fallback({ headers: { ...route.request().headers(), ...headers } }).catch(() => undefined);
     },
@@ -78,21 +97,35 @@ export async function installSiteHeaders(
 }
 
 /**
- * The basic-auth credentials a context answers a challenge with, as
- * Playwright's own `httpCredentials` does: on a 401 from any origin. A site
- * cannot be enumerated into the exact origins Playwright scopes by, and a
- * challenge is answered only where one is issued. A `Secret` password
- * resolves through the attempt, which registers the value for redaction, and
- * the `Authorization` credential Playwright sends with it too: a page that
- * echoes its request headers shows that, not the password.
+ * The basic-auth credentials a context answers a challenge with: one
+ * Playwright `httpCredentials` entry per origin in `origins`, so a `401`
+ * from any other origin goes unanswered. WebKit is the exception: it never
+ * matches a scoped credential to an origin on its scheme's default port or
+ * with an IPv6 host (Playwright 1.64 compares the challenge's port 443 with
+ * the origin's absent port as 0), so when one of `origins` is such an
+ * origin, WebKit gets one unscoped credential that answers every origin, as
+ * Playwright's own default does. A `Secret` password resolves through the
+ * attempt, which registers the value for redaction, and the `Authorization`
+ * credential Playwright sends with it too: a page that echoes its request
+ * headers shows that, not the password.
  */
 export async function httpCredentials(
   basicAuth: WebBasicAuth,
+  origins: ReadonlySet<string>,
+  browser: BrowserName,
   resolveSecret: (secret: Secret, options?: ResolveSecretOptions) => Promise<string>,
-): Promise<PlaywrightHttpCredential> {
+): Promise<PlaywrightHttpCredential[]> {
   const { username, password } = basicAuth;
-  if (typeof password === 'string') return { username, password };
-  return { username, password: await resolveSecret(password, { derived: (plaintext) => basicCredentials(username, plaintext) }) };
+  const plaintext =
+    typeof password === 'string' ? password : await resolveSecret(password, { derived: (value) => basicCredentials(username, value) });
+  if (browser === 'webkit' && [...origins].some(webkitCannotScope)) return [{ username, password: plaintext }];
+  return [...origins].map((origin) => ({ username, password: plaintext, origin }));
+}
+
+/** Whether WebKit drops a credential scoped to `origin`: a default port, which `URL.origin` leaves out, or an IPv6 host. */
+function webkitCannotScope(origin: string): boolean {
+  const url = new URL(origin);
+  return url.port === '' || url.hostname.startsWith('[');
 }
 
 /**
@@ -104,4 +137,35 @@ function basicCredentials(username: string, password: string): string[] {
   const encoded = Buffer.from(`${username}:${password}`, 'utf8').toString('base64');
   const unpadded = encoded.replace(/={1,2}$/, '');
   return unpadded === encoded ? [encoded] : [encoded, unpadded];
+}
+
+/**
+ * The exact origins the credentials go to: the app's own, when the runner
+ * reports one, and each of `credentialOrigins`, normalized as `URL.origin`
+ * serializes it. Config load has checked every extra is an origin.
+ */
+export function credentialOrigins(appOrigin: string | undefined, extras: readonly string[] | undefined): ReadonlySet<string> {
+  return new Set([...(appOrigin === undefined ? [] : [appOrigin]), ...(extras ?? []).map((origin) => new URL(origin).origin)]);
+}
+
+/**
+ * Why `value` is not an origin a credential can be scoped to, or `undefined`
+ * when it is: an `http:` or `https:` URL with no user info, path, query, or
+ * fragment (`https://api.example.com`, a trailing `/` allowed). A `*` in the
+ * host and port `0` parse as URLs but match no request, so they are refused
+ * too, rather than loading a config that sends nothing.
+ */
+export function originProblem(value: unknown): string | undefined {
+  const expected = 'must be an origin such as "https://preview.example.com": an http or https URL with no path, query, or fragment';
+  if (typeof value !== 'string') return `${expected}, got ${typeof value}`;
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return `${expected}, got "${value}"`;
+  }
+  if (url.hostname.includes('*')) return `must be an exact origin, got "${value}": a wildcard matches no request, so list each origin`;
+  if (url.port === '0') return `must name the port requests use, got "${value}": port 0 matches no request`;
+  const bare = url.username === '' && url.password === '' && url.pathname === '/' && url.search === '' && url.hash === '' && !value.endsWith('?') && !value.endsWith('#');
+  return (url.protocol === 'http:' || url.protocol === 'https:') && bare ? undefined : `${expected}, got "${value}"`;
 }

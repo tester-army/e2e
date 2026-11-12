@@ -6,6 +6,7 @@
 
 import { stripVTControlCharacters } from 'node:util';
 import picocolors from 'picocolors';
+import type { CacheWrite } from '../cache/context.ts';
 import { sanitizeText, truncateUtf8 } from '../internal/errors.ts';
 import type { ResultStatus } from '../run/records.ts';
 import type { StepModelInfo, StepRecord } from '../run/steps.ts';
@@ -252,23 +253,34 @@ export function usageText(usage: AiUsage): string | undefined {
 
 /**
  * How the trace cache handled a run's agent steps, by step: replayed whole
- * with no model turn, replayed in part before the model took over, or missed.
+ * with no model turn, replayed in part before the model took over, or missed;
+ * and the steps of passing tests whose recording was not saved.
  * A run with the cache off records no cache detail and tallies nothing.
  */
 export interface CacheTally {
   replayed: number;
   handedOff: number;
   missed: number;
+  notSaved: number;
+}
+
+/** The `step.cache.write` outcomes where the step's recording was not written. */
+const NOT_SAVED: ReadonlySet<CacheWrite> = new Set(['unconfirmed', 'no-change', 'not-written']);
+
+/** The steps whose recording was not saved. */
+export function notSavedCount(steps: readonly StepRecord[]): number {
+  return steps.filter((step) => step.cache?.write !== undefined && NOT_SAVED.has(step.cache.write)).length;
 }
 
 export function emptyCacheTally(): CacheTally {
-  return { replayed: 0, handedOff: 0, missed: 0 };
+  return { replayed: 0, handedOff: 0, missed: 0, notSaved: 0 };
 }
 
 export function addCacheTally(into: CacheTally, counts: CacheTally): void {
   into.replayed += counts.replayed;
   into.handedOff += counts.handedOff;
   into.missed += counts.missed;
+  into.notSaved += counts.notSaved;
 }
 
 /** The trace cache's part in several step lists, by step. */
@@ -295,14 +307,15 @@ export function stepsCacheTally(stepLists: readonly (readonly StepRecord[])[]): 
 }
 
 /**
- * `9 replayed · 2 handed off · 4 missed`, zero counts left out, or undefined
- * when no step went through the trace cache.
+ * `9 replayed · 2 handed off · 4 missed · 1 not saved`, zero counts left
+ * out, or undefined when no step went through the trace cache.
  */
 export function cacheText(pc: Colors, counts: CacheTally): string | undefined {
   const parts = [
     counts.replayed > 0 ? pc.green(`${counts.replayed} replayed`) : undefined,
     counts.handedOff > 0 ? pc.yellow(`${counts.handedOff} handed off`) : undefined,
     counts.missed > 0 ? `${counts.missed} missed` : undefined,
+    counts.notSaved > 0 ? pc.yellow(`${counts.notSaved} not saved`) : undefined,
   ].filter((part) => part !== undefined);
   return parts.length === 0 ? undefined : parts.join(pc.dim(' · '));
 }

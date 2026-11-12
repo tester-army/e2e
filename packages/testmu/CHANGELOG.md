@@ -1,5 +1,11 @@
 # @e2e-dev/testmu
 
+## 0.0.4
+
+### Patch Changes
+
+- [#1516](https://github.com/tester-army/e2e/pull/1516) [`0410fc9`](https://github.com/tester-army/e2e/commit/0410fc9c74ffac45d5174b7a3a5b3e6f15fdf32f) Thanks [@okwasniewski](https://github.com/okwasniewski)! - Bump agent-device to 0.21.36, @agentclientprotocol/sdk to 2.4.0, @vitest/expect to 5.1.0, and oxc to 0.157.0.
+
 ## 0.0.3
 
 ### Patch Changes

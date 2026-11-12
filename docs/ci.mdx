@@ -1,15 +1,15 @@
 ---
 title: Continuous integration
 sidebarTitle: Setting up CI
-description: Run e2e on GitHub Actions, EAS Workflows, Bitrise, Codemagic, or any CI service that runs Node.
-icon: "rotate"
-"og:image": "https://e2e.tester.army/docs/images/og/ci.png?v=01be716140"
-"twitter:image": "https://e2e.tester.army/docs/images/og/ci.png?v=01be716140"
+description: Run e2e on GitHub Actions, GitLab CI/CD, Expo Workflows, Bitrise, Codemagic, Norrix, or any CI service that runs Node.
+"og:image": "https://e2e.com/docs/images/og/ci.png?v=01be716140"
+"twitter:image": "https://e2e.com/docs/images/og/ci.png?v=01be716140"
 ---
 
 e2e runs on each CI service that can run Node 24.8 or later (22.22.3 or
-later on Node 22). Each job installs the dependencies, starts the app or a
-device, runs `npx e2e run`, and uploads `.e2e/`.
+later on Node 22), or [Bun](/reference/cli#bun) 1.4.3 or later for web tests.
+Each job installs the dependencies, starts the app or a device, runs the
+tests, and uploads `.e2e/`.
 
 ## Pick your CI service
 
@@ -17,14 +17,20 @@ device, runs `npx e2e run`, and uploads `.e2e/`.
   <Card title="GitHub Actions" icon="/images/integrations/github-actions.svg" href="/ci/github-actions">
     Web and mobile workflows. Post the results as a pull request comment.
   </Card>
-  <Card title="EAS Workflows" icon="/images/integrations/expo.svg" href="/ci/eas-workflows">
-    Build an Expo app on EAS, then run iOS and Android tests on it.
+  <Card title="GitLab CI/CD" icon="/images/integrations/gitlab.svg" href="/ci/gitlab">
+    Web and mobile jobs. Show the results in the merge request.
+  </Card>
+  <Card title="Expo Workflows" icon="/images/integrations/expo.svg" href="/ci/eas-workflows">
+    Build an Expo app with Expo Build, then run iOS and Android tests on it.
   </Card>
   <Card title="Bitrise" icon="/images/integrations/bitrise.svg" href="/ci/bitrise">
     iOS and Android workflows with the Bitrise steps for simulators and emulators.
   </Card>
   <Card title="Codemagic" icon="/images/integrations/codemagic.svg" href="/ci/codemagic">
     iOS and Android workflows on Mac mini and Linux instances.
+  </Card>
+  <Card title="Norrix" icon="/images/integrations/norrix.png" href="/ci/norrix">
+    Build a NativeScript app with Norrix, then run its suite on a Norrix simulator or emulator.
   </Card>
 </CardGroup>
 
@@ -43,6 +49,7 @@ Upload `.e2e/` at the end of each job, also when a test fails. It holds:
 | `results/` | The trace pages, screenshots, and screen dumps of each test. With `--video`, also a video for each target whose engine can record |
 
 Point the test-report integration of your CI service at `.e2e/junit.xml`.
+On GitLab, `junit.xml` also links each failure screenshot, so it shows in the test report.
 The [`output`](/reference/config#output) option moves `.e2e/`.
 
 ## Model credentials
@@ -199,9 +206,35 @@ To keep the checks predictable:
 ## Run only affected tests
 
 On a pull request, pass `--changed-since` so a [test filter](/filters) can
-leave out the tests the change is unlikely to affect. Without the flag, as
-on `main`, the whole suite runs. See
-[Add the decision filter](/filters#add-the-decision-filter).
+leave out the tests the change is unlikely to affect. When the filter scores
+tests, as the decision filter does, each target starts the files of the
+likeliest to fail first. Without the flag, as on `main`, the whole suite
+runs. See [Add the decision filter](/filters#add-the-decision-filter).
+
+With the CI default of one worker, only the relevance bands order files and
+collection order breaks ties: e2e reads the
+[timings history](#cache-the-timings-history) only with more than one worker.
+See [Start the likeliest first](/filters#start-the-likeliest-first).
+
+## Cache the timings history
+
+With more than one worker, `e2e run` starts the longest files first, after
+any file it has no time for, ordered by `<output>/timings.json` (`.e2e/timings.json` by default): a few KB that a
+run updates when it ran at least one file whole. A fresh CI checkout has none,
+so restore it from your CI cache before the run and save it after.
+[GitHub Actions](/ci/github-actions#cache-the-timings-history) has the step.
+
+- The file is advisory. One that is missing, corrupt, or invalid is no history,
+  and the run falls back to the previous `report.json`. A restored file can
+  change the order of files, never a result.
+- A run times a file only when it ran all of it. A `--grep` or
+  `--last-failed` run leaves the entry of a file it ran in part as it was.
+- CI defaults to one worker. Set [`workers`](/reference/config#workers) or
+  pass `--workers` to benefit.
+- Key the cache by branch, with `main` as the fallback, so a new pull
+  request starts from the history of `main`. With [sharding](#sharding), add
+  the shard index to the key.
+- `--timings <file>` reads and writes another path.
 
 ## Sharding
 

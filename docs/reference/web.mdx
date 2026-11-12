@@ -1,9 +1,8 @@
 ---
 title: Browser
 description: The browser engine, its options, and the browser fixture it contributes.
-icon: "globe"
-"og:image": "https://e2e.tester.army/docs/images/og/reference/web.png?v=66fee465a4"
-"twitter:image": "https://e2e.tester.army/docs/images/og/reference/web.png?v=66fee465a4"
+"og:image": "https://e2e.com/docs/images/og/reference/web.png?v=66fee465a4"
+"twitter:image": "https://e2e.com/docs/images/og/reference/web.png?v=66fee465a4"
 ---
 
 `@e2e-dev/web` is the browser engine. It drives Chromium, Firefox, and WebKit
@@ -54,6 +53,7 @@ web({ viewport: { width: 390, height: 844 }, locale: 'de-DE' });
 | [`connect`](#connect) | `WebConnectOptions` | launches locally |
 | [`headers`](#headers) | `Record<string, string>` | - |
 | [`basicAuth`](#basicauth) | `WebBasicAuth` | - |
+| [`credentialOrigins`](#credentialorigins) | `string[]` | - |
 | [`testIdAttribute`](#testidattribute) | `string` | `'data-testid'` |
 | [`userAgent`](#useragent) | `string` | the browser's own |
 | [`locale`](#locale) | `string` | the browser's own |
@@ -207,8 +207,8 @@ What survives:
 - Recovery keeps the page's unsaved state, storage, and the agent ledger. Dialog and route handlers are reattached.
 - Video recording resumes. A segment lost during the disconnect is gone.
 - Operations already dispatched are never retried.
-- Recovery clears old node references. Observation-derived `tapAt` calls,
-  observation-root swipes, and focused engine keyboard input need a fresh
+- Recovery clears old node references. Observation-derived `tapAt` and
+  `doubleTapAt` calls, observation-root swipes, and focused engine keyboard input need a fresh
   engine observation before they resume.
 - An observation or locator read started before recovery cannot publish
   references after the connection changes. Each attempt owns its binding and
@@ -229,7 +229,7 @@ context id.
 
 To reuse one sign-in across files, keep isolated contexts (no
 `reconnectEndpoint`, no provider `scope: 'attempt'`) and
-[sign in once in a setup test](/authentication#sign-in-once-in-a-setup-test).
+[sign in once in a setup test](/authentication#reuse-authenticated-sessions).
 A saved session carries it, not a shared browser.
 
 <Note>
@@ -241,15 +241,20 @@ session state capture and restore. `app.clearState` fails with
 
 #### `headers`
 
-Headers added to requests within the app's site, including subdomains.
+Headers added to every request that starts at the app's origin: the scheme,
+host, and port of `app.url`. A request that starts at another port, a
+subdomain, or any other host gets none. A redirect keeps the headers its
+request started with, to any origin.
 
 ```ts
 web({ headers: { 'x-preview-token': process.env.PREVIEW_TOKEN ?? '' } });
 ```
 
-- A [continued](#route) request bound for the app's site still carries them.
+- A [continued](#route) request bound for an allowed origin still carries
+  them.
 - `headers` and `basicAuth` are how a test reaches a
   [protected preview](/web#protected-previews).
+- See [request credentials](/reference/security#request-credentials).
 
 | Throws | When |
 | --- | --- |
@@ -262,8 +267,9 @@ blocks service workers.
 
 #### `basicAuth`
 
-HTTP basic authentication. The browser answers a `401` challenge with these
-credentials on any origin, matching Playwright's `httpCredentials`.
+HTTP basic authentication. The browser answers a `401` challenge from the
+app's origin with these credentials. A challenge from any other origin goes
+unanswered unless [`credentialOrigins`](#credentialorigins) lists it.
 
 ```ts
 import { secrets } from 'e2e';
@@ -276,7 +282,7 @@ redacted like any configured secret. So is the base64 credential of the
 `Authorization` header it becomes.
 
 ```ts
-/** HTTP basic authentication the browser answers a `401` challenge with. */
+/** HTTP basic authentication the browser answers a `401` challenge from the app's origin with. */
 export interface WebBasicAuth {
   /** The user name; `:` is not allowed in one (RFC 7617). */
   readonly username: string;
@@ -289,11 +295,37 @@ export interface WebBasicAuth {
 | --- | --- |
 | `INVALID_CONFIG` | A `:` in the user name, or an unknown key. |
 
+<Note>
+WebKit can't scope a credential to an origin on its scheme's default port
+(`https://staging.example.com`) or with an IPv6 host. When the app's origin
+or one in `credentialOrigins` is such an origin, WebKit answers a `401` from
+any origin, as Playwright does by default.
+</Note>
+
 <Warning>
 The secret protection is text only. A page that renders the password on
 screen is not masked in screenshots or model pixels
 ([Security rules](/reference/security#secrets-in-engine-options)).
 </Warning>
+
+#### `credentialOrigins`
+
+More origins that receive [`headers`](#headers) and
+[`basicAuth`](#basicauth), beyond the app's own, such as an API on another
+host behind the same gate.
+
+```ts
+web({
+  headers: { 'x-preview-token': process.env.PREVIEW_TOKEN ?? '' },
+  credentialOrigins: ['https://api.staging.example.com'],
+});
+```
+
+List each origin exactly. A `*` in the host and port `0` match no request.
+
+| Throws | When |
+| --- | --- |
+| `INVALID_CONFIG` | No `headers` or `basicAuth`, an entry that is not an `http:` or `https:` origin with no path, query, or fragment, a `*` in the host, or port `0`. |
 
 #### `testIdAttribute`
 
@@ -458,7 +490,7 @@ The [config](/reference/config) sets each member's budget:
 
 A `{ timeout }` option overrides the budget on `goto`, `reload`, `back`,
 `forward`, `waitForResponse`, `waitForDownload`, and `waitForDownloads`, capped
-by the test deadline. `url`, `title`, `evaluate`, `addInitScript`, `route`,
+by the test deadline (`cleanupTimeout` in `afterEach`); `0` waits until it. `url`, `title`, `evaluate`, `addInitScript`, `route`,
 `unroute`, `unrouteAll`, `cookies`, `setCookies`, `clearCookies`, `setViewport`,
 `emulateMedia`, `onDialog`, `keyboard.*`, and `mouse.*` take no override.
 
@@ -601,8 +633,8 @@ const title = await browser.evaluate<string>('document.title');
 
 | Throws | When |
 | --- | --- |
-| `INVALID_ARGUMENT` | `arg` or the return value is not a [`JsonValue`](#jsonvalue). |
-| `EVALUATE_FAILED` | The evaluated code threw. The error carries its message. |
+| `INVALID_ARGUMENT` | `arg` or the return value is not a [`JsonValue`](#jsonvalue). A class instance, such as a `DOMRect` or an element, is not: return `rect.toJSON()` or the fields you need. |
+| `EVALUATE_FAILED` | The evaluated code threw, or the page replaced a JavaScript built-in such as `Map` that the engine needs. The error carries the message. |
 | `ACTION_FAILED` | A Playwright timeout. |
 | `ENGINE_FAILURE` | The page closed or the context was lost. |
 
@@ -616,8 +648,9 @@ await browser.route('**/api/quote', async (route) => {
 });
 ```
 
-`route.fetch()` returns the upstream `{ url, status, headers, text(), json() }`
-with the site's headers, under the action timeout, without deciding the route.
+`route.fetch()` returns the upstream `{ url, status, headers, body(), text(), json() }`
+with the configured headers when its origin gets them, under the action
+timeout, without deciding the route.
 It does not follow redirects, which could take it past the navigation rule.
 
 - The pattern is a string or a `RegExp`, both tested against the full URL. In
@@ -628,9 +661,16 @@ It does not follow redirects, which could take it past the navigation rule.
 - Routes run newest first.
 - The handler must decide exactly once, with `fulfill`, `continue`,
   `fallback`, or `abort`, each described on `WebRoute` below.
-- A `continue` URL goes through the same rule as `goto`.
+- A `continue` URL goes through the same rule as `goto`. A `continue` header
+  set to `undefined` is dropped, also on redirects.
+- A `fulfill` body is a string or bytes (`Buffer`, `Uint8Array`), sent as is.
+- To set several cookies, join them with `\n` in one `set-cookie` header, as
+  `route.fetch()` headers report them. Any other line break in a header is refused.
 - A handler that throws (a failed `expect` on the request, say) fails the
   next step with that error, or the attempt at its end when no step follows.
+  A step the handler made fail, such as the `goto` whose request it left
+  aborted, fails with the handler's error. A `goto` whose request a handler
+  aborted on purpose fails with `ACTION_FAILED`.
   A handler still running then gets the cleanup budget to finish. Whatever it
   throws after the budget is dropped.
 
@@ -649,12 +689,13 @@ It does not follow redirects, which could take it past the navigation rule.
  */
 export type RouteFulfillResponse = {
   status?: number;
+  /** Response headers; `set-cookie` may join several cookies with `\n`, as `route.fetch()` reports them. */
   headers?: Record<string, string>;
   /** Sets the `Content-Type` response header. */
   contentType?: string;
 } & (
   | { json: JsonValue; body?: never; path?: never }
-  | { body: string; json?: never; path?: never }
+  | { body: string | Uint8Array; json?: never; path?: never }
   | { path: string; json?: never; body?: never }
   | { body?: never; json?: never; path?: never }
 );
@@ -665,8 +706,8 @@ export interface RouteContinueOverrides {
   url?: string;
   /** Request method. */
   method?: string;
-  /** Replaces every request header; the configured `headers` for the app's site are added on top. */
-  headers?: Record<string, string>;
+  /** Replaces every request header; `undefined` drops one, and the configured `headers` for an allowed origin are added on top. */
+  headers?: Record<string, string | undefined>;
   /** Request body. */
   postData?: string;
 }
@@ -708,7 +749,7 @@ await browser.unroute('**/api/quote');
 #### `unrouteAll`
 
 Removes every route registered by the browser fixture, preserving configured
-site headers.
+headers.
 
 ```ts
 await browser.unrouteAll();
@@ -726,15 +767,16 @@ expect(response.status).toBe(201);
 
 - The deadline bounds the match: the response resolves as soon as its headers
   arrive.
-- `text()` and `json()` wait for the body on a budget of their own,
+- `body()`, `text()`, and `json()` wait for the body on a budget of their own,
   `config.actionTimeout` capped by the test deadline.
 - `url`, `status`, and `headers` are always readable.
-- A genuinely empty body reads as `''`.
+- A genuinely empty body reads as an empty `Buffer` from `body()` and `''`
+  from `text()`; `json()` rejects it.
 
 | Throws | When |
 | --- | --- |
 | `INVALID_ARGUMENT` | A predicate function as the pattern. |
-| `ACTION_FAILED` | Nothing matches inside the deadline. From `text()` and `json()`: a body still streaming when their budget runs out, or a body the browser could not read (a connection reset short of the declared `Content-Length`, a request the page aborted, or a redirect, whose body the browser never keeps), instead of an empty string. |
+| `ACTION_FAILED` | Nothing matches inside the deadline. From `body()`, `text()`, and `json()`: a body still streaming when their budget runs out, or a body the browser could not read (a connection reset short of the declared `Content-Length`, a request the page aborted, or a redirect, whose body the browser never keeps), instead of an empty string. |
 
 ```ts
 export interface WebResponse {
@@ -742,8 +784,10 @@ export interface WebResponse {
   readonly url: string;
   /** HTTP status. */
   readonly status: number;
-  /** Response headers, lower-cased names. */
+  /** Response headers, lower-cased names; `route.fetch()` joins several `set-cookie` values with `\n`, `waitForResponse` leaves cookie headers out. */
   readonly headers: Readonly<Record<string, string>>;
+  /** Waits for the body and returns its bytes. */
+  body(): Promise<Buffer>;
   /** Waits for the body and parses it as JSON. */
   json<T = unknown>(): Promise<T>;
   /** Waits for the body and reads it as text. */
@@ -984,11 +1028,14 @@ observation budget, capped at two seconds, for the screenshot. The deadline
 covers the page walk, metadata and element readback, and nested frames.
 
 Semantic metadata crosses the Playwright connection as one JSON string, to
-cut serialization overhead. Actions still use the live element handles
-captured with that metadata. A page that replaces `JSON.stringify`, or adds
-`toJSON` methods to object or array prototypes, gets structured transfer.
-Cleanup does not wait for stalled protocol replies. An abandoned reader
-cannot reuse node IDs or publish handles over a newer observation.
+cut serialization overhead. The elements the reader walked stay in one
+in-page array per document, and an action makes the handle for its node from
+that array the first time it reaches for it. A reference still names the
+element the walk read, not whatever sits at that position later. A page that
+replaces `JSON.stringify`, or adds `toJSON` methods to object or array
+prototypes, gets structured transfer. Cleanup does not wait for stalled
+protocol replies. An abandoned reader cannot reuse node IDs or publish
+references over a newer observation.
 
 ## surfaceOf
 
@@ -1066,18 +1113,25 @@ export interface WebOptions {
    */
   readonly connect?: WebConnectOptions;
   /**
-   * Headers added to requests within the app's site, including subdomains.
-   * Useful for preview-protection tokens. Other sites never receive them.
+   * Headers added to every request that starts at the app's origin (the
+   * scheme, host, and port of `app.url`) or one in `credentialOrigins`.
+   * Useful for preview-protection tokens. A request that starts at another
+   * origin goes without them; a redirect keeps them, to any origin.
    * Names are case-insensitive and replace existing headers of the same name.
    * This enables request routing, disables the browser's HTTP cache, and
    * blocks service workers.
    */
   readonly headers?: Readonly<Record<string, string>>;
   /**
-   * HTTP basic authentication. The browser answers a `401` challenge with
-   * these credentials on any origin, matching Playwright's `httpCredentials`.
+   * HTTP basic authentication. The browser answers a `401` challenge from the
+   * app's origin, or one in `credentialOrigins`, with these credentials.
    */
   readonly basicAuth?: WebBasicAuth;
+  /**
+   * More origins that receive `headers` and `basicAuth`, such as
+   * `https://api.example.com`; requires `headers` or `basicAuth`.
+   */
+  readonly credentialOrigins?: readonly string[];
   /**
    * The attribute that carries an element's test id: what the `testId` query
    * (`screen.getByTestId`) resolves and what `SemanticNode.testId` reports.
@@ -1170,7 +1224,7 @@ export interface Browser extends Expectable<BrowserExpectation> {
   ): Promise<void>;
   /** Removes matching attempt-scoped routes. */
   unroute(pattern: string | RegExp): Promise<void>;
-  /** Removes all routes registered by this browser fixture, preserving configured site headers. */
+  /** Removes all routes registered by this browser fixture, preserving the configured headers. */
   unrouteAll(): Promise<void>;
   /** Waits for a matching response. */
   waitForResponse(

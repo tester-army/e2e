@@ -51,14 +51,18 @@ import { createRunEventEmitter, toEventResult, type RunEventSink, type RunExitCo
 import { allocateAppPorts } from './app-ports.ts';
 import { inProcessSpawner } from './in-process.ts';
 import { cleanupErrorsOf, someSkippedAfterFailure, tracedResultIds, type ResultRecord, type RunError, type SerialGroupRecord } from './records.ts';
-import { runUnits } from './scheduler.ts';
-import { buildWorkPlans, longestFirst, nonRunResult, plannedSlots, type TargetWorkPlan, type TimeLimit } from './units.ts';
+import { runUnits, type TargetFailure } from './scheduler.ts';
+import type { BeforeStep, HeldStep, StepPrompt } from './step-hold.ts';
+import { stepPromptLine } from '../report/list-steps.ts';
+import { buildWorkPlans, nonRunResult, orderWorkPlans, plannedSlots, type TargetWorkPlan, type TimeLimit } from './units.ts';
 import { SessionStore } from './sessions.ts';
 import { outputLayout } from './output.ts';
 import type { RunnerOutput } from './process-output.ts';
-import { registerStaticSecrets } from './secrecy.ts';
+import { refuseBun } from './public-ownership.ts';
+import { registerStaticSecrets, staticSecretLedger } from './secrecy.ts';
 import { nextRerunDir, pruneArtifacts } from './artifacts.ts';
-import { carryForward, fileDurationKey, lastFailedIds, previousFileDurations, readLastRun, reportArtifactPaths, type RerunCollection } from './last-run.ts';
+import { carryForward, fileDurationKey, lastFailedIds, readLastRun, reportArtifactPaths, type RerunCollection } from './last-run.ts';
+import { loadTimings, writeTimings } from './timings.ts';
 import { childProcessSpawner } from './worker/handle.ts';
 import { setSecretRegistry } from '../secrets.ts';
 import { budgetText, withAbort } from '../internal/time.ts';
@@ -69,7 +73,7 @@ import { detectVcs, type VcsInfo } from '../internal/vcs.ts';
 import type { EnginePrepareResult } from '../engine/index.ts';
 import type { AppProcesses } from './managed-process.ts';
 import { PreparedEngines, recordingNotices, startDeclaredProcesses, validateEngine, type EngineGrade, type PrepareScope } from './provision.ts';
-import { filterSelection } from './test-filters.ts';
+import { filterSelection, rankingNotice } from './test-filters.ts';
 
 export interface RunOptions {
   cwd?: string | undefined;
@@ -170,6 +174,13 @@ export interface RunOptions {
   agent?: string | readonly string[] | undefined;
   /** Prints aggregated phase timings to stderr after the run. */
   debug?: boolean | undefined;
+  /**
+   * The timings history file for this run (`--timings`), relative to the
+   * project root, over `<output>/timings.json`: read to start the longest
+   * files first and rewritten when the run ends. A missing or invalid file
+   * is no history, never an error.
+   */
+  timings?: string | undefined;
   /** Records every model call to `<output>/ai-trace.json` (`--ai-trace`). */
   aiTrace?: boolean | undefined;
   /**
@@ -211,6 +222,16 @@ export interface RunOptions {
    * the CLI's Ctrl-C ladder (`cli/signals.ts`) feeds these two.
    */
   forceSignal?: AbortSignal | undefined;
+  /**
+   * Holds every top-level step of a test's first attempt, in `beforeEach`
+   * and the body, until it resolves (`e2e run --step`); setup tests and
+   * retries never wait. To stop, interrupt the run. While any step is held,
+   * the test's timeout and the time limit do not run, and the worker
+   * watchdog counts none of the held time.
+   * A rejection stops the run with its error. Refused with the json reporter,
+   * whose stdout the prompt would break.
+   */
+  beforeStep?: BeforeStep | undefined;
   /** A second sink on the run's event spine, beside the list reporter. */
   onEvent?: RunEventSink | undefined;
   /** Budget for each reporter's `onRunFinished`, in ms. Only the test harness sets it; there is no flag. */
@@ -356,6 +377,7 @@ export interface ListResult {
  * `filter` and `reason`, and a selection they leave empty resolves.
  */
 export async function list(options: ListOptions = {}): Promise<ListResult> {
+  refuseBun();
   return listSelection(options, () => undefined);
 }
 
@@ -494,7 +516,9 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   const reporterIds = loaded.config?.reporters ?? options.reporters ?? ['list'];
   keepStdoutFor(reporterIds);
   const listReporter =
-    options.quiet === true || !reporterIds.includes('list') ? undefined : new ListReporter(processOutput?.listOutput);
+    options.quiet === true || !reporterIds.includes('list')
+      ? undefined
+      : new ListReporter(processOutput?.listOutput, { stepping: options.beforeStep !== undefined });
   // Without the list reporter to print it under a heading, a test's output
   // goes to the terminal as written.
   const printsTestOutput = options.quiet !== true && listReporter === undefined;
@@ -554,6 +578,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
    * `RUN_TIMEOUT`'s, never 130.
    */
   let stoppedEarly = false;
+  let appExitTargets: ReadonlySet<string> = new Set();
   const stopEarly = (failures: number, limit: number): void => {
     stoppedEarly = true;
     emit({ type: 'run-stopped', failures, limit });
@@ -568,7 +593,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   const currentExitCode = (): RunExitCode =>
     combineExitCodes(
       [
-        ...verdictExitCodes(results, serialGroups),
+        ...verdictExitCodes(results, serialGroups, appExitTargets),
         ...(loaded.config?.failOnSkippedFailure === true && someSkippedAfterFailure(results, serialGroups) ? [1] : []),
         ...runErrors.map((runError) => exitCodeForCategory(runError.error.category)),
         ...(interruptController.signal.aborted ? [130] : []),
@@ -643,6 +668,29 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   };
 
 
+  /** The timings file: `--timings` against the project root, else the one in the output directory. */
+  const timingsPath = (config: ResolvedConfig): string =>
+    options.timings === undefined ? outputLayout(config.output).timings : path.resolve(config.projectRoot, options.timings);
+
+  /**
+   * Folds the run's file durations into the timings history. Advisory like
+   * the history itself: a write that fails is a line on stderr, never a run
+   * error. Runs before the report is written, because an absent timings file
+   * falls back to the previous report as the history to merge into.
+   */
+  const writeTimingsHistory = async (config: ResolvedConfig, document: Report1Document): Promise<void> => {
+    try {
+      await writeTimings(document, {
+        timingsPath: timingsPath(config),
+        reportPath: outputLayout(config.output).report,
+        projectRoot: config.projectRoot,
+        targets: new Set(config.targets.map((target) => target.name)),
+      });
+    } catch (cause) {
+      process.stderr.write(`e2e: the timings history could not be written: ${errorMessage(cause)}\n`);
+    }
+  };
+
   /**
    * Writes the AI trace next to the report, on the same terms: the path is
    * returned only once the file exists, and a lost trace is a recorded run
@@ -708,6 +756,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     // Only a failed write, itself a run error, forces a rebuild that records it.
     const document = buildRunReport(currentExitCode());
     const recorded = runErrors.length;
+    if (written !== undefined) await writeTimingsHistory(written, document);
     const reportPath = written === undefined ? undefined : await writeCanonicalReport(written, document);
     const traces = written === undefined ? new Map<string, string>() : await writeTraces(written, document);
     const exitCode = currentExitCode();
@@ -755,6 +804,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
         aiTracePath,
         traces,
         ...(lastRun === undefined ? {} : { lastRun }),
+        redact: redactStaticSecrets(loaded.config?.allSecrets),
       },
       options.reporterTimeout ?? REPORTER_TIMEOUT_MS,
       forceController.signal,
@@ -767,6 +817,13 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     recordFailure(loaded.error, 'config');
     return finish();
   }
+  if (options.beforeStep !== undefined && reporterIds.includes('json')) {
+    recordFailure(
+      new ConfigurationError('INVALID_CONFIG', '--step cannot run with the json reporter: the step prompt would land in its stdout document'),
+      'config',
+    );
+    return finish();
+  }
   const config = loaded.config;
   vcs = await detectVcs(config.projectRoot, env);
 
@@ -775,6 +832,9 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   // The judge is named only when it is a model of its own.
   const runAgent = config.agentNames.length === 1 ? config.agent : undefined;
   const runJudge = runAgent?.judge?.model === runAgent?.model?.model ? undefined : runAgent?.judge;
+  // Settled once, before the header: the header names what --target
+  // selected, and an unknown --target fails the run once it begins.
+  const selected = selectRunTargets(config.targets, options.targetIds);
   emit({
     type: 'run-started',
     runId,
@@ -782,7 +842,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     projectRoot: config.projectRoot,
     artifactsRoot: outputLayout(config.output).results,
     ci: isCiMode(env),
-    targets: config.targets.map((target) => target.name),
+    targets: ('targets' in selected ? selected.targets : config.targets).map((target) => target.name),
     ...(config.agentNames.length === 1 && config.agentNames[0] === 'default' ? {} : { agents: config.agentNames }),
     ...(runAgent?.model === undefined ? {} : { model: modelLabel(runAgent.model) }),
     ...(runJudge === undefined ? {} : { judge: modelLabel(runJudge) }),
@@ -794,15 +854,13 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     // decides the outcome.
     if (interrupted.aborted) return;
 
-    // Which targets the run is for, settled before anything is collected,
-    // downloaded, or started: an unknown --target is a collection failure.
-    let targets: readonly ResolvedTarget[];
-    try {
-      targets = selectTargets(config.targets, options.targetIds);
-    } catch (cause) {
-      recordFailure(cause, 'collection');
+    // An unknown --target is a collection failure, before anything is
+    // collected, downloaded, or started.
+    if ('error' in selected) {
+      recordFailure(selected.error, 'collection');
       return;
     }
+    const { targets } = selected;
 
     /**
      * Narrates and times one setup step on the event spine, its `finished`
@@ -863,6 +921,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     // The filters decide before any engine prepares or app starts, so a run
     // they leave empty boots nothing. An interrupt records nothing: the run
     // ends interrupted, like one cut short in `prepare`.
+    let relevance: ReadonlyMap<string, number> = new Map();
     if (options.changedSince !== undefined) {
       try {
         const filtered = await filterSelection(selection, {
@@ -876,8 +935,11 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
           timeoutMs: options.filterTimeout,
         });
         selection = filtered.selection;
+        relevance = filtered.relevance;
         filterReport = filtered.records;
         changesReport = filtered.changes;
+        const ranking = rankingNotice(selection, relevance);
+        if (ranking !== undefined) notice('filter', ranking);
       } catch (cause) {
         if (!interrupted.aborted) recordFailure(cause, 'filter');
         return;
@@ -914,10 +976,12 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     const workerConfigPath = options.tests === undefined ? config.configPath : undefined;
     const inProcess = workerConfigPath === undefined;
     const runWorkers = inProcess ? 1 : config.workers;
-    if (runWorkers > 1) {
-      const previous = await previousFileDurations(outputLayout(config.output).report);
-      plans = longestFirst(plans, (targetName, file) => previous.get(fileDurationKey(targetName, file)));
-    }
+    // Starting long files early only pays when other workers take the rest, so only such a run reads the timings history.
+    const previous = runWorkers > 1 ? await loadTimings(timingsPath(config), outputLayout(config.output).report) : undefined;
+    plans = orderWorkPlans(plans, {
+      relevanceOf: (testId) => relevance.get(testId) ?? 0,
+      durationOf: (targetName, file) => previous?.get(fileDurationKey(targetName, file)),
+    });
     const timeLimit: TimeLimit | undefined =
       options.maxDuration !== undefined
         ? { ms: options.maxDuration, source: '--max-duration' }
@@ -956,10 +1020,15 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     // one setup step, named with the URL it answers on; a reused process or
     // an ignored `reuseExisting` narrates as a run notice.
     const appStep = (label: string, url: string | undefined) => ({ kind: 'app' as const, label, ...(url === undefined ? {} : { url: printableUrl(url) }) });
-    const processHooks = () => ({
+    const pendingAppFailures: TargetFailure[] = [];
+    let receiveAppFailure = (failure: TargetFailure): void => { pendingAppFailures.push(failure); };
+    const processHooks = {
       ci: isCiMode(env),
       env,
       notice: (message: string) => emit({ type: 'notice', target: 'app', message }),
+      commandExited: (targetNames: readonly string[], cause: InfrastructureError) => {
+        receiveAppFailure({ targetNames, error: serializeError(cause) });
+      },
       starting: (label: string, url: string | undefined) => emit({ type: 'setup', step: appStep(label, url), state: 'started' }),
       ready: (label: string, url: string | undefined, durationMs: number, reused: boolean) =>
         emit({
@@ -969,7 +1038,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
           durationMs,
           ...(reused ? { outcome: 'reused' as const } : {}),
         }),
-    });
+    };
     processes = hasWork ? await startDeclaredProcesses(targets, config.projectRoot, processHooks, interrupted, debug) : undefined;
     // A run cancelled while the app was starting runs no test: the interrupt
     // alone decides the outcome.
@@ -1028,6 +1097,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
             sessionStore: store,
             headed: options.headed ?? false,
             debug,
+            step: options.beforeStep !== undefined,
             envFor: workerEnvFor(plans, env),
           })
         : childProcessSpawner({
@@ -1044,21 +1114,42 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
             sessionKeyBase64: store.exportKeyForWorker(),
             debug: debug.enabled,
             aiTrace: aiTrace !== undefined,
+            step: options.beforeStep !== undefined,
             envFor: workerEnvFor(plans, env),
           });
 
+    // The list reporter shows the prompt under its test; without it, the
+    // prompt goes to stderr as one line, where a person still reads it.
+    const beforeStep = options.beforeStep;
+    let promptLine: string | undefined;
+    const showStep = (prompt: StepPrompt | undefined): void => {
+      if (listReporter !== undefined) {
+        listReporter.showStepPrompt(prompt);
+        return;
+      }
+      // Printed once per prompt: `h` lists nothing more on a plain line.
+      const line = prompt === undefined ? undefined : stepPromptLine(prompt);
+      if (line !== undefined && line !== promptLine) process.stderr.write(`${line}\n`);
+      promptLine = line;
+    };
     pendingNonRun = [];
-    await debug.time('scheduler', () =>
+    appExitTargets = await debug.time('scheduler', () =>
       runUnits({
         plans,
         workers: runWorkers,
         ...(options.maxFailures === undefined ? {} : { maxFailures: options.maxFailures }),
         ...(timeLimit === undefined ? {} : { timeLimit }),
         spawn,
+        ...(beforeStep === undefined ? {} : { beforeStep: (step: HeldStep, signal: AbortSignal) => beforeStep(step, { signal, show: showStep }) }),
         interruptGraceMs: config.timeout + config.cleanupTimeout,
         interruptSignal: interrupted,
         forceSignal: forceController.signal,
         forceGraceMs: config.cleanupTimeout + FORCE_KILL_MARGIN_MS,
+        subscribeTargetFailures: (receive) => {
+          receiveAppFailure = receive;
+          for (const failure of pendingAppFailures.splice(0)) receive(failure);
+          return () => { receiveAppFailure = () => undefined; };
+        },
         events: {
           onResult: recordResult,
           onSerialGroup: (group) => {
@@ -1362,6 +1453,22 @@ async function loadRunConfig(
 }
 
 /**
+ * The targets the run is for, as `--target` selected them in config order,
+ * or the `UNKNOWN_TARGET` error an unknown target ID raised. The run records
+ * the error once it begins, so `run-started` still comes first.
+ */
+function selectRunTargets(
+  targets: readonly ResolvedTarget[],
+  targetIds: readonly string[] | undefined,
+): { readonly targets: readonly ResolvedTarget[] } | { readonly error: unknown } {
+  try {
+    return { targets: selectTargets(targets, targetIds) };
+  } catch (error) {
+    return { error };
+  }
+}
+
+/**
  * The plan's per-file breakdown: reportable pairs (run or explicitly skipped)
  * counted per test file and target, in selection order. Unselected pairs are
  * left out: the list reporter never shows them, so counting them would keep
@@ -1395,7 +1502,7 @@ function statusOf(exitCode: RunExitCode): Exclude<RunStatus, 'blocked'> {
  *
  * An attempt whose cleanup failed adds its cleanup errors' codes, even when the test passed.
  */
-function verdictExitCodes(results: readonly ResultRecord[], serialGroups: readonly SerialGroupRecord[]): number[] {
+function verdictExitCodes(results: readonly ResultRecord[], serialGroups: readonly SerialGroupRecord[], appExitTargets: ReadonlySet<string>): number[] {
   const codes: number[] = [0];
   for (const verdict of [...results, ...serialGroups]) {
     switch (verdict.status) {
@@ -1407,7 +1514,7 @@ function verdictExitCodes(results: readonly ResultRecord[], serialGroups: readon
         }
         break;
       case 'interrupted':
-        codes.push(130);
+        if (!appExitTargets.has('target' in verdict ? verdict.target.name : verdict.targetId)) codes.push(130);
         break;
       default:
         break;
@@ -1421,6 +1528,13 @@ function verdictExitCodes(results: readonly ResultRecord[], serialGroups: readon
 
 /** Why a reporter's `onRunFinished` was given up on: the message is the stderr line. */
 class ReporterAbandoned extends Error {}
+
+/** `FinishedRun.redact`: the config's fixed secret values; a config that never loaded declared none. */
+function redactStaticSecrets(secrets: ResolvedConfig['allSecrets'] | undefined): (text: string) => string {
+  if (secrets === undefined) return (text) => String(text);
+  const { redactFragments } = staticSecretLedger(secrets);
+  return (text) => redactFragments(String(text));
+}
 
 /**
  * The built-in reporters that write files beside `report.json`. A forced

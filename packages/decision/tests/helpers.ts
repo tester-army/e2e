@@ -2,7 +2,7 @@ import type { LanguageModel } from 'ai';
 import type { DecisionExecutorOptions } from '../src/index.ts';
 import type { ExecutorActions, ExecutorModelCall, ExecutorNode, ExecutorObservation, ExecutorPixels, JsonValue, StepExecutorContext, StepTurn } from 'e2e';
 import { expect, vi } from 'vitest';
-import { PNG } from 'pngjs';
+import { whitePng } from './png-helpers.ts';
 /** One scripted answer: the choice, its distribution, and the reported confidence. */
 export interface ScriptedAnswer {
   readonly choice: string;
@@ -142,7 +142,7 @@ export function context(options: {
     navigate: vi.fn<ExecutorActions['navigate']>().mockResolvedValue(undefined),
     doubleTap: noop, longPress: noop, secondaryTap: noop, hover: noop,
     drag: noop, scrollTo: noop, scrollUntil: noop, upload: noop,
-    typeText: noop, pressKey: noop, dismissKeyboard: noop,
+    typeText: noop, pressKey: noop, dismissKeyboard: noop, resize: noop,
     tapAt: vi.fn<ExecutorActions['tapAt']>().mockImplementation(async (point) => ({ point, summary: 'tap' })),
     hoverAt: vi.fn<ExecutorActions['hoverAt']>().mockImplementation(async (point) => ({ point, summary: 'hover' })),
     dragAt: vi.fn<ExecutorActions['dragAt']>().mockImplementation(async (from, to) => ({ from, to, summary: 'drag' })),
@@ -187,7 +187,5 @@ export const FIELD: ExecutorNode = { id: 'root', children: [
 ]};
 /** A decodable white screenshot of the fixture viewport. */
 export function whitePixels(): ExecutorPixels {
-  const png = new PNG({ width: 800, height: 600 });
-  png.data.fill(255);
-  return { data: new Uint8Array(PNG.sync.write(png)), mediaType: 'image/png', width: 800, height: 600, scale: 1, maskedRegionCount: 0 };
+  return { data: whitePng(800, 600), mediaType: 'image/png', width: 800, height: 600, scale: 1, maskedRegionCount: 0 };
 }

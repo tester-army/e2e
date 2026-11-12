@@ -65,7 +65,7 @@ export type SetupStep =
  * How a setup step ended other than plainly done: `reused` when a service
  * or app command attached to a process already serving its URL instead of
  * spawning; `failed` when a test filter threw or answered with something
- * other than `{ exclude, note? }`, and `timed-out` when one ran past 5
+ * other than `{ exclude, relevance?, note? }`, and `timed-out` when one ran past 5
  * minutes and the run stopped waiting for it. Either way it left nothing out.
  */
 export type SetupOutcome = 'reused' | FilterOutcome;

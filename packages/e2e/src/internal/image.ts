@@ -1,7 +1,12 @@
 /** RGBA images in memory: PNG decoding and encoding, resampling, cropping, painting boxes, and comparing two images. */
 
-import { convertIndexedToRgb, decode, encode, type DecodedPng } from 'fast-png';
+import { createRequire } from 'node:module';
+import { endianness } from 'node:os';
+import type * as NapiImage from '@napi-rs/image';
 import pixelmatch from 'pixelmatch';
+import { InfrastructureError } from './errors.ts';
+
+const ownRequire = createRequire(import.meta.url);
 
 /** An RGBA image, 8 bits per channel, rows top to bottom. */
 export interface RgbaImage {
@@ -18,50 +23,130 @@ export interface ImageBox {
   readonly height: number;
 }
 
-/** Decodes PNG bytes to 8-bit RGBA: any color type, at 8 or 16 bits or with a palette; throws on anything else. */
-export function decodePng(bytes: Uint8Array): RgbaImage {
-  const png = decode(bytes);
-  return { width: png.width, height: png.height, data: toRgba(png) };
+const LITTLE_ENDIAN = endianness() === 'LE';
+
+/** `@napi-rs/image`, loaded on the first PNG decoded or encoded. */
+let addon: typeof NapiImage | undefined;
+
+/**
+ * `@napi-rs/image`, loaded when the first PNG is decoded or encoded rather
+ * than when e2e loads, so a command or a test that touches no screenshot
+ * (`--version`, `--help`, `doctor`) still runs without its native binding.
+ * npm leaves that binding out with `--omit=optional`, and from a lockfile
+ * written on another platform (npm/cli#4828); the package publishes none for
+ * Linux on ppc64, s390x, or riscv64. The error names the binding and the
+ * way back.
+ */
+function napi(): typeof NapiImage {
+  if (addon !== undefined) return addon;
+  try {
+    addon = ownRequire('@napi-rs/image') as typeof NapiImage;
+  } catch (cause) {
+    const message = cause instanceof Error ? cause.message : String(cause);
+    const platform = `${process.platform}-${process.arch}`;
+    // napi-rs's loader says so when no platform package is installed.
+    const fix = message.includes('Cannot find native binding')
+      ? `its native binding for ${platform} (@napi-rs/image-${platform}*) is not installed. npm skips it with --omit=optional, or when package-lock.json was written on another platform (npm/cli#4828): install again without --omit=optional, or delete package-lock.json and node_modules and run npm install. The package has no binding for Linux on ppc64, s390x, or riscv64`
+      : `it could not be loaded (${message.split('\n', 1)[0]})`;
+    throw new InfrastructureError('IMAGE_CODEC_UNAVAILABLE', `e2e reads and writes screenshots with @napi-rs/image, and ${fix}`, { cause });
+  }
+  return addon;
 }
 
-/** Encodes an image as PNG bytes. */
-export function encodePng(image: RgbaImage): Uint8Array {
-  return encode({ width: image.width, height: image.height, data: image.data, channels: 4, depth: 8 });
+/** Channels per pixel, and whether each is a 16-bit sample, for every color type `toRgba` is handed: 8-bit RGB is widened by the addon before that. */
+function layoutOf(colorType: NapiImage.JsColorType): { readonly channels: number; readonly wide: boolean } | undefined {
+  const { JsColorType } = napi();
+  switch (colorType) {
+    case JsColorType.L8:
+      return { channels: 1, wide: false };
+    case JsColorType.La8:
+      return { channels: 2, wide: false };
+    case JsColorType.Rgba8:
+      return { channels: 4, wide: false };
+    case JsColorType.L16:
+      return { channels: 1, wide: true };
+    case JsColorType.La16:
+      return { channels: 2, wide: true };
+    case JsColorType.Rgb16:
+      return { channels: 3, wide: true };
+    case JsColorType.Rgba16:
+      return { channels: 4, wide: true };
+    default:
+      return undefined;
+  }
 }
 
 /**
- * A decoded PNG's samples as 8-bit RGBA: a palette expanded, gray spread to
- * three channels, a missing alpha opaque, and 16-bit samples scaled to 8
- * bits with rounding. A gray or RGB image's transparent color, when it
- * declares one, comes out with alpha 0.
+ * Decodes PNG bytes to 8-bit RGBA: any color type, at 1 to 16 bits or with a
+ * palette; throws on anything else. A Chromium capture is 8-bit RGB, and the
+ * addon widens that itself: opacity 1 keeps every sample and adds the opaque
+ * alpha channel, several times faster than `spread` does it.
  */
-function toRgba(png: DecodedPng): Uint8Array {
-  const pixels = png.width * png.height;
-  if (png.palette !== undefined) {
-    const expanded = convertIndexedToRgb(png);
-    if (expanded.length === pixels * 4) return expanded;
-    return spread(expanded, 3, pixels, undefined);
-  }
-  if (png.depth !== 8 && png.depth !== 16) throw new Error(`unsupported PNG: ${png.depth}-bit samples without a palette`);
-  if (png.depth === 8 && png.channels === 4) return png.data instanceof Uint8Array ? png.data : Uint8Array.from(png.data);
-  const scale = png.depth === 16 ? (sample: number): number => Math.round((sample * 255) / 65535) : (sample: number): number => sample;
-  const samples = png.depth === 16 ? Uint8Array.from(png.data, scale) : png.data;
-  const key = png.channels === 1 || png.channels === 3 ? png.transparency : undefined;
-  return spread(samples, png.channels, pixels, key === undefined ? undefined : Array.from(key, scale));
+export function decodePng(bytes: Uint8Array): RgbaImage {
+  const { JsColorType, Transformer } = napi();
+  const decoder = new Transformer(bytes);
+  const { width, height, format, colorType } = decoder.metadataSync();
+  if (format !== 'png') throw new Error(`not a PNG: the bytes are ${format}`);
+  const rgb = colorType === JsColorType.Rgb8;
+  const raw = (rgb ? decoder.opacity(1) : decoder).rawPixelsSync();
+  return { width, height, data: toRgba(raw, rgb ? JsColorType.Rgba8 : colorType, width * height) };
 }
 
-/** Samples of `channels` per pixel as RGBA; a pixel equal to `key` is transparent. */
-function spread(samples: ArrayLike<number>, channels: number, pixels: number, key: readonly number[] | undefined): Uint8Array {
+/**
+ * Encodes an image as PNG bytes, each row adaptively filtered: the addon's
+ * default writes no filter, which makes screenshots markedly larger. The
+ * addon also aborts the whole process on a pixel buffer longer than the
+ * image, so a buffer of the wrong length throws here instead of reaching it.
+ */
+export function encodePng(image: RgbaImage): Uint8Array {
+  if (image.data.length !== image.width * image.height * 4) {
+    throw new Error(`a ${image.width}x${image.height} image is ${image.width * image.height * 4} bytes of RGBA, not ${image.data.length}`);
+  }
+  const { FilterType, Transformer } = napi();
+  return plain(Transformer.fromRgbaPixels(image.data, image.width, image.height).pngSync({ filterType: FilterType.Adaptive }));
+}
+
+/** A native buffer's bytes as a plain `Uint8Array`, whose `slice` copies where a `Buffer`'s shares memory. */
+function plain(buffer: Buffer): Uint8Array {
+  return new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+}
+
+/**
+ * The decoder's pixels as 8-bit RGBA. The decoder has already expanded a
+ * palette, sub-byte samples, and a transparent color, so what is left is a
+ * layout: one to four channels at 8 or 16 bits, the 16-bit samples in native
+ * byte order. Gray spreads to three channels, a missing alpha is opaque, and
+ * 16-bit samples scale to 8 bits with rounding.
+ */
+function toRgba(raw: Buffer, colorType: NapiImage.JsColorType, pixels: number): Uint8Array {
+  const layout = layoutOf(colorType);
+  if (layout === undefined) throw new Error(`unsupported PNG color type ${colorType}`);
+  const { channels, wide } = layout;
+  if (raw.length !== pixels * channels * (wide ? 2 : 1)) throw new Error('the decoded PNG pixels do not fill its size');
+  const bytes = plain(raw);
+  if (channels === 4 && !wide) return bytes;
+  return spread(wide ? narrow(bytes) : bytes, channels, pixels);
+}
+
+/** 16-bit samples in native byte order as 8-bit samples, rounded. */
+function narrow(bytes: Uint8Array): Uint8Array {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const samples = new Uint8Array(bytes.length / 2);
+  for (let at = 0; at < samples.length; at += 1) samples[at] = Math.round((view.getUint16(at * 2, LITTLE_ENDIAN) * 255) / 65535);
+  return samples;
+}
+
+/** 8-bit samples of `channels` per pixel (gray, gray and alpha, RGB) as RGBA. */
+function spread(samples: Uint8Array, channels: number, pixels: number): Uint8Array {
   const out = new Uint8Array(pixels * 4);
-  for (let pixel = 0; pixel < pixels; pixel += 1) {
-    const at = pixel * channels;
-    const gray = channels <= 2;
-    const r = samples[at]!;
-    const g = gray ? r : samples[at + 1]!;
-    const b = gray ? r : samples[at + 2]!;
-    const alpha = channels === 2 || channels === 4 ? samples[at + channels - 1]! : 255;
-    const keyed = key !== undefined && (gray ? r === key[0] : r === key[0] && g === key[1] && b === key[2]);
-    out.set([r, g, b, keyed ? 0 : alpha], pixel * 4);
+  const gray = channels <= 2;
+  const alpha = channels === 2 || channels === 4;
+  for (let pixel = 0, from = 0, to = 0; pixel < pixels; pixel += 1, from += channels, to += 4) {
+    const r = samples[from]!;
+    out[to] = r;
+    out[to + 1] = gray ? r : samples[from + 1]!;
+    out[to + 2] = gray ? r : samples[from + 2]!;
+    out[to + 3] = alpha ? samples[from + channels - 1]! : 255;
   }
   return out;
 }

@@ -1,26 +1,33 @@
 name: site
 
-# Redeploys e2e.tester.army, which reads docs/ and the examples registry
-# (examples/examples.json and the logos in examples/icons/) from the commit
-# `main` points to at build time, so every docs or examples change on `main`
-# goes live. A workflow-level `paths:` filter is fine here: no ruleset
-# requires this workflow. A manual dispatch redeploys without a change.
+# Redeploys e2e.com. The site reads docs/ from the newest `e2e@X.Y.Z` tag and
+# the examples registry (examples/examples.json and the logos in
+# examples/icons/) from `main` at build time. `release.yml` calls this after
+# each release that published e2e, so the docs go live with the release; a
+# push to `main` touching the examples registry redeploys too, so a new
+# example is listed as soon as it merges. A workflow-level `paths:` filter is
+# fine here: no ruleset requires this workflow. A manual dispatch redeploys
+# without a change.
 on:
   push:
     branches: [main]
     paths:
-      - 'docs/**'
       - 'examples/examples.json'
       - 'examples/icons/**'
       - '.github/workflows/site.yml'
+  workflow_call:
+    secrets:
+      VERCEL_DEPLOY_HOOK:
+        required: true
   workflow_dispatch:
 
 permissions: {}
 
 # Queues pushes instead of cancelling a hook call that is already in flight.
-# Each deploy builds `main` as it is when the build starts.
+# Each deploy reads the tag and `main` as they are when the build starts. A
+# fixed group, since `github.workflow` names the caller under `workflow_call`.
 concurrency:
-  group: ${{ github.workflow }}
+  group: site
   cancel-in-progress: false
 
 jobs:

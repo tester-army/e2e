@@ -1,9 +1,8 @@
 ---
 title: Writing an engine
 description: Implement the e2e engine contract for another UI platform.
-icon: "gear"
-"og:image": "https://e2e.tester.army/docs/images/og/writing-an-engine.png?v=093c02efc1"
-"twitter:image": "https://e2e.tester.army/docs/images/og/writing-an-engine.png?v=093c02efc1"
+"og:image": "https://e2e.com/docs/images/og/writing-an-engine.png?v=093c02efc1"
+"twitter:image": "https://e2e.com/docs/images/og/writing-an-engine.png?v=093c02efc1"
 ---
 
 An engine connects `screen`, `app`, and agent calls to a UI platform through
@@ -116,7 +115,7 @@ a missing one fail with `UNSUPPORTED_CAPABILITY`. Start with these:
 | `perform(ref, action, context)` + `actions` | Node actions of the declared kinds, including viewport scrolling through `swipe` |
 | `locate(expression, context)` | `screen`, `Locator`, and `expect(locator)` |
 | `validateApp(app, info)` | A config-load check of the target's `app`. Throw `INVALID_CONFIG` naming `info.targetName` for a field the platform needs or can't drive. [Reference](/reference/engine#app) |
-| `session.{open?,back?,restart?,reset?}` | `app.open()`, `app.back()`, `app.restart()`, `app.clearState()`, and the agent's `navigate` and `back` verbs |
+| `session.{open?,back?,resize?,restart?,reset?}` | `app.open()`, `app.back()`, `app.restart()`, `app.clearState()`, and the agent's `navigate`, `back`, and `resize_viewport` verbs |
 
 Pointer actions, the keyboard, saved state, artifacts, and contributed
 fixtures are optional capabilities too. `actions`, `location`, `pointer`,
@@ -285,11 +284,31 @@ For platform operations the action set lacks, ship
 [project tools](/tools) built with `defineTool`, with `platforms` set so each
 shows only on compatible targets, as `@e2e-dev/mobile/tools` does.
 
+## Open it by name
+
+Export the engine's factory as the package's default export. Then a coding
+agent can open an [MCP session](/reference/mcp#without-a-config) on the
+engine in a directory with no config:
+
+```ts title="src/index.ts"
+export default function kiosk(options?: KioskOptions) {
+  return defineEngine({ /* ... */ });
+}
+```
+
+```txt
+open_session {engine: {package: "kiosk-engine", options: {lane: 2}}}
+```
+
+The factory receives `options`, or `undefined` when the agent passes only
+the package name. Return a new engine on every call, so each session gets
+its own.
+
 ## Verify it
 
 Run a test file against your engine. Check the lifecycle order,
 observations, actions, errors, and unsupported capabilities.
-[`engine-contract.test.ts`](https://github.com/tester-army/e2e/blob/main/packages/e2e/tests/integration/engine-contract.test.ts)
+[`engine-contract.test.ts`](https://github.com/e2e-inc/e2e/blob/main/packages/e2e/tests/integration/engine-contract.test.ts)
 has examples of these checks.
 
 ## Next

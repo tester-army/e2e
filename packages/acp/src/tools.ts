@@ -13,9 +13,6 @@ import { createGrammarTools, createVerdictTool, isRuntimeHardStop, type ScreenOu
 import type { z } from 'zod';
 import type { ServedTool, ToolResult } from './mcp.ts';
 
-/** Tools that change nothing in the app, so an assertion may use them. */
-const READ_ONLY = new Set(['observe', 'screenshot', 'scroll', 'scroll_to', 'hover', 'hover_at']);
-
 /** One tool as `e2e/agent` builds it: an AI SDK tool. */
 interface AgentTool {
   readonly description?: string;
@@ -41,7 +38,7 @@ export interface ActiveStep {
 
 /** The step a session starts serving, with nothing concluded yet. */
 export function activeStep(ctx: StepExecutorContext): ActiveStep {
-  return { ctx, conclusion: createVerdictTool(), halted: undefined, denied: undefined, calls: [] };
+  return { ctx, conclusion: createVerdictTool(ctx.step.kind), halted: undefined, denied: undefined, calls: [] };
 }
 
 /** The verdict the agent concluded the step with, if it did. */
@@ -114,9 +111,11 @@ export function stepTools(slot: StepSlot, first: StepExecutorContext): ServedToo
       return { text: `${name} failed: ${firstLine(error)}`, isError: true };
     }
   };
+  const assertionContext = Object.create(first, { step: { value: { ...first.step, kind: 'assert' } } }) as StepExecutorContext;
+  const readOnlyTools = createGrammarTools(assertionContext);
   const tools: ServedTool[] = [];
   for (const [name, tool] of Object.entries(listing(first))) {
-    const readOnly = READ_ONLY.has(name);
+    const readOnly = name in readOnlyTools;
     tools.push({
       name,
       description: name === 'type_secret' ? TYPE_SECRET : (tool.description ?? name),
@@ -158,7 +157,7 @@ const TYPE_SECRET =
  */
 function listing(first: StepExecutorContext): AgentTools {
   const widest = Object.create(first, {
-    step: { value: { ...first.step, secrets: [{ name: 'secret', purpose: 'password' }] } },
+    step: { value: { ...first.step, kind: 'act', secrets: [{ name: 'secret', purpose: 'password' }] } },
   }) as StepExecutorContext;
   return createGrammarTools(widest) as AgentTools;
 }

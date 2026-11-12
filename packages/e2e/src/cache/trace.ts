@@ -133,6 +133,7 @@ export interface TraceTargetDescriptor {
   /**
    * Set only when the other fields matched several controls on the recording
    * screen (one unlabeled "Set up" per card): which of them the target was.
+   * A target only a minted test id identifies records it even alone.
    * Replay honors it only when the live screen shows exactly as many, so a
    * twin that appeared or vanished still diverges instead of guessing.
    */
@@ -278,6 +279,12 @@ export interface BackAction extends ActionBase {
   readonly name: 'back';
 }
 
+/** The viewport set to a size, replayed as given. */
+export interface ResizeAction extends ActionBase {
+  readonly name: 'resize';
+  readonly size: TraceViewport;
+}
+
 /** A viewport size in CSS pixels, the precondition of a replayed point. */
 export interface TraceViewport {
   readonly width: number;
@@ -371,6 +378,7 @@ export type RecordedAction =
   | ScrollUntilAction
   | NavigateAction
   | BackAction
+  | ResizeAction
   | PointAction
   | PointDragAction
   | TypeTextAction
@@ -581,6 +589,7 @@ function mapActionText(action: RecordedAction, map: TraceTextMap): RecordedActio
       return from === undefined || to === undefined ? undefined : withSummary({ ...action, from, to });
     }
     case 'back':
+    case 'resize':
     case 'pressKey':
     case 'dismissKeyboard':
     case 'tool':

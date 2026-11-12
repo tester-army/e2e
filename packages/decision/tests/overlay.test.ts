@@ -1,17 +1,20 @@
 import { describe, expect, it } from 'vitest';
-import { PNG } from 'pngjs';
 import { gridFor, pointOf, regionHash, withGrid, zoomAround } from '../src/overlay.ts';
+import { pngOf, rawPng, rgbaOf, whitePng } from './png-helpers.ts';
 
 /** A white PNG of the given size as the executor's screenshot. */
 function white(width: number, height: number, scale = 1) {
-  const png = new PNG({ width, height });
-  png.data.fill(255);
-  return { mediaType: 'image/png' as const, data: new Uint8Array(PNG.sync.write(png)), width, height, scale };
+  return { mediaType: 'image/png' as const, data: whitePng(width, height), width, height, scale };
 }
 function pixel(data: Uint8Array, x: number, y: number): number[] {
-  const png = PNG.sync.read(Buffer.from(data));
+  const png = rgbaOf(data);
   const offset = (y * png.width + x) * 4;
   return [...png.data.subarray(offset, offset + 3)];
+}
+/** A 4 by 4 screenshot whose every pixel has the same `samples`, written as the color type and bit depth say; an indexed one names its `palette`. */
+function filled(depth: number, colorType: number, samples: readonly number[], palette?: readonly (readonly number[])[]) {
+  const row = Array.from({ length: 4 }, () => samples).flat();
+  return { mediaType: 'image/png' as const, data: rawPng(4, 4, depth, colorType, Array.from({ length: 4 }, () => row), palette), width: 4, height: 4, scale: 1 };
 }
 describe('gridFor', () => {
   it('fits at most ten columns and rows near the target cell size', () => {
@@ -44,6 +47,24 @@ describe('withGrid', () => {
     expect(withGrid(screenshot, { columns: 1, rows: 1, cellWidth: 1, cellHeight: 1 })).toBe(screenshot);
   });
 });
+describe('every PNG color type', () => {
+  const shots = [
+    ['RGB', filled(8, 2, [10, 20, 30]), [10, 20, 30]],
+    ['palette', filled(8, 3, [1], [[255, 0, 0], [10, 20, 30]]), [10, 20, 30]],
+    ['gray', filled(8, 0, [200]), [200, 200, 200]],
+    ['gray with alpha', filled(8, 4, [200, 128]), [200, 200, 200]],
+    ['16-bit RGB', filled(16, 2, [255, 255, 128, 0, 1, 1]), [255, 128, 1]],
+    ['16-bit RGBA', filled(16, 6, [0, 0, 255, 255, 0, 0, 255, 255]), [0, 255, 0]],
+  ] as const;
+  it.each(shots)('reads a %s screenshot into the grid and the zoom', (_label, shot, rgb) => {
+    const grid = withGrid(shot, { columns: 1, rows: 1, cellWidth: 4, cellHeight: 4 });
+    expect(pixel(grid.data, 0, 0)).toEqual([255, 0, 255]);
+    expect(pixel(grid.data, 1, 1)).toEqual(rgb);
+    const zoom = zoomAround(shot, { x: 2, y: 2 }, 4, 1);
+    expect(zoom?.screenshot).toMatchObject({ width: 4, height: 4 });
+    expect(pixel(zoom?.screenshot.data ?? new Uint8Array(), 1, 1)).toEqual(rgb);
+  });
+});
 describe('zoomAround', () => {
   it('crops a box around the point, kept inside the image, and enlarges it', () => {
     const zoom = zoomAround(white(400, 300), { x: 390, y: 10 }, 100, 2);
@@ -59,14 +80,17 @@ describe('zoomAround', () => {
   it('returns nothing for pixels it cannot decode', () => {
     expect(zoomAround({ mediaType: 'image/png', data: new Uint8Array([1]), width: 1, height: 1, scale: 1 }, { x: 0, y: 0 }, 10, 2)).toBeUndefined();
   });
+  it('returns nothing for a region under one pixel, which no PNG can hold', () => {
+    expect(zoomAround(white(1, 1, 4), { x: 0, y: 0 }, 10, 1)).toBeUndefined();
+  });
 });
 describe('regionHash', () => {
   it('changes only when the region around the point changes', () => {
     const base = white(400, 300);
     const dot = white(400, 300);
-    const png = PNG.sync.read(Buffer.from(dot.data));
+    const png = rgbaOf(dot.data);
     png.data[(10 * 400 + 10) * 4] = 0;
-    const dotted = { ...dot, data: new Uint8Array(PNG.sync.write(png)) };
+    const dotted = { ...dot, data: pngOf(400, 300, png.data) };
     expect(regionHash(base, { x: 20, y: 20 }, 50)).not.toBe(regionHash(dotted, { x: 20, y: 20 }, 50));
     expect(regionHash(base, { x: 350, y: 250 }, 50)).toBe(regionHash(dotted, { x: 350, y: 250 }, 50));
     expect(regionHash(undefined, { x: 0, y: 0 }, 50)).toBeUndefined();

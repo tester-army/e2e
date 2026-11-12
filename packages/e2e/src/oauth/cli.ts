@@ -12,7 +12,8 @@ import { browserCommand } from './browser.ts';
 import { OAuthError } from './errors.ts';
 import { login, logout } from './login.ts';
 import { listModels } from './models.ts';
-import { PROVIDER_IDS, apiKeyFor, getProvider, isProviderId, type LoginOptionsById, type ProviderId } from './providers.ts';
+import { PROVIDER_IDS } from './provider-ids.ts';
+import { apiKeyFor, getProvider, isProviderId, type LoginOptionsById, type ProviderId } from './providers.ts';
 import { defaultCredentialStore } from './store.ts';
 import type { OAuthLoginCallbacks, SubscriptionModel } from './types.ts';
 

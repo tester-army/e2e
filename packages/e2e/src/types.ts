@@ -149,8 +149,14 @@ export interface AgentOption {
   agent?: string;
 }
 
-/** `assert` options: one judgment plus one repair round, within `timeout`. */
+/** `assert` options: one judgment, or opt-in bounded viewport exploration. */
 export interface AssertOptions extends VisionOption, AgentOption {
+  /** Look around by scrolling before judging; defaults to false. */
+  explore?: boolean;
+  /** Scroll budget; requires explore, defaults to min(10, configured maxSteps). */
+  maxSteps?: number;
+  /** Model-call budget; requires explore, defaults to min(6, configured maxModelCalls). */
+  maxModelCalls?: number;
   /**
    * Values the assertion refers to as `{name}`, with the same rules as `act`
    * params. A `Secret` reaches the judge by name only, never its value.
@@ -437,9 +443,10 @@ export interface ActionOptions {
 }
 
 /**
- * A point in CSS pixels. For `screen.tapAt` and `screen.swipe` the origin is
+ * A point in CSS pixels. For `screen.tapAt`, `screen.doubleTapAt`, and `screen.swipe` the origin is
  * the viewport's top-left corner, the space `boundingBox()` reports in; for
- * `tap({ position })` it is the node's own top-left corner.
+ * `tap({ position })` it is the node's own top-left corner, inside its
+ * border on a document platform.
  */
 export type Point = ViewportPoint;
 
@@ -457,11 +464,11 @@ export interface ClickOptions extends ActionOptions {
 /** `tap` and `click` options. */
 export interface TapOptions extends ClickOptions {
   /**
-   * Where to tap, relative to the node's top-left corner. Without it the
-   * platform picks a point of the node, usually its center, behind its own
-   * actionability checks; with it the pointer is dispatched at that point
-   * once the node is in view and has a box, which needs the engine's `tap`
-   * pointer action.
+   * Where to tap, relative to the node's top-left corner, inside its border
+   * on a document platform. Without it the platform picks a point of the
+   * node, usually its center, behind its own actionability checks; with it
+   * the pointer is dispatched at that point once the node is in view and has
+   * a box, which needs the engine's `tap` pointer action.
    */
   position?: Point;
 }
@@ -518,6 +525,8 @@ export interface Screen {
   getByTestId(id: TextMatch, options?: { visible?: boolean }): Locator;
   /** Taps a viewport point, with no node behind it. */
   tapAt(point: Point, options?: ActionOptions): Promise<void>;
+  /** Double-taps a viewport point, with no node behind it. */
+  doubleTapAt(point: Point, options?: ActionOptions): Promise<void>;
   /** Performs a viewport-level swipe: in a direction, or along a path from one point to another. */
   swipe(options: SwipeOptions | SwipePathOptions): Promise<void>;
   /**
@@ -574,7 +583,7 @@ export interface Locator extends Omit<Screen, 'tree' | 'debug'> {
   focus(options?: ActionOptions): Promise<void>;
   /** Hovers over exactly one matching actionable node. */
   hover(options?: ActionOptions): Promise<void>;
-  /** Sets the files of exactly one file input, or of a control that opens a file chooser; paths resolve from the project root. */
+  /** Sets the files of exactly one file input, or of a control that opens a file chooser; paths resolve from the project root, and an empty array clears the input. */
   setInputFiles(paths: string | readonly string[], options?: ActionOptions): Promise<void>;
   /** Drags exactly one node to exactly one target. */
   dragTo(target: Locator, options?: ActionOptions): Promise<void>;
@@ -584,7 +593,7 @@ export interface Locator extends Omit<Screen, 'tree' | 'debug'> {
   swipe(options: SwipeOptions & ActionOptions): Promise<void>;
   /** Reads normalized text once a match exists, without retrying for a particular value. */
   textContent(): Promise<string | null>;
-  /** Reads the current input value. */
+  /** Reads the current input value; throws `ACTION_FAILED` on a node with no value, such as a heading. */
   inputValue(): Promise<string>;
   /** Reads one attribute. */
   getAttribute(name: string): Promise<string | null>;
@@ -596,7 +605,7 @@ export interface Locator extends Omit<Screen, 'tree' | 'debug'> {
   isEnabled(): Promise<boolean>;
   /** Reads current disabled state, the negation of `isEnabled`. */
   isDisabled(): Promise<boolean>;
-  /** Reads current checked state. */
+  /** Reads current checked state; throws `ACTION_FAILED` on a node with no checked state, such as a button. */
   isChecked(): Promise<boolean>;
   /** Reads the current viewport-relative rectangle. */
   boundingBox(): Promise<{ x: number; y: number; width: number; height: number } | null>;
@@ -727,6 +736,12 @@ export interface TestOptions {
   tags?: readonly string[];
   /** Skips the test; a string is the reason. Any truthy layer skips. */
   skip?: boolean | string;
+  /**
+   * Expects the test to fail; a string is the reason. A test failure then
+   * passes it, and a pass fails it with `UNEXPECTED_PASS`. Not allowed inside
+   * a serial group.
+   */
+  fail?: boolean | string;
   /** Focuses the test locally. CI rejects it with `ONLY_IN_CI`. */
   only?: boolean;
   /** Platforms the test runs on; other targets skip it. Innermost wins. */
@@ -761,12 +776,12 @@ export interface TestOptions {
   video?: RecordingMode;
 }
 
-export interface DescribeOptions extends Omit<TestOptions, 'only'> {
+export interface DescribeOptions extends Omit<TestOptions, 'only' | 'fail'> {
   /** Runs the group as one ordered retry unit with shared app state. Nesting one serial group in another is a `COLLECTION_ERROR`. */
   serial?: boolean;
 }
 
-export interface SetupOptions extends Omit<TestOptions, 'session' | 'only' | 'skip' | 'agent'> {
+export interface SetupOptions extends Omit<TestOptions, 'session' | 'only' | 'skip' | 'fail' | 'agent'> {
   /** Session names this setup test MUST save. */
   sessions: readonly string[];
   /** A setup test runs once per target, so it pins at most one agent. */
@@ -830,6 +845,19 @@ export interface TestAPI<Fixtures = TestFixtures> {
    */
   skip(condition: boolean, reason?: string): void;
   skip(reason?: string): void;
+  /** Registers one test that is expected to fail. */
+  fail(title: string, fn: TestFn<Fixtures>): TestCase;
+  /**
+   * Inside a running test: marks it expected to fail when `condition` is
+   * true (or always, with no condition). The body keeps running. A test
+   * failure then passes the test, keeping the error and `reason` in the
+   * report; a pass fails it with `UNEXPECTED_PASS`. Infrastructure failures
+   * and interrupts are not covered. A setup test or a serial group member
+   * cannot be marked. Outside a test body this form is `COLLECTION_ERROR`;
+   * use `test.fail(title, fn)` or the `fail` option to mark at collection.
+   */
+  fail(condition: boolean, reason?: string): void;
+  fail(reason?: string): void;
   /** Registers one focused local test. CI rejects focused tests. */
   only(title: string, fn: TestFn<Fixtures>): TestCase;
   /** Registers one setup test with statically declared session outputs. */
@@ -1457,9 +1485,9 @@ export interface AgentOptions {
   /** An AI SDK model instance; no implicit default. */
   model?: ModelInstance;
   /**
-   * The model that judges `assert`, `waitFor`, and `extract`; defaults to
-   * `model`. A judge of its own separates the model that grades a flow from
-   * the one that drove it.
+   * The model for non-exploring `assert`, `waitFor`, and `extract`; defaults
+   * to `model`. Built-in exploring assertions use `model` even when `judge`
+   * is configured.
    */
   judge?: ModelInstance;
   /**
@@ -1558,6 +1586,13 @@ export interface FinishedRun {
    * out here. A reporter that keeps one place current folds this run into it.
    */
   readonly lastRun?: Report;
+  /**
+   * Replaces every fixed-value secret and credential password in `text`, and
+   * any run of 8 or more consecutive characters of one. The report is
+   * redacted already; this is for text a reporter adds from elsewhere, such
+   * as lines of a test file.
+   */
+  redact(text: string): string;
 }
 
 /** Rows a reporter hands back for the terminal summary: a label and its text, a URL or a path. */
@@ -1593,7 +1628,12 @@ export interface Reporter {
  * once, in the runner process; workers load the config too and never call
  * it, so constructing one must have no side effects: read git, the
  * environment, or the network inside `filter`. A call that throws, returns
- * an invalid result, or runs past 5 minutes leaves nothing out.
+ * an invalid result, or runs past 5 minutes leaves nothing out. A failed call
+ * scores nothing either, unless the error it throws has a `relevance`
+ * property shaped like `TestFilterResult.relevance`: the run checks it as it
+ * checks a result's, starts the likeliest tests first, and still warns of the
+ * failure. A call past 5 minutes is abandoned, and nothing it throws after
+ * that is read.
  */
 export interface TestFilter {
   /** Names the filter in the report and in errors: ASCII letters, numbers, `_`, `-`, and `.`, not only dots, at most 256 characters, unique among `filters`. */
@@ -1604,7 +1644,7 @@ export interface TestFilter {
 
 /** One test a filter may leave out: what names it, never its body. */
 export interface TestFilterCandidate {
-  /** Stable test id (`<file>::<titles>`), the report's `testId`, and the key `exclude` takes. */
+  /** Stable test id (`<file>::<titles>`), the report's `testId`, and the key `exclude` and `relevance` take. */
   readonly id: string;
   /** Project-relative POSIX path of the test file. */
   readonly file: string;
@@ -1660,6 +1700,15 @@ export interface TestFilterContext {
 export interface TestFilterResult {
   /** The tests to leave out, by `TestFilterCandidate.id`, each with the reason the report shows; a test of a serial group still runs when another test of its group does. */
   readonly exclude: Readonly<Record<string, string>>;
+  /**
+   * How likely each test is to fail on this change, from 0 to 1, by
+   * `TestFilterCandidate.id`. Each target starts the files of the likeliest
+   * tests first, in bands at 75%, 50%, and 25%, and targets go by the band of
+   * their best file, ties in config order. A test no filter scores counts as
+   * 0, and one several filters score keeps its highest. It never leaves a
+   * test out.
+   */
+  readonly relevance?: Readonly<Record<string, number>>;
   /** One line about the whole decision, such as `the diff is too large to judge`. */
   readonly note?: string;
 }

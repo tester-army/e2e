@@ -29,6 +29,17 @@ describe('PlaywrightSurface.guard', () => {
     await expect(step()).resolves.toBe('ok');
   });
 
+  it('fails an operation with the error a handler latched while it ran, which caused it', async () => {
+    const surface = new PlaywrightSurface({});
+    const refused = new TestError('INVALID_ARGUMENT', 'route.fulfill has an invalid header name: "bad name"');
+    const step = surface.guard(operation(), 'navigation', async () => {
+      surface.latch.latch(refused);
+      throw new Error('page.goto: net::ERR_FAILED');
+    });
+    await expect(step).rejects.toBe(refused);
+    await expect(surface.guard(operation(), 'step', async () => 'ok')).resolves.toBe('ok');
+  });
+
   it('refuses an already-cancelled operation as CANCELLED', async () => {
     const surface = new PlaywrightSurface({});
     const controller = new AbortController();

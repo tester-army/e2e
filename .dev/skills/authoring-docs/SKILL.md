@@ -120,7 +120,6 @@ Shortening adds claims. Check each new sentence:
 ---
 title: <noun the reader searches for>
 description: <one sentence: what the reader can do after this page>
-icon: <font awesome name, or /images/icons/<brand>.svg (see Page icons)>
 ---
 
 <lede: 2-4 sentences. What it is, what it does.>
@@ -163,59 +162,28 @@ icon: <font awesome name, or /images/icons/<brand>.svg (see Page icons)>
 - **Link to depth instead of repeating it**: "To read the full procedure,
   run `npx e2e guide bug-bash`." or "See [Starting your app](/web#starting-your-app)."
 
-## Page icons
+## Vendor logos
 
-The `icon` in the frontmatter shows in the sidebar beside the page title.
-Use a Font Awesome name, except on a vendor page.
+The sidebar shows no icons. Don't set `icon:` in a page's frontmatter;
+`pnpm docs:check` fails on one.
 
-**A vendor page always gets the vendor's logo, twice.** A vendor page is
+**A vendor page gets the vendor's logo on its cards.** A vendor page is
 every page under `docs/integrations/`, `docs/ci/`, and `docs/migrate/`
 except an `index.mdx`. Never use a Font Awesome icon for it, not even as a
 placeholder:
 
-1. **Sidebar icon**: `icon: "/images/icons/<brand>.svg"` in the page's
-   frontmatter, a black silhouette (rules below).
-2. **Card logo**: `docs/images/integrations/<brand>.svg` in brand colors, on
-   every `<Card>` that links to the page. An integration or CI page also
-   gets a card on its overview, `docs/integrations/index.mdx` or
-   `docs/ci.mdx`. A near-black mark needs a `filter: invert(1)` rule for
-   dark mode in the site's styles, like Expo's and TestMu AI's; say so in
-   the PR.
+- Put the logo at `docs/images/integrations/<brand>.svg`, in brand colors.
+  Use it on every `<Card>` that links to the page.
+- Every vendor page also gets a card on its section's overview:
+  `docs/integrations/index.mdx`, `docs/ci.mdx`, or `docs/migrate/index.mdx`.
+- A near-black mark needs a `filter: invert(1)` rule for dark mode in the
+  site's styles, like Expo's and TestMu AI's. Say so in the PR.
 
-Take both from the vendor's own site or press kit, usually the favicon SVG
-for the mark. If you can't get a logo, stop and ask the user. Don't ship
-the page without one. `scripts/check-docs-logos.ts` (in `pnpm docs:check`)
-fails on a vendor page with a missing icon, a Font Awesome icon, a card
-without a logo, or no overview card.
-
-The site fills Font Awesome icons with one grey. A file loads as an `<img>`
-in its own colors. The site turns a file grey only when it is under
-`docs/images/icons/`. It makes every opaque pixel a grey silhouette, so the
-file must be a silhouette too:
-
-- **Location**: `docs/images/icons/<brand>.svg`. A file anywhere else keeps
-  its colors and stands out in the sidebar.
-- **Color**: black marks on a transparent background. Don't use a filled
-  tile, a white background, or brand colors. They turn into a solid grey
-  square.
-- **Format**: SVG. If the vendor has only a raster logo, use a transparent
-  PNG.
-- **Shape**: crop the file to the mark, with no padding. Padding makes the
-  mark smaller than the icons beside it.
-- **Weight**: the icon shows at 16 px. Hairline strokes look faint at that
-  size. Thicken them until the mark is as heavy as the icons beside it.
-
-The one exception is our own mark, `icons/testerarmy.png`: the TesterArmy
-favicon in grey shades, since its dithered pixel art turns to mush as a
-silhouette. The docs site skips the silhouette filter for it.
-
-Card logos in `docs/images/integrations/` are a different set. They keep
-their brand colors, and some sit on a filled tile. Don't use one as a page
-icon. Make a silhouette copy in `docs/images/icons/`.
-
-Preview a new icon in the sidebar in light and dark mode, on its own page
-and on another page. In all four views it must match its neighbors in
-color, size, and weight.
+Take the logo from the vendor's own site or press kit, usually the favicon
+SVG for the mark. If you can't get a logo, stop and ask the user. Don't
+ship the page without one. `scripts/check-docs-logos.ts` (in
+`pnpm docs:check`) fails on a card without a logo or a vendor page with no
+overview card.
 
 ## Copy agent prompt
 
@@ -231,7 +199,7 @@ page and `../snippets/` for a page in `docs/ci/`, `docs/integrations/`, or
 ```mdx
 import { SetupPrompt } from './snippets/setup-prompt-card.jsx';
 
-export const setupPrompt = `<task>. Docs: \`https://e2e.tester.army/docs/<page>.md\`
+export const setupPrompt = `<task>. Docs: \`https://e2e.com/docs/<page>.md\`
 
 1. <one step, imperative>
 2. ...`;
@@ -497,12 +465,10 @@ Each group opens with one table, one row per entry. Keep it to the minimum:
       `scripts/check-docs-examples.ts`, and typechecks with
       `pnpm --filter @e2e-dev/docs typecheck`.
 - [ ] Status claims checked against `src/`.
+- [ ] No `icon:` in the frontmatter.
 - [ ] A vendor page (`docs/integrations/`, `docs/ci/`, `docs/migrate/`)
-      has the vendor's logo as its sidebar icon and on every card that
-      links to it ([Page icons](#page-icons)). A new integration or CI page
-      has a card on its overview.
-- [ ] A page icon from a file is a black silhouette under
-      `docs/images/icons/` (except `testerarmy.png`, see "Page icons") and
-      matches its sidebar neighbors in light and dark mode.
+      has the vendor's logo on every card that links to it
+      ([Vendor logos](#vendor-logos)) and a card on its section's
+      overview.
 - [ ] Links and anchors resolve. Moved pages have redirects.
 - [ ] `pnpm docs:check` passes.

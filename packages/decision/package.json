@@ -1,11 +1,11 @@
 {
   "name": "@e2e-dev/decision",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Decision-model executors and test filters for e2e",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/tester-army/e2e.git",
+    "url": "git+https://github.com/e2e-inc/e2e.git",
     "directory": "packages/decision"
   },
   "publishConfig": {
@@ -31,25 +31,24 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "pngjs": "7.0.0",
+    "@napi-rs/image": "1.16.0",
     "zod": "4.6.7"
   },
   "peerDependencies": {
     "ai": "^7.0.134",
-    "e2e": ">=0.21.3 <1"
+    "e2e": ">=0.23.1 <1"
   },
   "devDependencies": {
-    "@ai-sdk/openai": "4.0.106",
-    "@ai-sdk/typesafe-ai": "3.0.31",
+    "@ai-sdk/openai": "4.0.115",
+    "@ai-sdk/typesafe-ai": "3.0.38",
     "@e2e-dev/web": "workspace:*",
     "@types/node": "26.6.6",
-    "@types/pngjs": "6.0.5",
-    "ai": "7.0.159",
+    "ai": "7.0.170",
     "ajv": "8.20.0",
     "ajv-formats": "3.0.1",
     "e2e": "workspace:*",
     "typescript": "7.0.2",
-    "vitest": "5.0.5"
+    "vitest": "5.1.0"
   },
   "engines": {
     "node": "^22.22.3 || >=24.8.0"

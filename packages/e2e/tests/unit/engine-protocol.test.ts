@@ -418,15 +418,71 @@ describe('engine protocol', () => {
     expect(calls).toEqual(['dispose', 'dispose', 'finish']);
   });
 
+  it('opens a doctor connection, never one for an already aborted signal, and gives an aborted doctor its grace', async () => {
+    const roles: string[] = [];
+    const stopped: string[] = [];
+    const local = defineEngine(
+      toy({
+        doctor: (info) =>
+          new Promise((resolve) => {
+            info.signal.addEventListener('abort', () => setTimeout(() => {
+              stopped.push('stopped');
+              resolve([]);
+            }, 100));
+          }),
+      }),
+    );
+    const loopback = loopbackTransport(local);
+    const transport: EngineTransport = {
+      label: 'recording',
+      open: (context) => {
+        roles.push(context.role);
+        return loopback.open(context);
+      },
+    };
+    const remote = connectEngine({ manifest: describeEngine(local), transport });
+    const info = (signal: AbortSignal) => ({ targetName: 'toy', projectRoot: process.cwd(), app: {}, env: {}, headed: false, signal, log: () => {} });
+    await expect(remote.doctor!(info(AbortSignal.abort()))).rejects.toMatchObject({ code: 'CANCELLED' });
+    expect(roles).toEqual([]);
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 50);
+    await expect(remote.doctor!(info(controller.signal))).rejects.toMatchObject({ code: 'CANCELLED' });
+    expect(roles).toEqual(['doctor']);
+    expect(stopped).toEqual(['stopped']);
+  });
+
+  it('runs doctor over the protocol with its info and returns its findings', async () => {
+    const seen: { targetName: string; headed: boolean; log: boolean }[] = [];
+    const { remote } = overLoopback(
+      toy({
+        async doctor(info) {
+          seen.push({ targetName: info.targetName, headed: info.headed, log: typeof info.log === 'function' });
+          return [{ id: 'toolchain', status: 'warn', message: 'downloads on first run' }];
+        },
+      }),
+    );
+    const findings = await remote.doctor!({ targetName: 'toy', projectRoot: process.cwd(), app: {}, env: {}, headed: true, signal: new AbortController().signal, log: () => {} });
+    expect(findings).toEqual([{ id: 'toolchain', status: 'warn', message: 'downloads on first run' }]);
+    expect(seen).toEqual([{ targetName: 'toy', headed: true, log: true }]);
+    expect(overLoopback(toy()).remote.doctor).toBeUndefined();
+  });
+
   it('answers session hooks the client declares instead of the server', async () => {
     const calls: string[] = [];
-    const { remote } = overLoopback(toy({ session: { back: async () => { calls.push('server back'); } } }), {
-      session: { restart: async () => { calls.push('client restart'); } },
-    });
+    const { remote } = overLoopback(
+      toy({
+        session: {
+          back: async () => { calls.push('server back'); },
+          resize: async (size) => { calls.push(`server resize ${String(size.width)}x${String(size.height)}`); },
+        },
+      }),
+      { session: { restart: async () => { calls.push('client restart'); } } },
+    );
     await remote.init!(initInfo());
     await remote.session!.back!(operation());
+    await remote.session!.resize!({ width: 390, height: 844 }, operation());
     await remote.session!.restart!(operation());
-    expect(calls).toEqual(['server back', 'client restart']);
+    expect(calls).toEqual(['server back', 'server resize 390x844', 'client restart']);
     await remote.dispose!(cleanup);
   });
 
@@ -528,6 +584,25 @@ describe('engine protocol over a child process', () => {
     const pid = Number(snapshot.location?.slice('pid:'.length));
     expect(() => process.kill(pid, 0)).toThrow();
   });
+
+  it('stops a server that hangs in doctor and ignores SIGTERM before doctor settles', async () => {
+    const remote = connectEngine({
+      manifest: { ...manifest, methods: [...manifest.methods, 'lifecycle/doctor'], actions: [...manifest.actions] },
+      transport: spawnTransport({ command: process.execPath, args: [server] }),
+      initializationOptions: { hangDoctor: true },
+    });
+    const controller = new AbortController();
+    let pid = 0;
+    const log = (line: string): void => {
+      pid = Number(line.slice('pid:'.length));
+      controller.abort();
+    };
+    await expect(remote.doctor!({ targetName: 'toy', projectRoot: process.cwd(), app: {}, env: process.env, headed: false, signal: controller.signal, log })).rejects.toMatchObject({
+      code: 'CANCELLED',
+    });
+    expect(pid).toBeGreaterThan(0);
+    expect(() => process.kill(pid, 0)).toThrow();
+  }, 15_000);
 
   it('fails a request with the server stderr when the process dies mid-call', async () => {
     const remote = connectEngine({

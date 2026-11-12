@@ -49,14 +49,14 @@ under `executor`. `openai.decisionModel('gpt-6-luna')` from `@ai-sdk/openai`
 4.0.90 or later works too and takes the `vision: true` screenshot.
 Tests stay plain language with no params. The text model writes field values
 and upload paths. See the shipped `docs/decision-models.mdx` or
-[the online guide](https://e2e.tester.army/docs/decision-models) for setup,
+[the online guide](https://e2e.com/docs/decision-models) for setup,
 gates, and limits.
 
 A coding agent the user already signs in to runs agent steps over the Agent Client Protocol:
 install `@e2e-dev/acp` and its adapter, and put
 `claudeCode({ model: 'sonnet' })` or `codex()` under
 `executor`; no model provider is needed. See the shipped `docs/subscriptions.mdx` or
-[the online guide](https://e2e.tester.army/docs/subscriptions#use-your-coding-agent).
+[the online guide](https://e2e.com/docs/subscriptions#use-your-coding-agent).
 
 - Pass a model instance, not a string (`INVALID_CONFIG`).
 - An agents entry is one plain object of `model`, `judge`, `system`,
@@ -95,12 +95,9 @@ context, so each persona records and replays its own steps.
 ## act: one goal
 
 ```ts
-import { credentials, expect } from 'e2e';
+import { credentials } from 'e2e';
 
 await agent.act('add a todo named "Buy milk"');
-await expect(screen.getByRole('listitem', 'Buy milk')).toBeVisible();
-await agent.act('mark the "Buy milk" todo as done');
-await expect(screen.getByRole('checkbox', 'Buy milk')).toBeChecked();
 await agent.act('invite {email} as an editor', { params: { email: 'ada@example.test' } });
 
 const member = credentials.user('member');
@@ -150,10 +147,15 @@ The tools, one per engine action. Name the target as the screen names it
 - `scroll`: viewport or one scrollable node, a screen or a few.
 - `scroll_to`: a listed node into view, or by `text` page a list to a row.
 - `drag`: one node onto another.
-- `upload`: project-root files to a file input or a visible control that opens a
-  native file chooser; outside it or hidden (`.env`) is `POLICY_DENIED`.
+- `upload`: project-root files, or e2e's samples (`sample:photo.png`,
+  `sample:document.pdf`, and the rest) when the step names none, to a file
+  input or a visible control that opens a native file chooser; outside the
+  root or hidden (`.env`) is `POLICY_DENIED`.
 - `navigate`: a URL or app-relative path.
 - `back`: browser history or in-app back.
+- `resize_viewport`: set the viewport size (200 to 4096 CSS px) to check a
+  layout at phone, tablet, or desktop width. Engines with `session.resize`,
+  such as web.
 - `type_secret`: a declared secret by name; plaintext never reaches the model.
   Offered only when the step declares secrets and the engine can fill them.
 - `screenshot`: attach viewport pixels; every later result then carries one.
@@ -200,7 +202,7 @@ expect(data.titles).toContain('Buy milk');
   it adds `pass vision: true when the answer is in pixels`, as does
   `waitFor`'s timeout after an inconclusive round.
 - Judgments see the assertion, its params, the agent's context, the test
-  title, and the current screen, never prior steps or the act loop's
+  title, and the current screen with its location, never prior steps or the act loop's
   summaries; malformed output gets one repair round, then
   `MODEL_OUTPUT_INVALID`.
 - `assert` and `waitFor` take `params` like `act`:
@@ -210,7 +212,7 @@ expect(data.titles).toContain('Buy milk');
   pay button) must agree everywhere, or the judgment fails. Name the one
   you mean (`'the order summary total is $42.00'`) when only it matters.
 - `waitFor` observes every `interval` (default 3 s), judges only when the
-  screen changed, and is `STEP_TIMEOUT` after `timeout` (default 30 s).
+  screen or its location changed, and is `STEP_TIMEOUT` after `timeout` (default 30 s).
 - Never sleep for a fixed time to let the app settle. A sleep is too short
   on a slow run and wasted time on a fast one; `waitFor` returns as soon as
   the state appears:
@@ -225,7 +227,8 @@ await agent.waitFor('the export finished and a download link appeared', { timeou
 
 - `waitFor` needs a model even under a custom executor and is never cached,
   so each run spends judgments on it. It judges again on every screen
-  change, up to `maxModelCalls` (25): for a long wait on a screen that keeps
+  change, and on every location change except under `vision: 'only'`, up
+  to `maxModelCalls` (25): for a long wait on a screen that keeps
   changing (a progress counter), raise `interval`. The test timeout still
   caps its `timeout`.
 
@@ -252,12 +255,44 @@ what the screen presents (an overlay, a broken layout, a chart) where the
 tree would answer first. `'only'` never falls back to the tree: unprovably
 masked pixels fail with `POLICY_DENIED`.
 
+### Viewport exploration
+
+With `explore: true`, `agent.assert` can scroll the current screen and combine
+evidence from several viewports. This helps when a list fits on a tablet but
+needs scrolling on a phone.
+
+```ts
+await agent.assert('Settings lists HOS Settings, Account, Language and Theme', {
+  explore: true,
+  maxSteps: 10,
+  maxModelCalls: 6,
+});
+```
+
+Exploration offers `observe`, `scroll`, `scroll_to`, and project tools declared
+`mutates: false`. The built-in executor also offers `screenshot` when `vision`
+is `true` or `'only'`; the default is tree-only. Other actions are rejected. The viewport stays
+where exploration ends.
+
+Defaults are 10 scroll actions and 6 model calls, each capped at the selected
+agent's configured limit. Overrides may exceed the 10/6 defaults, up to the
+configured limits. The deadline
+defaults to `judgmentTimeout`. `maxSteps` or `maxModelCalls` without
+`explore: true` throws `INVALID_ARGUMENT`. The built-in executor uses
+`agents.<name>.model`, even when `judge` is configured.
+
+A contradiction is `ASSERTION_FAILED`; insufficient evidence within the time
+or action/model budget is `ASSERTION_INCONCLUSIVE`.
+
+Use `waitFor` for a condition that changes over time, and `explore` for content
+elsewhere on the current screen.
+
 ## Write instructions the model can execute
 
 - One goal per `act`; goal order is the test's, the path the model's.
 - Keep each goal atomic: one outcome that one check confirms. When two
   parts of an instruction each leave a state worth checking, they are two
-  goals: give each its own `act` and check. Steps toward a single outcome
+  goals, each its own `act`. Steps toward a single outcome
   are the path, not more goals: scrolling to a control, closing a banner,
   opening the menu that holds it, filling the fields of one form.
 - A split flow fails at the goal that broke. Each goal replays from its own
@@ -265,25 +300,38 @@ masked pixels fail with `POLICY_DENIED`.
   timeout still caps them all.
 
 ```ts
-// BAD: three goals in one instruction, one recording, no check between them.
+// BAD: three goals in one instruction, one recording.
 await agent.act('open the Pro plan, set the seats to {seats}, and check out', { params: { seats: 3 } });
 
-// GOOD: three atomic goals, each pinned before the next.
-await agent.act('open the Pro plan');
-await expect(screen.getByRole('heading', 'Pro plan')).toBeVisible();
-await agent.act('set the seats to {seats}', { params: { seats: 3 } });
-await expect(screen.getByRole('status', 'Seats')).toHaveText('3 seats');
-await agent.act('check out');
-await expect(screen.getByText('Order confirmed')).toBeVisible();
+// GOOD: arrange with two atomic goals, act with the one under test, assert last.
+test('checks out the Pro plan', async ({ app, agent, screen }) => {
+  await app.open('/plans');
+  await agent.act('open the Pro plan');
+  await agent.act('set the seats to {seats}', { params: { seats: 3 } });
+  await agent.waitFor('the cart shows the Pro plan with 3 seats');
+
+  await agent.act('check out');
+
+  await expect(screen.getByText('Order confirmed')).toBeVisible();
+  await expect(screen.getByText('Pro plan, 3 seats')).toBeVisible();
+});
 ```
+
+Choosing the seats is its own behavior, so it gets its own test that ends
+after `set the seats` and asserts the seat count. Tests follow arrange, act,
+assert, one behavior each (topic `writing-tests`, "Structure").
 
 - Use the words on screen: `'open the Billing tab'`, not `'upgrade'`.
 - Values go in `params`, never expanded: `act('rename to {name}', { params })`.
 - Do not describe mechanics the runner handles: waiting, scrolling, retries.
-- Pin every `act` outcome right after it; that check lets the cache record:
+- End the test with a check of the outcome. A passing locator or engine
+  matcher, `agent.assert`, or wait confirms every `act` before it, which
+  lets the cache record them; close an arrange block of `act` goals with a
+  wait for its state, so a failure later in the test keeps them recorded:
 
 ```ts
 await agent.act('create a workspace named "Atlas" on the Pro plan');
+
 await expect(screen.getByRole('status')).toHaveText('Created "Atlas" on the Pro plan');
 ```
 
@@ -350,7 +398,8 @@ matches. Misses and hand-offs use the model; `agent.assert`,
   ids and tokens aside; unless the recording opens with a navigation),
   re-finds each control by role, name, test id, placeholder, input purpose,
   and its named row (an unnamed control with twins and no named container
-  hands off), and passes alone only when the recorded end route is back,
+  hands off, and so does one known only by a generated test id once that id
+  is gone), and passes alone only when the recorded end route is back,
   every control that appeared (with its checked or selected state) is
   there, every one that went away is gone, at least one of those changed
   during the replay, and no new alert showed; otherwise the agent takes
@@ -432,7 +481,7 @@ make no model calls.
   `executor`; the runner still owns observations, actions, budgets, and the
   report, and `system` or `tools` beside `executor` is `INVALID_CONFIG`.
 
-Reference: https://e2e.tester.army/docs/agents
+Reference: https://e2e.com/docs/agents
 
 ## In CI
 

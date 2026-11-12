@@ -44,7 +44,7 @@ export type {
   ProviderRecordingStopContext,
   ProviderRecordingTarget,
 } from './recording.ts';
-export { Deadline, pollCondition, withTimeout, withinCleanupBudget, type PollConditionOptions } from '../internal/time.ts';
+export { Deadline, pollCondition, stepTimeout, withTimeout, withinCleanupBudget, type PollConditionOptions } from '../internal/time.ts';
 export { sameSite, siteOf, urlMatches } from '../internal/urls.ts';
 export { obj, type WithoutUndefined } from '../internal/objects.ts';
 import type { AppPermissionState, Expectable, Locator, Screen, Secret } from '../types.ts';
@@ -139,16 +139,21 @@ export interface EngineAppCheckInfo {
 
 /**
  * The app the harness resolved from the target's declaration, handed to
- * `prepare` and `init`: the site policy for the decisions only a surface can
- * make (which nested documents enter an observation, which requests carry
- * injected credentials), and what a device launches. The URL itself stays
- * with the harness: a surface never learns where the app is, and opens what
- * `session.open` is given.
+ * `prepare` and `init`: the origin and site policy for the decisions only a
+ * surface can make (which requests carry injected credentials, which nested
+ * documents enter an observation), and what a device launches. Navigation
+ * stays with the harness: a surface opens what `session.open` is given.
  */
 export interface EngineAppInfo {
   /**
+   * The origin of the app's `url` on the run's port (`scheme://host:port`, as
+   * `URL.origin` serializes it): where credentials an engine injects into
+   * requests (headers, basic auth) go by default. Absent for an app without
+   * a URL, and for a free port the run has not assigned (`e2e doctor`).
+   */
+  readonly origin?: string;
+  /**
    * The site of the app's `url`, its registrable domain as `siteOf` reads it:
-   * where the app's secrets, headers, and basic-auth credentials may go, and
    * whose child frames an observation reads; `sameSite` applies it. Absent
    * for an app without a URL, which is no policy at all.
    */
@@ -180,7 +185,7 @@ export type EngineAppDeclaration = EngineAppInfo & {
 export interface FixtureOperation<Args extends unknown[] = unknown[]> {
   readonly kind: 'resource' | 'assertion';
   readonly label?: (...args: Args) => string;
-  /** Action timeout by default; false when the method owns its assertion/navigation deadline. */
+  /** Action timeout by default, none of its own for 0; false when the method owns its assertion/navigation deadline. */
   readonly timeout?: number | false | ((...args: Args) => number | undefined);
   /** Assertions verify by default; waits may opt in as well. */
   readonly verifies?: boolean;
@@ -358,6 +363,8 @@ export interface EngineSession {
   open?(url: string, context: OperationContext): Promise<void>;
   /** Navigates back once in the surface's history. */
   back?(context: OperationContext): Promise<void>;
+  /** Sets the viewport to `size` in CSS pixels, for this page and every page the attempt opens after it. */
+  resize?(size: ViewportSize, context: OperationContext): Promise<void>;
   /** Recreates the execution context, keeping persisted state. */
   restart?(context: OperationContext): Promise<void>;
   /** Clears persisted client state and recreates the execution context. */
@@ -440,6 +447,38 @@ export interface EngineFinishInfo extends EngineCleanupContext {
   readonly log: (line: string) => void;
 }
 
+/** Facts handed to `doctor`, once per target in the process `e2e doctor` runs in. */
+export interface EngineDoctorInfo {
+  /** The target being checked. */
+  readonly targetName: string;
+  /** Directory relative paths in the config resolve against; see `EngineInitInfo.projectRoot`. */
+  readonly projectRoot: string;
+  /** The app the target declares, as `prepare` receives it. */
+  readonly app: EngineAppInfo;
+  /** The environment a run would start with. */
+  readonly env: Readonly<Record<string, string | undefined>>;
+  /** Whether the run would show the surface (`--headed`), as `prepare` receives it. */
+  readonly headed: boolean;
+  /** Aborts 30 seconds in, when the checks fail as timed out, or when `e2e doctor` is interrupted; return within 5 seconds of it, when the connection closes. */
+  readonly signal: AbortSignal;
+  /** Reports one line of progress; `e2e doctor` prints it to stderr. */
+  readonly log: (line: string) => void;
+}
+
+/** One finding of `doctor`. */
+export interface EngineDoctorCheck {
+  /** What was checked, in kebab case: `browser`, `toolchain`. */
+  readonly id: string;
+  /**
+   * `pass`; `warn` for something a run handles on its own, slower (a
+   * first-run download); `fail` for something that stops a run; `skip` for
+   * a check that does not apply to this target.
+   */
+  readonly status: 'pass' | 'warn' | 'fail' | 'skip';
+  /** One line: what was found and, unless it passed, what to do. */
+  readonly message?: string;
+}
+
 /** Run identity and harness-resolved facts handed to `init`, once per worker before the first step. */
 export interface EngineInitInfo {
   /** The run id. */
@@ -453,7 +492,7 @@ export interface EngineInitInfo {
    * `process.cwd()`, which an in-process run does not change.
    */
   readonly projectRoot: string;
-  /** The app the target declares: the site policy of its URL, and what a device launches. */
+  /** The app the target declares: the origin and site policy of its URL, and what a device launches. */
   readonly app: EngineAppInfo;
   /**
    * This worker's environment: the run's, plus what this target's `prepare`
@@ -822,6 +861,14 @@ export interface Engine {
    * cleanup-phase run error, never a crash.
    */
   finish?(info: EngineFinishInfo): Promise<void>;
+  /**
+   * Checks this machine for what a run on the target needs, for
+   * `e2e doctor`. Read-only and quick: never install, launch, lease, or
+   * start anything a check could instead look up, and never call `prepare`.
+   * A check that cannot tell reports nothing rather than guess. A throw is
+   * reported as one failed check of the target.
+   */
+  doctor?(info: EngineDoctorInfo): Promise<readonly EngineDoctorCheck[]>;
   /**
    * Once per worker, before the first step; boot devices here, not in a step
    * budget. The same handle can be booted again after `dispose`: a config-held

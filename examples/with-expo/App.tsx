@@ -2,13 +2,13 @@ import { useState } from 'react';
 import { Image, Keyboard, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useFonts } from 'expo-font';
-import { DMMono_400Regular } from '@expo-google-fonts/dm-mono/400Regular';
 import { Inter_400Regular } from '@expo-google-fonts/inter/400Regular';
-import { StackSansNotch_400Regular } from '@expo-google-fonts/stack-sans-notch/400Regular';
+import { JetBrainsMono_400Regular } from '@expo-google-fonts/jetbrains-mono/400Regular';
 
 export default function App() {
-  const [fontsLoaded] = useFonts({ DMMono_400Regular, Inter_400Regular, StackSansNotch_400Regular });
+  const [fontsLoaded] = useFonts({ Inter_400Regular, JetBrainsMono_400Regular });
   const [name, setName] = useState('');
+  const [focused, setFocused] = useState(false);
   const [error, setError] = useState(false);
   const [greeted, setGreeted] = useState<string | null>(null);
 
@@ -32,43 +32,59 @@ export default function App() {
       <StatusBar style="light" />
 
       <View style={styles.nav}>
-        <Image source={require('./assets/helmet-mark.png')} style={styles.mark} accessible={false} accessibilityElementsHidden importantForAccessibility="no" />
-        <Text style={styles.slash}>/</Text>
-        <Text style={styles.wordmark}>e2e</Text>
+        <Image
+          source={require('./assets/e2e-logotype.png')}
+          style={styles.logo}
+          accessible
+          accessibilityRole="image"
+          accessibilityLabel="e2e"
+        />
       </View>
 
       <View style={styles.hero}>
-        <Text style={styles.eyebrow}>[01] with-expo</Text>
+        <Text style={styles.eyebrow}>[ with-expo ]</Text>
         <Text style={styles.title} accessibilityRole="header">
-          Say hello
+          say hello
         </Text>
         <Text style={styles.lede}>A demo screen for the e2e examples. Type a name and the app greets you.</Text>
 
         <View style={styles.form}>
-          <Text style={styles.label}>Name</Text>
-          {/* testID is what getByTestId finds: the accessibility identifier on iOS, the resource id on Android. */}
-          <TextInput
-            testID="name"
-            accessibilityLabel="Name"
-            style={styles.field}
-            value={name}
-            onChangeText={setName}
-            placeholder="Ada Lovelace"
-            placeholderTextColor="#ffffff80"
-            autoCorrect={false}
-            onSubmitEditing={greet}
-          />
-          <Pressable testID="greet" accessibilityRole="button" style={styles.button} onPress={greet}>
-            <Text style={styles.buttonLabel}>Greet</Text>
+          <View style={[styles.field, focused && styles.fieldFocused, error && styles.fieldInvalid]}>
+            {/* The field carries the name for assistive tech, so the visible label stays out of the tree. */}
+            <Text style={styles.label} accessibilityElementsHidden importantForAccessibility="no">
+              name
+            </Text>
+            {/* testID is what getByTestId finds: the accessibility identifier on iOS, the resource id on Android. */}
+            <TextInput
+              testID="name"
+              accessibilityLabel="name"
+              style={styles.input}
+              value={name}
+              onChangeText={setName}
+              onFocus={() => setFocused(true)}
+              onBlur={() => setFocused(false)}
+              selectionColor="#f7f7f7"
+              underlineColorAndroid="transparent"
+              autoCorrect={false}
+              onSubmitEditing={greet}
+            />
+          </View>
+          <Pressable
+            testID="greet"
+            accessibilityRole="button"
+            style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
+            onPress={greet}
+          >
+            <Text style={styles.buttonLabel}>greet</Text>
           </Pressable>
           {error ? (
             <Text testID="error" style={styles.error} accessibilityRole="alert">
-              Enter a name first.
+              enter a name first.
             </Text>
           ) : null}
           {greeted !== null ? (
             <Text testID="greeting" style={styles.status}>
-              Hello, {greeted}!
+              hello, {greeted}!
             </Text>
           ) : null}
         </View>
@@ -77,60 +93,77 @@ export default function App() {
   );
 }
 
-// e2e brand: dark canvas, square corners, hairlines instead of shadows, white text at falling alphas.
+// e2e design system: black canvas, square corners, e2e blue for the one action, green and mint
+// accents, an 8px spacing grid, and lowercase headings and UI. Inter and JetBrains Mono stand in
+// for the brand's own typefaces.
+const color = {
+  black: '#000000',
+  offWhite: '#f7f7f7',
+  neutral800: '#1c1c1c',
+  neutral500: '#8d8d8d',
+  neutral400: '#b1b1b1',
+  blue: '#1a5fff',
+  green: '#64ff9d',
+  mint: '#8af9ff',
+};
+const sans = 'Inter_400Regular';
+const mono = 'JetBrainsMono_400Regular';
+
 const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: '#111111', paddingHorizontal: 24 },
+  page: { flex: 1, backgroundColor: color.black, paddingHorizontal: 24 },
   nav: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingTop: 72,
-    paddingBottom: 20,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#ffffff1f',
+    paddingTop: 64,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: color.neutral800,
   },
-  mark: { width: 32, height: 32 },
-  slash: { color: '#f9f8f7', fontFamily: 'DMMono_400Regular', fontSize: 26 },
-  wordmark: { color: '#f9f8f7', fontFamily: 'StackSansNotch_400Regular', fontSize: 26, letterSpacing: -1.5 },
-  hero: { gap: 16, paddingTop: 48 },
-  eyebrow: {
-    color: '#ffffffb3',
-    fontFamily: 'DMMono_400Regular',
-    fontSize: 12,
-    letterSpacing: 0.6,
-    textTransform: 'uppercase',
+  logo: { width: 69, height: 24 },
+  hero: { paddingTop: 48 },
+  eyebrow: { color: color.green, fontFamily: mono, fontSize: 12, lineHeight: 14, letterSpacing: 0.48 },
+  title: {
+    marginTop: 8,
+    color: color.offWhite,
+    fontFamily: sans,
+    fontSize: 39,
+    lineHeight: 44,
+    letterSpacing: -1.17,
   },
-  title: { color: '#f9f8f7', fontFamily: 'StackSansNotch_400Regular', fontSize: 38, lineHeight: 43 },
-  lede: { color: '#ffffffb3', fontFamily: 'Inter_400Regular', fontSize: 16, lineHeight: 24 },
-  form: { gap: 12, paddingTop: 24 },
+  lede: { marginTop: 24, color: color.neutral500, fontFamily: sans, fontSize: 18, lineHeight: 25 },
+  form: { gap: 16, marginTop: 40 },
+  // The design system's text field: the label sits inside the field, above the value. The border is
+  // always 2 wide, so focus and the error only change its colour and nothing moves.
+  field: { height: 56, backgroundColor: color.neutral800, borderWidth: 2, borderColor: 'transparent' },
+  fieldFocused: { borderColor: color.green },
+  fieldInvalid: { borderColor: color.mint },
   label: {
-    color: '#ffffff80',
-    fontFamily: 'DMMono_400Regular',
-    fontSize: 11,
-    letterSpacing: 1.1,
-    textTransform: 'uppercase',
+    position: 'absolute',
+    top: 4,
+    left: 14,
+    color: color.neutral400,
+    fontFamily: mono,
+    fontSize: 12,
+    lineHeight: 15,
   },
-  field: {
-    height: 44,
-    paddingHorizontal: 12,
-    backgroundColor: '#1a1a1a',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: '#ffffff4d',
-    color: '#f9f8f7',
-    fontFamily: 'DMMono_400Regular',
-    fontSize: 14,
+  input: {
+    flex: 1,
+    paddingTop: 18,
+    paddingBottom: 6,
+    paddingHorizontal: 14,
+    color: color.offWhite,
+    fontFamily: sans,
+    fontSize: 16,
   },
-  button: { height: 44, alignItems: 'center', justifyContent: 'center', backgroundColor: '#f9f8f7' },
-  buttonLabel: { color: '#161616', fontFamily: 'DMMono_400Regular', fontSize: 13, textTransform: 'uppercase' },
-  error: { color: '#ff8001', fontFamily: 'Inter_400Regular', fontSize: 14 },
+  // Buttons change no colour when pressed or hovered; a press scales them a little.
+  button: { height: 48, alignItems: 'center', justifyContent: 'center', backgroundColor: color.blue },
+  buttonPressed: { transform: [{ scale: 0.98 }] },
+  buttonLabel: { color: color.offWhite, fontFamily: mono, fontSize: 15 },
+  error: { color: color.mint, fontFamily: sans, fontSize: 14, lineHeight: 20 },
   status: {
-    padding: 14,
-    backgroundColor: '#161616',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: '#ffffff1f',
-    color: '#f9f8f7',
-    fontFamily: 'Inter_400Regular',
-    fontSize: 14,
-    lineHeight: 20,
+    padding: 16,
+    backgroundColor: color.neutral800,
+    color: color.offWhite,
+    fontFamily: sans,
+    fontSize: 16,
+    lineHeight: 22,
   },
 });

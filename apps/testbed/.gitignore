@@ -14,3 +14,5 @@
 # Verification skill scratch: bug-bash charter output and proofs kept past the next run.
 .e2e/bugbash/
 .e2e/proof/
+# Goldens the Playwright screenshot tests write while they run.
+tests/screenshot.e2e.ts-snapshots/

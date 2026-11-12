@@ -1,6 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { explainModuleError, RUNTIME_EXPORTS } from '../../src/config/diagnose.ts';
 
@@ -92,5 +93,36 @@ describe('explainModuleError', () => {
   it('passes any other failure through unchanged', () => {
     expect(explainModuleError(new Error('boom'), importer)).toBe('boom');
     expect(explainModuleError('text', importer)).toBe('text');
+  });
+});
+
+describe('explainModuleError on Bun', () => {
+  /** A syntax error as Bun's transpiler raises it: a `BuildMessage`, its position beside the message. */
+  function buildMessage(message: string, line: number, column: number): Error {
+    return Object.assign(new Error(message), { name: 'BuildMessage', position: { file: importer, line, column, lineText: '' } });
+  }
+
+  it('names the file, line, and column of each syntax error', () => {
+    expect(explainModuleError(buildMessage('Unexpected =', 1, 15), importer)).toBe(`${importer}:1:15: Unexpected =`);
+    const several = new AggregateError([buildMessage('Unexpected =', 1, 9), buildMessage('Unexpected =', 2, 9)], `2 errors building "${importer}"`);
+    expect(explainModuleError(several, importer)).toBe(`${importer}:1:9: Unexpected =\n${importer}:2:9: Unexpected =`);
+  });
+
+  it('points an unresolved # import at the package.json imports instead of an install', () => {
+    writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ imports: { '#lib/*': './lib/*' } }));
+    const cause = Object.assign(nodeError('ERR_MODULE_NOT_FOUND', `Cannot find package '#lib' imported from ${importer}`), { specifier: '#lib/enums' });
+    expect(explainModuleError(cause, importer)).toBe(
+      `${cause.message}; #lib/enums is a package import: map it to a file under "imports" in ${path.join(dir, 'package.json')}`,
+    );
+  });
+
+  it('explains a missing export of e2e, which Bun names by its file', () => {
+    const entry = fileURLToPath(new URL('../../dist/index.js', import.meta.url));
+    const missing = new SyntaxError(`Export named 'expct' not found in module '${entry}'.`);
+    expect(explainModuleError(missing, importer)).toContain('did you mean "expect"?');
+    const removed = new SyntaxError(`Export named 'createAgent' not found in module '${entry.replace('index.js', 'agent/public.js')}'.`);
+    expect(explainModuleError(removed, importer)).toContain('createAgent was removed from e2e/agent:');
+    const other = new SyntaxError(`Export named 'nope' not found in module '${path.join(dir, 'lib.ts')}'.`);
+    expect(explainModuleError(other, importer)).toBe(other.message);
   });
 });

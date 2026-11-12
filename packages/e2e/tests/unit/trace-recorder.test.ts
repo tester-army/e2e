@@ -224,6 +224,7 @@ describe('TraceRecorder', () => {
     recorder.record({ name: 'drag', node: upgradeButton, destination: { node: doneColumn, within: 'Board' } });
     recorder.record({ name: 'upload', node: upgradeButton, paths: ['fixtures/a.txt', 'fixtures/b.txt'] });
     recorder.record({ name: 'back' });
+    recorder.record({ name: 'resize', size: { width: 390, height: 844 } });
     recorder.record({ name: 'hoverAt', point: { x: 10, y: 20 }, viewport: { width: 1280, height: 720 } });
     const trace = recorder.finalize({ ...conclusion, startPath: '/board' })!;
     expect(trace.truncated).toBeUndefined();
@@ -237,20 +238,23 @@ describe('TraceRecorder', () => {
       'drag button "Upgrade" to region "Done column" in "Board"',
       'upload "fixtures/a.txt", "fixtures/b.txt" to button "Upgrade"',
       'navigate back',
+      'resize the viewport to 390x844',
       'hover over the point (10, 20)',
     ]);
     expect(trace.actions[5]).toMatchObject({ name: 'check', checked: false });
     expect(trace.actions[6]).toMatchObject({ name: 'drag', destination: { role: 'region', name: 'Done column', within: 'Board' } });
     expect(trace.actions[7]).toMatchObject({ name: 'upload', paths: ['fixtures/a.txt', 'fixtures/b.txt'] });
+    expect(trace.actions[9]).toEqual({ name: 'resize', summary: 'resize the viewport to 390x844', size: { width: 390, height: 844 } });
     const entry = readTraceEntry(JSON.parse(JSON.stringify(buildTraceEntry(trace))));
     expect(entry?.payload.actions).toEqual(trace.actions);
   });
 
-  it('rejects a stored check, upload, or drag that lost a field', () => {
+  it('rejects a stored check, upload, drag, or resize that lost a field', () => {
     const recorder = makeRecorder();
     recorder.record({ name: 'check', node: upgradeButton, checked: true });
     recorder.record({ name: 'upload', node: upgradeButton, paths: ['fixtures/a.txt'] });
     recorder.record({ name: 'drag', node: upgradeButton, destination: { node: upgradeButton } });
+    recorder.record({ name: 'resize', size: { width: 390, height: 844 } });
     const entry = JSON.parse(JSON.stringify(buildTraceEntry(recorder.finalize(conclusion)!)));
     const broken = (index: number, patch: (action: Record<string, unknown>) => void) => {
       const copy = JSON.parse(JSON.stringify(entry));
@@ -261,6 +265,9 @@ describe('TraceRecorder', () => {
     expect(broken(1, (action) => { action['paths'] = []; })).toBeUndefined();
     expect(broken(1, (action) => { action['paths'] = ['']; })).toBeUndefined();
     expect(broken(2, (action) => { delete action['destination']; })).toBeUndefined();
+    expect(broken(3, (action) => { delete action['size']; })).toBeUndefined();
+    expect(broken(3, (action) => { action['size'] = { width: 390.5, height: 844 }; })).toBeUndefined();
+    expect(readTraceEntry(JSON.parse(JSON.stringify(entry)))?.payload.actions[3]).toMatchObject({ name: 'resize', size: { width: 390, height: 844 } });
     expect(broken(0, (action) => { action['name'] = 'fly'; })).toBeUndefined();
   });
 });

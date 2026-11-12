@@ -10,6 +10,7 @@ import { ENGINE_SPI_VERSION } from '../contract.ts';
 import { isEngineHandle } from '../manifest.ts';
 import type {
   EngineAttemptContext,
+  EngineDoctorInfo,
   EngineFinishInfo,
   EngineHandle,
   EngineInitInfo,
@@ -186,6 +187,7 @@ class EngineServer {
     return {
       prepare: (hook, params) => hook(info<EnginePrepareInfo>(params)),
       finish: (hook, params) => hook(info<EngineFinishInfo>(params)),
+      doctor: (hook, params) => hook(info<EngineDoctorInfo>(params)),
       init: (hook, params) => hook(info<EngineInitInfo>(params)),
       startAttempt: (hook, params) => {
         const { attemptId, artifactsDir, signal, screens } = params as StartAttemptParams;

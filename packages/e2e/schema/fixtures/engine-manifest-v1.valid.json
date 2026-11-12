@@ -15,6 +15,7 @@
     "session/back",
     "session/restart",
     "session/reset",
+    "lifecycle/doctor",
     "lifecycle/init",
     "lifecycle/startAttempt",
     "lifecycle/endAttempt"
