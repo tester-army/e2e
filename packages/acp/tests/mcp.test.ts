@@ -1,6 +1,7 @@
 /** Forwarding failures stay off HTTP while the owning session retains their cause. */
 import { setImmediate } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
+import { inspect } from 'node:util';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { serveTools, type ToolServer } from '../src/mcp.ts';
 import { startSession, type AcpSession } from '../src/session.ts';
@@ -78,10 +79,16 @@ describe('step-tool forwarding diagnostics', () => {
     const reader = response.body!.getReader();
     const first = await reader.read();
     expect(new TextDecoder().decode(first.value)).toBe('data: ready\n\n');
-    const error = Object.assign(new Error('stream failed with synthetic-server-secret-314159'), { code: 'ECONNRESET' });
+    const secret = 'synthetic-server-secret-314159';
+    const error = Object.assign(new Error(`stream failed with ${secret}`), { code: 'ECONNRESET' });
     state.controller!.error(error);
     await expect(server.failed).rejects.toMatchObject({ cause: error });
-    await expect(reader.read()).rejects.toThrow();
+    const reading = reader.read();
+    await expect(reading).rejects.toThrow();
+    const clientError: unknown = await reading.catch((cause: unknown) => cause);
+    expect(clientError).toBeInstanceOf(Error);
+    expect(inspect(clientError, { depth: null })).not.toContain(secret);
+    expect(inspect(clientError, { depth: null })).not.toContain(error.message);
   });
 
   it('cancels the response stream without failing the session when the client disconnects', async () => {
