@@ -49,9 +49,9 @@ A Playwright key such as `testDir`, `baseURL`, `use`, `webServer`, or
 | `projects` | `targets`, one engine instance each |
 | `testDir`, `testMatch`, `testIgnore` | `tests`, globs from the project root; a leading `!` excludes |
 | `retries`, `workers`, `timeout` | the same names, with [other defaults](#defaults-that-differ); `workers` is an integer |
-| `expect.timeout`, `use.actionTimeout`, `globalTimeout` | `assertionTimeout`, `actionTimeout`, `maxDuration` |
+| `expect.timeout`, `use.actionTimeout`, `globalTimeout` | `assertionTimeout`, `actionTimeout`, `maxDuration`; the `maxDuration` clock starts with the tests, not app startup |
 | `maxFailures`, `use.headless: false` | `--max-failures <n>` and `--headed` on the CLI |
-| `reporter`, `outputDir` | `reporters: ['list', 'junit', htmlReporter()]`, also `json` and `markdown`; `output`, default `.e2e` |
+| `reporter`, `outputDir` | `reporters: ['list', 'junit', htmlReporter()]`, with `htmlReporter` from `@e2e-dev/html-reporter`; also `json` and `markdown`; `output`, default `.e2e` |
 | `use.viewport`, `locale`, `timezoneId`, `colorScheme`, `reducedMotion`, `userAgent`, `testIdAttribute` | the same keys in `web({ ... })` |
 | `use.browserName`, `httpCredentials`, `extraHTTPHeaders` | `web({ browser, basicAuth, headers })`; `basicAuth` and `headers` apply to the app's origin only, [`credentialOrigins`](/reference/web#credentialorigins) adds more |
 | `chromium.connectOverCDP(url)` | `web({ connect: { cdpEndpoint: () => url } })`, chromium only |
@@ -258,7 +258,7 @@ purpose. Use the workaround, or keep the test in Playwright.
 | `toBeEmpty()`, `toBeEditable()`, `toBeInViewport()`, `toHaveRole()` | `toHaveValue('')` on a form control, `toHaveText('')` on other elements; `toBeEnabled()` and `.not.toHaveAttribute('readonly')`; `expect.poll` over `boundingBox()`; a `getByRole` query |
 | `locator.screenshot()`, `{ fullPage, clip }`, `snapshotPathTemplate`, `ignoreSnapshots` | The viewport or one locator in `toHaveScreenshot`; a tag and `--exclude-tag` to skip visual tests |
 | `expect(locator, 'message')`, `expect.configure()` | Drop the message, the failure names the locator and the matcher; `{ timeout }` on each call |
-| `@axe-core/playwright` | axe-core through `browser.addInitScript({ content })`, then `axe.run()` in `browser.evaluate` |
+| `@axe-core/playwright` | axe-core through `browser.addInitScript({ path: 'node_modules/axe-core/axe.min.js' })`, then `axe.run()` in `browser.evaluate` |
 
 </Accordion>
 <Accordion title="Navigation, network, and browser">
@@ -267,7 +267,7 @@ purpose. Use the workaround, or keep the test in Playwright.
 | --- | --- |
 | `devices['iPhone 15']`, `isMobile`, `hasTouch`, `deviceScaleFactor` | `web({ viewport, userAgent })`; a mobile target for real touch |
 | `page.waitForLoadState()`, `waitForURL(glob)`, `waitForFunction()` | An assertion on what the next page shows; a `RegExp`; `expect.poll` over `browser.evaluate` |
-| `waitForResponse(predicate)`, `waitForRequest()`, `page.on('request')`, `response.ok()` | A `browser.route` handler that records `route.request`, then calls `route.fallback()`; `status` for `ok()` |
+| `waitForResponse(predicate)`, `waitForRequest()`, `page.on('request')`, `response.ok()` | `browser.waitForResponse(pattern)`, then check the response in the test, `status` for `ok()`. For requests, a `browser.route` handler that records `route.request`, then calls `route.fallback()` |
 | `route.fulfill({ response })`, `route.abort(code)`, `route.fetch(options)`, `request.postDataJSON()` | `status`, `headers`, and `body` from `route.fetch()`; `JSON.parse(route.request.postData)` |
 | `page.addLocatorHandler()` | Dismiss the overlay in `beforeEach`, or set its consent cookie with `browser.setCookies` |
 | `page.on('console')`, `page.on('pageerror')`, `page.clock` | A `browser.addInitScript` that records to a `window` array, or that stubs `Date` |
@@ -300,7 +300,7 @@ purpose. Use the workaround, or keep the test in Playwright.
 | --- | --- |
 | The `request` fixture, `page.request`, `expect(response).toBeOK()` | Node `fetch` with `app.baseUrl`, see [API](/api-testing); `expect(response.status).toBe(200)` |
 | `test.use({ ... })` in a file or describe | Runner options on the group, engine options on a target, `browser.setViewport` at runtime |
-| `projects[].dependencies`, `teardown`, `retries`, `timeout` | `test.setup` for sign-in; a script around the run; options on a group |
+| `projects[].dependencies`, `teardown`, `retries`, `timeout` | A top-level `test.setup` for sign-in; a script around the run; options on a group |
 | `--debug`, `page.pause()`, the Inspector, the VS Code extension | `--step --headed` holds each step until a key; `screen.debug()` prints the tree |
 | Option fixtures, overriding `page` or `context` in `extend` | `process.env` in the fixture; a new fixture under its own name |
 | `npx playwright codegen` | [`npx e2e mcp`](/mcp-server) lets a coding agent drive the app while it writes the test |

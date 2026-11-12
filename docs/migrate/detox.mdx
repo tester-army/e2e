@@ -105,7 +105,7 @@ test('shows the home screen', async ({ agent, app, screen }) => {
 
 | Detox | e2e |
 | --- | --- |
-| `by.id('x')`, `by.text('t')`, `by.label('l')` | `screen.getByTestId('x')`, `getByText('t')`, `getByLabel('l')` |
+| `by.id('x')`, `by.text('t')`, `by.label('l')` | `screen.getByTestId('x')`, `screen.getByText('t')`, `screen.getByLabel('l')` |
 | `by.id('x').withAncestor(by.id('row'))` | `screen.getByTestId('row').getByTestId('x')` |
 | `.atIndex(n)` | `.nth(n)` |
 | `.tap()`, `.tap({ x, y })`, `.longPress()`, `.multiTap(2)` | `.tap()`, `.tap({ position: { x, y } })`, `.longPress()`, `.doubleTap()` |

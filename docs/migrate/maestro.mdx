@@ -50,7 +50,7 @@ For a migration that spans several sessions, the [`migrate-to-e2e` skill](/codin
 | `--format junit` | `--reporter list,junit` writes `.e2e/junit.xml` |
 | `--format html` | `htmlReporter()` from `@e2e-dev/html-reporter` writes `.e2e/report.html` |
 | `--shards`, `--shard-split` | `device: [...]` plus `workers` on one machine; `--shard <index/total>` across machines, see [Sharding](/ci#sharding) |
-| `maestro record` | `npx e2e run --video`, one MP4 of the device per attempt |
+| `maestro record` | `npx e2e run --video`, one MP4 of the device per attempt, or a hosted provider's own recording |
 | `maestro test -c` | `npx e2e run --watch` |
 | `maestro hierarchy` | `await screen.debug()` in a test prints the screen's tree; `screen.tree()` returns it |
 
@@ -104,10 +104,10 @@ Calls on `device` run only on a device, so a test that uses it declares
 | `launchApp` | `app.open()`, a fresh launch of the target's app; nothing launches on its own |
 | `clearState`, `launchApp: { clearState: true }` | `app.clearState()` |
 | `launchApp: { stopApp: false }` | `device.openApp(id)` without `relaunch` |
-| `launchApp: { arguments }` | `app.launchArguments` on the target, a list of strings, not a map |
-| `launchApp: { permissions }`, `setPermissions` | `app.permissions` on the target; `device.setPermission(name, 'grant')` before `app.open()` |
+| `launchApp: { arguments }` | `app.launchArguments` on the target, a list of strings, not a map; `device.openApp(app, { relaunch: true, launchArguments })` for one launch |
+| `launchApp: { permissions }`, `setPermissions` | `app.permissions` on the target, or `device.openApp(app, { relaunch: true, permissions })` for one launch; `grant`, `deny`, `reset` for `allow`, `deny`, `unset`. `device.setPermission(name, state)` before `app.open()` |
 | `stopApp`, `killApp` | `device.closeApp()`, a force stop; `app.restart()` to stop the app and launch it again |
-| `clearKeychain`, `openLink`, `setLocation`, `setAirplaneMode`, `setOrientation`, `setClipboard` | the same on `device`, such as `device.openLink(url)`; for `travel`, loop `device.setLocation` |
+| `clearKeychain`, `openLink`, `setLocation`, `setAirplaneMode`, `setOrientation`, `setClipboard` | the same on `device`, such as `device.openLink(url)`. `clearKeychain` is iOS simulator only, `setAirplaneMode(true)` Android 11 or newer. For `travel`, loop `device.setLocation` |
 | `back`, `pressKey: Home`, `hideKeyboard`, `setDarkMode` | `app.back()`, `device.home()`, `device.dismissKeyboard()`, `device.setAppearance('dark')` |
 
 </Accordion>
@@ -124,7 +124,7 @@ Calls on `device` run only on a device, so a test that uses it declares
 | `inputRandomEmail`, `inputRandomText`, `faker` | `unique()` around a value in `act` params, so the cache still replays; any npm faker for the rest |
 | `copyTextFrom`, `pasteText` | `await locator.textContent()`, then `.fill(text)` |
 | `swipe: { direction: UP }`, `scroll` | `screen.swipe({ direction: 'down' })`; Maestro names the finger's direction, e2e the content's |
-| `swipe: { start, end }`, `scrollUntilVisible` | `screen.swipe({ from, to })`, `screen.scrollUntilVisible(locator, { direction })` |
+| `swipe: { start, end }`, `scrollUntilVisible` | `screen.swipe({ from, to })` in pixels, `screen.scrollUntilVisible(locator, { direction })` |
 
 </Accordion>
 <Accordion title="Assertions and flows">
@@ -132,7 +132,7 @@ Calls on `device` run only on a device, so a test that uses it declares
 | Maestro | e2e |
 | --- | --- |
 | `assertVisible`, `assertNotVisible`, `extendedWaitUntil` | `await expect(locator).toBeVisible({ timeout })`, `.toBeHidden()` |
-| `assertVisible: { enabled, checked, selected, focused }` | `.toBeEnabled()`, `.toBeChecked()`, `.toBeSelected()`, `.toBeFocused()` |
+| `assertVisible: { enabled, checked, selected, focused }` | `.toBeVisible()`, then `.toBeEnabled()`, `.toBeChecked()`, `.toBeSelected()`, or `.toBeFocused()` |
 | `assertTrue: ${...}` | `expect(value).toBe(true)`, or `expect.poll` for a value that is still changing |
 | `assertScreenshot: { path, thresholdPercentage }` | `await expect(screen).toHaveScreenshot(name, { maxDiffPixelRatio })`, see [Visual comparison](/visual-testing) |
 | `takeScreenshot`, `startRecording`, `stopRecording` | `app.screenshot('label')`, [`app.startRecording()`, `app.stopRecording()`](/reference/app#startrecording) |
@@ -173,10 +173,10 @@ on purpose.
 | Maestro Studio | A coding agent over [`npx e2e mcp`](/mcp-server), or `screen.debug()` with `npx e2e run --watch` or `--step` |
 | `addMedia` | On an iOS simulator, `xcrun simctl addmedia` before `app.open()`; Android is unchecked. See "Photos for a picker test" under [The device fixture](/mobile#the-device-fixture) |
 | `label` on a command | `-`. The call names each step |
-| `scrollUntilVisible: { centerElement, visibilityPercentage }` | One more `screen.swipe({ direction, momentum: 'slow' })` after it resolves |
+| `scrollUntilVisible: { centerElement, visibilityPercentage }` | No exact match. After it resolves, read `boundingBox()`, then `screen.swipe({ direction, momentum: 'slow' })` if the node is off center |
 | Device logs and crash reports beside a failure | `adb logcat` or `xcrun simctl spawn <udid> log stream`, collected in a fixture |
 | `maestro hierarchy` as a terminal command | A one-line test that calls `screen.debug()` |
-| `--device-locale` | `app.launchArguments: ['-AppleLanguages', '(de)']` on iOS, or set the simulator's locale before the run |
+| `--device-locale` | `app.launchArguments: ['-AppleLanguages', '(de)', '-AppleLocale', 'de_DE']` on iOS, see [Run the app in another language](/mobile#run-the-app-in-another-language); on Android, set the device language before the run |
 | Maestro Cloud | Your [CI](/ci) with a [hosted device provider](/mobile#hosted-devices) |
 | `pressKey: lock`, `power`, `volume up`, `volume down` | `client.command.hardwareButton` on [`unstable_raw`](/reference/mobile#unstable_raw): power and volume on Android, volume on a physical iPhone |
 

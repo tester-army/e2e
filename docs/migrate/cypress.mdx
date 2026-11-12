@@ -118,14 +118,14 @@ Planned gaps are on the roadmap, and Not yet gaps have no date. Not planned gaps
 | --- | --- |
 | `.find('css')`, `.filter('css')`, `.not('css')` | Chain a `getBy*` query, or write one selector: `browser.locator('li.active >> .title')` |
 | `.invoke()`, `.its()`, `.then($el => ...)`, `.should($el => ...)` | `getAttribute()`, `textContent()`, `inputValue()`, else `browser.evaluate`; wrap in `expect.poll` to retry |
-| `have.class`, `have.css`, `have.prop`, `be.empty` | `expect(browser).toHaveClass(locator, /regexp/)`, `toHaveText('')`; else `expect.poll(() => browser.evaluate(...))` |
+| `have.class`, `have.css`, `have.prop`, `be.empty` | `expect(browser).toHaveClass(locator, /regexp/)`, `expect(locator).toHaveText('')`; else `expect.poll(() => browser.evaluate(...))` |
 | `.trigger()`, `cy.scrollTo()`, `.blur()` | `hover()`, `dragTo()`, `scrollIntoView()`, `press('Tab')`; else `browser.evaluate` |
 | `cy.intercept('POST', url)` and other method or header matchers | Check `route.request.method` in the handler, else call `route.fallback()` |
 | `cy.wait('@alias')`, `.its('request.body')`, `@alias.all` | Start `browser.waitForResponse(pattern)` before the action; read the request in a `browser.route` handler |
-| `Cypress.on('uncaught:exception')` | An app error doesn't fail a test. To fail on one, collect `window.onerror` in `browser.addInitScript` |
+| `Cypress.on('uncaught:exception')` | An app error doesn't fail a test. To fail on one, collect `window.onerror` in `browser.addInitScript`, then assert the list is empty with `browser.evaluate` |
 | `--browser chrome`, `edge`, `electron`, `before:browser:launch` | `web({ browser: 'chromium' })`, or attach to your own Chrome with `web({ connect: { cdpEndpoint } })` |
 | `cypress open`, time-travel snapshots | `npx e2e run --headed --watch`, or `--step`; the [trace page](/debugging#traces) shows each step after the run |
-| `before()` and `after()` that drive the app, `describe.only` | UI setup in `beforeEach` or `test.setup`; `test.only` on each test |
+| `before()` and `after()` that drive the app, `describe.only` | UI setup in `beforeEach`, cleanup in `afterEach`; sign-in in a top-level `test.setup` that saves a session; `test.only` on each test |
 | `cy.clock()`, `cy.tick()` | A fake-timers script loaded with `browser.addInitScript({ path })`, driven by `browser.evaluate` |
 
 ### Not yet

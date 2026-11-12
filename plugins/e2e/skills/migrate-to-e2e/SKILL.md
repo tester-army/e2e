@@ -28,7 +28,8 @@ Two references do most of the work. Read them; do not restate them.
 - The migration guide for the source runner, and the engine page it ports
   to. The guide maps the runner's config, commands, and API to e2e, and
   lists what e2e does not have yet under "What e2e doesn't have yet"
-  (Planned, Not yet, or Not planned), each with today's workaround. Both
+  (Planned, Not yet, or Not planned), with today's workaround where there
+  is one. Both
   ship in the installed package under
   `node_modules/e2e/docs/` with the same paths as `.mdx` files.
 
@@ -348,8 +349,8 @@ Defect check: on
 
 ## Gaps
 
-- `addMedia` has no e2e equivalent (guide: Planned); the test adds the photo
-  with `xcrun simctl addmedia`.
+- `addMedia` has no e2e equivalent (guide: Planned). iOS: the test adds the
+  photo with `xcrun simctl addmedia`. Android: unchecked, stays in Maestro.
 
 ## Next
 

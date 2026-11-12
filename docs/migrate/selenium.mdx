@@ -108,9 +108,10 @@ e2e leaves it out on purpose.
 | `executeScript(script, element)`, `getDomProperty`, `getCssValue` | A locator action such as `.tap()` or `.scrollIntoView()`, or `browser.evaluate` with a CSS selector |
 | `element.findElement(By.cssSelector)`, WebdriverIO `$('a').$('b')` | One `browser.locator('a >> b')` selector, or chained `getBy*` queries |
 | `ChromeOptions.addArguments`, `setBinary`, `Proxy`, `acceptInsecureCerts` | Start Chrome or Edge with the flags, then attach with `web({ connect })` |
-| `@BeforeSuite`, `@AfterSuite`, session fixtures, WebdriverIO `onPrepare` | The script `app.command` starts, or a wrapper around `e2e run` |
+| `@BeforeSuite`, `@AfterSuite`, pytest session-scoped fixtures, WebdriverIO `onPrepare` | Once for the run: the script `app.command` starts, or a wrapper around `e2e run`. Once for a file: `beforeAll` and `afterAll`. Sign-in: a top-level `test.setup` that saves a session |
 | BrowserStack or Sauce Labs for web | Your own [browser provider](/browser#write-a-provider), if the vendor has a CDP endpoint |
-| `manage().logs()`, request listeners, `setNetworkConditions`, geolocation | Patch the page in `browser.addInitScript`, record or abort requests in `browser.route` |
+| `manage().logs()`, request listeners, geolocation | Patch the page in `browser.addInitScript`, record requests in `browser.route` |
+| `setNetworkConditions` | For offline, abort requests in `browser.route`. No throttling or latency, keep those tests in Selenium |
 
 ### Not yet
 

@@ -293,7 +293,7 @@ is not a step, so it skips the report and secret redaction.
 | Appium | Use today |
 | --- | --- |
 | `appium:platformVersion` on a local device, a phone's `appium:udid` | Name a simulator or emulator that runs the version. Put the phone's name in `device` |
-| `appium:autoGrantPermissions`, Android permissions off the list, iOS location `always` | List each permission in `app.permissions`, or run `adb shell pm grant` before the run |
+| `appium:autoGrantPermissions`, Android permissions off the list, iOS location `always` | List each permission in `app.permissions`, or run `adb shell pm grant` before the run. For iOS location `always`, tap the prompt's button |
 | Device settings and alerts on a `browserstack()` or `testmu()` device | Tap the prompt as UI. Run those tests on a local device |
 | `bstack:options.local`, `lt:options.tunnel` | Point the app at a backend the hosted device can reach |
 | `appium:appActivity`, `appWaitActivity`, `startActivity()` | `device.openLink(url)`, or `client.apps.open` through [`unstable_raw`](/reference/mobile#unstable_raw) |
@@ -308,7 +308,7 @@ is not a step, so it skips the report and secret redaction.
 
 | Appium | Use today |
 | --- | --- |
-| `.getAttribute()` for a label, id, or class, `.isSelected()`, `.getTagName()` | Assert with `toHaveAccessibleName` or `toBeSelected` |
+| `.getAttribute()` for a label, id, or class, `.isSelected()`, `.getTagName()` | `toHaveAccessibleName` for a label, `toBeSelected` for the selected state. No read for an id, class, or tag name |
 | `pressKeyCode(code)`, `driver.keys('Backspace')`, `isKeyboardShown()` | `.press()` takes `Enter`, `Space`, or one character. Use `.clear()` and `.fill()` |
 | `driver.getWindowRect()`, `getWindowSize()`, `mobile: deviceInfo` | Swipe by direction, or read `.boundingBox()` of a full-screen element |
 | `UiScrollable` `scrollToEnd()`, `scrollToBeginning()` | Loop `locator.swipe({ direction: 'down' })` until `allTextContents()` stops changing; `'up'` for the beginning |
