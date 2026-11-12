@@ -28,6 +28,14 @@ export interface ProjectedNode {
   readonly raw: RawNode;
   readonly node: SemanticNode;
   readonly parent: ProjectedNode | undefined;
+  /**
+   * Whether the platform hides the node: it reports it not shown, or the soft
+   * keyboard draws over it. A node agent-device marks covered reads as hidden
+   * too, but is not platform-hidden: it is still on screen, so a role query
+   * still finds it, for an action on it to get agent-device's refusal, and a
+   * drag start still steers clear of it.
+   */
+  readonly platformHidden: boolean;
 }
 
 export interface ProjectedSnapshot {
@@ -537,7 +545,7 @@ export function projectSnapshot(
 
   const keyboard = options.keyboard === undefined ? new Set<number>() : keyboardSide(raw, parents, roots, children, options.keyboard);
   const index: ProjectedNode[] = [];
-  const build = (position: number, parent: ProjectedNode | undefined, parentOnKeyboard: boolean): SemanticNode => {
+  const build = (position: number, parent: ProjectedNode | undefined, parentOnKeyboard: boolean): ProjectedNode => {
     const source = raw[position] as RawNode;
     const id = options.mintId();
     const kind = kindOf(source);
@@ -562,7 +570,7 @@ export function projectSnapshot(
     const label = folded === undefined ? nonEmpty(source.label) : folded.label;
     const name = nonEmpty(source.contentDescription) ?? label;
     const placeholder = folded?.placeholder ?? nonEmpty(source.placeholder);
-    const projected: { node: SemanticNode | undefined } = { node: undefined };
+    const projected: { node: SemanticNode | undefined; platformHidden: boolean } = { node: undefined, platformHidden: false };
     const entry: ProjectedNode = {
       id,
       ref: stripRef(source.ref),
@@ -572,15 +580,25 @@ export function projectSnapshot(
       get node(): SemanticNode {
         return projected.node as SemanticNode;
       },
+      get platformHidden(): boolean {
+        return projected.platformHidden;
+      },
     };
     index.push(entry);
-    const childNodes = kids.filter((child) => child !== folded?.child).map((child) => build(child, entry, onKeyboard));
-    const covered = !onKeyboard && source.focused !== true && underKeyboard(source.rect, options.keyboard) && childNodes.every((child) => child.states?.hidden === true);
+    const childEntries = kids.filter((child) => child !== folded?.child).map((child) => build(child, entry, onKeyboard));
+    const childNodes = childEntries.map((child) => child.node);
+    // A child agent-device marks covered is still above the keyboard, so only
+    // platform-hidden children leave their container under it.
+    const keyboardHidden =
+      !onKeyboard && source.focused !== true && underKeyboard(source.rect, options.keyboard) && childEntries.every((child) => child.platformHidden);
+    projected.platformHidden = source.visibleToUser === false || keyboardHidden;
+    // A node agent-device marks covered reads as hidden, so `toBeVisible`
+    // waits and `scrollUntilVisible` scrolls until it is clear (tester-army/e2e#1324).
     const states = {
       ...(source.enabled === false ? { disabled: true } : {}),
       ...(source.selected === true ? { selected: true } : {}),
       ...(source.focused === true ? { focused: true } : {}),
-      ...(source.visibleToUser === false || covered ? { hidden: true } : {}),
+      ...(projected.platformHidden || source.interactionBlocked === 'covered' ? { hidden: true } : {}),
       ...(secure ? { secure: true } : {}),
       ...(checked === undefined ? {} : { checked }),
       ...(spelled?.states.expanded === undefined ? {} : { expanded: spelled.states.expanded }),
@@ -615,7 +633,7 @@ export function projectSnapshot(
       ...(childNodes.length === 0 ? {} : { children: childNodes }),
     };
     projected.node = node;
-    return node;
+    return entry;
   };
   /** Whether every node from `position` down is a class that only shows (`STATUS_ICON_KINDS`). */
   const displayOnly = (position: number): boolean => {
@@ -625,7 +643,7 @@ export function projectSnapshot(
   };
   const rootNodes = roots
     .filter((position) => !isSystemBar(raw[position] as RawNode, viewport, () => displayOnly(position)))
-    .map((position) => build(position, undefined, false));
+    .map((position) => build(position, undefined, false).node);
   return { roots: rootNodes, index, viewport, refsGeneration: options.refsGeneration };
 }
 

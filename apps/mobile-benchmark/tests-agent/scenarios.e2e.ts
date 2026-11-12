@@ -175,6 +175,12 @@ const SCENARIOS: readonly Scenario[] = [
     success: 'Terms accepted',
   },
   {
+    name: 'Covered Field',
+    goal: 'fill the product name with Widget and the brand with Acme, then tap Next',
+    success: 'Saved Widget by Acme',
+    gap: 'agent-device does not mark the footer drawn over Brand yet (callstack/agent-device#4347), so a tap at Brand presses Next',
+  },
+  {
     name: 'WebView Accessibility',
     goal: 'read the coupon code inside the web view, enter it in the web form, accept the terms, and apply it',
     success: 'Coupon applied',

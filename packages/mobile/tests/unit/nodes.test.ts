@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { keyboardBand, projectSnapshot, screenTitle, viewportOf, type RawNode } from '../../src/nodes.ts';
+import { keyboardDragStart } from '../../src/keyboard.ts';
 import { SETTINGS_NODES } from '../helpers/fake-client.ts';
 
 function project(nodes: readonly RawNode[]) {
@@ -691,5 +692,58 @@ describe('nodes under the soft keyboard', () => {
 
   it('keeps a node beside a keyboard that does not span the screen', () => {
     expect(hiddenNames({ x: 0, y: 566, width: 150, height: 308 })).toEqual([]);
+  });
+});
+
+describe('nodes agent-device marks covered (tester-army/e2e#1324)', () => {
+  const SCREEN = { width: 390, height: 844 };
+
+  it('reads a covered node as hidden, named cover or not, and leaves the rest as they were', () => {
+    let counter = 0;
+    const { index } = projectSnapshot(
+      [
+        { index: 0, depth: 0, type: 'Application', label: 'Form', rect: { x: 0, y: 0, width: 390, height: 844 } },
+        { index: 1, parentIndex: 0, type: 'TextField', identifier: 'named', interactionBlocked: 'covered', coveredBy: { kind: 'button', label: 'Next' }, rect: { x: 16, y: 372, width: 358, height: 48 } },
+        { index: 2, parentIndex: 0, type: 'TextField', identifier: 'unnamed', interactionBlocked: 'covered', rect: { x: 16, y: 430, width: 358, height: 48 } },
+        { index: 3, parentIndex: 0, type: 'TextField', identifier: 'clear', rect: { x: 16, y: 300, width: 358, height: 48 } },
+        // The keyboard's rule keeps a focused field visible; agent-device's mark does not.
+        { index: 4, parentIndex: 0, type: 'TextField', identifier: 'focused', focused: true, interactionBlocked: 'covered', rect: { x: 16, y: 600, width: 358, height: 48 } },
+      ],
+      { mintId: () => `n${++counter}`, viewport: SCREEN },
+    );
+    const byId = (id: string) => index.find((entry) => entry.node.testId === id);
+    expect(byId('named')?.node.states).toEqual({ hidden: true });
+    expect(byId('unnamed')?.node.states).toEqual({ hidden: true });
+    expect(byId('clear')?.node.states).toBeUndefined();
+    expect(byId('focused')?.node.states).toEqual({ focused: true, hidden: true });
+  });
+
+  it('keeps a covered control out of where a keyboard-dismissing drag may start', () => {
+    // A button at the screen's middle, where the drag would otherwise start, marked covered by a cover the tree leaves out.
+    const save = { x: 145, y: 372, width: 100, height: 100 };
+    let counter = 0;
+    const projected = projectSnapshot(
+      [
+        { index: 0, depth: 0, type: 'Application', label: 'Form', rect: { x: 0, y: 0, width: 390, height: 844 } },
+        { index: 1, parentIndex: 0, type: 'Button', label: 'Save', interactionBlocked: 'covered', rect: save },
+      ],
+      { mintId: () => `n${++counter}`, viewport: SCREEN },
+    );
+    const start = keyboardDragStart(projected, SCREEN, 700);
+    expect(start).toBeDefined();
+    const inside = start!.x >= save.x - 8 && start!.x <= save.x + save.width + 8 && start!.y >= save.y - 8 && start!.y <= save.y + save.height + 8;
+    expect(inside).toBe(false);
+  });
+
+  it('starts a keyboard-dismissing drag on a node the platform reports not shown', () => {
+    let counter = 0;
+    const projected = projectSnapshot(
+      [
+        { index: 0, depth: 0, type: 'Application', label: 'Form', rect: { x: 0, y: 0, width: 390, height: 844 } },
+        { index: 1, parentIndex: 0, type: 'Button', label: 'Save', visibleToUser: false, rect: { x: 145, y: 372, width: 100, height: 100 } },
+      ],
+      { mintId: () => `n${++counter}`, viewport: SCREEN },
+    );
+    expect(keyboardDragStart(projected, SCREEN, 700)).toEqual({ x: 195, y: 422 });
   });
 });

@@ -51,6 +51,7 @@ const IOS_TITLES: Record<string, string | undefined> = {
   'broken-accessibility': 'Broken Accessibility',
   'choice-controls': 'Choice Controls',
   'control-inventory': 'Control Inventory',
+  'covered-field': 'Covered Field',
   'debounced-search': 'Debounced Search',
   'error-recovery': 'Error Recovery',
   'flattened-login': 'Flattened Login',

@@ -4,7 +4,7 @@
  * so two workers get about the same share of the suite's wall time.
  */
 
-import { expect, openScenario, test } from './fixtures.ts';
+import { expect, openScenario, rejection, test } from './fixtures.ts';
 
 test('infinite scroll reaches the target item', async ({ app, device, screen }) => {
   await openScenario({ app, device, screen }, 'Infinite Scroll List');
@@ -58,6 +58,36 @@ test('sticky chrome: accept below the fold, then continue', async ({ app, device
   await screen.getByTestId('continue-button').tap();
   await expect(screen.getByTestId('success-message')).toHaveText('Terms accepted');
 });
+
+// The flow from #1324. The scenario pins Brand under the Back/Next footer,
+// keyboard up or down. Once agent-device marks Brand covered, it reads as
+// hidden, a tap at it is refused instead of pressing Next, and
+// scrollUntilVisible scrolls it clear. Both checks run before the keyboard
+// opens: with it up, Android leaves Brand out of the tree. The footer change
+// proposed in callstack/agent-device#4347 is Android only, so the test is too.
+test(
+  'covered field: hidden under the footer until scrollUntilVisible brings it clear',
+  {
+    platforms: ['android'],
+    skip: 'needs two agent-device changes proposed in callstack/agent-device#4347: marking a cover the app draws itself, and starting a screen swipe clear of a footer over the scroll container',
+  },
+  async ({ app, device, screen }) => {
+    await openScenario({ app, device, screen }, 'Covered Field');
+    const brand = screen.getByTestId('brand-input');
+    await expect(brand).toBeHidden();
+    const refused = await rejection(brand.tap());
+    expect(refused?.code).toBe('ACTION_FAILED');
+    expect(refused?.message).toContain('is covered by');
+    await expect(screen.getByTestId('form-error')).toBeHidden();
+    await screen.getByTestId('product-name-input').fill('Widget');
+    await screen.scrollUntilVisible(brand);
+    await brand.fill('Acme');
+    // Return blurs the single-line field, so the keyboard is down for Next.
+    await brand.press('Enter');
+    await screen.getByTestId('next-button').tap();
+    await expect(screen.getByTestId('success-message')).toHaveText('Saved Widget by Acme');
+  },
+);
 
 test('async states: load, pull to refresh, claim through the toast', async ({ app, device, screen }) => {
   await openScenario({ app, device, screen }, 'Async States');

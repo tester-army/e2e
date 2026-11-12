@@ -514,8 +514,8 @@ await screen.getByTestId('feed').scrollUntilVisible(row);
 - On a locator each step swipes that node. So a feed or a table that is its
   own scroll container pages without the pointer hovering it first.
 - It stops at the first match that is not hidden. On a device, a node under
-  the soft keyboard is hidden, so the scroll goes on
-  ([Mobile visibility](/reference/mobile#visibility)).
+  the soft keyboard or one agent-device marks covered is hidden, so the scroll
+  goes on ([Mobile visibility](/reference/mobile#visibility)).
 
 | Throws | When |
 | --- | --- |

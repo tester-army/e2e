@@ -2347,6 +2347,10 @@ A `SemanticQuery` with `visible: true` must match only nodes whose
 never disagree. Apply it wherever the query sits in the expression, under a
 scope, filter, or index too.
 
+A role query skips hidden nodes. An engine may keep one that is hidden only
+because something is drawn over it, as the mobile engine does with a node
+agent-device marks covered, so an action on it can fail naming the cover.
+
 ## Related
 
 [Engines](/engines) compares the ways to build one.

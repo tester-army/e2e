@@ -1,0 +1,321 @@
+{
+  "nodes": [
+    {
+      "index": 0,
+      "type": "Application",
+      "role": "UIApplication",
+      "label": "e2e Benchmark",
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "width": 402,
+        "height": 874
+      },
+      "enabled": true,
+      "depth": 0,
+      "pid": 28510,
+      "hittable": false,
+      "ref": "e1",
+      "kind": "application"
+    },
+    {
+      "index": 1,
+      "parentIndex": 0,
+      "type": "NavigationBar",
+      "role": "UINavigationBar",
+      "identifier": "Covered Field",
+      "rect": {
+        "x": 0,
+        "y": 62,
+        "width": 402,
+        "height": 54
+      },
+      "enabled": true,
+      "depth": 1,
+      "pid": 28510,
+      "hittable": true,
+      "ref": "e2",
+      "kind": "navigation-bar"
+    },
+    {
+      "index": 2,
+      "parentIndex": 1,
+      "type": "Button",
+      "role": "UIAccessibilityBackButtonElement",
+      "subrole": "UIAccessibilityElement",
+      "label": "Benchmark Examples",
+      "identifier": "BackButton",
+      "rect": {
+        "x": 16.00000000000001,
+        "y": 62,
+        "width": 219.66666666666666,
+        "height": 44
+      },
+      "enabled": true,
+      "depth": 2,
+      "pid": 28510,
+      "hittable": true,
+      "ref": "e3",
+      "kind": "button"
+    },
+    {
+      "index": 3,
+      "parentIndex": 1,
+      "type": "StaticText",
+      "role": "UILabel",
+      "label": "Covered Field",
+      "rect": {
+        "x": 247.66666666666669,
+        "y": 73.66666666666666,
+        "width": 108.66666666666669,
+        "height": 20.66666666666667
+      },
+      "enabled": true,
+      "depth": 2,
+      "pid": 28510,
+      "hittable": true,
+      "ref": "e4",
+      "kind": "text"
+    },
+    {
+      "index": 4,
+      "parentIndex": 0,
+      "type": "Other",
+      "role": "RCTScrollViewComponentView",
+      "subrole": "UIView",
+      "identifier": "product-form",
+      "rect": {
+        "x": 0,
+        "y": 116,
+        "width": 402,
+        "height": 758
+      },
+      "enabled": true,
+      "depth": 1,
+      "pid": 28510,
+      "hittable": true,
+      "ref": "e5",
+      "kind": "other"
+    },
+    {
+      "index": 5,
+      "parentIndex": 4,
+      "type": "ScrollView",
+      "role": "RCTEnhancedScrollView",
+      "subrole": "UIScrollView",
+      "rect": {
+        "x": 0,
+        "y": 116,
+        "width": 402,
+        "height": 758
+      },
+      "enabled": true,
+      "depth": 2,
+      "pid": 28510,
+      "hittable": true,
+      "ref": "e6",
+      "kind": "scroll-area"
+    },
+    {
+      "index": 6,
+      "parentIndex": 5,
+      "type": "TextField",
+      "role": "RCTUITextField",
+      "subrole": "UITextField",
+      "value": "Product name",
+      "placeholder": "Product name",
+      "identifier": "product-name-input",
+      "rect": {
+        "x": 17,
+        "y": 707,
+        "width": 368,
+        "height": 46
+      },
+      "enabled": true,
+      "depth": 3,
+      "password": false,
+      "editable": true,
+      "pid": 28510,
+      "hittable": true,
+      "ref": "e7",
+      "kind": "text-field"
+    },
+    {
+      "index": 7,
+      "parentIndex": 5,
+      "type": "TextField",
+      "role": "RCTUITextField",
+      "subrole": "UITextField",
+      "value": "Brand",
+      "placeholder": "Brand",
+      "identifier": "brand-input",
+      "rect": {
+        "x": 17,
+        "y": 779,
+        "width": 368,
+        "height": 46
+      },
+      "enabled": true,
+      "depth": 3,
+      "password": false,
+      "editable": true,
+      "pid": 28510,
+      "hittable": true,
+      "ref": "e8",
+      "kind": "text-field"
+    },
+    {
+      "index": 8,
+      "parentIndex": 5,
+      "type": "TextField",
+      "role": "RCTUITextField",
+      "subrole": "UITextField",
+      "value": "Price",
+      "placeholder": "Price",
+      "identifier": "price-input",
+      "rect": {
+        "x": 17,
+        "y": 851,
+        "width": 368,
+        "height": 23
+      },
+      "enabled": true,
+      "depth": 3,
+      "password": false,
+      "editable": true,
+      "pid": 28510,
+      "hittable": false,
+      "ref": "e9",
+      "kind": "text-field"
+    },
+    {
+      "index": 9,
+      "parentIndex": 5,
+      "type": "Other",
+      "role": "_UIScrollViewScrollIndicator",
+      "label": "Vertical scroll bar, 2 pages",
+      "value": "0%",
+      "rect": {
+        "x": 369,
+        "y": 144,
+        "width": 30,
+        "height": 668
+      },
+      "enabled": true,
+      "depth": 3,
+      "pid": 28510,
+      "hittable": true,
+      "ref": "e10",
+      "kind": "other"
+    },
+    {
+      "index": 10,
+      "parentIndex": 5,
+      "type": "Other",
+      "role": "_UIScrollViewScrollIndicator",
+      "label": "Horizontal scroll bar, 1 page",
+      "value": "0%",
+      "rect": {
+        "x": 62,
+        "y": 807,
+        "width": 278,
+        "height": 30
+      },
+      "enabled": true,
+      "depth": 3,
+      "pid": 28510,
+      "hittable": true,
+      "ref": "e11",
+      "kind": "other"
+    },
+    {
+      "index": 11,
+      "parentIndex": 5,
+      "type": "Other",
+      "role": "_UIScrollViewScrollIndicator",
+      "label": "Vertical scroll bar, 2 pages",
+      "value": "0%",
+      "rect": {
+        "x": 369,
+        "y": 144,
+        "width": 30,
+        "height": 668
+      },
+      "enabled": true,
+      "depth": 3,
+      "pid": 28510,
+      "hittable": true,
+      "ref": "e12",
+      "kind": "other"
+    },
+    {
+      "index": 12,
+      "parentIndex": 5,
+      "type": "Other",
+      "role": "_UIScrollViewScrollIndicator",
+      "label": "Horizontal scroll bar, 1 page",
+      "value": "0%",
+      "rect": {
+        "x": 62,
+        "y": 807,
+        "width": 278,
+        "height": 30
+      },
+      "enabled": true,
+      "depth": 3,
+      "pid": 28510,
+      "hittable": true,
+      "ref": "e13",
+      "kind": "other"
+    },
+    {
+      "index": 13,
+      "parentIndex": 0,
+      "type": "Button",
+      "role": "RCTViewComponentView",
+      "subrole": "UIView",
+      "label": "Back",
+      "identifier": "back-button",
+      "rect": {
+        "x": 0,
+        "y": 762,
+        "width": 201,
+        "height": 112
+      },
+      "enabled": true,
+      "depth": 1,
+      "pid": 28510,
+      "hittable": true,
+      "ref": "e14",
+      "kind": "button"
+    },
+    {
+      "index": 14,
+      "parentIndex": 0,
+      "type": "Button",
+      "role": "RCTViewComponentView",
+      "subrole": "UIView",
+      "label": "Next",
+      "identifier": "next-button",
+      "rect": {
+        "x": 201,
+        "y": 762,
+        "width": 201,
+        "height": 112
+      },
+      "enabled": true,
+      "depth": 1,
+      "pid": 28510,
+      "hittable": true,
+      "ref": "e15",
+      "kind": "button"
+    }
+  ],
+  "viewport": {
+    "width": 402,
+    "height": 874
+  },
+  "truncated": false,
+  "appName": "dev.e2e.benchmark",
+  "appBundleId": "dev.e2e.benchmark"
+}

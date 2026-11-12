@@ -1,0 +1,16 @@
+screen
+  application "e2e Benchmark"
+    navigation #Covered Field
+      button "Benchmark Examples" #BackButton
+      text "Covered Field"
+    other #product-form
+      scroll-view
+        textbox #product-name-input placeholder="Product name"
+        textbox #brand-input placeholder="Brand"
+        textbox #price-input placeholder="Price"
+        other "Vertical scroll bar, 2 pages" value="0%"
+        other "Horizontal scroll bar, 1 page" value="0%"
+        other "Vertical scroll bar, 2 pages" value="0%"
+        other "Horizontal scroll bar, 1 page" value="0%"
+    button "Back" #back-button
+    button "Next" #next-button

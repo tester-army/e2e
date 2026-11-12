@@ -75,8 +75,10 @@ export function keyboardDragStart(projected: ProjectedSnapshot, viewport: Viewpo
   const scrollViews: Rect[] = [];
   const merged = viewport.width * viewport.height * MERGED_SHARE;
   for (const entry of projected.index) {
-    const { rect, role, children, states } = entry.node;
-    if (rect === undefined || states?.hidden === true || SCREEN_KINDS.has(entry.kind)) continue;
+    const { rect, role, children } = entry.node;
+    // A covered node stays an obstacle: a drag from it presses the cover, or the
+    // node where the cover leaves it showing.
+    if (rect === undefined || entry.platformHidden || SCREEN_KINDS.has(entry.kind)) continue;
     if (SCROLL_KINDS.has(entry.kind)) scrollViews.push(rect);
     else if ((role !== undefined && CONTROL_ROLES.has(role)) || (children === undefined && !STATIC_ROLES.has(role ?? '') && rect.width * rect.height <= merged)) {
       controls.push(grow(rect, CONTROL_CLEARANCE));

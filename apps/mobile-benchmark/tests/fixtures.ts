@@ -93,3 +93,11 @@ export async function openScenario(
     await expect.poll(opened, { timeout: 10_000 }).toBe(true);
   }
 }
+
+/** What a rejected promise carried, for asserting on its error code. */
+export async function rejection(promise: Promise<unknown>): Promise<{ code?: string; message?: string } | undefined> {
+  return promise.then(
+    () => undefined,
+    (error: unknown) => error as { code?: string; message?: string },
+  );
+}

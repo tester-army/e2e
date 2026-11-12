@@ -3650,3 +3650,67 @@ describe('deterministic actions', () => {
   });
 });
 
+describe('nodes agent-device refuses as covered (tester-army/e2e#1324)', () => {
+  const NEXT = { kind: 'button', label: 'Next', rect: { x: 195, y: 360, width: 195, height: 112 } };
+  /** A form whose Back/Next footer agent-device found drawn over the Brand field's centre. */
+  const coveredForm = () => ({
+    nodes: [
+      { index: 0, ref: '@e1', depth: 0, type: 'Application', label: 'Covered', rect: { x: 0, y: 0, width: 390, height: 844 } },
+      { index: 1, ref: '@e2', parentIndex: 0, type: 'TextField', identifier: 'product-name', rect: { x: 16, y: 300, width: 358, height: 48 } },
+      {
+        index: 2, ref: '@e3', parentIndex: 0, type: 'TextField', identifier: 'brand', rect: { x: 16, y: 372, width: 358, height: 48 },
+        hittable: false, interactionBlocked: 'covered', coveredBy: NEXT,
+      },
+      { index: 3, ref: '@e4', parentIndex: 0, type: 'Button', label: 'Back', rect: { x: 0, y: 360, width: 195, height: 112 } },
+      { index: 4, ref: '@e5', parentIndex: 0, type: 'Button', label: 'Next', rect: NEXT.rect },
+    ],
+    appName: 'Covered',
+    appBundleId: 'dev.e2erepro.coveredinput',
+    truncated: false,
+  });
+
+  /** agent-device's hint for a target the Next button covers, as `coveredInteractionDetails` words it. */
+  const NEXT_HINT =
+    'Covered by the button "Next" at (195, 360 195x112). Dismiss or close that element, scroll the target clear of it, or inspect with snapshot/screenshot before retrying.';
+
+  /** agent-device's refusal of a covered target, in the shape its interaction runtime throws (`coveredInteractionDetails`, `discloseDispatch`). */
+  function coveredRefusal(ref: string): AppError {
+    return new AppError('COMMAND_FAILED', `Ref ${ref} is covered by another visible element and cannot be tapped safely`, {
+      reason: 'target_covered',
+      hint: NEXT_HINT,
+      ref,
+      interactionBlocked: 'covered',
+      coveredBy: NEXT,
+      dispatched: 'no',
+    });
+  }
+
+
+  it("finds a covered button by role, and its tap fails not actionable with agent-device's refusal as the cause", async () => {
+    const h = harness();
+    await openAttempt(h);
+    h.fake.respond('capture.snapshot', () => ({
+      ...coveredForm(),
+      nodes: [
+        ...coveredForm().nodes,
+        {
+          index: 5, ref: '@e6', parentIndex: 0, type: 'Button', label: 'Save', rect: { x: 16, y: 380, width: 100, height: 40 },
+          hittable: false, interactionBlocked: 'covered', coveredBy: NEXT,
+        },
+      ],
+    }));
+    h.fake.respond('interactions.press', () => {
+      throw coveredRefusal('@e6');
+    });
+    const [save] = await h.engine.locate!(
+      { kind: 'query', query: { kind: 'role', value: { kind: 'string', value: 'button', exact: true }, name: { kind: 'string', value: 'Save', exact: true } } },
+      operation(),
+    );
+    expect(save?.states?.hidden).toBe(true);
+    await expect(h.engine.perform!(save!.ref, { kind: 'tap' }, operation())).rejects.toMatchObject({
+      code: 'NOT_ACTIONABLE',
+      message: `perform tap failed: Ref @e6 is covered by another visible element and cannot be tapped safely Hint: ${NEXT_HINT}`,
+      cause: { code: 'COMMAND_FAILED', details: { reason: 'target_covered', ref: '@e6' } },
+    });
+  });
+});
