@@ -54,7 +54,8 @@ describe('ScreenPresenter', () => {
   it('says a tab the app opened stays in the background, then shows another tab whole even when its ids match', () => {
     const presenter = new ScreenPresenter();
     presenter.initial(screen('b1', HOME, { path: '/' }));
-    const opened = presenter.update(screen('b2', HOME, { path: '/', tabs: { count: 2, active: 1 } }), { lead: 'Tapped #n3.' });
+    const opened = presenter.update(screen('b2', HOME, { path: '/', tabs: { count: 2, active: 1 } }), { lead: 'Tapped #n3.', expectChange: true });
+    // The tab is the tap's effect: no control is blamed for the unchanged screen.
     expect(opened).toContain('Tapped #n3.\n\nThe app opened a new tab (tab 2 of 2). The screen still shows tab 1; use switch_tab to see it. Screen unchanged since revision b1');
     const popup = ['#n1 document "Verification"', ' #n2 text "Code TAB-88421"'];
     const switched = presenter.update(screen('b3', popup, { path: '/verify', tabs: { count: 2, active: 2 } }), { lead: 'Switched to tab 2.' });

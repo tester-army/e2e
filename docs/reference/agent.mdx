@@ -440,7 +440,9 @@ tab is open, every screen header names the tab (`tab 1 of 2`). `switch_tab`
 shows another tab and sends its screen whole. `close_tab` closes one; when
 it was the tab on screen, the screen returns to the tab that opened it, or
 to the tab shown most recently when that one is closed too. Both replay
-from the cache by the same tab number.
+from the cache by the same tab number. A tab takes its number when its
+first page loads, so when one action opens two tabs whose pages load in
+another order on a later run, the two numbers swap.
 
 ## Pixel tools: screenshot and the point verbs
 

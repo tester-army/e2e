@@ -913,7 +913,8 @@ await screen.getByRole('textbox', 'Verification code').fill(code);
   page loaded only now.
 - `tabs()` returns the open tabs in the order they opened, the same
   `BrowserTab` for a tab the whole attempt. A tab joins once its first page
-  loads. A tab that never gets a page is never listed: a `target="_blank"`
+  loads, so two tabs one action opens are listed in the order their pages
+  load. A tab that never gets a page is never listed: a `target="_blank"`
   link to a download, to a `mailto:` address, or to a response with no
   content.
 - `tab.activate()` makes a tab active without closing the others.

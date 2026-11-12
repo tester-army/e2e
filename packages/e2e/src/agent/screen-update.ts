@@ -155,12 +155,14 @@ export class ScreenPresenter {
     const tabs = tabNote(previous.tabs, next.tabs);
     // Another tab is another document: its ids say nothing about the tab the model held.
     if (tabs?.moved === true) return `${lead}${tabs.note} ${renderFull(observation)}${closed}`;
+    // A tab opened is the action's effect, so an unchanged screen blames no control.
+    const expectChange = options.expectChange === true && tabs === undefined;
     if (tabs !== undefined) lead = `${lead}${tabs.note} `;
     const diff = diffScreens(previous, next);
     const changes = diff.length;
     // A truncated screen is never called unchanged: what it left out is unknown.
     if (changes === 0 && !observation.truncated) {
-      return `${lead}${renderUnchanged(previous.revision, observation, options.expectChange === true, pixels)}${closed}`;
+      return `${lead}${renderUnchanged(previous.revision, observation, expectChange, pixels)}${closed}`;
     }
     if (changes >= MAX_DIFF_LINES || changes > MAX_DIFF_SHARE * next.order.length) {
       return `${lead}The screen changed substantially since revision ${previous.revision}. ${renderFull(observation)}${closed}`;

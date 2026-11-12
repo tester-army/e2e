@@ -525,6 +525,10 @@ export class AttemptSession {
       return;
     }
     const tab = this.adopt(popup, opener, undefined);
+    if (this.state.binding.identity !== undefined) {
+      // A reconnect finds each tab by its target, a tab in the background too.
+      targetIdentity(popup).then((target) => { tab.target ??= target; }, () => undefined);
+    }
     if (this.popupWaiters.size === 0) return;
     const shown = this.inTurn(() => this.show(tab));
     for (const waiter of this.popupWaiters) waiter(tab, shown);
