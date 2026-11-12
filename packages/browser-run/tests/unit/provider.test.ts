@@ -33,7 +33,7 @@ describe('browserRun', () => {
     const provider = browserRun({ keepAlive: 100_000 });
     const request = context();
     const lease = await provider.acquire(request);
-    expect(lease.cdpEndpoint).toBe(`wss://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/browser-rendering/devtools/browser/${id}`);
+    expect(lease.cdpEndpoint).toBe(`wss://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/browser-run/devtools/browser/${id}`);
     expect(lease).not.toHaveProperty('cdpHeaders');
     expect(JSON.stringify(lease)).not.toContain('synthetic-secret');
     expect(await provider.cdpHeaders!(lease, request)).toEqual({ Authorization: 'Bearer synthetic-secret' });
@@ -106,6 +106,19 @@ describe('browserRun', () => {
     const lease = { id, cdpEndpoint: 'wss://unused' };
     await provider.release(lease, context());
     await expect(provider.release(lease, context())).rejects.toThrow(/DELETE failed.*503/);
+  });
+
+  it('forgets a released session even when the successful DELETE body errors', async () => {
+    const body = new ReadableStream({ start(controller) { controller.error(new Error('stream failed')); } });
+    const fetch = vi.fn().mockResolvedValueOnce(Response.json({ sessionId: id }))
+      .mockResolvedValueOnce(new Response(body, { status: 200 }));
+    vi.stubGlobal('fetch', fetch);
+    const provider = browserRun();
+    const request = context();
+    const lease = await provider.acquire(request);
+    await expect(provider.release(lease, request)).resolves.toBeUndefined();
+    expect(await provider.sweep!(request)).toEqual([]);
+    expect(fetch).toHaveBeenCalledTimes(2);
   });
 
   it('sweeps receipts written by another provider instance, without touching another run or target', async () => {

@@ -273,7 +273,6 @@ export interface BrowserLease {
   /** Endpoint to reattach to the same browser after a transport drop; per-attempt leases only. */
   readonly reconnectEndpoint?: string;
 }
-
 ```
 
 `acquire` gets the run id, the target, the worker slot and slot count, the
@@ -289,7 +288,6 @@ such as a recording, on `lease.id`.
 For an authenticated CDP connection, implement `cdpHeaders(lease, request)`
 and read credentials from `request.env` in the worker. Headers never travel
 in lease JSON and do not become page request headers.
-
 
 Against a typical session API, a provider sends three requests: create a
 session, poll it until it has a DevTools endpoint, and stop it.

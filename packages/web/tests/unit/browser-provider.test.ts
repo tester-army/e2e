@@ -181,6 +181,12 @@ describe('web({ browser: provider })', () => {
     expect(() => web({ browser: { ...provider().impl, downloads: { dir: 'C:\\Users\\kernel\\Downloads', read } } })).not.toThrow();
   });
 
+  it.each([null, 'Authorization', {}])('rejects non-function cdpHeaders: %j', (cdpHeaders) => {
+    expect(() => web({ browser: { ...provider().impl, cdpHeaders } as unknown as BrowserProvider })).toThrow(
+      /provider "toy-cloud" has a cdpHeaders that is not a function/,
+    );
+  });
+
   it('rejects a provider together with connect: two browser sources', () => {
     expect(() => web({ browser: provider().impl, connect: { cdpEndpoint: () => 'ws://x' } })).toThrow(/two browser sources/);
   });
@@ -927,7 +933,6 @@ describe('recording', () => {
     }
   });
 });
-
 
 it.each(['worker', 'attempt'] as const)('resolves CDP credentials from the worker environment in %s scope', async (scope) => {
   const toy = provider({ scope });

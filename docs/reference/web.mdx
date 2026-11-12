@@ -91,8 +91,6 @@ web({ browser: 'firefox' }); // default: 'chromium'
   server such as [Lightpanda](/integrations/lightpanda).
 - A provider with `scope: 'attempt'` rides a persistent context, with the
   limits under [Recovering a CDP transport](#recovering-a-cdp-transport).
-
-Either resolver can return `{ endpoint, headers }` as a `CdpTarget` to authenticate the CDP handshake. These headers are separate from `web({ headers })`, which sends headers to the app.
 - [Hosted browsers](/browser#hosted-browsers) has the `BrowserProvider`
   contract and an example provider.
 

@@ -26,7 +26,7 @@ function credentials(env: BrowserRequest['env']) {
 
   if (!token) throw new Error('CLOUDFLARE_API_TOKEN is not set');
 
-  return { account, base: `${API}/accounts/${account}/browser-rendering/devtools/browser`, headers: { Authorization: `Bearer ${token}` } };
+  return { account, base: `${API}/accounts/${account}/browser-run/devtools/browser`, headers: { Authorization: `Bearer ${token}` } };
 }
 
 interface SessionResult {
@@ -48,7 +48,7 @@ function journal(account: string, context: BrowserReleaseContext): LeaseJournal 
 async function release(lease: BrowserLease, context: BrowserReleaseContext): Promise<void> {
   const { account, base, headers } = credentials(context.env);
   const response = await request(`${base}/${encodeURIComponent(lease.id)}`, 'DELETE', headers, context.signal);
-  await response.body?.cancel();
+  await response.body?.cancel().catch(() => undefined);
   await journal(account, context).forget(lease.id);
 }
 
