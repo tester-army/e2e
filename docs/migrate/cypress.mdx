@@ -9,14 +9,14 @@ import { SetupPrompt } from '../snippets/setup-prompt-card.jsx';
 
 export const migrationPrompt = `Migrate this project's Cypress tests to e2e, one spec at a time. Docs: \`https://e2e.com/docs/migrate/cypress.md\`
 
-1. Read the migration guide above. It maps Cypress config, commands, and assertions to e2e.
+1. Read the migration guide above. It maps Cypress config, commands, and assertions to e2e, and lists what e2e doesn't have yet.
 2. If the project has no e2e config (\`e2e.config.ts\`, \`.mts\`, \`.js\`, or \`.mjs\`), run \`npx e2e init --yes\` (or the pnpm or bun equivalent). It writes a config and an example test, and installs nothing yet.
 3. Read the e2e skill (\`npx e2e guide\` prints it, \`npx e2e guide <topic>\` prints a topic) and follow it for every step below.
 4. If you ran init, ask me which model to use for agent steps: a ChatGPT, GitHub Copilot, OpenCode Console, or SuperGrok subscription, an API key, or a local model. Configure it with its provider package. If it needs a sign-in, give me the \`npx e2e login\` command and wait until I confirm.
 5. Port \`cypress.config.*\` into the e2e config: \`baseUrl\` and the dev server command become the target's \`app\`, and if the specs select by \`data-cy\`, set \`web({ testIdAttribute: 'data-cy' })\` so \`screen.getByTestId\` reads it. Keep Cypress installed while both suites run.
 6. Install dependencies.
 7. List the Cypress end-to-end specs and ask me which one to move first. Suggest one that breaks often or waits with \`cy.wait(ms)\`. Component tests have no e2e equivalent; leave them in Cypress.
-8. Rewrite that spec as a \`.e2e.ts\` file under \`tests/\` (e2e runs \`tests/**/*.e2e.ts\` by default) with the guide's tables, one awaited call per line. Where \`cy.contains\` matched a fragment, pass \`{ exact: false }\`. Replace each \`cy.wait(ms)\` with an assertion on the state the test waits for.
+8. Rewrite that spec as a \`.e2e.ts\` file under \`tests/\` (e2e runs \`tests/**/*.e2e.ts\` by default) with the guide's tables, one awaited call per line. Before you port a test, check "What e2e doesn't have yet": use the "Use today" workaround, or leave the test in Cypress and say why. Where \`cy.contains\` matched a fragment, pass \`{ exact: false }\`. Replace each \`cy.wait(ms)\` with an assertion on the state the test waits for.
 9. Keep navigation and the final assertions deterministic, with \`app.open()\` and locator assertions. Where a run of scripted interactions breaks often, propose an \`agent.act\` goal for it instead.
 10. Run the new file with \`npx e2e run <file>\` and fix it until it passes. Keep the Cypress spec until I confirm it can go.
 11. Summarize which tests moved, which stayed in Cypress, and why.`;
@@ -36,19 +36,14 @@ For a migration that spans several sessions, the [`migrate-to-e2e` skill](/codin
 
 <Note>Install e2e and configure a model with the [quickstart](/quickstart). The example below uses an agent call.</Note>
 
-Keep your `data-cy` attributes. The config below reads them as test ids.
-
 | Cypress | e2e |
 | --- | --- |
-| `baseUrl` | `app: { url }` on the target |
-| `start-server-and-test` | `app: { url, command }`, see [Starting your app](/web#starting-your-app) |
-| `viewportWidth`, `viewportHeight` | `web({ viewport })` |
+| `baseUrl`, `start-server-and-test` | `app: { url, command }` on the target, see [Starting your app](/web#starting-your-app) |
 | `data-cy` selectors | `web({ testIdAttribute: 'data-cy' })`, then `screen.getByTestId` |
-| `retries` | `retries` |
-| `env`, `Cypress.env()` | `process.env` |
-| `cypress.env.json` secrets | `credentials` and `secrets`, see [Authentication](/authentication) |
-| `cypress run --browser firefox` | A second target with `web({ browser: 'firefox' })` |
-| Component testing | No equivalent |
+| `viewportWidth`, `viewportHeight`, `cy.visit(url, { auth, headers })` | `web({ viewport, basicAuth, headers })` |
+| `retries: { runMode: 2, openMode: 0 }` | `retries: process.env.CI ? 2 : 0`, a number only |
+| `env`, `Cypress.env()`, `cypress.env.json` | `process.env`; sign-in values go in `credentials` and `secrets`, see [Authentication](/authentication) |
+| `cypress run --browser firefox` | A target with `web({ browser: 'firefox' })`, run with `--target <name>` |
 
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
@@ -63,8 +58,6 @@ export default {
 ```
 
 ## Rewrite one spec
-
-Start with a spec that often breaks.
 
 ```js title="Cypress"
 describe('todos', () => {
@@ -98,45 +91,82 @@ describe('todos', () => {
 
 | Cypress | e2e |
 | --- | --- |
-| `cy.visit(path)` | `app.open(path)` |
-| `cy.get('[data-cy=x]')` | `screen.getByTestId('x')` |
-| `cy.get('css')` | `browser.locator('css')`, not portable; prefer a role or label |
-| `cy.contains('text')` | `screen.getByText('text', { exact: false })` |
-| `cy.contains('li', 'text')` | `screen.getByRole('listitem').filter({ hasText: 'text' })` |
-| `.find()`, `.within()` | Chain a query off the locator: `row.getByRole(...)` |
-| `.first()`, `.eq(n)` | `.first()`, `.nth(n)` |
-| `.click()`, `.dblclick()`, `.rightclick()` | `.tap()`, `.doubleTap()` (or `.dblclick()`), `.secondaryTap()` |
-| `.type('text')` | `.fill('text')` replaces the content |
-| `.type('{enter}')` | `.press('Enter')` |
-| `.clear()`, `.check()`, `.select()` | `.clear()`, `.check()`, `.selectOption()` |
-| `.selectFile()` | `.setInputFiles()` |
-| `.should('be.visible')` | `await expect(locator).toBeVisible()` |
-| `.should('have.text', t)`, `.should('contain', t)` | `.toHaveText(t)`, `.toContainText(t)` |
-| `.should('have.length', n)` | `.toHaveCount(n)` |
-| `.should('have.value', v)` | `.toHaveValue(v)` |
-| `.should('not.exist')` | `.toHaveCount(0)`; `toBeHidden()` also accepts a node that is still in the DOM |
-| `cy.url().should('include', p)` | `expect(browser).toHaveURL(/p/)` |
-| `cy.title()` | `expect(browser).toHaveTitle()` |
-| `cy.intercept(url, body)` | `browser.route(url, route => route.fulfill({ json: body }))` |
-| `cy.wait('@alias')` | `browser.waitForResponse(url)` |
-| `cy.on('window:confirm')` | `browser.onDialog('accept')` |
-| `cy.window()`, `cy.document()` | `browser.evaluate(() => ...)` |
-| `cy.setCookie` | `browser.setCookies` |
-| `cy.viewport` | `browser.setViewport` |
+| `cy.visit(path)`, `cy.reload()`, `cy.viewport(w, h)`, `cy.setCookie()` | `app.open(path)`, `browser.reload()`, `browser.setViewport({ width, height })`, `browser.setCookies()` |
+| `cy.get('[data-cy=x]')`, `.find('[data-cy=x]')` | `screen.getByTestId('x')`, `row.getByTestId('x')` |
+| `cy.get('css')` | `browser.locator('css')`, web only; prefer a role or label |
+| `cy.contains('text')`, `cy.contains('li', 'text')` | `screen.getByText('text', { exact: false })`, `screen.getByRole('listitem').filter({ hasText: 'text' })` |
+| `.click()`, `.dblclick()`, `.clear()`, `.check()`, `.uncheck()`, `.focus()`, `.first()`, `.last()`, `.scrollIntoView()` | The same |
+| `.rightclick()`, `.eq(n)`, `.selectFile(path)` | `.secondaryTap()`, `.nth(n)`, `.setInputFiles(path)` |
+| `.type('text')`, `.type('{enter}')`, `.clear().type('text')` | `.pressSequentially('text')` appends with key events, `.press('Enter')`, `.fill('text')` |
+| `.select('Pro')` | `.selectOption('Pro')` matches the label; a value needs `{ value: 'pro' }`, an index `{ index: 1 }` |
+| `.should('be.visible')`, `be.checked`, `be.disabled`, `be.focused`, `exist` | `await expect(locator).toBeVisible()`, `toBeChecked()`, `toBeDisabled()`, `toBeFocused()`, `toBeAttached()` |
+| `have.text`, `contain`, `have.value`, `have.attr`, `have.length`, `not.exist` | `toHaveText`, `toContainText`, `toHaveValue`, `toHaveAttribute`, `toHaveCount(n)`, `toHaveCount(0)` |
+| `cy.url().should('include', p)`, `cy.title()` | `expect(browser).toHaveURL(/p/)`, `expect(browser).toHaveTitle(t)` |
+| `cy.intercept('/api/users', body)` | `browser.route('**/api/users', route => route.fulfill({ json: body }))`, a glob on the full URL |
+| `cy.on('window:confirm')`, `cy.on('window:alert')` | `await browser.onDialog('accept')` before the action, `'dismiss'` to cancel |
 | `cy.session` | `test.setup` and `{ session }` |
-| `cy.task`, `cy.exec`, `cy.request` | Node code: `fetch`, `fs`, your database client |
-| `cy.fixture` | `import data from './fixture.json'` |
+| `cy.task`, `cy.exec`, `cy.request`, `cy.fixture` | Node code: `fetch`, `fs`, your database client, `import data from './fixture.json'` |
 | `Cypress.Commands.add` | A function, or a fixture from `test.extend` |
-| `cy.wait(ms)` | Use a locator assertion for the condition you need |
-| `cypress open` | `npx e2e run --headed`, plus `--debug` for the step table |
 
-Two things differ from Cypress:
+## What e2e doesn't have yet
 
-- There is no chain. Await each call on its own line. It returns a value:
-  `const text = await locator.textContent()`.
-- Actions and single-node reads and assertions need one match. Several fail
-  with `LOCATOR_AMBIGUOUS`. Narrow with `.filter()`, `.first()`, or `.nth()`.
-  See [screen](/reference/screen).
+Planned gaps are on the roadmap, and Not yet gaps have no date. Not planned gaps are left out on purpose.
+
+### Planned
+
+| Cypress | Use today |
+| --- | --- |
+| `.find('css')`, `.filter('css')`, `.not('css')` | Chain a `getBy*` query, or write one selector: `browser.locator('li.active >> .title')` |
+| `.invoke()`, `.its()`, `.then($el => ...)`, `.should($el => ...)` | `getAttribute()`, `textContent()`, `inputValue()`, else `browser.evaluate`; wrap in `expect.poll` to retry |
+| `have.class`, `have.css`, `have.prop`, `be.empty` | `expect(browser).toHaveClass(locator, /regexp/)`, `toHaveText('')`; else `expect.poll(() => browser.evaluate(...))` |
+| `.trigger()`, `cy.scrollTo()`, `.blur()` | `hover()`, `dragTo()`, `scrollIntoView()`, `press('Tab')`; else `browser.evaluate` |
+| `cy.intercept('POST', url)` and other method or header matchers | Check `route.request.method` in the handler, else call `route.fallback()` |
+| `cy.wait('@alias')`, `.its('request.body')`, `@alias.all` | Start `browser.waitForResponse(pattern)` before the action; read the request in a `browser.route` handler |
+| `Cypress.on('uncaught:exception')` | An app error doesn't fail a test. To fail on one, collect `window.onerror` in `browser.addInitScript` |
+| `--browser chrome`, `edge`, `electron`, `before:browser:launch` | `web({ browser: 'chromium' })`, or attach to your own Chrome with `web({ connect: { cdpEndpoint } })` |
+| `cypress open`, time-travel snapshots | `npx e2e run --headed --watch`, or `--step`; the [trace page](/debugging#traces) shows each step after the run |
+| `before()` and `after()` that drive the app, `describe.only` | UI setup in `beforeEach` or `test.setup`; `test.only` on each test |
+| `cy.clock()`, `cy.tick()` | A fake-timers script loaded with `browser.addInitScript({ path })`, driven by `browser.evaluate` |
+
+### Not yet
+
+| Cypress | Use today |
+| --- | --- |
+| `.parent()`, `.closest()`, `.siblings()`, `.next()` | Locate the ancestor and narrow it: `card.filter({ has: child })` |
+| `{ force: true }` | Act on the visible label, or `tap({ position })`, which skips the actionability checks |
+| `cy.request()` with the browser's cookies | Send `browser.cookies()` with `fetch`, see [Signed-in requests](/api-testing#signed-in-requests) |
+| `supportFile`, `blockHosts` | A shared `test` from `test.extend` that every file imports; abort hosts there with `browser.route` |
+| `cypress run --record --parallel`, Cypress Cloud | `--shard` on each CI job, the `junit` and `github()` reporters, `.e2e` uploaded as an artifact |
+| `cy.visit()` failing on a 4xx or 5xx page | `app.open` ignores the status. Assert on the page content |
+| `cy.stub()`, `cy.spy()`, `cy.clearLocalStorage()` | Wrap the function in `browser.addInitScript`; read calls or clear storage with `browser.evaluate` |
+
+### Not planned
+
+| Cypress | Use instead |
+| --- | --- |
+| `cy.wait(ms)` | A locator assertion on the state the test waits for |
+| `it`, `context`, `specify`, `xit` | `test`, `describe`, `test.skip` |
+| chai `expect(x).to...`, `assert.*` | `toEqual`, `toContain`, `toMatchObject` on `expect(value)`, or import `chai` yourself |
+| `cy.window()`, `cy.document()`, `onBeforeLoad(win)` | `browser.evaluate` and `browser.addInitScript` with JSON values. Tests run in Node, not in the page |
+| Mocha reporters, `reporterOptions` | `list`, `json`, `junit`, `markdown`, `htmlReporter()`, `github()`, or your own [reporter](/reference/reporters) |
+| Cucumber `.feature` files, `file:preprocessor` | Rewrite features as tests. TypeScript needs no preprocessor |
+| Component testing | Keep it in Cypress. e2e tests a running app |
+
+## What differs on purpose
+
+- There is no command chain. Await each call and keep the locator or value in a variable, where Cypress uses `.as()`, `.within()`, or `.then()`.
+- [Locators](/reference/screen) are strict. An action or single-node assertion on several matches fails with `LOCATOR_AMBIGUOUS`. Narrow with `.filter()`, `.first()`, or `.nth()`, or loop over `await locator.all()`.
+- A string in a query matches the whole text. `{ exact: false }` matches a fragment in any case. `cy.contains` is case-sensitive and takes the first match, so pass a RegExp or add `.first()`.
+- Text matchers compare the rendered text. CSS `text-transform` applies and hidden children are left out, see [locator reads](/reference/screen#locator-reads).
+- Dialogs are not accepted for you. An `alert` or `confirm` with no handler fails the next step, where Cypress accepts it.
+
+## Defaults that differ
+
+| Setting | Cypress | e2e |
+| --- | --- | --- |
+| Viewport | 1000 by 660 | 1280 by 720 |
+| Action and assertion timeouts | `defaultCommandTimeout`, 4 s | `actionTimeout` 30 s, `assertionTimeout` 5 s |
+| Retries in CI | `0` | `1` |
 
 ## Next
 

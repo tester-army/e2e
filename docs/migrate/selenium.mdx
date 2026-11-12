@@ -9,7 +9,7 @@ import { SetupPrompt } from '../snippets/setup-prompt-card.jsx';
 
 export const migrationPrompt = `Migrate this project's Selenium tests to e2e, one flow at a time. Docs: \`https://e2e.com/docs/migrate/selenium.md\`
 
-1. Read the migration guide above. It maps Selenium config and WebDriver calls to e2e.
+1. Read the migration guide above. It maps Selenium config and WebDriver calls to e2e, and lists what e2e doesn't have yet.
 2. e2e tests are TypeScript. If the Selenium suite is Java, Python, or another language, ask me where the new test project should live, for example an \`e2e/\` folder with its own \`package.json\`.
 3. If that project has no e2e config (\`e2e.config.ts\`, \`.mts\`, \`.js\`, or \`.mjs\`), run \`npx e2e init --yes\` (or the pnpm or bun equivalent) there. It writes a config and an example test, and installs nothing yet.
 4. Read the e2e skill (\`npx e2e guide\` prints it, \`npx e2e guide <topic>\` prints a topic) and follow it for every step below.
@@ -17,7 +17,7 @@ export const migrationPrompt = `Migrate this project's Selenium tests to e2e, on
 6. Set the target's \`app\` to the URL every \`driver.get\` used, and the command that starts the app if the suite starts it. Move passwords and tokens into \`credentials\` or \`secrets\`.
 7. Install dependencies.
 8. List the page objects and the flows that use them, and ask me which to move first. Suggest one page object and its flows.
-9. Rewrite those flows as \`.e2e.ts\` files under \`tests/\` (e2e runs \`tests/**/*.e2e.ts\` by default) with the guide's tables. Prefer role, label, and test id queries over CSS and XPath. Replace every wait and \`Thread.sleep\` with a locator assertion. Narrow queries that match several nodes. Turn the page object's setup code into a fixture.
+9. Rewrite those flows as \`.e2e.ts\` files under \`tests/\` (e2e runs \`tests/**/*.e2e.ts\` by default) with the guide's tables. Check "What e2e doesn't have yet" before you port a flow. If it lists a call the flow needs, use the "Use today" workaround, or leave the flow in Selenium and say why. Prefer role, label, and test id queries over CSS and XPath. Replace every wait and \`Thread.sleep\` with a locator assertion. Narrow queries that match several nodes. Turn the page object's setup code into a fixture.
 10. Keep navigation and the final assertions deterministic, with \`app.open()\` and locator assertions. Where a run of scripted interactions breaks often, propose an \`agent.act\` goal for it instead.
 11. Run the new files with \`npx e2e run <file>\` and fix them until they pass. Keep the Selenium tests until I confirm they can go.
 12. Summarize which flows moved, which stayed in Selenium, and why.`;
@@ -42,15 +42,11 @@ For a migration that spans several sessions, the [`migrate-to-e2e` skill](/codin
 | --- | --- |
 | The URL in every `driver.get` | `app: { url }` on the target, then relative paths |
 | Starting the app in a script | `app: { url, command }`, see [Starting your app](/web#starting-your-app) |
-| One driver per browser | One target per browser, `web({ browser: 'firefox' })` |
-| Selenium Grid | `workers` for parallelism; `web({ connect })` attaches to a remote Chromium over CDP, and a [browser provider](/browser#hosted-browsers) such as [Kernel](/integrations/kernel) leases hosted browsers |
-| `manage().window().setSize` | `web({ viewport })` |
-| Implicit waits | `actionTimeout` and `assertionTimeout` set action and assertion deadlines |
-| A page object for sign-in | `test.setup` and `{ session }`, see [Authentication](/authentication) |
+| One driver per browser | One target per `web({ browser })` build, `chromium`, `firefox`, or `webkit`, not Chrome, Edge, or Safari |
+| Selenium Grid | `workers` for parallel runs, a [browser provider](/browser#hosted-browsers) for hosted Chromium |
+| Passwords from `System.getenv` | `credentials` or `secrets` in the config, see [Authentication](/authentication) |
 
 ## Rewrite one flow
-
-Start with one page object and the flows that use it.
 
 ```java title="Selenium"
 driver.get("http://localhost:3000/login");
@@ -78,44 +74,73 @@ test('signs in', async ({ app, screen, browser }) => {
 });
 ```
 
-Locator actions wait for their targets, so no explicit wait is left. The
-password comes from [configured credentials](/authentication).
-
 ## Map each WebDriver call
 
 | Selenium | e2e |
 | --- | --- |
-| `driver.get(url)` | `app.open(path)` |
-| `driver.navigate().back()`, `.refresh()` | `app.back()`, `browser.reload()` |
-| `By.id('x')` | `browser.locator('#x')`; or `web({ testIdAttribute: 'id' })` and `screen.getByTestId('x')` |
-| `By.name('x')` | `browser.locator('[name="x"]')`, not portable; prefer a role or label |
+| `driver.get(url)`, `navigate().back()`, `.forward()`, `.refresh()` | `app.open(path)`, `app.back()`, `browser.forward()`, `browser.reload()` |
+| `getCurrentUrl()`, `getTitle()`, `manage().addCookie`, `getScreenshotAs` | `browser.url()`, `browser.title()`, `browser.setCookies`, `app.screenshot('label')` |
+| `By.id('x')` | `browser.locator('#x')`, or `'[id="x"]'` when the id has `:`, `.`, `$`, or a leading digit |
+| `By.name`, `By.cssSelector`, `By.xpath` | `browser.locator('[name="x"]')`, `browser.locator('css or xpath')` |
 | `By.linkText`, `By.partialLinkText` | `screen.getByRole('link', { name })`, `name: /part/` |
-| `By.cssSelector`, `By.xpath` | `browser.locator('css or xpath')`, not portable |
-| `findElements(...).size()` | `await locator.count()` |
-| `findElements(...).get(n)` | `locator.nth(n)` |
-| `.click()` | `.tap()` |
-| `.sendKeys('text')` | `.fill('text')` replaces the content |
-| `.sendKeys(Keys.ENTER)` | `.press('Enter')` |
-| `.clear()` | `.clear()` |
-| `new Select(el).selectByVisibleText` | `.selectOption({ label })` |
-| `.getText()`, `.getAttribute()`, `.isDisplayed()` | `.textContent()`, `.getAttribute()` wait for the node then read one time, `.isVisible()` reads at once; `toHaveText()` retries |
-| `wait.until(visibilityOf(...))` | `await expect(locator).toBeVisible()` |
-| `wait.until(textToBe(...))` | `await expect(locator).toHaveText(...)` |
-| `wait.until(urlContains(...))` | `await expect(browser).toHaveURL(/.../)` |
-| `Actions.moveToElement` | `.hover()` |
-| `Actions.dragAndDrop` | `.dragTo(target)` |
-| `Actions.keyDown(CONTROL).sendKeys('a')` | `.press('ControlOrMeta+a')` |
-| `switchTo().frame()` | `browser.frameLocator('#frame')` |
-| `switchTo().alert().accept()` | `browser.onDialog('accept')` before the action |
-| `switchTo().window()` | No equivalent. Popups are unsupported |
-| `executeScript` | `browser.evaluate` |
-| `manage().addCookie` | `browser.setCookies` |
-| `getScreenshotAs` | `app.screenshot('label')`, redacted |
-| `Thread.sleep` | Use a locator assertion for the condition you need |
+| `findElements(...).size()`, `.get(n)` | `await locator.count()`, `locator.nth(n)` |
+| `.click()`, `.clear()`, `Actions.moveToElement`, `Actions.dragAndDrop` | `.tap()`, `.clear()`, `.hover()`, `.dragTo(target)` |
+| `.sendKeys('text')` | `.fill('text')` replaces the content, `.pressSequentially('text')` appends |
+| `.sendKeys(Keys.ENTER)`, `Actions.keyDown(CONTROL).sendKeys('a')` | `.press('Enter')`, `.press('ControlOrMeta+a')` |
+| `.sendKeys(path)` on a file input, `new Select(el).selectByVisibleText` | `.setInputFiles(path)`, `.selectOption({ label })` |
+| `.getText()`, `.isDisplayed()`, `.getDomAttribute(name)` | `.textContent()`, `.isVisible()`, `.getAttribute(name)` |
+| `.getAttribute('value')`, `.getAttribute('checked')` | `.inputValue()`, `.isChecked()`. e2e's `.getAttribute()` reads the DOM attribute, not the property |
+| `wait.until(visibilityOf(...))`, `textToBe(...)`, `urlContains(...)` | `expect(locator).toBeVisible()`, `.toHaveText(...)`, `expect(browser).toHaveURL(/.../)` |
+| `switchTo().frame()`, `switchTo().alert().accept()` | `browser.frameLocator('#frame')`, `browser.onDialog('accept')` before the action |
+| `switchTo().window(handle)`, `getWindowHandles()`, `switchTo().newWindow()` | `tab.activate()`, `browser.tabs()`, `browser.newTab()`; `browser.waitForPopup(() => trigger)` for a tab the app opens, see [Tabs](/reference/web#tabs) |
+| `executeScript(script, args)` | `browser.evaluate(fn, arg)`, JSON in and out only |
 | Page objects | A fixture from `test.extend`, or a goal for `agent.act`, see [Page objects](/page-object-model) |
 
-`findElement` takes the first match. e2e fails with `LOCATOR_AMBIGUOUS` on
-several, so narrow with `.filter()`, `.first()`, or `.nth()`.
+## What e2e doesn't have yet
+
+Planned means on the roadmap, and Not yet means no date. Not planned means
+e2e leaves it out on purpose.
+
+### Planned
+
+| Selenium | Use today |
+| --- | --- |
+| `executeScript(script, element)`, `getDomProperty`, `getCssValue` | A locator action such as `.tap()` or `.scrollIntoView()`, or `browser.evaluate` with a CSS selector |
+| `element.findElement(By.cssSelector)`, WebdriverIO `$('a').$('b')` | One `browser.locator('a >> b')` selector, or chained `getBy*` queries |
+| `ChromeOptions.addArguments`, `setBinary`, `Proxy`, `acceptInsecureCerts` | Start Chrome or Edge with the flags, then attach with `web({ connect })` |
+| `@BeforeSuite`, `@AfterSuite`, session fixtures, WebdriverIO `onPrepare` | The script `app.command` starts, or a wrapper around `e2e run` |
+| BrowserStack or Sauce Labs for web | Your own [browser provider](/browser#write-a-provider), if the vendor has a CDP endpoint |
+| `manage().logs()`, request listeners, `setNetworkConditions`, geolocation | Patch the page in `browser.addInitScript`, record or abort requests in `browser.route` |
+
+### Not yet
+
+| Selenium | Use today |
+| --- | --- |
+| `new RemoteWebDriver(gridUrl)`, Firefox or Safari on remote nodes | `web({ connect })` to a CDP endpoint. Run `firefox` and `webkit` targets locally |
+| Allure reports | Feed the `junit` reporter's XML to Allure, or use `htmlReporter()` |
+| Cucumber feature files | Rewrite each scenario as a test. A step often fits one `agent.act` goal |
+| Two drivers in one test, WebdriverIO `multiremote` | Drive the second user through the app's API |
+| `getPageSource()`, `getLocalStorage()`, `getSessionStorage()` | `browser.evaluate`, such as `() => localStorage.getItem('k')` |
+
+### Not planned
+
+| Selenium | Use instead |
+| --- | --- |
+| Java, Python, C#, or Ruby bindings | Tests are TypeScript or JavaScript |
+| `Thread.sleep`, `Actions.pause`, `wait.until(elementToBeClickable(...))` | A locator assertion on the state you wait for. Each action waits for its node |
+| `switchTo().alert()` after the dialog opens, `alertIsPresent()` | `browser.onDialog(handler)` before the action that opens it |
+| Real Safari, IE mode | `webkit` is the closest build to Safari. Keep IE mode tests in Selenium |
+| `executeCdpCommand`, `DevTools.send`, SDKs that take the driver | Keep those tests in Selenium. A raw driver call isn't recorded or redacted |
+
+## What differs on purpose
+
+- `findElement` takes the first match. e2e fails with `LOCATOR_AMBIGUOUS` on
+  several, so narrow with `.filter()`, `.first()`, or `.nth()`.
+- There is no implicit wait. Actions and assertions wait on their own, up to
+  `actionTimeout` and `assertionTimeout`.
+- Each test gets a fresh browser context, not a shared driver. To sign in one
+  time, use `test.setup` and `{ session }`, see [Authentication](/authentication).
+- The page size comes from `web({ viewport })`, not `setSize` or `maximize()`.
 
 ## Next
 
