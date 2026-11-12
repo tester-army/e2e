@@ -304,6 +304,7 @@ export default {
 | Throws | When |
 | --- | --- |
 | `INVALID_CONFIG` | At config load: no `app.bundleId` and no `app.appPath`; an `app.url` (not supported yet); a link in `bundleId` (a test opens one with `device.openLink`); an unknown permission name. |
+| `UNSUPPORTED_CAPABILITY` | `app.open()`, `app.restart()`, or `app.clearState()` on a target with no `app.bundleId` before its build is installed. |
 
 #### Launch arguments and permissions
 
@@ -728,6 +729,7 @@ await device.openApp(app);
 
 | Throws | When |
 | --- | --- |
+| `APP_NOT_OPEN` | No path was passed and the target has no `app.appPath`; or `reinstall: true` with no `app` passed and no app pinned (no `app.bundleId`, build not installed yet). |
 | `ENGINE_FAILURE` | agent-device reported no id and no `app` was passed, instead of a file path posing as an id. See [Troubleshooting](/mobile#troubleshooting). |
 
 #### `openApp`
