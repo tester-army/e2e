@@ -113,7 +113,8 @@ export class OpeningTabs {
    * the page already handled.
    */
   reported(page: Page, appOpened: () => void): void {
-    if (this.announced.size === 0) return;
+    // `opened` holds every announced tab, also one given up on before Playwright reported it.
+    if (this.opened.size === 0) return;
     targetIdentity(page).then(({ targetId }) => {
       if (this.opened.has(targetId)) appOpened();
       this.settle(targetId);
@@ -123,7 +124,8 @@ export class OpeningTabs {
   /**
    * Resolves once no tab is being opened in the attempt's context, `false`
    * when one still is at `endsAt`. `page` is any page of that context, to
-   * learn its id when the watch began without it.
+   * learn its id when the watch began without it; until that id is known,
+   * every announced tab counts.
    */
   async settled(page: Page | undefined, signal: AbortSignal, endsAt: number): Promise<boolean> {
     if (this.announced.size === 0) return true;
@@ -137,12 +139,11 @@ export class OpeningTabs {
     }
     const context = await raceAbort(within(this.context ?? Promise.resolve(undefined), endsAt), signal, 'tab');
     if (context === TIMED_OUT) return false;
-    if (context === undefined) return true;
     for (;;) {
       const now = Date.now();
       let until = Number.POSITIVE_INFINITY;
       for (const [targetId, tab] of this.announced) {
-        if (tab.context !== context) continue;
+        if (context !== undefined && tab.context !== context) continue;
         if (this.loading.size > 0) {
           until = endsAt;
           break;

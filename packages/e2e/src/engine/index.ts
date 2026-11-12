@@ -656,11 +656,6 @@ export interface EngineObserveOptions {
   readonly comparable?: boolean;
 }
 
-/**
- * One fresh semantic snapshot of the surface under test. The harness owns
- * everything downstream: revision minting, secret redaction, and the
- * observation byte budget apply to every engine equally.
- */
 /** The tabs a surface has open, as `EngineSnapshot.tabs` reports them. */
 export interface EngineTabs {
   /** How many tabs are open: 2 or more. */
@@ -669,6 +664,11 @@ export interface EngineTabs {
   readonly active: number;
 }
 
+/**
+ * One fresh semantic snapshot of the surface under test. The harness owns
+ * everything downstream: revision minting, secret redaction, and the
+ * observation byte budget apply to every engine equally.
+ */
 export interface EngineSnapshot {
   /**
    * Where the surface is, as an opaque address the platform understands: a

@@ -351,8 +351,15 @@ export class AttemptSession {
 
   /** Shows one open tab: every read and action from now on is on its page. */
   async showTab(tab: AttemptTab): Promise<void> {
-    if (!this.tabs.includes(tab)) throw new TestError('ACTION_FAILED', 'the tab is closed');
-    await this.inTurn(() => this.show(tab), true);
+    const open = (): void => {
+      if (!this.tabs.includes(tab) || tab.page.isClosed()) throw new TestError('ACTION_FAILED', 'the tab is closed');
+    };
+    open();
+    // Checked again in turn: a change queued before this one may be the tab closing.
+    await this.inTurn(async () => {
+      open();
+      await this.show(tab);
+    }, true);
   }
 
   /** Shows the open tab at `index` in opening order, as the agent's `switchTab` counts them. */
@@ -369,7 +376,13 @@ export class AttemptSession {
   async newTab(): Promise<AttemptTab> {
     const page = await this.current().context.newPage();
     const tab = this.adopt(page, undefined, undefined);
-    await this.inTurn(() => this.show(tab), true);
+    try {
+      await this.inTurn(() => this.show(tab), true);
+    } catch (cause) {
+      this.tabs = this.tabs.filter((other) => other !== tab);
+      await page.close().catch(() => undefined);
+      throw cause;
+    }
     return tab;
   }
 
@@ -446,6 +459,11 @@ export class AttemptSession {
 
   /** Adds a page the app opened to the tabs and shows it, once it has a document. */
   private join(popup: Page, opener: AttemptTab | undefined): void {
+    if (this.state.kind === 'pending') {
+      // A reconnect is publishing the binding the page belongs to: join it then.
+      this.state.work.then(() => { this.join(popup, opener); }, () => undefined);
+      return;
+    }
     if (this.state.kind !== 'ready' || popup.isClosed() || this.tabs.some((tab) => tab.page === popup)) return;
     if (popup.url() === '') {
       // No document committed yet: a link whose response was a download

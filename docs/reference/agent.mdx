@@ -436,7 +436,8 @@ A tab the app opens on the web is shown at once: the result of the action
 that opened it says `The app opened a new tab, and the screen shows it now
 (tab 2 of 2)` and sends the new tab's screen whole. While more than one tab
 is open, every screen header names the tab (`tab 2 of 2`). When the tab
-closes, the screen returns to the tab that opened it. `switch_tab` moves
+closes, the screen returns to the tab that opened it, or to the tab shown
+most recently when that one is closed too. `switch_tab` moves
 between open tabs without closing one, and replays from the cache by the
 same tab number.
 

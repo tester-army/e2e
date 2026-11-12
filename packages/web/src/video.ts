@@ -7,8 +7,9 @@
  * state reset) ends its segment first, since Playwright writes nothing for a
  * screencast whose page closed under it, and the next page the attempt opens
  * starts the next segment. A tab the app opens starts a segment as it is
- * shown, and the tab it returns to starts another; a tab that closed itself
- * keeps no segment, since its page closed before the screencast could flush.
+ * shown, and the tab it returns to starts another. A tab that closed itself
+ * keeps its segment only if Playwright wrote one, which it usually does not,
+ * since the page closed before the screencast could flush.
  * Each segment is captured at `web({ screencast: { size } })`
  * when set, else at its page's viewport size when it starts (the window's
  * under `viewport: null`, so a page `browser.setViewport` sized is recorded at

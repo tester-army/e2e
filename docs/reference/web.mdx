@@ -913,7 +913,8 @@ await screen.getByRole('textbox', 'Verification code').fill(code);
   with the tab once that tab is active.
 - A tab that never gets a page is not followed and not listed: a
   `target="_blank"` link to a download, to a `mailto:` address, or to a
-  response with no content. The next call waits up to 1 second for it.
+  response with no content. The next call waits while its first request
+  is in flight, then up to 1 second more.
 - `tabs()` returns the open tabs in the order they opened, the same
   `BrowserTab` for a tab the whole attempt. A tab still loading is not in it
   yet: call it after a call that waited, such as `waitForPopup`.

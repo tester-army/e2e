@@ -404,7 +404,7 @@ Test line: await screen.getByRole("button", "Sign in").tap();
 No line: `type` or `press` with no target, `press` with `times` over 1,
 `scroll`, `scroll_to` a text, `dismiss_keyboard`, `resize_viewport` (set the
 size with the engine fixture, `browser.setViewport` on web), `switch_tab`
-(`browser.tabs()[n].activate()` on web), and a `type` the
+(`browser.tabs()[tab - 1].activate()` on web), and a `type` the
 node took through the keyboard. The [point tools](#point-tools) print nothing.
 
 #### `screenshot`
