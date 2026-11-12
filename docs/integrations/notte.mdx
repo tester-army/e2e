@@ -83,22 +83,39 @@ sessions included.
 
 ## Watch and clean up sessions
 
-The reporter logs `session <id>` for each new session. Open it from the
-sessions list in the Notte console to watch it live or replay it.
+The reporter logs `session <id>, watch at <console URL>` for each new
+session. The link opens the session in the Notte console, live while the
+test runs and as a replay after it ends. It needs a console sign-in, so it
+is safe in public CI logs.
 
 When an attempt ends, on every exit path, the provider stops its session.
-If the worker dies first, Notte closes the session after
-`idle_timeout_minutes` without activity, 3 by default, and every session
-after `max_duration_minutes`, 15 by default. Raise `max_duration_minutes`
-for a test that runs longer.
+When the run ends, it stops the session of any worker that died before it
+could. If the run itself dies, Notte closes each session after
+`idle_timeout_minutes` without activity, 3 by default. Notte also ends every
+session after `max_duration_minutes`, 15 by default, so raise it for a test
+that runs longer.
 
-## Not supported yet
+## Downloads
 
-- `browser.waitForDownload`: the file lands on the session's disk, which the
-  provider does not read back yet.
-- Notte's own session replay as the attempt's video. With
-  [video](/reference/config#video) on, the web engine records its
-  screencast of the page instead.
+`browser.waitForDownload` works as it does locally. Notte keeps each file
+the browser downloads in the session's file storage, under the name the site
+suggested, and the provider copies the file of that name into the attempt's
+artifacts. With `@e2e-dev/web` older than this name lookup, it takes the
+oldest file it has not read yet.
+
+## Differences from a local browser
+
+- Notte answers JavaScript dialogs itself: `confirm` returns `false` and
+  `prompt` returns `null` before a test's dialog handler can accept them.
+- The browser takes Windows key combinations. `ControlOrMeta` follows the
+  runner's system, so on a Mac it sends `Meta`, which the browser ignores:
+  write `Control+A` for a test that also runs from a Mac.
+- `setInputFiles` uploads files up to 50 MB, and no folders.
+- The app must be reachable from Notte's cloud, so `localhost` addresses
+  don't load. Point `app.url` at a deployed or tunneled URL.
+- `app.clearState()` and saved [sessions](/authentication) are unavailable,
+  as in any per-attempt lease. Every attempt already starts on a fresh
+  session.
 
 ## Next
 

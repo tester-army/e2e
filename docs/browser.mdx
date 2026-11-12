@@ -419,7 +419,9 @@ runner can't open it. With `downloads`, it saves the file under `dir`, and
 the engine passes the finished file's path to `read`. `read` fetches the
 bytes through the service's file API, in the worker, bounded by the call's
 timeout. [Kernel](/integrations/kernel#downloads) serves downloads this
-way.
+way. A service that stores downloads by name rather than by path finds the
+file by `context.suggestedFilename`, the name the site suggested, as
+[Notte](/integrations/notte#downloads) does.
 
 Without `downloads`, a download on a browser on another machine fails with
 `ENGINE_FAILURE`, naming the provider. A provider whose browsers run on the

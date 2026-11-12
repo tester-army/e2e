@@ -248,6 +248,9 @@ importers:
       '@e2e-dev/lightpanda':
         specifier: workspace:*
         version: link:../../packages/lightpanda
+      '@e2e-dev/notte':
+        specifier: workspace:*
+        version: link:../../packages/notte
       '@e2e-dev/web':
         specifier: workspace:*
         version: link:../../packages/web

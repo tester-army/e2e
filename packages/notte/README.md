@@ -23,13 +23,16 @@ export default {
 ```
 
 `NOTTE_API_KEY` comes from the run's environment, and `NOTTE_API_URL` when
-set. `notte(options)` takes Notte's start-session body as is
-(`solve_captchas`, `proxies`, `browser_type`, `idle_timeout_minutes`,
-`max_duration_minutes`, `viewport_width`, `viewport_height`, `profile`, ...).
+set. `notte(options)` takes Notte's start-session body (`solve_captchas`,
+`proxies`, `browser_type`, `idle_timeout_minutes`, `max_duration_minutes`,
+`viewport_width`, `viewport_height`, `profile`, ...), less `cdp_url` and the
+managed authentication fields (`auth_ids`, `auth_retry`,
+`wait_for_authentication`).
 Each test attempt gets a fresh session, stopped when the attempt ends; a
 Notte session refuses new browser contexts, so the provider leases in
-`attempt` scope only. Notte closes a session a dead worker left after
-`idle_timeout_minutes`.
+`attempt` scope only. When the run ends, it stops any session a dead worker
+left. Each session's console link is logged, and `browser.waitForDownload`
+reads files back from the session's storage.
 
 Full documentation lives at [e2e.com/docs/integrations/notte](https://e2e.com/docs/integrations/notte).
 

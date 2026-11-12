@@ -12,18 +12,36 @@ export type NotteSessionParams = Omit<ApiSessionStartRequest, 'cdp_url' | 'auth_
 
 interface NotteSession {
   readonly sessionId: string;
-  readonly cdpUrl: string;
+  /** Undefined when Notte gave the session no CDP URL, in the start response or its debug info. */
+  readonly cdpUrl: string | undefined;
+}
+
+/** A file the session's browser downloaded, as Notte's file storage lists it. */
+export interface NotteDownload {
+  readonly id: string;
+  readonly filename: string;
+  readonly createdAt: string;
 }
 
 export interface NotteSessions {
   /**
    * Starts a session. The request is never aborted: a cancelled request would
    * leave a session Notte started that nobody knows the id of, so the caller
-   * waits for it and stops it instead.
+   * waits for it and stops it instead. A start response without a CDP URL
+   * falls back to the session's debug info, as the SDK's own `Session` does.
    */
   start(params: NotteSessionParams): Promise<NotteSession>;
   /** Stops the session; one Notte already closed counts as stopped. Resolves to whether Notte still had it open. */
   stop(sessionId: string, signal: AbortSignal): Promise<boolean>;
+  /**
+   * The files the session's browser downloaded, oldest first, in Notte's
+   * listing order when two share a time. Notte collects a finished download
+   * into the session's file storage when this lists it, after the session's
+   * downloads settle.
+   */
+  downloads(sessionId: string, signal: AbortSignal): Promise<NotteDownload[]>;
+  /** The bytes of one file in the session's storage. */
+  readFile(sessionId: string, fileId: string, signal: AbortSignal): Promise<Uint8Array>;
 }
 
 /** Whether a failed stop says the session had already ended, the way the SDK's own `Session.stop` reads it. */
@@ -43,10 +61,10 @@ export function notteSessions(apiKey: string, baseUrl: string | undefined): Nott
     async start(params) {
       const { client } = await sdk;
       const session = await client.sessions.start(params);
-      if (typeof session.cdp_url !== 'string' || session.cdp_url === '') {
-        throw new Error(`session ${session.session_id} started without a CDP URL`);
-      }
-      return { sessionId: session.session_id, cdpUrl: session.cdp_url };
+      if (typeof session.cdp_url === 'string' && session.cdp_url !== '') return { sessionId: session.session_id, cdpUrl: session.cdp_url };
+      const debug = await client.sessions.debugInfo(session.session_id, { signal: AbortSignal.timeout(30_000) }).catch(() => undefined);
+      const cdpUrl = debug?.ws.cdp;
+      return { sessionId: session.session_id, cdpUrl: typeof cdpUrl === 'string' && cdpUrl !== '' ? cdpUrl : undefined };
     },
     async stop(sessionId, signal) {
       const { client, NotteAPIError } = await sdk;
@@ -58,6 +76,20 @@ export function notteSessions(apiKey: string, baseUrl: string | undefined): Nott
         if (alreadyClosed(cause, cause instanceof NotteAPIError ? cause.statusCode : undefined)) return false;
         throw cause;
       }
+    },
+    async downloads(sessionId, signal) {
+      const { client } = await sdk;
+      const page = await client.files.list(sessionId, { source: 'session_download', limit: 100 }, { signal });
+      // Notte lists newest first: reversed, files that share a time stay oldest first.
+      return page.files
+        .map((file) => ({ id: file.id, filename: file.filename, createdAt: file.created_at }))
+        .toReversed()
+        .toSorted((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
+    },
+    async readFile(sessionId, fileId, signal) {
+      const { client } = await sdk;
+      const blob = (await client.files.download(sessionId, fileId, { signal })) as Blob;
+      return new Uint8Array(await blob.arrayBuffer());
     },
   };
 }

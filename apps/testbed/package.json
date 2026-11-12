@@ -17,11 +17,13 @@
     "test:stress": "node node_modules/e2e/dist/cli/bin.js run --config e2e.stress.config.ts",
     "explore": "node node_modules/e2e/dist/cli/bin.js explore --config e2e.agent.config.ts",
     "explore:garden": "node node_modules/e2e/dist/cli/bin.js explore --config e2e.explore.config.ts",
-    "explore:bench": "node scripts/explore-bench.mjs"
+    "explore:bench": "node scripts/explore-bench.mjs",
+    "test:notte": "node node_modules/e2e/dist/cli/bin.js run --config e2e.notte.config.ts"
   },
   "dependencies": {
     "@e2e-dev/decision": "workspace:*",
     "@e2e-dev/lightpanda": "workspace:*",
+    "@e2e-dev/notte": "workspace:*",
     "@e2e-dev/web": "workspace:*",
     "e2e": "workspace:*"
   },
