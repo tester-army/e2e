@@ -379,8 +379,9 @@ export class AttemptSession {
     try {
       await this.inTurn(() => this.show(tab), true);
     } catch (cause) {
-      this.tabs = this.tabs.filter((other) => other !== tab);
+      // Closed as a tab, so a screen already moved to it moves back.
       await page.close().catch(() => undefined);
+      await this.tabsSettled();
       throw cause;
     }
     return tab;
