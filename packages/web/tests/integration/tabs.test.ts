@@ -316,6 +316,13 @@ describe('tabs', () => {
       const after = await engine.observe!(operation());
       expect(after.location).toBe(`${url}/opener`);
       expect(after.tabs).toBeUndefined();
+      // Two closes at once leave one tab open: the second sees the first.
+      await tap(engine, 'Open window');
+      await withTabs(engine, 2);
+      const closes = await Promise.allSettled([engine.session!.closeTab!(1, operation()), engine.session!.closeTab!(0, operation())]);
+      expect(closes.map((result) => result.status)).toEqual(['fulfilled', 'rejected']);
+      expect((closes[1] as PromiseRejectedResult).reason).toMatchObject({ code: 'ACTION_FAILED', message: expect.stringContaining('is the only open tab') });
+      expect((await engine.observe!(operation())).location).toBe(`${url}/opener`);
     });
   });
 

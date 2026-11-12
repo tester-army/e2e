@@ -368,10 +368,16 @@ export class AttemptSession {
   }
 
   /** Closes the open tab at `index` in opening order, as the agent's `closeTab` counts them; the last open tab stays. */
-  closeTabAt(index: number): Promise<void> {
+  async closeTabAt(index: number): Promise<void> {
     const tab = this.tabAt(index);
-    if (this.tabs.length === 1) throw new TestError('ACTION_FAILED', `tab ${String(index + 1)} is the only open tab`);
-    return this.closeTab(tab);
+    const lastOpen = (): boolean => this.tabs.every((other) => other === tab || other.page.isClosed());
+    if (lastOpen()) throw new TestError('ACTION_FAILED', `tab ${String(index + 1)} is the only open tab`);
+    // Checked again in turn: a change queued before this one may be another tab closing.
+    await this.inTurn(async () => {
+      if (lastOpen()) throw new TestError('ACTION_FAILED', `tab ${String(index + 1)} is the only open tab`);
+      if (!tab.page.isClosed()) await tab.page.close();
+    }, true);
+    await this.tabsSettled();
   }
 
   /** The open tab at `index` in opening order, or an `ACTION_FAILED` the model reads. */
@@ -490,12 +496,16 @@ export class AttemptSession {
     void Promise.allSettled(this.creating).then(() => {
       setImmediate(() => {
         if (!unclaimed()) return;
-        // Chromium only; elsewhere such a page stays out of the tabs.
-        targetIdentity(page).then(({ openerId }) => {
-          if (openerId === undefined || !unclaimed()) return;
+        targetIdentity(page).then((target) => {
+          if (target.openerId === undefined || !unclaimed()) return;
+          this.claimed.add(page);
+          this.join(page, undefined, target);
+        }, () => {
+          // No CDP to ask (Firefox, WebKit): a page the attempt did not open is taken as the app's.
+          if (!unclaimed()) return;
           this.claimed.add(page);
           this.join(page, undefined);
-        }, () => undefined);
+        });
       });
     });
   }
@@ -505,10 +515,10 @@ export class AttemptSession {
    * in the background, as the attempt's screen stays on its tab, unless
    * `browser.waitForPopup` is waiting for it: then it is shown.
    */
-  private join(popup: Page, opener: AttemptTab | undefined): void {
+  private join(popup: Page, opener: AttemptTab | undefined, target?: TargetIdentity): void {
     if (this.state.kind === 'pending') {
       // A reconnect is publishing the binding the page belongs to: join it then.
-      this.state.work.then(() => { this.join(popup, opener); }, () => undefined);
+      this.state.work.then(() => { this.join(popup, opener, target); }, () => undefined);
       return;
     }
     if (this.state.kind !== 'ready' || popup.isClosed() || this.tabs.some((tab) => tab.page === popup)) return;
@@ -519,16 +529,17 @@ export class AttemptSession {
       const committed = (): void => {
         if (popup.url() === '') return;
         popup.off('framenavigated', committed);
-        this.join(popup, opener);
+        this.join(popup, opener, target);
       };
       popup.on('framenavigated', committed);
       return;
     }
-    const tab = this.adopt(popup, opener, undefined);
-    if (this.state.binding.identity !== undefined) {
-      // A reconnect finds each tab by its target, a tab in the background too.
-      targetIdentity(popup).then((target) => { tab.target ??= target; }, () => undefined);
+    if (this.state.binding.identity !== undefined && target === undefined) {
+      // A reconnect finds each tab by its target, a tab in the background too, so a tab joins with it.
+      targetIdentity(popup).then((read) => { this.join(popup, opener, read); }, () => undefined);
+      return;
     }
+    const tab = this.adopt(popup, opener, target);
     if (this.popupWaiters.size === 0) return;
     const shown = this.inTurn(() => this.show(tab));
     for (const waiter of this.popupWaiters) waiter(tab, shown);
