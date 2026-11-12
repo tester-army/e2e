@@ -5,6 +5,8 @@ description: Set up a simulator, emulator, or connected phone as a target, write
 "twitter:image": "https://e2e.com/docs/images/og/mobile.png?v=0a8bfea0a3"
 ---
 
+import { Video } from './snippets/video.jsx';
+
 `@e2e-dev/mobile` runs tests on iOS simulators, Android emulators, and
 phones connected to your machine. It is built on
 [agent-device](https://github.com/callstack/agent-device). Tests use the
@@ -427,6 +429,12 @@ ends the device session when it stops, so open the app again after it.
 Taps show unless [`videoTouches`](/reference/mobile#videotouches) is `false`.
 
 ## Several devices
+
+<Video>
+  <video src="/images/cross-platform.mp4" aria-label="One test suite runs on web, iOS, and Android at the same time." muted loop playsInline controls />
+
+  One test suite runs on web, iOS, and Android.
+</Video>
 
 Add a target for each platform:
 
