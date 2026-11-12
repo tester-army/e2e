@@ -138,6 +138,7 @@ export function web(options: WebOptions = {}): EngineHandle {
       back: (operation) => surface.back(operation),
       resize: (size, operation) => surface.resize(size, operation),
       switchTab: (index, operation) => surface.switchTab(index, operation),
+      closeTab: (index, operation) => surface.closeTabAt(index, operation),
       restart: (operation) => surface.restart(operation),
       reset: recoverable ? () => Promise.reject(persistentContextLimit('app.clearState()', mode, provider !== undefined)) : (operation) => surface.reset(operation),
     },

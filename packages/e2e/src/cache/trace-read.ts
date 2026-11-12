@@ -303,6 +303,10 @@ function readRecordedAction(document: unknown): RecordedAction | undefined {
       const tab = raw['tab'];
       return typeof tab === 'number' && Number.isSafeInteger(tab) && tab >= 0 ? { name: 'switchTab', summary, tab } : undefined;
     }
+    case 'closeTab': {
+      const tab = raw['tab'];
+      return typeof tab === 'number' && Number.isSafeInteger(tab) && tab >= 0 ? { name: 'closeTab', summary, tab } : undefined;
+    }
     case 'typeText': {
       const value = readTypedValue(raw['value']);
       if (value === undefined || typeof raw['replace'] !== 'boolean') return undefined;

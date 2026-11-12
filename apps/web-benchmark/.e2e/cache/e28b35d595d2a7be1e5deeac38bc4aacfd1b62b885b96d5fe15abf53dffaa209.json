@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-11-11T00:38:23.724Z",
+  "createdAt": "2026-11-12T10:18:11.382Z",
   "payload": {
     "actions": [
       {
@@ -11,6 +11,11 @@
           "name": "Open verification tab",
           "testId": "open-tab-button"
         }
+      },
+      {
+        "name": "switchTab",
+        "summary": "switch to tab 2",
+        "tab": 1
       },
       {
         "name": "switchTab",
@@ -48,7 +53,7 @@
       "provider": "gateway",
       "model": "openai/gpt-6-luna-fast"
     },
-    "summary": "Opened the verification tab, read code TAB-88421, returned to the original tab, entered the code, and clicked Verify. The page displays “Verified successfully.”",
+    "summary": "Opened the verification tab, read code TAB-88421, returned to the original tab, entered it, and verified successfully.",
     "startPath": "/e/new-tab-flow",
     "endPath": "/e/new-tab-flow",
     "endAnchors": [
@@ -78,7 +83,7 @@
         "testId": "verify-button"
       }
     ],
-    "endWaitMs": 12156,
+    "endWaitMs": 12321,
     "keyedBy": {
       "cacheSchema": "trace-1",
       "policyVersion": "conservative/6",

@@ -84,7 +84,7 @@ export function installAppLog(context: BrowserContext, log: (entry: AppLogEntry)
   const unannounced = new WeakSet<Page>();
   const opened = (url: string): void => {
     const at = NO_PLACE.has(url) ? '' : ` at ${url}`;
-    went(`the app opened a new tab${at}; the screen follows it`);
+    went(`the app opened a new tab${at}`);
   };
   const watch = (page: Page): void => {
     page.on('framenavigated', (frame) => {
@@ -102,7 +102,7 @@ export function installAppLog(context: BrowserContext, log: (entry: AppLogEntry)
       const line = navigationLine(page, frame, page !== navigation.testPage(), navigation);
       if (line !== undefined) went(line);
     });
-    // A tab the app opened (`window.open`, a `target="_blank"` link), which the screen follows.
+    // A tab the app opened (`window.open`, a `target="_blank"` link); the screen stays on its tab.
     page.on('popup', (tab) => {
       const url = tab.url();
       if (url === '') {

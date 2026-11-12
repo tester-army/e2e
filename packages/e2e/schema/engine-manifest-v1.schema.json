@@ -55,6 +55,7 @@
           "session/back",
           "session/resize",
           "session/switchTab",
+          "session/closeTab",
           "session/restart",
           "session/reset",
           "lifecycle/prepare",

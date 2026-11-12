@@ -64,6 +64,7 @@ export const METHODS = {
   'session/back': operation('session.back', ['operation']),
   'session/resize': operation('session.resize', ['size', 'operation']),
   'session/switchTab': operation('session.switchTab', ['index', 'operation']),
+  'session/closeTab': operation('session.closeTab', ['index', 'operation']),
   'session/restart': operation('session.restart', ['operation']),
   'session/reset': operation('session.reset', ['operation']),
   'lifecycle/prepare': lifecycle('prepare'),

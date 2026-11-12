@@ -370,7 +370,7 @@ member. Three gaps end differently:
 | `state` | `state` | - | `test.setup` sessions and the `session:` option. |
 | `artifacts` | `artifacts` | - | Screenshots and videos. |
 | `validateApp` | - | - | A config-load check of the target's `app`. |
-| `session` | - | - | The `app` steering methods and the agent's `navigate`, `back`, `resize_viewport`, and `switch_tab` verbs. |
+| `session` | - | - | The `app` steering methods and the agent's `navigate`, `back`, `resize_viewport`, `switch_tab`, and `close_tab` verbs. |
 
 #### Agent verbs
 
@@ -397,6 +397,7 @@ An undeclared verb is absent from the toolset.
 | `back` | `session.back` |
 | `resize_viewport` | `session.resize` |
 | `switch_tab` | `session.switchTab` |
+| `close_tab` | `session.closeTab` |
 | `tap_at`, `hover_at` | the `tap` or `hover` kind, in `actions` or in `pointerActions` |
 | `drag_at` | the `dragTo` kind, in `actions` or in `pointerActions` |
 | `type_at` | `fill` or `keyboard` |
@@ -960,8 +961,8 @@ export interface EngineDisposeContext extends EngineCleanupContext {
 
 `tabs` reports the open tabs when there is more than one: `count`, and the
 zero-based place of the tab `root` reads, in the order the tabs opened. The
-harness names the tab in every screen header and tells the model when the
-screen moved to another tab. Omit it with one tab.
+harness names the tab in every screen header and tells the model when a
+tab opened or the screen moved to another tab. Omit it with one tab.
 
 Return the surface as it is right now. The runner mints the revision and
 stamps it onto every ref. When `pixels` are present, it checks that
@@ -1012,7 +1013,7 @@ export interface EngineSnapshot {
   readonly keyboardVisible?: boolean;
   /**
    * The tabs the surface has open, when it has more than one, such as a
-   * browser showing a tab the app opened. Omit with one tab.
+   * browser with a tab the app opened. Omit with one tab.
    */
   readonly tabs?: { readonly count: number; readonly active: number };
   /** Semantic capture failed; only fresh, independently masked pixels are evidence. */
@@ -1391,7 +1392,7 @@ export interface EngineAppInfo {
 ### Session
 
 Steering hooks behind the universal `app` fixture and the agent's `navigate`,
-`back`, `resize_viewport`, and `switch_tab` verbs.
+`back`, `resize_viewport`, `switch_tab`, and `close_tab` verbs.
 
 | Hook | Behind |
 | --- | --- |
@@ -1399,6 +1400,7 @@ Steering hooks behind the universal `app` fixture and the agent's `navigate`,
 | `back()` | `app.back()`, the agent's `back` verb |
 | `resize(size)` | the agent's `resize_viewport` verb; `size` is `{ width, height }` in CSS pixels and holds for the rest of the attempt |
 | `switchTab(index)` | the agent's `switch_tab` verb; `index` is zero-based in the order the tabs opened, as [`tabs`](#observation) counts them. An index with no open tab is `ACTION_FAILED`. |
+| `closeTab(index)` | the agent's `close_tab` verb; `index` counts as for `switchTab`. Closing the tab shown shows another, such as the tab that opened it. An index with no open tab, or the last open tab, is `ACTION_FAILED`. |
 | `restart()` | `app.restart()` |
 | `reset()` | `app.clearState()` |
 
@@ -1440,6 +1442,13 @@ export interface EngineSession {
    * `ACTION_FAILED` the model reads. Declare it with `tabs` in snapshots.
    */
   switchTab?(index: number, context: OperationContext): Promise<void>;
+  /**
+   * Closes the open tab at `index`, counted as `switchTab` counts them. When
+   * it was the tab shown, the engine shows another, such as the tab that
+   * opened it. An index with no open tab, or the last open tab, is an
+   * `ACTION_FAILED` the model reads.
+   */
+  closeTab?(index: number, context: OperationContext): Promise<void>;
   /** Recreates the execution context, keeping persisted state. */
   restart?(context: OperationContext): Promise<void>;
   /** Clears persisted client state and recreates the execution context. */

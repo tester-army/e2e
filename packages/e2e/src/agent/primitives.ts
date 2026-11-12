@@ -607,9 +607,17 @@ export function grammarTools(
   if (verbs.has('switchTab')) {
     tools['switch_tab'] = screenTool({
       description:
-        'Show another open tab. When more than one tab is open, the screen header says which tab you are on and how many there are, numbered from 1 in the order they opened. A tab the app opens is shown as soon as it opens, and closing it shows the tab that opened it again; switch to read or act in another tab without closing this one.',
+        'Show another open tab. When more than one tab is open, the screen header says which tab you are on and how many there are, numbered from 1 in the order they opened. A tab the app opens stays in the background until you switch to it.',
       inputSchema: z.object({ tab: z.number().int().min(1).describe('The tab number, from 1 in the order the tabs opened.') }),
       execute: ({ tab }) => acting({ done: `Switched to tab ${String(tab)}.`, attempt: `switch_tab ${String(tab)}` }, () => context.actions.switchTab(tab)),
+    });
+  }
+  if (verbs.has('closeTab')) {
+    tools['close_tab'] = screenTool({
+      description:
+        'Close an open tab, numbered as switch_tab counts them. Closing the tab on screen shows the tab that opened it, else the tab shown before it. The last open tab cannot be closed.',
+      inputSchema: z.object({ tab: z.number().int().min(1).describe('The tab number, from 1 in the order the tabs opened.') }),
+      execute: ({ tab }) => acting({ done: `Closed tab ${String(tab)}.`, attempt: `close_tab ${String(tab)}` }, () => context.actions.closeTab(tab)),
     });
   }
   // The pixel verbs are the fallback for a target the tree does not list: a

@@ -143,7 +143,7 @@ export class ScreenPresenter {
 
   /** The update, told what the screenshot going out with it says against the one the model held. */
   private render(observation: ExecutorObservation, options: ScreenUpdateOptions, pixels: PixelEvidence): string {
-    const lead = options.lead === undefined ? '' : `${options.lead}\n\n`;
+    let lead = options.lead === undefined ? '' : `${options.lead}\n\n`;
     if (observation.treeUnavailable === true) {
       return `${lead}${this.initial(observation)}`;
     }
@@ -152,9 +152,10 @@ export class ScreenPresenter {
     this.shown = next;
     if (previous === undefined) return `${lead}${renderFull(observation)}`;
     const closed = options.keyboardNote === false || options.lead === undefined ? '' : keyboardClosedNote(previous, next);
+    const tabs = tabNote(previous.tabs, next.tabs);
     // Another tab is another document: its ids say nothing about the tab the model held.
-    const moved = tabMoveNote(previous.tabs, next.tabs);
-    if (moved !== undefined) return `${lead}${moved} ${renderFull(observation)}${closed}`;
+    if (tabs?.moved === true) return `${lead}${tabs.note} ${renderFull(observation)}${closed}`;
+    if (tabs !== undefined) lead = `${lead}${tabs.note} `;
     const diff = diffScreens(previous, next);
     const changes = diff.length;
     // A truncated screen is never called unchanged: what it left out is unknown.
@@ -317,18 +318,26 @@ function describeLocation(observation: ExecutorObservation): string {
 }
 
 /**
- * What the model hears when the screen is on another tab than the one it
- * held, or undefined when it is on the same: a tab the app opened is shown
- * at once, and one that closed hands the screen back to another.
+ * What the model hears when the open tabs changed, or undefined when they
+ * did not. A tab the app opens joins at the end and stays in the
+ * background, so the screen is on the same tab (`moved` false). Any other
+ * change may have put the screen on another tab (`moved` true): one that
+ * closed hands the screen back to another.
  */
-function tabMoveNote(previous: ShownScreen['tabs'], next: ShownScreen['tabs']): string | undefined {
-  if (previous?.count === next?.count && previous?.active === next?.active) return undefined;
-  if (next === undefined) return 'The other tab closed; the screen shows the one tab still open.';
-  const where = `tab ${String(next.active)} of ${String(next.count)}`;
-  if (next.count > (previous?.count ?? 1) && next.active === next.count) {
-    return `The app opened a new tab, and the screen shows it now (${where}).`;
+function tabNote(previous: ShownScreen['tabs'], next: ShownScreen['tabs']): { readonly note: string; readonly moved: boolean } | undefined {
+  const before = previous ?? { count: 1, active: 1 };
+  const after = next ?? { count: 1, active: 1 };
+  if (before.count === after.count && before.active === after.active) return undefined;
+  if (after.count > before.count && after.active === before.active) {
+    const added = after.count - before.count;
+    const total = String(after.count);
+    const opened = added === 1
+      ? `a new tab (tab ${total} of ${total})`
+      : `${String(added)} new tabs (tabs ${String(before.count + 1)} to ${total} of ${total})`;
+    return { note: `The app opened ${opened}. The screen still shows tab ${String(after.active)}; use switch_tab to see ${added === 1 ? 'it' : 'one'}.`, moved: false };
   }
-  return `The screen shows ${where} now.`;
+  if (next === undefined) return { note: `The other tab${before.count > 2 ? 's' : ''} closed; the screen shows the one tab still open.`, moved: true };
+  return { note: `The screen shows tab ${String(after.active)} of ${String(after.count)} now.`, moved: true };
 }
 
 /** Node id at the head of one rendered line, or undefined for a marker line. */

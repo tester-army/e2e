@@ -375,6 +375,7 @@ click, as a Shift-click extends a selection.
 | `back()` | `session.back` | Goes back once: browser history on a page, the in-app back on a device. |
 | `resize_viewport({ width, height })` | `session.resize` | Sets the viewport size in CSS pixels, 200 to 4096 per side, to check a layout at another width. The size holds until the next resize. Engines with `session.resize`, such as web. |
 | `switch_tab({ tab })` | `session.switchTab` | Shows another open tab, numbered from 1 in the order the tabs opened. Engines with `session.switchTab`, such as web. |
+| `close_tab({ tab })` | `session.closeTab` | Closes an open tab, numbered as `switch_tab` counts them. The last open tab stays open. Engines with `session.closeTab`, such as web. |
 | `observe()` | | Looks again and reports what changed since the last screen the model received. |
 | `dismiss_keyboard()` | `keyboard.dismiss` | Hides an on-screen keyboard. Device engines only. |
 
@@ -432,14 +433,14 @@ Mobile engines declare `hover`, `doubleTap`, `longPress`, `check`,
 `double_tap`, `long_press`, `check`, `drag`, and `back`. They declare no
 `secondaryTap`, `selectOption`, `scrollIntoView`, or `setInputFiles`.
 
-A tab the app opens on the web is shown at once: the result of the action
-that opened it says `The app opened a new tab, and the screen shows it now
-(tab 2 of 2)` and sends the new tab's screen whole. While more than one tab
-is open, every screen header names the tab (`tab 2 of 2`). When the tab
-closes, the screen returns to the tab that opened it, or to the tab shown
-most recently when that one is closed too. `switch_tab` moves
-between open tabs without closing one, and replays from the cache by the
-same tab number.
+A tab the app opens on the web stays in the background. The result of the
+action that opened it says `The app opened a new tab (tab 2 of 2). The
+screen still shows tab 1; use switch_tab to see it.` While more than one
+tab is open, every screen header names the tab (`tab 1 of 2`). `switch_tab`
+shows another tab and sends its screen whole. `close_tab` closes one; when
+it was the tab on screen, the screen returns to the tab that opened it, or
+to the tab shown most recently when that one is closed too. Both replay
+from the cache by the same tab number.
 
 ## Pixel tools: screenshot and the point verbs
 

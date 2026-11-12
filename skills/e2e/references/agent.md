@@ -157,10 +157,13 @@ The tools, one per engine action. Name the target as the screen names it
   layout at phone, tablet, or desktop width. Engines with `session.resize`,
   such as web.
 - `switch_tab`: show another open tab by its number (from 1, in opening
-  order). A tab the app opens is shown at once and the screen header says
-  `tab 2 of 2`; when it closes, the screen returns to its opener, or to the
-  tab shown most recently when the opener is closed too. Engines with
+  order). A tab the app opens stays in the background: the action's result
+  says so, and the screen header says `tab 1 of 2`. Engines with
   `session.switchTab`, such as web.
+- `close_tab`: close an open tab by the same number. Closing the tab on
+  screen returns the screen to its opener, or to the tab shown most
+  recently when the opener is closed too. The last open tab stays open.
+  Engines with `session.closeTab`, such as web.
 - `type_secret`: a declared secret by name; plaintext never reaches the model.
   Offered only when the step declares secrets and the engine can fill them.
 - `screenshot`: attach viewport pixels; every later result then carries one.

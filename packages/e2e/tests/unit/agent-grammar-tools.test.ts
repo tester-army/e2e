@@ -49,6 +49,7 @@ const ACCEPTED: Readonly<Record<string, Record<string, unknown>>> = {
   back: {},
   resize_viewport: { width: 390, height: 844 },
   switch_tab: { tab: 2 },
+  close_tab: { tab: 2 },
   screenshot: {},
   tap_at: { x: 10, y: 20 },
   hover_at: { x: 10, y: 20 },
@@ -130,6 +131,14 @@ describe('the grammar tools have closed schemas', () => {
     expectClosed(switchTab, { tab: 2 }, 'switch_tab');
     expect(switchTab.safeParse({ tab: 0 }).success).toBe(false);
     expect(switchTab.safeParse({ tab: 1.5 }).success).toBe(false);
+  });
+
+  it('offers close_tab only with the closeTab verb, by a whole tab number from 1', () => {
+    expect(Object.keys(createGrammarTools(fakeExecutorContext({ verbs: ['switchTab'] }).context))).not.toContain('close_tab');
+    const closeTab = schemaOf(createGrammarTools(fakeExecutorContext({ verbs: ['closeTab'] }).context), 'close_tab');
+    expectClosed(closeTab, { tab: 2 }, 'close_tab');
+    expect(closeTab.safeParse({ tab: 0 }).success).toBe(false);
+    expect(closeTab.safeParse({ tab: 1.5 }).success).toBe(false);
   });
 
   it('closes complete_step', () => {

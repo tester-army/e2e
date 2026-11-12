@@ -221,6 +221,7 @@ function declaredVerbs(engine: EngineHandle | undefined): ReadonlySet<GrammarVer
   if (engine?.session?.back !== undefined) verbs.add('back');
   if (engine?.session?.resize !== undefined) verbs.add('resize');
   if (engine?.session?.switchTab !== undefined) verbs.add('switchTab');
+  if (engine?.session?.closeTab !== undefined) verbs.add('closeTab');
   if (engine?.keyboard !== undefined) {
     verbs.add('typeText');
     verbs.add('pressKey');
@@ -301,6 +302,7 @@ export function createEngineSession(options: EngineSessionOptions): TargetSessio
     back: guard('back navigation', engine?.session?.back),
     resize: guard('viewport resizing', engine?.session?.resize),
     switchTab: guard('tab switching', engine?.session?.switchTab),
+    closeTab: guard('tab closing', engine?.session?.closeTab),
     restart: guard('app restart', engine?.session?.restart),
     reset: guard('app state reset', engine?.session?.reset),
   };

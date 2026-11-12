@@ -367,6 +367,13 @@ export interface EngineSession {
    * `ACTION_FAILED` the model reads. Declare it with `tabs` in snapshots.
    */
   switchTab?(index: number, context: OperationContext): Promise<void>;
+  /**
+   * Closes the open tab at `index`, counted as `switchTab` counts them. When
+   * it was the tab shown, the engine shows another, such as the tab that
+   * opened it. An index with no open tab, or the last open tab, is an
+   * `ACTION_FAILED` the model reads.
+   */
+  closeTab?(index: number, context: OperationContext): Promise<void>;
   /** Recreates the execution context, keeping persisted state. */
   restart?(context: OperationContext): Promise<void>;
   /** Clears persisted client state and recreates the execution context. */
@@ -708,9 +715,10 @@ export interface EngineSnapshot {
   readonly keyboardVisible?: boolean;
   /**
    * The tabs the surface has open, when it has more than one, such as a
-   * browser showing a tab the app opened. The harness tells the model which
+   * browser with a tab the app opened. The harness tells the model which
    * tab it reads and how many there are, and the agent switches between them
-   * through `session.switchTab`. Omit with one tab.
+   * through `session.switchTab` and closes them through `session.closeTab`.
+   * Omit with one tab.
    */
   readonly tabs?: EngineTabs;
   /**

@@ -407,9 +407,8 @@ export type WebInitScript = string | { readonly path: string } | (() => unknown)
 - `setViewport` sizes the active tab and every tab opened after it, and
   `emulateMedia` sets its media the same way.
 - A tab the app opens, from a `target="_blank"` link or `window.open`,
-  becomes the active tab once the browser reports it, shortly after the
-  action that opened it. When it closes, the tab that opened it is active
-  again. See [Tabs](#tabs).
+  opens in the background: the active tab stays where it was until
+  `waitForPopup` or `activate` makes another one active. See [Tabs](#tabs).
 - Every `browser` call is a recorded `browser.<method>` step, except
   `locator` and `frameLocator`. They build a locator without touching the
   page, and the action or assertion on it is the step.
@@ -892,10 +891,12 @@ export type DialogHandler = 'accept' | 'dismiss' | ((dialog: Dialog) => void | P
 
 #### Tabs
 
-A tab the app opens becomes the active tab: `screen`, `expect`, and the
-`browser` page methods act on it. When it closes, the tab that opened it is
-active again, or the open tab that was active most recently when the opener
-is gone too. Most `target="_blank"` and OAuth-popup flows need no tab call.
+A tab the app opens, from a `target="_blank"` link or `window.open`, opens
+in the background. The active tab stays where it was, and `screen`,
+`expect`, and the `browser` page methods keep acting on it.
+`waitForPopup` makes the tab its trigger opens active. When the active tab
+closes, the tab that opened it is active again, or the open tab that was
+active most recently when the opener is gone too.
 
 ```ts
 const popup = await browser.waitForPopup(() =>
@@ -906,25 +907,22 @@ await popup.close(); // the opener is active again
 await screen.getByRole('textbox', 'Verification code').fill(code);
 ```
 
-- The switch happens before the next call after the action that opened
-  the tab: that call, and every one after it, acts on the new tab. While
-  the new tab's first page is still loading, the call waits for it within
-  its own timeout. `waitForPopup(trigger)` runs the trigger and resolves
-  with the tab once that tab is active.
-- A tab that never gets a page is not followed and not listed: a
-  `target="_blank"` link to a download, to a `mailto:` address, or to a
-  response with no content. The next call waits while its first request
-  is in flight, then up to 1 second more.
+- `waitForPopup(trigger)` runs the trigger and resolves with the tab it
+  opens once that tab is active. It takes the first tab the app opens
+  after the wait starts, which can be one an earlier action opened whose
+  page loaded only now.
 - `tabs()` returns the open tabs in the order they opened, the same
-  `BrowserTab` for a tab the whole attempt. A tab still loading is not in it
-  yet: call it after a call that waited, such as `waitForPopup`.
+  `BrowserTab` for a tab the whole attempt. A tab joins once its first page
+  loads. A tab that never gets a page is never listed: a `target="_blank"`
+  link to a download, to a `mailto:` address, or to a response with no
+  content.
 - `tab.activate()` makes a tab active without closing the others.
   `tab.close()` closes it, and when it was active, waits until the next one
   is.
 - `newTab()` opens a blank tab in the same browser context, with the same
   cookies and storage, and makes it active. Navigate it with `goto`.
-- Only tabs opened from the attempt's own tabs are followed. A page a test
-  opens through `surfaceOf(engine)` is not one of them.
+- A tab whose opener closed before the tab loaded is listed too, on
+  Chromium. A page a test opens through `surfaceOf(engine)` is not.
 - The screencast records the active tab, one video segment per change. A tab
   that closes itself keeps no segment, since its page closes before the
   recording can be saved. A provider's own recording covers every tab.
@@ -946,8 +944,7 @@ export interface BrowserTab {
 
 | Throws | When |
 | --- | --- |
-| `ACTION_FAILED` | `waitForPopup`: no tab opened in time. A trigger that resolved in time fails with `no tab opened within <n>ms; the trigger resolved after <m>ms`. `activate`: the tab has closed. |
-| `OPERATION_TIMEOUT` | Any call: the app opened a tab whose first page did not load within the call's timeout. The message reads `<call> timed out: the app opened a tab whose page has not loaded`. |
+| `ACTION_FAILED` | `waitForPopup`: no tab opened in time. A trigger that resolved in time fails with `no tab opened within <n>ms; the trigger resolved after <m>ms`, or with `the tab the app opened did not load <url> within <n>ms` when a tab was still loading its first page. `activate`: the tab has closed. |
 
 #### `waitForDownload`
 
@@ -1200,10 +1197,11 @@ export interface WebOptions {
  * `locator`, `frameLocator`, `evaluate`, `waitForResponse`, `waitForDownload`,
  * the keyboard and mouse, `expect(browser)`, and `screen` act on the active
  * tab; cookies, routes, and dialog handlers cover the whole browser, every
- * tab included. A tab the app opens from the active tab or another of the
- * attempt's tabs (a `target="_blank"` link, `window.open`) becomes the
- * active tab once the browser reports it, shortly after the action that
- * opened it; when it closes, the tab that opened it is active again.
+ * tab included. A tab the app opens (a `target="_blank"` link,
+ * `window.open`) joins `tabs()` but does not become active on its own:
+ * `waitForPopup` makes the tab its trigger opens active, and `activate`
+ * any other. When the active tab closes, the tab that opened it is active
+ * again.
  */
 export interface Browser extends Expectable<BrowserExpectation> {
   /** Navigates to an allowed URL. */
@@ -1271,8 +1269,10 @@ export interface Browser extends Expectable<BrowserExpectation> {
   tabs(): readonly BrowserTab[];
   /**
    * Runs a trigger and waits for the tab it opens, then resolves with that
-   * tab once it is the active tab. Rejects with `ACTION_FAILED` when no tab
-   * opens within the timeout.
+   * tab once it is the active tab. The wait takes the first tab the app
+   * opens after it starts, which can be one an earlier action opened whose
+   * page loaded only now. Rejects with `ACTION_FAILED` when no tab opens
+   * within the timeout, naming the page when a tab was still loading it.
    */
   waitForPopup(trigger: () => Promise<void>, options?: { timeout?: number }): Promise<BrowserTab>;
   /** Opens a blank tab in the same browser context, sharing its cookies and storage, and makes it the active tab. */

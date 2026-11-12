@@ -115,7 +115,7 @@ a missing one fail with `UNSUPPORTED_CAPABILITY`. Start with these:
 | `perform(ref, action, context)` + `actions` | Node actions of the declared kinds, including viewport scrolling through `swipe` |
 | `locate(expression, context)` | `screen`, `Locator`, and `expect(locator)` |
 | `validateApp(app, info)` | A config-load check of the target's `app`. Throw `INVALID_CONFIG` naming `info.targetName` for a field the platform needs or can't drive. [Reference](/reference/engine#app) |
-| `session.{open?,back?,resize?,switchTab?,restart?,reset?}` | `app.open()`, `app.back()`, `app.restart()`, `app.clearState()`, and the agent's `navigate`, `back`, `resize_viewport`, and `switch_tab` verbs |
+| `session.{open?,back?,resize?,switchTab?,closeTab?,restart?,reset?}` | `app.open()`, `app.back()`, `app.restart()`, `app.clearState()`, and the agent's `navigate`, `back`, `resize_viewport`, `switch_tab`, and `close_tab` verbs |
 
 Pointer actions, the keyboard, saved state, artifacts, and contributed
 fixtures are optional capabilities too. `actions`, `location`, `pointer`,

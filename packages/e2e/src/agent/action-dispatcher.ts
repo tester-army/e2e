@@ -167,6 +167,7 @@ export class ActionDispatcher {
       back: () => this.back(),
       resize: (size) => this.resize(size),
       switchTab: (tab) => this.switchTab(tab),
+      closeTab: (tab) => this.closeTab(tab),
       tapAt: (point) => this.pointVerb('tapAt', point),
       hoverAt: (point) => this.pointVerb('hoverAt', point),
       dragAt: (from, to) => this.pointDrag(from, to),
@@ -472,6 +473,17 @@ export class ActionDispatcher {
     await this.runAction('switchTab', async () => {
       await this.session.app.switchTab(tab - 1, this.accounting.operation());
       return { name: 'switchTab', tab: tab - 1 };
+    });
+  }
+
+  /** Closes the open tab numbered `tab` from 1, as the observation counts them. */
+  private async closeTab(tab: number): Promise<void> {
+    if (!Number.isSafeInteger(tab) || tab < 1) {
+      throw new TestError('INVALID_ARGUMENT', 'closeTab requires a tab number from 1');
+    }
+    await this.runAction('closeTab', async () => {
+      await this.session.app.closeTab(tab - 1, this.accounting.operation());
+      return { name: 'closeTab', tab: tab - 1 };
     });
   }
 

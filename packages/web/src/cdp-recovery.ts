@@ -10,6 +10,8 @@ export type CdpEndpointResolver = (signal: AbortSignal) => string | Promise<stri
 export interface TargetIdentity {
   readonly targetId: string;
   readonly browserContextId?: string;
+  /** The target that opened this one, such as a window that called `window.open`. */
+  readonly openerId?: string;
 }
 
 export interface PersistentIdentity {

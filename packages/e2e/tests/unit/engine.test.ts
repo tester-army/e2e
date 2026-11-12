@@ -87,7 +87,7 @@ describe('defineEngine', () => {
     );
     expect(() =>
       defineEngine(observingEngine({ session: { navigate: async () => undefined } as never })),
-    ).toThrow(/session has unknown key "navigate"; expected one of open, back, resize, switchTab, restart, reset/);
+    ).toThrow(/session has unknown key "navigate"; expected one of open, back, resize, switchTab, closeTab, restart, reset/);
     expect(() =>
       defineEngine(observingEngine({ session: { open: 'https://example.test/' } as never })),
     ).toThrow(/session.open must be a function/);
@@ -446,6 +446,7 @@ describe('createEngineSession', () => {
     expect(verbs({ session: { restart: async () => undefined } })).toEqual([]);
     expect(verbs({ session: { resize: async () => undefined } })).toEqual(['resize']);
     expect(verbs({ session: { switchTab: async () => undefined } })).toEqual(['switchTab']);
+    expect(verbs({ session: { closeTab: async () => undefined } })).toEqual(['closeTab']);
   });
 
   it('rejects a superseded located ref but lets observation refs through to the engine', async () => {

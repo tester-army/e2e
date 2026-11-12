@@ -242,10 +242,11 @@ export interface BrowserTab {
  * `locator`, `frameLocator`, `evaluate`, `waitForResponse`, `waitForDownload`,
  * the keyboard and mouse, `expect(browser)`, and `screen` act on the active
  * tab; cookies, routes, and dialog handlers cover the whole browser, every
- * tab included. A tab the app opens from the active tab or another of the
- * attempt's tabs (a `target="_blank"` link, `window.open`) becomes the
- * active tab once the browser reports it, shortly after the action that
- * opened it; when it closes, the tab that opened it is active again.
+ * tab included. A tab the app opens (a `target="_blank"` link,
+ * `window.open`) joins `tabs()` but does not become active on its own:
+ * `waitForPopup` makes the tab its trigger opens active, and `activate`
+ * any other. When the active tab closes, the tab that opened it is active
+ * again.
  */
 export interface Browser extends Expectable<BrowserExpectation> {
   /** Navigates to an allowed URL. */
@@ -323,8 +324,10 @@ export interface Browser extends Expectable<BrowserExpectation> {
   tabs(): readonly BrowserTab[];
   /**
    * Runs a trigger and waits for the tab it opens, then resolves with that
-   * tab once it is the active tab. Rejects with `ACTION_FAILED` when no tab
-   * opens within the timeout.
+   * tab once it is the active tab. The wait takes the first tab the app
+   * opens after it starts, which can be one an earlier action opened whose
+   * page loaded only now. Rejects with `ACTION_FAILED` when no tab opens
+   * within the timeout, naming the page when a tab was still loading it.
    */
   waitForPopup(trigger: () => Promise<void>, options?: { timeout?: number }): Promise<BrowserTab>;
   /** Opens a blank tab in the same browser context, sharing its cookies and storage, and makes it the active tab. */
@@ -466,7 +469,8 @@ async function collectDownloads(
 /**
  * Runs a trigger and waits for the tab it opens to become the active one.
  * The trigger is test code, so its errors keep their classification; the
- * wait for the tab is bounded apart from it.
+ * wait for the tab is bounded apart from it. A timeout names the page a tab
+ * was still loading, if any, as such a tab has no page to show yet.
  */
 async function waitForTab(
   surface: PlaywrightSurface,
@@ -481,15 +485,22 @@ async function waitForTab(
   const scope = new AbortController();
   let triggerFailure: { cause: unknown } | undefined;
   let triggerMs: number | undefined;
-  const timedOut = (): TestError => new TestError(
-    'ACTION_FAILED',
-    triggerMs === undefined
-      ? `${api} exceeded its timeout of ${waitMs}ms`
-      : `no tab opened within ${waitMs}ms; the trigger resolved after ${triggerMs}ms`,
-  );
+  let loading = (): string | undefined => undefined;
+  const timedOut = (): TestError => {
+    const url = loading();
+    if (url !== undefined) return new TestError('ACTION_FAILED', `the tab the app opened did not load ${url} within ${waitMs}ms`);
+    return new TestError(
+      'ACTION_FAILED',
+      triggerMs === undefined
+        ? `${api} exceeded its timeout of ${waitMs}ms`
+        : `no tab opened within ${waitMs}ms; the trigger resolved after ${triggerMs}ms`,
+    );
+  };
   try {
     return await withTimeout(surface.guard({ ...operation, signal: AbortSignal.any([operation.signal, scope.signal]) }, 'popup', async (current) => {
-      const opened = surface.nextPopup(current.signal);
+      const popup = surface.nextPopup(current.signal);
+      ({ loading } = popup);
+      const { opened } = popup;
       opened.catch(() => undefined);
       const triggerStart = Date.now();
       try {

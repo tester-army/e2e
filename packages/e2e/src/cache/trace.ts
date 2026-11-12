@@ -291,6 +291,12 @@ export interface SwitchTabAction extends ActionBase {
   readonly tab: number;
 }
 
+/** An open tab closed, by its zero-based place in opening order, replayed as given. */
+export interface CloseTabAction extends ActionBase {
+  readonly name: 'closeTab';
+  readonly tab: number;
+}
+
 /** A viewport size in CSS pixels, the precondition of a replayed point. */
 export interface TraceViewport {
   readonly width: number;
@@ -386,6 +392,7 @@ export type RecordedAction =
   | BackAction
   | ResizeAction
   | SwitchTabAction
+  | CloseTabAction
   | PointAction
   | PointDragAction
   | TypeTextAction
@@ -598,6 +605,7 @@ function mapActionText(action: RecordedAction, map: TraceTextMap): RecordedActio
     case 'back':
     case 'resize':
     case 'switchTab':
+    case 'closeTab':
     case 'pressKey':
     case 'dismissKeyboard':
     case 'tool':

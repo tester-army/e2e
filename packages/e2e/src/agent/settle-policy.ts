@@ -101,6 +101,8 @@ export const SETTLE_AFTER: Record<RecordedAction['name'], SettleAfter> = {
   resize: { changeWaitMs: BRIEF_CHANGE_WAIT_MS, look: 'held-still' },
   // Another tab is another document, shown whole the moment it is switched to.
   switchTab: { changeWaitMs: FULL_CHANGE_WAIT_MS, look: 'held-still' },
+  // Closing the tab on screen shows another document, as a switch does.
+  closeTab: { changeWaitMs: FULL_CHANGE_WAIT_MS, look: 'held-still' },
   tapAt: { changeWaitMs: FULL_CHANGE_WAIT_MS, look: 'held-still' },
   hoverAt: { changeWaitMs: FULL_CHANGE_WAIT_MS, look: 'held-still' },
   dragAt: { changeWaitMs: FULL_CHANGE_WAIT_MS, look: 'held-still' },

@@ -1,8 +1,8 @@
 /**
- * Tabs in a real browser: a tab the app opens becomes the one the attempt
- * shows, and when it closes, the tab that opened it is shown again. Driven
- * through the engine hooks the harness and the agent use, and the `browser`
- * fixture's tab calls.
+ * Tabs in a real browser: a tab the app opens joins the tabs in the
+ * background, `waitForPopup` and `switchTab` show one, and when the shown tab
+ * closes, the tab that opened it is shown again. Driven through the engine
+ * hooks the harness and the agent use, and the `browser` fixture's tab calls.
  */
 
 import { existsSync, mkdtempSync, rmSync, statSync } from 'node:fs';
@@ -143,11 +143,24 @@ describe('tabs', () => {
     return snapshot!;
   }
 
-  it('shows a tab the app opens, and its opener again when the tab closes itself', async () => {
+  /** The screen once the attempt has `count` tabs open. */
+  async function withTabs(engine: EngineHandle, count: number): Promise<EngineSnapshot> {
+    let snapshot: EngineSnapshot | undefined;
+    await expect.poll(async () => {
+      snapshot = await engine.observe!(operation());
+      return snapshot.tabs?.count ?? 1;
+    }, { timeout: 10_000 }).toBe(count);
+    return snapshot!;
+  }
+
+  it('a tab the app opens stays in the background until it is switched to, and its close shows its opener', async () => {
     await withAttempt(async (engine) => {
       await tap(engine, 'Open window');
-      const popup = await screenAt(engine, '/popup');
-      expect(popup.tabs).toEqual({ count: 2, active: 1 });
+      const opened = await withTabs(engine, 2);
+      expect(opened.location).toBe(`${url}/opener`);
+      expect(opened.tabs).toEqual({ count: 2, active: 0 });
+      await engine.session!.switchTab!(1, operation());
+      expect((await screenAt(engine, '/popup')).tabs).toEqual({ count: 2, active: 1 });
       // The tap's only effect is closing the page it tapped on.
       await tap(engine, 'Close me');
       const back = await screenAt(engine, '/opener');
@@ -155,61 +168,63 @@ describe('tabs', () => {
     });
   });
 
-  it('the operation right after a tap that opens a tab runs on that tab, however slow its page', async () => {
-    await withAttempt(async (engine) => {
+  it('an operation after a tap that opens a slow tab runs on the opener at once; waitForPopup waits for the page', async () => {
+    await withAttempt(async (engine, browser) => {
       await tap(engine, 'Open slow');
       const started = Date.now();
-      const snapshot = await engine.observe!(operation());
-      expect(snapshot.location).toBe(`${url}/slow`);
-      expect(snapshot.tabs).toEqual({ count: 2, active: 1 });
-      expect(Date.now() - started).toBeGreaterThan(1_000);
+      expect((await engine.observe!(operation())).location).toBe(`${url}/opener`);
+      expect(Date.now() - started).toBeLessThan(1_000);
+      // It joins in the background once its page loads.
+      expect((await withTabs(engine, 2)).tabs).toEqual({ count: 2, active: 0 });
+      const slow = await browser.waitForPopup(() => tap(engine, 'Open slow'));
+      expect(await slow.url()).toBe(`${url}/slow`);
+      expect((await engine.observe!(operation())).tabs).toEqual({ count: 3, active: 2 });
     });
   });
 
-  it('an operation names a tab whose page never loads when its time runs out waiting', async () => {
-    await withAttempt(async (engine) => {
-      await tap(engine, 'Open hang');
-      await expect(engine.observe!(operation(1_000))).rejects.toMatchObject({
-        code: 'OPERATION_TIMEOUT',
-        message: expect.stringContaining('the app opened a tab whose page has not loaded'),
+  it('waitForPopup names the page a tab could not load when its time runs out, and the opener still answers', async () => {
+    await withAttempt(async (engine, browser) => {
+      await expect(browser.waitForPopup(() => tap(engine, 'Open hang'), { timeout: 1_000 })).rejects.toMatchObject({
+        code: 'ACTION_FAILED',
+        message: `the tab the app opened did not load ${url}/hang within 1000ms`,
       });
+      expect(await browser.title()).toBe('Opener');
       for (const response of hanging) response.destroy();
       hanging.clear();
     });
   });
 
-  it('follows a tab whose opener closed itself before the tab loaded', async () => {
+  it('a tab whose opener closed itself before the tab loaded joins the tabs', async () => {
     await withAttempt(async (engine, browser) => {
-      await tap(engine, 'Open window');
-      await screenAt(engine, '/popup');
-      await tap(engine, 'Hand off');
-      const snapshot = await engine.observe!(operation());
-      expect(snapshot.location).toBe(`${url}/slow`);
-      expect(snapshot.tabs).toEqual({ count: 2, active: 1 });
+      await browser.waitForPopup(() => tap(engine, 'Open window'));
+      const orphan = await browser.waitForPopup(() => tap(engine, 'Hand off'));
+      expect(await orphan.url()).toBe(`${url}/slow`);
+      expect(orphan.isActive()).toBe(true);
       expect(browser.tabs()).toHaveLength(2);
       // It has no opener left, so its close hands the screen to the tab shown before it.
-      await browser.tabs()[1]!.close();
+      await orphan.close();
       expect(await browser.url()).toBe(`${url}/opener`);
     });
   });
 
-  it('a tab that never gets a document leaves the screen where it was, after a short wait at most', async () => {
+  it('a tab that never gets a document never joins the tabs', async () => {
     await withAttempt(async (engine, browser) => {
       for (const link of ['Open nothing', 'Email us', 'Export']) {
         await tap(engine, link);
         const started = Date.now();
         const snapshot = await engine.observe!(operation());
         expect(snapshot.location, link).toBe(`${url}/opener`);
-        expect(snapshot.tabs, link).toBeUndefined();
-        expect(Date.now() - started, link).toBeLessThan(2_500);
+        expect(Date.now() - started, link).toBeLessThan(1_000);
+        await new Promise((resolve) => setTimeout(resolve, 500));
         expect(browser.tabs(), link).toHaveLength(1);
+        expect((await engine.observe!(operation())).tabs, link).toBeUndefined();
       }
     });
   });
 
   it('reads in flight when the app closes the shown tab repeat on the tab shown next', async () => {
-    await withAttempt(async (engine) => {
-      await tap(engine, 'Open briefly');
+    await withAttempt(async (engine, browser) => {
+      await browser.waitForPopup(() => tap(engine, 'Open briefly'));
       await screenAt(engine, '/popup');
       // A retryable stale read is the runner's to repeat, as the locator engine does.
       const repeated = async <T>(read: () => Promise<T>): Promise<T | undefined> => {
@@ -233,12 +248,13 @@ describe('tabs', () => {
     });
   });
 
-  it('follows a target="_blank" link, and reads a tab the app wrote with no navigation', async () => {
-    await withAttempt(async (engine, browser) => {
+  it('a target="_blank" link opens a tab, and a tab the app wrote with no navigation reads once switched to', async () => {
+    await withAttempt(async (engine) => {
       await tap(engine, 'Open link');
-      await screenAt(engine, '/popup');
-      await browser.tabs()[0]!.activate();
+      await withTabs(engine, 2);
       await tap(engine, 'Write tab');
+      expect((await withTabs(engine, 3)).tabs).toEqual({ count: 3, active: 0 });
+      await engine.session!.switchTab!(2, operation());
       await expect.poll(async () => nodesOf(await engine.observe!(operation())).some((node) => node.text === 'Code TAB-88421'), { timeout: 10_000 }).toBe(true);
       expect((await engine.observe!(operation())).tabs).toEqual({ count: 3, active: 2 });
     });
@@ -276,16 +292,30 @@ describe('tabs', () => {
     });
   });
 
-  it('switchTab shows a tab by its place in opening order and refuses one that is not open', async () => {
+  it('switchTab and closeTab take a tab by its place in opening order and refuse one that is not open', async () => {
     await withAttempt(async (engine) => {
       await tap(engine, 'Open window');
-      await screenAt(engine, '/popup');
-      await engine.session!.switchTab!(0, operation());
-      expect((await engine.observe!(operation())).tabs).toEqual({ count: 2, active: 0 });
+      await withTabs(engine, 2);
+      await engine.session!.switchTab!(1, operation());
+      expect((await screenAt(engine, '/popup')).tabs).toEqual({ count: 2, active: 1 });
       await expect(engine.session!.switchTab!(2, operation())).rejects.toMatchObject({
         code: 'ACTION_FAILED',
         message: expect.stringContaining('there is no tab 3: 2 tabs are open'),
       });
+      // Closing the tab on screen shows its opener.
+      await engine.session!.closeTab!(1, operation());
+      expect((await engine.observe!(operation())).location).toBe(`${url}/opener`);
+      await expect(engine.session!.closeTab!(0, operation())).rejects.toMatchObject({
+        code: 'ACTION_FAILED',
+        message: expect.stringContaining('tab 1 is the only open tab'),
+      });
+      // Closing a tab in the background leaves the screen where it is.
+      await tap(engine, 'Open window');
+      await withTabs(engine, 2);
+      await engine.session!.closeTab!(1, operation());
+      const after = await engine.observe!(operation());
+      expect(after.location).toBe(`${url}/opener`);
+      expect(after.tabs).toBeUndefined();
     });
   });
 
@@ -318,9 +348,9 @@ describe('tabs', () => {
   });
 
   it('the video keeps a segment per tab shown and drops the one a tab that closed itself could not flush', async () => {
-    await withAttempt(async (engine) => {
+    await withAttempt(async (engine, browser) => {
       await engine.artifacts!.startVideo!(operation());
-      await tap(engine, 'Open window');
+      await browser.waitForPopup(() => tap(engine, 'Open window'));
       await screenAt(engine, '/popup');
       await tap(engine, 'Close me');
       await screenAt(engine, '/opener');

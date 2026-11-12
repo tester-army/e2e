@@ -260,6 +260,12 @@ export interface ExecutorActions {
    */
   switchTab(tab: number): Promise<void>;
   /**
+   * Closes an open tab, numbered as `switchTab` counts them (`closeTab` in
+   * `target.verbs`). Closing the tab the screen shows shows the tab that
+   * opened it, else the open tab shown most recently.
+   */
+  closeTab(tab: number): Promise<void>;
+  /**
    * Taps one viewport point, in the CSS pixels of the newest observation
    * (`SemanticNode.rect` space; a point read off `pixels` is divided by its
    * `scale`). The engine gets the bare point when it has the `pointer`

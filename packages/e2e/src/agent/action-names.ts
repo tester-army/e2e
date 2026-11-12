@@ -18,6 +18,7 @@ export const READ_ONLY_GRAMMAR = {
 export const GRAMMAR_ACTION_NAMES = [
   'back',
   'check',
+  'closeTab',
   'dismissKeyboard',
   'doubleTap',
   'dragAt',
@@ -95,6 +96,7 @@ export const GRAMMAR_TOOL_NAMES: ReadonlySet<string> = new Set([
   'back',
   'resize_viewport',
   'switch_tab',
+  'close_tab',
   'screenshot',
   'tap_at',
   'hover_at',

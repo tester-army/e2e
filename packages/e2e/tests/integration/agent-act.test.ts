@@ -721,6 +721,7 @@ describe('agent.act with the default ToolLoopAgent executor', () => {
     expect(loopCalls[0]!.toolNames).toEqual([
       'back',
       'check',
+      'close_tab',
       'complete_step',
       'double_tap',
       'drag',

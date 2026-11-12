@@ -147,7 +147,7 @@ describe('app log', () => {
       await expect.poll(navigations, { timeout: 5_000 }).toContain(`navigated to ${url}/next`);
       const help = (await surface.observe(operation())).root.children?.find((node) => node.role === 'button');
       await surface.perform(help!.ref, { kind: 'tap' }, operation());
-      await expect.poll(navigations, { timeout: 5_000 }).toContain(`the app opened a new tab at ${url}/tab; the screen follows it`);
+      await expect.poll(navigations, { timeout: 5_000 }).toContain(`the app opened a new tab at ${url}/tab`);
       expect(navigations()).toContain(`frame "pay" loaded ${url}/embed`);
       expect(navigations().some((text) => text.includes('/moving'))).toBe(false);
       // The tab's first document is told by its opening.

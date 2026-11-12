@@ -76,6 +76,7 @@ function makeHost(options: {
     back: () => act('back'),
     resize: (size) => act('resize', size),
     switchTab: (tab) => act('switchTab', tab),
+    closeTab: (tab) => act('closeTab', tab),
     tapAt: async (point) => {
       await act('tapAt', point);
       return { point, summary: 'scripted' };
@@ -314,13 +315,15 @@ describe('replayTrace', () => {
         { name: 'back', summary: 'back' },
         { name: 'resize', summary: 'resize', size: { width: 390, height: 844 } },
         { name: 'switchTab', summary: 'switch to tab 2', tab: 1 },
+        { name: 'closeTab', summary: 'close tab 2', tab: 1 },
       ]),
     );
-    expect(outcome).toMatchObject({ completed: true, executed: 10, total: 10 });
-    expect(host.calls).toEqual(['hover', 'doubleTap', 'longPress', 'secondaryTap', 'scrollTo', 'check', 'upload', 'back', 'resize', 'switchTab']);
+    expect(outcome).toMatchObject({ completed: true, executed: 11, total: 11 });
+    expect(host.calls).toEqual(['hover', 'doubleTap', 'longPress', 'secondaryTap', 'scrollTo', 'check', 'upload', 'back', 'resize', 'switchTab', 'closeTab']);
     expect(details[8]).toEqual({ width: 390, height: 844 });
     // The trace counts tabs from 0, the grammar from 1.
     expect(details[9]).toBe(2);
+    expect(details[10]).toBe(2);
     expect(details[5]).toEqual({ t: { id: 'n1' }, checked: false });
     expect(details[6]).toEqual({ t: { id: 'n1' }, paths: ['fixtures/a.txt'] });
   });

@@ -1,9 +1,8 @@
 /** Owns one attempt's live binding, its tabs, recovery, references, and recordings. */
-import type { Browser, BrowserContext, BrowserContextOptions, Page } from 'playwright-core';
+import type { Browser, BrowserContext, BrowserContextOptions, Page, Request } from 'playwright-core';
 import { EngineError, raceAbort, TestError, withinCleanupBudget, type EngineCleanupContext, type OperationContext, type VideoSegment, type ViewportSize } from 'e2e/engine';
 import { attachPersistent, recoveryFailed, targetIdentity, type CdpEndpointResolver, type SessionBinding, type TargetIdentity } from './cdp-recovery.ts';
 import { connectionAbort, withConnectionBudget, withOperationDeadline, type ConnectionBudget, type OperationBound } from './operation-budget.ts';
-import { OpeningTabs } from './opening-tabs.ts';
 import { RefRegistry } from './refs.ts';
 import type { LeaseRecording } from './provider.ts';
 import { ProviderVideo } from './provider-video.ts';
@@ -92,8 +91,11 @@ export class AttemptSession {
   private tabWork: Promise<void> = Promise.resolve();
   /** Waiting for the next tab the app opens (`browser.waitForPopup`), each told the tab and the work that shows it. */
   private readonly popupWaiters = new Set<(tab: AttemptTab, shown: Promise<void>) => void>();
-  /** The tabs the current binding's browser is opening, when it can be watched. */
-  private opening: OpeningTabs | undefined;
+  /** Pages the attempt is opening itself (its own page, `newTab`); every other page of its context is one the app opened. */
+  private readonly creating = new Set<Promise<Page>>();
+  private readonly ownPages = new WeakSet<Page>();
+  /** Pages the app opened that are already joining the tabs, from their opener's `popup` or as an orphan. */
+  private readonly claimed = new WeakSet<Page>();
 
   constructor(private readonly options: SessionOptions) {
     this.media = options.media;
@@ -209,13 +211,8 @@ export class AttemptSession {
         }, true);
       });
     }
-    // A tab the app just opened or closed is shown before the operation reads
-    // or acts on one, within the operation's own time.
-    const opening = this.opening;
-    const anyTab = this.tabs.find((tab) => !tab.page.isClosed());
-    if (opening !== undefined && !(await opening.settled(anyTab?.page, signal, endsAt))) {
-      throw new EngineError('OPERATION_TIMEOUT', `${label} timed out: the app opened a tab whose page has not loaded`, { retryable: false });
-    }
+    // A tab change already queued (a tab that closed, one a test showed) lands
+    // before the operation reads or acts on one, within the operation's own time.
     const settling = endsAt - Date.now();
     if (settling > 0) await withConnectionBudget({ signal, timeoutMs: settling }, label, () => this.tabWork);
     const left = endsAt - Date.now();
@@ -235,17 +232,12 @@ export class AttemptSession {
     const running = Promise.resolve().then(async () => {
       if (budget.signal.aborted) throw connectionAbort(budget.signal, 'connection');
       const candidate = await open();
-      let opening: OpeningTabs | undefined;
-      const close = () => {
-        opening?.detach();
-        void this.release(candidate).catch(() => undefined);
-      };
+      const close = () => { void this.release(candidate).catch(() => undefined); };
       budget.signal.addEventListener('abort', close, { once: true });
       try {
         if (budget.signal.aborted) throw connectionAbort(budget.signal, 'connection');
         await this.options.configure(candidate.context);
         this.watchPages(candidate.context);
-        opening = await OpeningTabs.watch(candidate.browser, candidate.context, candidate.identity?.contextId);
         if (recover) await this.remapTabs(candidate);
         if (recover && candidate.page !== null) {
           const size = previous?.page?.viewportSize() ?? this.requestedViewport ?? this.options.viewport;
@@ -258,10 +250,7 @@ export class AttemptSession {
         if (budget.signal.aborted) throw connectionAbort(budget.signal, 'connection');
         if (this.state !== pending) throw connectionAbort(this.lifetime.signal, 'connection');
         this.state = { kind: 'ready', binding: candidate };
-        this.opening?.detach();
-        this.opening = opening;
       } catch (cause) {
-        opening?.detach();
         await this.release(candidate).catch(() => undefined);
         throw cause;
       } finally {
@@ -333,7 +322,18 @@ export class AttemptSession {
         return initial;
       }
     }
-    return context.newPage();
+    return this.createPage(context);
+  }
+
+  /** Opens a page of the attempt's own, which never counts as a tab the app opened. */
+  private createPage(context: BrowserContext): Promise<Page> {
+    const creating = context.newPage().then((page) => {
+      this.ownPages.add(page);
+      return page;
+    });
+    this.creating.add(creating);
+    creating.then(() => { this.creating.delete(creating); }, () => { this.creating.delete(creating); });
+    return creating;
   }
 
   // --- tabs ---
@@ -364,17 +364,29 @@ export class AttemptSession {
 
   /** Shows the open tab at `index` in opening order, as the agent's `switchTab` counts them. */
   showTabAt(index: number): Promise<void> {
+    return this.showTab(this.tabAt(index));
+  }
+
+  /** Closes the open tab at `index` in opening order, as the agent's `closeTab` counts them; the last open tab stays. */
+  closeTabAt(index: number): Promise<void> {
+    const tab = this.tabAt(index);
+    if (this.tabs.length === 1) throw new TestError('ACTION_FAILED', `tab ${String(index + 1)} is the only open tab`);
+    return this.closeTab(tab);
+  }
+
+  /** The open tab at `index` in opening order, or an `ACTION_FAILED` the model reads. */
+  private tabAt(index: number): AttemptTab {
     const tab = this.tabs[index];
     if (!Number.isSafeInteger(index) || tab === undefined) {
       const open = this.tabs.length;
       throw new TestError('ACTION_FAILED', `there is no tab ${String(index + 1)}: ${String(open)} tab${open === 1 ? ' is' : 's are'} open`);
     }
-    return this.showTab(tab);
+    return tab;
   }
 
   /** Opens a new tab in the attempt's context, as a test asks, and shows it. */
   async newTab(): Promise<AttemptTab> {
-    const page = await this.current().context.newPage();
+    const page = await this.createPage(this.current().context);
     const tab = this.adopt(page, undefined, undefined);
     try {
       await this.inTurn(() => this.show(tab), true);
@@ -404,10 +416,12 @@ export class AttemptSession {
   }
 
   /**
-   * Resolves with the next tab the app opens from one of the attempt's tabs,
-   * once it is shown, or with it closed when the app closed it first.
+   * Waits for the next tab the app opens and shows it: `opened` resolves
+   * with the tab once it is shown, or with it closed when the app closed it
+   * first. `loading` names the page a tab is still loading meanwhile, which
+   * the browser has not reported as a tab yet, for a wait that times out.
    */
-  nextPopup(signal: AbortSignal): Promise<AttemptTab> {
+  nextPopup(signal: AbortSignal): { readonly opened: Promise<AttemptTab>; readonly loading: () => string | undefined } {
     let waiter!: (tab: AttemptTab, shown: Promise<void>) => void;
     const opened = new Promise<AttemptTab>((resolve) => {
       waiter = (tab, shown) => {
@@ -416,12 +430,28 @@ export class AttemptSession {
       };
     });
     this.popupWaiters.add(waiter);
-    const forget = () => { this.popupWaiters.delete(waiter); };
+    const loading = new Set<Request>();
+    const started = (request: Request): void => { if (opensTab(request)) loading.add(request); };
+    const ended = (request: Request): void => { loading.delete(request); };
+    const answered = (response: { request(): Request }): void => { ended(response.request()); };
+    const { context } = this.current();
+    context.on('request', started);
+    context.on('response', answered);
+    context.on('requestfailed', ended);
+    const forget = () => {
+      this.popupWaiters.delete(waiter);
+      context.off('request', started);
+      context.off('response', answered);
+      context.off('requestfailed', ended);
+    };
     signal.addEventListener('abort', forget, { once: true });
-    return raceAbort(opened, signal, 'popup').finally(() => {
-      forget();
-      signal.removeEventListener('abort', forget);
-    });
+    return {
+      opened: raceAbort(opened, signal, 'popup').finally(() => {
+        forget();
+        signal.removeEventListener('abort', forget);
+      }),
+      loading: () => [...loading].at(-1)?.url(),
+    };
   }
 
   /** Records a page as one of the attempt's tabs and watches it for the tabs it opens and for its own close. */
@@ -439,26 +469,42 @@ export class AttemptSession {
     page.once('close', () => { this.closed(tab, page); });
   }
 
-  /**
-   * A tab the app opened from one of the attempt's tabs: it joins the tabs
-   * at once and is shown as soon as it is set up, as a person's browser
-   * brings it to the front.
-   */
+  /** A tab the app opened from one of the attempt's tabs joins the tabs. */
   private follow(popup: Page, opener: AttemptTab, from: Page): void {
     if (opener.page !== from || !this.tabs.includes(opener)) return;
+    this.claimed.add(popup);
     this.join(popup, opener);
   }
 
   /**
-   * A page the app opened whose opener closed before Playwright reported it,
-   * so no tab heard its `popup` event: a window that opens the next one and
-   * closes itself. It is followed like any tab the app opens.
+   * A page of the attempt's context that neither the attempt opened nor a
+   * tab heard open: one whose opener closed before Playwright reported it,
+   * such as a window that opens the next one and closes itself. When the
+   * browser says a page opened it, it joins the tabs like any tab the app
+   * opens; a page something else opened in the context does not. Read once
+   * the attempt's own pages being opened are known, and a turn after the
+   * `popup` event, which Playwright emits right after the context's `page`.
    */
   private orphaned(page: Page): void {
-    this.join(page, undefined);
+    const unclaimed = (): boolean => !this.ownPages.has(page) && !this.claimed.has(page);
+    void Promise.allSettled(this.creating).then(() => {
+      setImmediate(() => {
+        if (!unclaimed()) return;
+        // Chromium only; elsewhere such a page stays out of the tabs.
+        targetIdentity(page).then(({ openerId }) => {
+          if (openerId === undefined || !unclaimed()) return;
+          this.claimed.add(page);
+          this.join(page, undefined);
+        }, () => undefined);
+      });
+    });
   }
 
-  /** Adds a page the app opened to the tabs and shows it, once it has a document. */
+  /**
+   * Adds a page the app opened to the tabs once it has a document. It stays
+   * in the background, as the attempt's screen stays on its tab, unless
+   * `browser.waitForPopup` is waiting for it: then it is shown.
+   */
   private join(popup: Page, opener: AttemptTab | undefined): void {
     if (this.state.kind === 'pending') {
       // A reconnect is publishing the binding the page belongs to: join it then.
@@ -479,6 +525,7 @@ export class AttemptSession {
       return;
     }
     const tab = this.adopt(popup, opener, undefined);
+    if (this.popupWaiters.size === 0) return;
     const shown = this.inTurn(() => this.show(tab));
     for (const waiter of this.popupWaiters) waiter(tab, shown);
   }
@@ -634,7 +681,7 @@ export class AttemptSession {
       const applied = this.applyMedia(page);
       this.emulated.set(page, applied);
       applied.catch(() => undefined);
-      this.opening?.reported(page, () => { this.orphaned(page); });
+      this.orphaned(page);
     });
   }
 
@@ -671,8 +718,6 @@ export class AttemptSession {
     this.lifetime.abort();
     this.invalidate();
     this.tabs = [];
-    this.opening?.detach();
-    this.opening = undefined;
     if (state.kind === 'pending') await withinCleanupBudget(state.work, budget);
     const binding = 'binding' in state ? state.binding : undefined;
     if (binding === undefined) return;
@@ -707,5 +752,19 @@ export class AttemptSession {
     } catch (cause) {
       throw translatePwError(cause, label);
     }
+  }
+}
+
+/**
+ * The first request of a tab being opened: a navigation Playwright has no
+ * frame for yet, since the page it loads in is not reported.
+ */
+function opensTab(request: Request): boolean {
+  if (!request.isNavigationRequest() || !/^https?:/.test(request.url())) return false;
+  try {
+    request.frame();
+    return false;
+  } catch {
+    return true;
   }
 }

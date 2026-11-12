@@ -137,11 +137,7 @@ test.describe('page set input files', { requires: ['browser'], tags: ['playwrigh
 
   test('should upload a file after popup', async ({ browser }) => {
     await browser.goto('/input/fileupload.html');
-    // The popup becomes the active tab; the opener closes it once it is active again.
-    await browser.waitForPopup(async () => {
-      await browser.evaluate("() => { window['__popup'] = window.open('about:blank'); }");
-    });
-    await browser.tabs()[0]!.activate();
+    await browser.evaluate("() => { window['__popup'] = window.open('about:blank'); }");
     await browser.evaluate("() => { window['__popup'].close(); }");
     await browser.locator('input[type=file]').setInputFiles(asset('file-to-upload.txt'));
     expect(await browser.evaluate("() => document.querySelector('input').files[0].name")).toBe('file-to-upload.txt');

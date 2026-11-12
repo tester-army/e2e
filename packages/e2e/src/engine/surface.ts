@@ -62,6 +62,8 @@ export type GrammarVerb =
   | 'resize'
   /** Shows another open tab (`session.switchTab`), for a flow that crosses between tabs. */
   | 'switchTab'
+  /** Closes an open tab (`session.closeTab`), such as one the app opened that does not close itself. */
+  | 'closeTab'
   | 'tapAt'
   | 'hoverAt'
   /** A drag from one viewport point to another (`dragTo` in `pointerActions`), for a drag the tree does not list. */
@@ -117,6 +119,8 @@ export interface SessionApp {
   resize(size: ViewportSize, operation: OperationContext): Promise<void>;
   /** Shows the open tab at a zero-based index, in the order the tabs opened. */
   switchTab(index: number, operation: OperationContext): Promise<void>;
+  /** Closes the open tab at a zero-based index, in the order the tabs opened. */
+  closeTab(index: number, operation: OperationContext): Promise<void>;
   /** Recreates the app context without clearing persisted state; shows nothing until `open`. */
   restart(operation: OperationContext): Promise<void>;
   /** Clears persisted client state and recreates the context; shows nothing until `open`. */

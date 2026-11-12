@@ -741,6 +741,11 @@ export class PlaywrightSurface {
     return this.acted(operation, this.guard(operation, 'switch tab', () => this.requireSession().showTabAt(index)));
   }
 
+  /** Closes the open tab at `index`, in opening order, for the agent's `closeTab` verb, and shows the screen after it. */
+  closeTabAt(index: number, operation: OperationContext): Promise<void> {
+    return this.acted(operation, this.guard(operation, 'close tab', () => this.requireSession().closeTabAt(index)));
+  }
+
   // --- tabs shared with the browser fixture ---
 
   /** The attempt's open tabs, in the order they opened. */
@@ -769,8 +774,8 @@ export class PlaywrightSurface {
     return this.guard(operation, 'tab', () => this.requireSession().closeTab(tab));
   }
 
-  /** The next tab the app opens, once shown (`browser.waitForPopup`). */
-  nextPopup(signal: AbortSignal): Promise<AttemptTab> {
+  /** Waits for the next tab the app opens and shows it (`browser.waitForPopup`). */
+  nextPopup(signal: AbortSignal): ReturnType<AttemptSession['nextPopup']> {
     return this.requireSession().nextPopup(signal);
   }
 
