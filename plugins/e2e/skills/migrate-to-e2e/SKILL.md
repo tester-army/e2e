@@ -348,7 +348,8 @@ Defect check: on
 
 ## Gaps
 
-- `addMedia` has no e2e equivalent (guide: Not yet); feedback sent.
+- `addMedia` has no e2e equivalent (guide: Planned); the test adds the photo
+  with `xcrun simctl addmedia`.
 
 ## Next
 

@@ -118,7 +118,6 @@ e2e leaves it out on purpose.
 | --- | --- |
 | `new RemoteWebDriver(gridUrl)`, Firefox or Safari on remote nodes | `web({ connect })` to a CDP endpoint. Run `firefox` and `webkit` targets locally |
 | Allure reports | Feed the `junit` reporter's XML to Allure, or use `htmlReporter()` |
-| Cucumber feature files | Rewrite each scenario as a test. A step often fits one `agent.act` goal |
 | Two drivers in one test, WebdriverIO `multiremote` | Drive the second user through the app's API |
 | `getPageSource()`, `getLocalStorage()`, `getSessionStorage()` | `browser.evaluate`, such as `() => localStorage.getItem('k')` |
 
@@ -127,6 +126,7 @@ e2e leaves it out on purpose.
 | Selenium | Use instead |
 | --- | --- |
 | Java, Python, C#, or Ruby bindings | Tests are TypeScript or JavaScript |
+| Cucumber feature files | Rewrite each scenario as a test. A step often fits one `agent.act` goal |
 | `Thread.sleep`, `Actions.pause`, `wait.until(elementToBeClickable(...))` | A locator assertion on the state you wait for. Each action waits for its node |
 | `switchTo().alert()` after the dialog opens, `alertIsPresent()` | `browser.onDialog(handler)` before the action that opens it |
 | Real Safari, IE mode | `webkit` is the closest build to Safari. Keep IE mode tests in Selenium |

@@ -287,15 +287,13 @@ is not a step, so it skips the report and secret redaction.
 
 ### Planned
 
+<AccordionGroup>
+<Accordion title="Capabilities and devices">
+
 | Appium | Use today |
 | --- | --- |
 | `appium:platformVersion` on a local device, a phone's `appium:udid` | Name a simulator or emulator that runs the version. Put the phone's name in `device` |
 | `appium:autoGrantPermissions`, Android permissions off the list, iOS location `always` | List each permission in `app.permissions`, or run `adb shell pm grant` before the run |
-| `.getAttribute()` for a label, id, or class, `.isSelected()`, `.getTagName()` | Assert with `toHaveAccessibleName` or `toBeSelected` |
-| `pressKeyCode(code)`, `driver.keys('Backspace')`, `isKeyboardShown()` | `.press()` takes `Enter`, `Space`, or one character. Use `.clear()` and `.fill()` |
-| `driver.getWindowRect()`, `getWindowSize()`, `mobile: deviceInfo` | Swipe by direction, or read `.boundingBox()` of a full-screen element |
-| `driver.getLogs('logcat')`, `'syslog'`, `'crashlog'` | Run `adb logcat` or `xcrun simctl spawn <udid> log stream` from a hook |
-| Appium Inspector | `screen.debug()`, or [`npx e2e mcp`](/mcp-server) for a coding agent's live session |
 | Device settings and alerts on a `browserstack()` or `testmu()` device | Tap the prompt as UI. Run those tests on a local device |
 | `bstack:options.local`, `lt:options.tunnel` | Point the app at a backend the hosted device can reach |
 | `appium:appActivity`, `appWaitActivity`, `startActivity()` | `device.openLink(url)`, or `client.apps.open` through [`unstable_raw`](/reference/mobile#unstable_raw) |
@@ -303,16 +301,36 @@ is not a step, so it skips the report and secret redaction.
 | `appium:language`, `appium:locale` on a local device | On iOS, `app.launchArguments: ['-AppleLanguages', '(fr)', '-AppleLocale', 'fr_FR']`, see [Run the app in another language](/mobile#run-the-app-in-another-language). On Android, set the device language before the run |
 | `appium:avd`, `avdArgs`, `isHeadless` | Boot the emulator before the run and name its serial |
 | `appium:disableWindowAnimation`, `reduceMotion` | On Android, `client.settings.update` through [`unstable_raw`](/reference/mobile#unstable_raw) |
-| `UiScrollable` `scrollToEnd()`, `scrollToBeginning()` | Loop `locator.swipe()` until `allTextContents()` stops changing |
+| `sauce:options` | Write a [`DeviceProvider`](/mobile#hosted-devices) |
+
+</Accordion>
+<Accordion title="Elements and gestures">
+
+| Appium | Use today |
+| --- | --- |
+| `.getAttribute()` for a label, id, or class, `.isSelected()`, `.getTagName()` | Assert with `toHaveAccessibleName` or `toBeSelected` |
+| `pressKeyCode(code)`, `driver.keys('Backspace')`, `isKeyboardShown()` | `.press()` takes `Enter`, `Space`, or one character. Use `.clear()` and `.fill()` |
+| `driver.getWindowRect()`, `getWindowSize()`, `mobile: deviceInfo` | Swipe by direction, or read `.boundingBox()` of a full-screen element |
+| `UiScrollable` `scrollToEnd()`, `scrollToBeginning()` | Loop `locator.swipe({ direction: 'down' })` until `allTextContents()` stops changing; `'up'` for the beginning |
 | `mobile: selectPickerWheelValue`, date and time pickers, slider values | Swipe the wheel and read `.inputValue()`, or use an `agent.act` goal |
 | `mobile: pinchOpenGesture`, `mobile: pinch`, `mobile: dragGesture` to coordinates, `mobile: dragFromToForDuration` | `client.interactions.pinch` or `.drag` through [`unstable_raw`](/reference/mobile#unstable_raw) |
+
+</Accordion>
+<Accordion title="App, device, and runner">
+
+| Appium | Use today |
+| --- | --- |
+| `driver.getLogs('logcat')`, `'syslog'`, `'crashlog'` | Run `adb logcat` or `xcrun simctl spawn <udid> log stream` from a hook |
+| Appium Inspector | `screen.debug()`, or [`npx e2e mcp`](/mcp-server) for a coding agent's live session |
 | `driver.removeApp(id)`, `isAppInstalled(id)`, `queryAppState(id)` | `client.apps.uninstall` or `.list` through [`unstable_raw`](/reference/mobile#unstable_raw) |
 | `driver.lock()`, `unlock()`, power and volume buttons | `client.command.hardwareButton` through [`unstable_raw`](/reference/mobile#unstable_raw) |
 | `driver.openNotifications()`, `mobile: pushNotification` | `screen.swipe({ from, to })` from the top edge; `xcrun simctl push` from Node |
 | `driver.pushFile()`, `pullFile()`, `pullFolder()` | `adb push`, `adb pull`, or `xcrun simctl addmedia` from Node; local devices only |
 | `driver.getAlertText()` | `screen.getByRole('alert').textContent()` on iOS, `getByText` on Android |
 | `wdio.conf.ts` hooks such as `onPrepare` and `afterTest` | `afterEach`, a fixture, or a [custom reporter](/reference/reporters#custom-reporters) |
-| `sauce:options` | Write a [`DeviceProvider`](/mobile#hosted-devices) |
+
+</Accordion>
+</AccordionGroup>
 
 ### Not yet
 
@@ -324,7 +342,7 @@ is not a step, so it skips the report and secret redaction.
 | `appium:unlockType`, `unlockKey` | Keep the device unlocked |
 | `driver.updateSettings()`, `appium:settings[...]` | `snapshot`, `settle`, and `transition` on [`mobile()`](/reference/mobile#engine) |
 | `.getAttribute('clickable')`, `.isClickable()` | Act on the element. The action waits until it is actionable |
-| `driver.getPageSource()` as XML | `client.capture.snapshot` through [`unstable_raw`](/reference/mobile#unstable_raw) |
+| `driver.getPageSource()` as XML | No XML export. `screen.tree()` returns the tree as text, and `client.capture.snapshot()` through [`unstable_raw`](/reference/mobile#unstable_raw) returns its nodes. Keep XML consumers in Appium |
 | `performActions()` with several fingers or waypoints | Single gestures, or `client.interactions.gesture` through [`unstable_raw`](/reference/mobile#unstable_raw) |
 | `mobile: shell`, `getPerformanceData()` | Run `adb` or `simctl` from Node with `device.unstable_raw.deviceId`; local devices only |
 | `mobile: setSimulatedLocation`, `mobile: setAppearance`, `mobile: setPasteboard` on an iPhone | Run those tests on a simulator, see [Physical devices](/mobile#physical-devices) |
@@ -343,6 +361,7 @@ is not a step, so it skips the report and secret redaction.
 | WebDriverAgent capabilities such as `usePrebuiltWDA` | Nothing to set. agent-device builds and signs its own runner |
 | Compound `-ios predicate string` logic, `UiSelector` flags and `fromParent()` | A `getBy*` query with `filter({ has })` or a `RegExp` |
 | Gherkin feature files | One test per scenario. A step can be an `agent.act` goal |
+| Saved sessions, `test.setup` and `{ session }` | Sign in per test or seed the app. A device has no session to save, see [What differs from the web](/mobile#what-differs-from-the-web) |
 | A device grid or hub, other device clouds | A hosted provider, or a `DeviceProvider` you write |
 
 ## Next

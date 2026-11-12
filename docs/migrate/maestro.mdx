@@ -96,6 +96,9 @@ Calls on `device` run only on a device, so a test that uses it declares
 [screen](/reference/screen), [expect](/reference/expect),
 [test](/reference/test), and the [mobile engine](/reference/mobile).
 
+<AccordionGroup>
+<Accordion title="App and device">
+
 | Maestro | e2e |
 | --- | --- |
 | `launchApp` | `app.open()`, a fresh launch of the target's app; nothing launches on its own |
@@ -106,6 +109,12 @@ Calls on `device` run only on a device, so a test that uses it declares
 | `stopApp`, `killApp` | `device.closeApp()`, a force stop; `app.restart()` to stop the app and launch it again |
 | `clearKeychain`, `openLink`, `setLocation`, `setAirplaneMode`, `setOrientation`, `setClipboard` | the same on `device`, such as `device.openLink(url)`; for `travel`, loop `device.setLocation` |
 | `back`, `pressKey: Home`, `hideKeyboard`, `setDarkMode` | `app.back()`, `device.home()`, `device.dismissKeyboard()`, `device.setAppearance('dark')` |
+
+</Accordion>
+<Accordion title="Taps, input, and swipes">
+
+| Maestro | e2e |
+| --- | --- |
 | `tapOn: "Text"`, `tapOn: { id: x }` | `screen.getByText('Text').tap()`, `screen.getByTestId('x').tap()`, see [Rewrite selectors](#rewrite-selectors) |
 | `index: 2`, `containsDescendants`, `childOf` | `.nth(2)`, `.filter({ has: other })`, `parent.getByText('Text')` |
 | platform-specific selectors | `device.locator('role=text label="..."')`, agent-device's selector terms |
@@ -116,6 +125,12 @@ Calls on `device` run only on a device, so a test that uses it declares
 | `copyTextFrom`, `pasteText` | `await locator.textContent()`, then `.fill(text)` |
 | `swipe: { direction: UP }`, `scroll` | `screen.swipe({ direction: 'down' })`; Maestro names the finger's direction, e2e the content's |
 | `swipe: { start, end }`, `scrollUntilVisible` | `screen.swipe({ from, to })`, `screen.scrollUntilVisible(locator, { direction })` |
+
+</Accordion>
+<Accordion title="Assertions and flows">
+
+| Maestro | e2e |
+| --- | --- |
 | `assertVisible`, `assertNotVisible`, `extendedWaitUntil` | `await expect(locator).toBeVisible({ timeout })`, `.toBeHidden()` |
 | `assertVisible: { enabled, checked, selected, focused }` | `.toBeEnabled()`, `.toBeChecked()`, `.toBeSelected()`, `.toBeFocused()` |
 | `assertTrue: ${...}` | `expect(value).toBe(true)`, or `expect.poll` for a value that is still changing |
@@ -125,6 +140,9 @@ Calls on `device` run only on a device, so a test that uses it declares
 | `runFlow: file.yaml`, `onFlowStart`, `onFlowComplete` | a function or a `test.extend` fixture; `beforeEach`, `afterEach` |
 | `runFlow: { when: { visible } }` | `if (await locator.isVisible()) { ... }`, see [Rewrite selectors](#rewrite-selectors) |
 | `repeat`, `runScript`, `evalScript`, `${output.x}`, `http.get` | TypeScript in the test: loops, variables, and Node `fetch`, see [API](/api-testing) |
+
+</Accordion>
+</AccordionGroup>
 
 ## Rewrite selectors
 

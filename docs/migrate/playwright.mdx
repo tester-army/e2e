@@ -240,35 +240,59 @@ purpose. Use the workaround, or keep the test in Playwright.
 
 ### Planned
 
+<AccordionGroup>
+<Accordion title="Locators and actions">
+
 | Playwright | Use today |
 | --- | --- |
 | `locator.locator(selector)`, `locator.and()`, `getByTitle()`, `filter({ visible })` | One `browser.locator` selector, such as `'.card >> [title="Close"]'`, or a `screen` query inside the scope |
 | `locator.evaluate()`, `expect(locator).toHaveClass()`, `toHaveCSS()`, `dispatchEvent()` | `browser.evaluate(fn, selector)`; `expect(browser).toHaveClass(locator, cls)` |
+| `setInputFiles({ buffer })`, `selectOption([...])`, `click({ clickCount })`, `hover({ position })` | A temp file path; `browser.evaluate` for a multi-select; `browser.mouse` with `boundingBox()` |
+
+</Accordion>
+<Accordion title="Assertions">
+
+| Playwright | Use today |
+| --- | --- |
+| `expect(fn).toPass()`, `expect.poll(fn, { intervals })` | `expect.poll(async () => { ...; return true }).toBe(true)` |
+| `toBeEmpty()`, `toBeEditable()`, `toBeInViewport()`, `toHaveRole()` | `toHaveValue('')` on a form control, `toHaveText('')` on other elements; `toBeEnabled()` and `.not.toHaveAttribute('readonly')`; `expect.poll` over `boundingBox()`; a `getByRole` query |
+| `locator.screenshot()`, `{ fullPage, clip }`, `snapshotPathTemplate`, `ignoreSnapshots` | The viewport or one locator in `toHaveScreenshot`; a tag and `--exclude-tag` to skip visual tests |
+| `expect(locator, 'message')`, `expect.configure()` | Drop the message, the failure names the locator and the matcher; `{ timeout }` on each call |
+| `@axe-core/playwright` | axe-core through `browser.addInitScript({ content })`, then `axe.run()` in `browser.evaluate` |
+
+</Accordion>
+<Accordion title="Navigation, network, and browser">
+
+| Playwright | Use today |
+| --- | --- |
 | `devices['iPhone 15']`, `isMobile`, `hasTouch`, `deviceScaleFactor` | `web({ viewport, userAgent })`; a mobile target for real touch |
 | `page.waitForLoadState()`, `waitForURL(glob)`, `waitForFunction()` | An assertion on what the next page shows; a `RegExp`; `expect.poll` over `browser.evaluate` |
 | `waitForResponse(predicate)`, `waitForRequest()`, `page.on('request')`, `response.ok()` | A `browser.route` handler that records `route.request`, then calls `route.fallback()`; `status` for `ok()` |
-| `test.step()`, `testInfo.attach()` | Each call is already a named step in the report; `app.screenshot(label)` attaches a screenshot |
-| `test.info()`, `testInfo` in hooks and fixtures, `annotations` | Your own fixture or module state; an issue id in the title or a tag |
-| `fullyParallel`, `describe.configure({ mode: 'parallel' })` | Split the file. Files run in parallel, a file's tests in order |
-| On-demand, worker-scoped, and `{ auto: true }` fixtures; `mergeTests()` | One `test` for each fixture set; `beforeAll` for per-file setup |
-| `expect(fn).toPass()`, `expect.poll(fn, { intervals })` | `expect.poll(async () => { ...; return true }).toBe(true)` |
-| `globalSetup`, `globalTeardown`, a `webServer` array | A script around the run, or one `app.command` that starts every process |
-| `projects[].testMatch`, `testDir`, `testIgnore`, `grep` | `platforms` or tags on the tests, or one run for each target |
-| `--ui`, `npx playwright show-report`, `--reporter html` | `--watch --headed`; open `.e2e/report.html`, which `htmlReporter()` writes |
 | `route.fulfill({ response })`, `route.abort(code)`, `route.fetch(options)`, `request.postDataJSON()` | `status`, `headers`, and `body` from `route.fetch()`; `JSON.parse(route.request.postData)` |
-| `setInputFiles({ buffer })`, `selectOption([...])`, `click({ clickCount })`, `hover({ position })` | A temp file path; `browser.evaluate` for a multi-select; `browser.mouse` with `boundingBox()` |
-| `toBeEmpty()`, `toBeEditable()`, `toBeInViewport()`, `toHaveRole()` | `toHaveValue('')`; `toBeEnabled()` and `.not.toHaveAttribute('readonly')`; `expect.poll` over `boundingBox()`; a `getByRole` query |
-| `locator.screenshot()`, `{ fullPage, clip }`, `snapshotPathTemplate`, `ignoreSnapshots` | The viewport or one locator in `toHaveScreenshot`; a tag and `--exclude-tag` to skip visual tests |
 | `page.addLocatorHandler()` | Dismiss the overlay in `beforeEach`, or set its consent cookie with `browser.setCookies` |
 | `page.on('console')`, `page.on('pageerror')`, `page.clock` | A `browser.addInitScript` that records to a `window` array, or that stubs `Date` |
 | `context.setOffline()`, `setGeolocation()`, `grantPermissions()` | A route that aborts every request; a `browser.addInitScript` stub; `app.permissions` on the target |
 | `ignoreHTTPSErrors`, `proxy`, `channel`, `launchOptions` | Serve the app over `http`; start the browser yourself and attach with `web({ connect })` |
+
+</Accordion>
+<Accordion title="Test structure, reports, and CLI">
+
+| Playwright | Use today |
+| --- | --- |
+| `test.step()`, `testInfo.attach()` | Each call is already a named step in the report; `app.screenshot(label)` attaches a screenshot |
+| `test.info()`, `testInfo` in hooks and fixtures, `annotations` | Your own fixture or module state; an issue id in the title or a tag |
+| `fullyParallel`, `describe.configure({ mode: 'parallel' })` | Split the file. Files run in parallel, a file's tests in order |
+| On-demand, worker-scoped, and `{ auto: true }` fixtures; `mergeTests()` | One `test` for each fixture set; `beforeAll` for per-file setup |
+| `globalSetup`, `globalTeardown`, a `webServer` array | A script around the run, or one `app.command` that starts every process |
+| `projects[].testMatch`, `testDir`, `testIgnore`, `grep` | `platforms` or tags on the tests, or one run for each target |
+| `--ui`, `npx playwright show-report`, `--reporter html` | `--watch --headed`; open `.e2e/report.html`, which `htmlReporter()` writes |
 | `test.setTimeout()`, `test.slow()`, `test.fixme()`, `test.describe.only()` | `{ timeout }` or `{ skip: 'reason' }` on the test or group; `test.only` on each test |
-| `expect(locator, 'message')`, `expect.configure()` | Drop the message, the failure names the locator and the matcher; `{ timeout }` on each call |
 | `failOnFlakyTests`, `use.navigationTimeout`, `--timeout`, `--quiet` | `run.summary.flaky` in `report.json`; `browser.goto(url, { timeout })`; `timeout` in the config |
 | The `blob` reporter and `merge-reports`, a Playwright `Reporter` class | One report for each shard; a [custom reporter](/reference/reporters#custom-reporters) with `onEvent` and `onRunFinished` |
-| `@axe-core/playwright` | axe-core through `browser.addInitScript({ content })`, then `axe.run()` in `browser.evaluate` |
 | The Playwright Docker image | The image for the `playwright-core` version `@e2e-dev/web` pins, or `npx @e2e-dev/web install chromium --with-deps` |
+
+</Accordion>
+</AccordionGroup>
 
 ### Not yet
 
@@ -332,6 +356,8 @@ purpose. Use the workaround, or keep the test in Playwright.
 - A negated locator matcher passes only after its condition holds for 1 s.
   Use the positive inverse, which passes on the first read: `toBeHidden()`,
   `toBeDisabled()`, `toBeChecked({ checked: false })`.
+- `.not.toBeChecked()` passes on a button or a heading. Query the control
+  by its role, so the assertion fails when the control changes kind.
 - Sessions last one run. `test.setup` saves state under a name and
   `{ session }` restores it. The file is encrypted and deleted at cleanup,
   so there is no `.auth/user.json` to reuse.
