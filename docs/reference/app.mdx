@@ -73,7 +73,7 @@ and takes no path.
 | `POLICY_DENIED` | A URL whose scheme is not `http:` or `https:`. `about:blank` is allowed. |
 | `APP_UNREACHABLE` | The app URL could not be reached. |
 | `ACTION_FAILED` | The operation failed or timed out. |
-| `UNSUPPORTED_CAPABILITY` | No `session.open` on a target with a URL, or no `session.restart` on one without. |
+| `UNSUPPORTED_CAPABILITY` | No `session.open` on a target with a URL, or no `session.restart` on one without. On a device with no `app.bundleId`, also the target's build not installed yet ([mobile](/reference/mobile#the-app-under-test)). |
 
 ### `restart`
 
@@ -87,7 +87,7 @@ await app.restart();
 | Throws | When |
 | --- | --- |
 | `ACTION_FAILED`, `ENGINE_FAILURE` | The operation or the engine failed. |
-| `UNSUPPORTED_CAPABILITY` | No `session.restart`. |
+| `UNSUPPORTED_CAPABILITY` | No `session.restart`, or on a device with no `app.bundleId`, the build not installed yet. |
 
 ### `clearState`
 
@@ -103,7 +103,7 @@ test.beforeEach(async ({ app }) => {
 | Throws | When |
 | --- | --- |
 | `ACTION_FAILED`, `ENGINE_FAILURE` | The operation or the engine failed. |
-| `UNSUPPORTED_CAPABILITY` | No `session.reset`. |
+| `UNSUPPORTED_CAPABILITY` | No `session.reset`, or on a device with no `app.bundleId`, the build not installed yet. |
 
 <Warning>
 `clearState` inside a serial group destroys the shared state the group
