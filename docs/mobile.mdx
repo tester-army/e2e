@@ -800,8 +800,10 @@ export function cloudDevices(options: { provider: string; device: string; osVers
 - An element hidden with `display: none` isn't in the tree, so
   `toBeAttached` fails. Assert `toHaveCount(0)` or `toBeHidden`.
 - A node whose centre the soft keyboard covers is hidden, like one scrolled
-  off screen: `toBeVisible()` fails on it and a tap on it fails with
-  `ACTION_FAILED`. The focused field stays visible. Call
+  off screen. The keyboard's keys, suggestion bar, and dock stay visible, and
+  so does the focused field. A container stays visible while one of its
+  children shows above the keyboard. `toBeVisible()` fails on other covered
+  nodes, and a tap on one fails with `ACTION_FAILED`. Call
   `device.dismissKeyboard()` or scroll the node clear first. See
   [Visibility](/reference/mobile#visibility).
 - `doubleTap()` on iOS is two taps about 285 ms apart. Give a double-tap
