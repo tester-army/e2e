@@ -1795,6 +1795,31 @@
           "web"
         ]
       }
+    },
+    {
+      "slug": "automation-exercise",
+      "title": "Testing e-commerce flows on Automation Exercise with e2e",
+      "shortTitle": "Automation Exercise",
+      "description": "Navigation, product catalog search, and cart validation journeys for the Automation Exercise store, tested with locators.",
+      "source": "community",
+      "repository": "https://github.com/Mohsintl/e2e-automation-exercise/tree/b75be5340bad9f6d9566523b0ac7a6bd55feba2e",
+      "author": {
+        "name": "Tingri Lohar Mohammed Mohsin",
+        "github": "Mohsintl"
+      },
+      "license": "MIT",
+      "licenseUrl": "https://github.com/Mohsintl/e2e-automation-exercise/blob/b75be5340bad9f6d9566523b0ac7a6bd55feba2e/LICENSE",
+      "tags": {
+        "framework": [
+          "nodejs"
+        ],
+        "useCase": [
+          "e-commerce"
+        ],
+        "platform": [
+          "web"
+        ]
+      }
     }
   ]
 }
