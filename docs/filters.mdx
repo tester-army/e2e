@@ -199,7 +199,7 @@ To set scores in your own filter, return
 
 ## Read the results
 
-The terminal prints each filter's decision and spend:
+The terminal prints each filter's decision. The decision filter also reports model spend:
 
 ```text
 decision kept 7 of 77 tests, left out 70 (1 call, 17.6k tokens, $0.0007)
@@ -214,7 +214,7 @@ When scores span multiple bands, the terminal also prints a line such as
 
 | Output | Excluded tests |
 | --- | --- |
-| [Pull request comment](/github) and `summary.md` | A headline such as `7 passed, 70 left out by filters`, then a folded table with reasons. |
+| `summary.md` and [pull request comment](/github#when-nothing-is-posted) (read-only fork tokens cannot post) | A headline such as `7 passed, 70 left out by filters`, then a folded table with reasons. |
 | `junit.xml` and `report.json` | Skipped cases. JSON includes `skip.filter`, `run.filters`, and `run.changes`. See [Reporters](/reference/reporters#test-filters). |
 
 <a id="adjust-the-decision-filter" />
