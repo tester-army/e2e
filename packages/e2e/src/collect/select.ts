@@ -1,6 +1,7 @@
 /** Option resolution and test-target selection. */
 
-import { ConfigurationError, CollectionError } from '../internal/errors.ts';
+import { staticSecretLedger } from '../run/secrecy.ts';
+import { ConfigurationError, CollectionError, sanitizeText, truncateUtf8 } from '../internal/errors.ts';
 import { resultId } from '../internal/ids.ts';
 import { expectedFailureOption } from '../internal/expected-failure.ts';
 import { didYouMean, suggestionNote } from '../internal/suggest.ts';
@@ -221,7 +222,7 @@ export function resolveOptions(test: CollectedTest, config: ResolvedConfig): Res
     session,
     agents: effectiveAgents(test, pin, config.agentNames),
     agentContext: agentContextParts.length === 0 ? undefined : agentContextParts.join('\n'),
-    skipReason,
+    skipReason: skipReason === undefined ? undefined : truncateUtf8(sanitizeText(staticSecretLedger(config.allSecrets).redact(skipReason)), 8192),
     expectedFailure: expectedFailureOption(test.options.fail),
     serial: serialRoot !== undefined,
     trace,

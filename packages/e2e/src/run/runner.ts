@@ -59,7 +59,7 @@ import { SessionStore } from './sessions.ts';
 import { outputLayout } from './output.ts';
 import type { RunnerOutput } from './process-output.ts';
 import { refuseBun } from './public-ownership.ts';
-import { registerStaticSecrets, staticSecretLedger } from './secrecy.ts';
+import { processSecrets, registerStaticSecrets, staticSecretLedger } from './secrecy.ts';
 import { nextRerunDir, pruneArtifacts } from './artifacts.ts';
 import { carryForward, fileDurationKey, lastFailedIds, readLastRun, reportArtifactPaths, type RerunCollection } from './last-run.ts';
 import { loadTimings, writeTimings } from './timings.ts';
@@ -1082,7 +1082,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     if (aiTrace !== undefined && inProcess) {
       // In-process execution shares this process with the runner, so the
       // recorder lives here and is drained straight into the collector.
-      aiTraceRecorder = new AiTraceRecorder();
+      aiTraceRecorder = new AiTraceRecorder(processSecrets.redact);
       await registerAiTraceRecorder(aiTraceRecorder, loadAiSdk);
     }
     const spawn =

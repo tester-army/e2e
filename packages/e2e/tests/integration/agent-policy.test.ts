@@ -4,6 +4,8 @@
  * agent-act-stress.test.ts.
  */
 
+import { z } from 'zod';
+import { defineTool } from '../../src/agent/tool.ts';
 import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -533,4 +535,66 @@ test('fills a token the engine rejects', async ({ agent }) => {
       project.cleanup();
     }
   }, 60_000);
+});
+
+describe('tool output sent to the model', () => {
+  it('redacts strings, structured fields and keys, tool errors, and engine errors', async () => {
+    const token = 'synthetic-model-token-314159';
+    const fake = createFakeEngine({
+      tree: { ref: { id: 'root', revision: '' }, role: 'document', children: [
+        { ref: { id: 'go', revision: '' }, role: 'button', name: 'Go' },
+      ] },
+      perform: () => { throw new Error(`engine rejected ${token}`); },
+    });
+    const model = installFakeLoopModel(call => {
+      expect(JSON.stringify(call)).not.toContain(token);
+      if (call.turn === 1) return [
+        { toolName: 'lookup', input: {} },
+        { toolName: 'structured', input: {} },
+        { toolName: 'bounded', input: {} },
+        { toolName: 'dictionary', input: {} },
+        { toolName: 'serialized', input: {} },
+        { toolName: 'customOutput', input: {} },
+        { toolName: 'boom', input: {} },
+        { toolName: 'tap', input: { target: nodeIdFor(call.prompt, /button "Go"/) } },
+      ];
+      expect(call.toolResults.join('\n')).toContain('<secret:key>');
+      return [{ toolName: 'complete_step', input: { status: 'passed', summary: 'checked' } }];
+    });
+    const { outcome, project } = await runProject({
+      'tests/redact.e2e.ts': `import { test } from 'e2e'; test('tool redaction', async ({ agent }) => { await agent.act('try the tools'); });`,
+    }, { config: {
+      targets: [{ name: 'fake', platform: 'fake', engine: fake.engine }],
+      secrets: { key: token }, cache: 'off',
+      agents: { default: { model, tools: {
+        lookup: defineTool({ description: 'lookup', inputSchema: z.object({}), execute: async () => `row ${token}` }, { mutates: false }),
+        dictionary: defineTool({ description: 'dictionary', inputSchema: z.object({}), execute: async () => Object.assign(Object.create(null) as Record<string, string>, { value: token }) }, { mutates: false }),
+        serialized: defineTool({ description: 'serialized', inputSchema: z.object({}), execute: async () => new URL(`https://example.test/?key=${token}`) }, { mutates: false }),
+        customOutput: defineTool({ description: 'custom output', inputSchema: z.object({}), execute: async () => new URL(`https://example.test/?key=${token}`), toModelOutput: ({ output }) => ({ type: 'text', value: `custom ${output.searchParams.get('key')}` }) }, { mutates: false }),
+        bounded: defineTool({ description: 'bounded', inputSchema: z.object({}), execute: async () => 'x'.repeat(16120) + token + 'x'.repeat(300) }, { mutates: false }),
+        structured: defineTool({ description: 'structured', inputSchema: z.object({}), execute: async () => ({ [token]: [token] }) }, { mutates: false }),
+        boom: defineTool({ description: 'boom', inputSchema: z.object({}), execute: async () => { throw new Error(`tool rejected ${token}`); } }, { mutates: false }),
+      } } },
+    } });
+    try {
+      expect(resultByTitle(outcome, 'tool redaction').status).toBe('passed');
+      expect(loopCalls).toHaveLength(2);
+      const outputs = loopCalls[1]!.toolResults;
+      expect(outputs).toContain(JSON.stringify({ '<secret:key>': ['<secret:key>'] }));
+      expect(outputs).toContain(JSON.stringify({ value: '<secret:key>' }));
+      const bounded = outputs[2]!;
+      expect(bounded).toMatch(/^x+/);
+      expect(bounded).toContain('<secret:');
+      expect(bounded).toContain('[tool output truncated:');
+      expect(Buffer.byteLength(bounded)).toBeLessThanOrEqual(16384);
+      const results = outputs.join('\n');
+      expect(results).toContain('row <secret:key>');
+      expect(results).toContain('tool rejected <secret:key>');
+      expect(results).toContain('engine rejected <secret:key>');
+      expect(results).toContain('https://example.test/?key=<secret:key>');
+      expect(results).toContain('custom <secret:key>');
+      expect(results).not.toContain(token);
+      expect(results).not.toContain(token.slice(0, 8));
+    } finally { project.cleanup(); }
+  });
 });

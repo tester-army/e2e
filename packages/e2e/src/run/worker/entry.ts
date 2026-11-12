@@ -258,7 +258,7 @@ function main(): void {
       // This worker owns its trace outright, so each drain point (unit-done,
       // shutdown-done) ships the entries accumulated since the previous one.
       const debug = new DebugTrace(message.bootstrap.debug);
-      const aiTrace = message.bootstrap.aiTrace ? new AiTraceRecorder() : undefined;
+      const aiTrace = message.bootstrap.aiTrace ? new AiTraceRecorder(processSecrets.redact) : undefined;
       const emit = (outbound: WorkerToMain): void => {
         // Output written without a final newline is still held; it leaves
         // before the message that starts the next pair (a serial member's

@@ -319,6 +319,10 @@ export default {
 | `system` | Text appended to the rules the agent gets with the first step. |
 | `name` | The executor name in reports. |
 
+Unexpected forwarding failures stop the ACP session and appear in the runner's
+secret-redacted failure output. The HTTP client receives a generic error or a
+closed stream, without the exception text.
+
 ### What the agent can use
 
 An action the agent takes with its own tools isn't recorded, can't replay,

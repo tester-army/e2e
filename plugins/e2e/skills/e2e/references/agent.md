@@ -358,6 +358,9 @@ there with `browser.frameLocator`, and judge it with `vision`. Nothing the
 model returns runs as code or
 selectors: the runner validates and authorizes every tool call first.
 
+Project tool results and tool or engine errors are secret-redacted before the
+model reads them. Text is redacted before it is cut to the output limit.
+
 ## Budgets and cost
 
 | Call | Model calls | Default timeout |
@@ -449,7 +452,8 @@ npx unbox-ai summary .e2e/ai-trace.json --run 0             # turns, tokens, too
 
 Never read the trace directly: megabytes of resent context, images replaced
 by byte counts. `--no-cache` traces the whole flow, since replayed steps
-make no model calls.
+make no model calls. The recorder redacts serialized tool results and errors
+before writing the AI trace.
 
 ## Make the agent yours
 
