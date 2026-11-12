@@ -169,7 +169,8 @@ first fixture call. A device keeps what they set (permissions, keychain,
 installed apps) for the tests. A browser gives each attempt a new context,
 so a page or sign-in from `beforeAll` does not reach the tests: use
 `test.setup` and `session`. In a serial group the hooks run on the group's
-session. `agent` and `test.extend` fixtures are per test and not available.
+session, and in a test `e2e mcp` or `openHost` runs on the session already
+open. `agent` and `test.extend` fixtures are per test and not available.
 
 ```ts
 import { test } from '@e2e-dev/mobile';

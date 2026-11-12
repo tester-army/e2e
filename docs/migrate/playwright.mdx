@@ -287,7 +287,7 @@ uses it declares `requires: ['browser']` and other targets skip it. Calls on
 | --- | --- | --- |
 | `import { test, expect } from '@playwright/test'` | `import { test } from '@e2e-dev/web'` and `import { expect } from 'e2e'` | renamed |
 | `test(title, fn)`, `test.describe`, `beforeEach`, `afterEach` | the same; `describe` and the hooks are also top-level imports. A hook takes no title and gets the fixtures only, no `testInfo`, so `afterEach` can't read the test's status | renamed |
-| `test.beforeAll`, `afterAll` | the same, with `app`, `screen`, `platform`, and `browser`; no `request` or `workerInfo`. The hooks get a browser context of their own, so a page or sign-in they leave does not reach the tests: use `test.setup` and `session` for that. A failed test re-imports the file, so `beforeAll` runs again for the tests after it | renamed |
+| `test.beforeAll`, `afterAll` | the same, with `app`, `screen`, `platform`, and `browser`; no `request` or `workerInfo`. Outside a serial group the hooks get a browser context of their own, so a page or sign-in they leave does not reach the tests: use `test.setup` and `session` for that. A failed test re-imports the file, so `beforeAll` runs again for the tests after it | renamed |
 | `{ page }` in a test | `{ screen, app, browser }`; no raw `Page` in tests, see [What differs on purpose](#what-differs-on-purpose) | by design |
 | `test.skip(title, fn)` | the same | same |
 | `test.skip(condition, reason)` | the same inside a test body or a `beforeEach` hook. At file or describe level it is a `COLLECTION_ERROR`, and `test.skip(({ ... }) => condition)` is missing: use `platforms`, `{ skip }`, or `test.describe(title, { skip: true }, fn)` | renamed |

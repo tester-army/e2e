@@ -25,7 +25,7 @@ import { withAiTraceScope } from '../internal/ai-trace.ts';
 import { DebugTrace } from '../internal/debug.ts';
 import { resultId, timestamp, uuidv7 } from '../internal/ids.ts';
 import { engineAppInfo } from '../config/app.ts';
-import { cancelledError, Deadline, NEVER_ABORTS, withAbort, withScopedBudget, withTimeout } from '../internal/time.ts';
+import { abortError, cancelledError, Deadline, NEVER_ABORTS, withAbort, withScopedBudget, withTimeout } from '../internal/time.ts';
 import { createAgentCacheContext, settleStagedTraces } from '../cache/context.ts';
 import { storedRecordingsFor, type StoredRecordings } from '../cache/rekeyed.ts';
 import type { ModuleRegistration, RegisteredTest } from '../collect/registry.ts';
@@ -799,15 +799,19 @@ export class TargetExecutor implements SerialHost {
     let turnMs = 0;
     let starting: Promise<void> | undefined;
     let started = start === undefined;
-    const ready = (): Promise<void> => {
+    const ready = async (): Promise<void> => {
       // A hook that overran and reaches a fixture after the close starts nothing: nobody is left to end it.
-      if (end.signal.aborted) return Promise.reject(cancelledError());
+      if (end.signal.aborted) throw cancelledError();
+      const asked = budget.signal;
       // Once per hook session, failure included: every later step fails with the same cause.
       starting ??= start!().finally(() => {
         started = true;
         budget.resetDeadline(turnMs);
       });
-      return starting;
+      await starting;
+      // The start is the session's and outlives a hook that was cancelled
+      // meanwhile; that hook's step is not, and must not run on the next hook's budget.
+      if (asked.aborted) throw abortError(asked, cancelledError);
     };
     const steps = new StepRecorder(attemptId, {
       maxEventsPerStep: this.config.limits.maxEventsPerStep,

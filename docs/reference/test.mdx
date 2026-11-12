@@ -305,7 +305,9 @@ test.beforeAll(async ({ device }) => {
   gives every attempt a new context, so sign in once with
   [`test.setup`](#test-setup).
 - In a [serial group](#serial) the hooks run on the group's session, so the
-  first member starts on the screen `beforeAll` left.
+  first member starts on the screen `beforeAll` left. A test that
+  `e2e mcp` or `openHost` runs has a session open already, and its hooks
+  run on that one.
 - Each hook has the config `timeout`. The hook attempt's start is not
   counted: [`launchTimeout`](/reference/config#launchtimeout) bounds it.
 - A run interrupt cancels a hook's fixture calls. That is not a
@@ -319,7 +321,7 @@ test.beforeAll(async ({ device }) => {
 
 | Throws | When |
 | --- | --- |
-| `HOOK_FAILED` | The hook throws, or returns while a step it started is still running. The suite's tests are skipped with cause `hook-failed`. Inside a serial group it skips every remaining member and fails the group without a retry. The category is `infrastructure` (exit code 3) when the engine could not start or end the hook attempt. |
+| `HOOK_FAILED` | The hook throws, or returns while a step it started is still running. The suite's tests are skipped with cause `hook-failed`. Inside a serial group it skips every remaining member and fails the group without a retry. An infrastructure cause keeps its category (exit code 3), such as an engine that could not start or end the hook attempt. |
 
 #### `afterAll`
 

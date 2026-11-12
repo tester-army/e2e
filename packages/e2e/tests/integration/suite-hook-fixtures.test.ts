@@ -210,6 +210,33 @@ test('outlives the late call', async () => {
     expect(fake.fixtureCalls).toEqual([]);
   });
 
+  it('does not run a step its hook left behind while the hook attempt started, once the next hook has the session', async () => {
+    const { fake, outcome, project } = await runOnFake(
+      `import { test } from 'e2e';
+
+test.describe('stray', () => {
+  test.afterAll(async ({ gadget }) => {
+    await gadget.poke('second');
+  });
+  test.afterAll(({ gadget }) => {
+    void gadget.poke('stray');
+  });
+  test('before the hooks', async () => {});
+});
+`,
+      {
+        onStartAttempt: async (_context, attemptIndex) => {
+          if (attemptIndex === 1) await new Promise((resolve) => setTimeout(resolve, 400));
+        },
+      },
+      { cleanupTimeout: 100 },
+    );
+    projects.push(project);
+    expect(outcome.report.run.errors.map((error) => [error.scopeId, error.code])).toEqual([['stray', 'HOOK_FAILED']]);
+    expect(outcome.report.run.errors[0]!.message).toContain('the afterAll hook returned before gadget.poke');
+    expect(fake.fixtureCalls).toEqual(['poke:second']);
+  });
+
   it('serves a serial group\'s hooks from the group\'s session and files what they attach under the group', async () => {
     const { fake, outcome, project } = await runOnFake(`import { test } from 'e2e';
 
