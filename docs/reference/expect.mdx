@@ -77,7 +77,8 @@ holds or its timeout passes, under the rules in [Behavior](#behavior):
 #### `toBeVisible` and `toBeHidden`
 
 `toBeVisible` waits for the one match to be shown. `toBeHidden` waits for a
-hidden or absent state.
+hidden or absent state. On a device, a node whose centre the soft
+keyboard covers is hidden ([Visibility](/reference/mobile#visibility)).
 
 ```ts
 await expect(screen.getByRole('dialog')).toBeVisible();

@@ -799,6 +799,11 @@ export function cloudDevices(options: { provider: string; device: string; osVers
   the control at least 48dp, Android's minimum touch target.
 - An element hidden with `display: none` isn't in the tree, so
   `toBeAttached` fails. Assert `toHaveCount(0)` or `toBeHidden`.
+- A node whose centre the soft keyboard covers is hidden, like one scrolled
+  off screen: `toBeVisible()` fails on it and a tap on it fails with
+  `ACTION_FAILED`. The focused field stays visible. Call
+  `device.dismissKeyboard()` or scroll the node clear first. See
+  [Visibility](/reference/mobile#visibility).
 - `doubleTap()` on iOS is two taps about 285 ms apart. Give a double-tap
   detector a window of 350 ms or more.
 - On iOS, `device.foregroundApp()` still names the session's app after
