@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { keyboardBand, projectSnapshot, screenTitle, viewportOf, type RawNode } from '../../src/nodes.ts';
+import { keyboardBand, keyboardUnplaced, projectSnapshot, screenTitle, viewportOf, type RawNode } from '../../src/nodes.ts';
 import { keyboardDragStart } from '../../src/keyboard.ts';
 import { SETTINGS_NODES } from '../helpers/fake-client.ts';
 
@@ -706,7 +706,7 @@ describe('nodes agent-device marks covered (tester-army/e2e#1324)', () => {
         { index: 1, parentIndex: 0, type: 'TextField', identifier: 'named', interactionBlocked: 'covered', coveredBy: { kind: 'button', label: 'Next' }, rect: { x: 16, y: 372, width: 358, height: 48 } },
         { index: 2, parentIndex: 0, type: 'TextField', identifier: 'unnamed', interactionBlocked: 'covered', rect: { x: 16, y: 430, width: 358, height: 48 } },
         { index: 3, parentIndex: 0, type: 'TextField', identifier: 'clear', rect: { x: 16, y: 300, width: 358, height: 48 } },
-        // The keyboard's rule keeps a focused field visible; agent-device's mark does not.
+        // With no keyboard up, agent-device's mark hides even the focused field.
         { index: 4, parentIndex: 0, type: 'TextField', identifier: 'focused', focused: true, interactionBlocked: 'covered', rect: { x: 16, y: 600, width: 358, height: 48 } },
       ],
       { mintId: () => `n${++counter}`, viewport: SCREEN },
@@ -733,6 +733,110 @@ describe('nodes agent-device marks covered (tester-army/e2e#1324)', () => {
     expect(start).toBeDefined();
     const inside = start!.x >= save.x - 8 && start!.x <= save.x + save.width + 8 && start!.y >= save.y - 8 && start!.y <= save.y + save.height + 8;
     expect(inside).toBe(false);
+  });
+
+  it("lets the keyboard's rules decide under the Android keyboard, which agent-device counts as a cover", () => {
+    // agent-device marks every app node whose centre is under the IME covered.
+    const app = 'dev.e2e.benchmark';
+    let counter = 0;
+    const { index } = projectSnapshot(
+      [
+        { index: 0, depth: 0, type: 'android.widget.FrameLayout', bundleId: app, rect: { x: 0, y: 0, width: 1080, height: 2400 } },
+        { index: 1, parentIndex: 0, type: 'android.widget.EditText', bundleId: app, identifier: 'brand', focused: true, interactionBlocked: 'covered', rect: { x: 24, y: 1600, width: 1032, height: 120 } },
+        // A row whose centre is under the keyboard and whose label shows above it.
+        { index: 2, parentIndex: 0, type: 'android.view.ViewGroup', bundleId: app, identifier: 'notes-row', interactionBlocked: 'covered', rect: { x: 0, y: 1380, width: 1080, height: 300 } },
+        { index: 3, parentIndex: 2, type: 'android.widget.TextView', bundleId: app, identifier: 'notes-label', label: 'Notes', rect: { x: 24, y: 1400, width: 200, height: 50 } },
+        { index: 4, parentIndex: 0, type: 'android.widget.TextView', bundleId: app, identifier: 'footnote', label: 'Prices include tax', interactionBlocked: 'covered', rect: { x: 24, y: 2000, width: 600, height: 60 } },
+      ],
+      { mintId: () => `n${++counter}`, viewport: { width: 1080, height: 2400 }, keyboard: { x: 0, y: 1500, width: 1080, height: 900 } },
+    );
+    const byId = (id: string) => index.find((entry) => entry.node.testId === id)?.node.states;
+    expect(byId('brand')).toEqual({ focused: true });
+    expect(byId('notes-row')).toBeUndefined();
+    expect(byId('notes-label')).toBeUndefined();
+    expect(byId('footnote')).toEqual({ hidden: true });
+  });
+
+  it("reads agent-device's mark as hiding nothing while a keyboard it could not measure may be up", () => {
+    // agent-device marks nodes under an IME it could not measure covered, and leaves e2e no band.
+    const app = 'dev.e2e.benchmark';
+    let counter = 0;
+    const { index } = projectSnapshot(
+      [
+        { index: 0, depth: 0, type: 'android.widget.FrameLayout', bundleId: app, rect: { x: 0, y: 0, width: 1080, height: 2400 } },
+        { index: 1, parentIndex: 0, type: 'android.widget.EditText', bundleId: app, identifier: 'brand', focused: true, interactionBlocked: 'covered', rect: { x: 24, y: 1600, width: 1032, height: 120 } },
+        { index: 2, parentIndex: 0, type: 'android.widget.TextView', bundleId: app, identifier: 'title', label: 'Checkout', interactionBlocked: 'covered', rect: { x: 24, y: 200, width: 600, height: 60 } },
+      ],
+      { mintId: () => `n${++counter}`, viewport: { width: 1080, height: 2400 }, keyboardUnplaced: true },
+    );
+    expect(index.find((entry) => entry.node.testId === 'brand')?.node.states).toEqual({ focused: true });
+    expect(index.find((entry) => entry.node.testId === 'title')?.node.states).toBeUndefined();
+  });
+
+  it('counts an Android keyboard as unplaced only when agent-device saw one, or could not tell, and no band was read', () => {
+    const band = { x: 0, y: 1500, width: 1080, height: 900 };
+    expect(keyboardUnplaced({ kind: 'unmeasurable', reason: 'window-region-not-rectangular' }, undefined, 'android')).toBe(true);
+    expect(keyboardUnplaced({ kind: 'unmeasurable', reason: 'window-list-unavailable' }, undefined, 'android')).toBe(true);
+    expect(keyboardUnplaced({ kind: 'visibility-only', visible: true }, undefined, 'android')).toBe(true);
+    expect(keyboardUnplaced({ kind: 'tree-rejected', derivation: 'docked-tree' }, undefined, 'android')).toBe(true);
+    expect(keyboardUnplaced({ kind: 'tree-rejected', derivation: 'docked-tree', visible: false }, undefined, 'android')).toBe(false);
+    expect(keyboardUnplaced({ kind: 'visibility-only', visible: false }, undefined, 'android')).toBe(false);
+    expect(keyboardUnplaced({ kind: 'absent' }, undefined, 'android')).toBe(false);
+    expect(keyboardUnplaced(undefined, undefined, 'android')).toBe(false);
+    // A band read off the tree places the keyboard, whatever the fact says.
+    expect(keyboardUnplaced({ kind: 'unmeasurable', reason: 'capture-truncated' }, band, 'android')).toBe(false);
+    // agent-device never counts the iOS keyboard as a cover, so an unmeasured one leaves the mark alone.
+    expect(keyboardUnplaced({ kind: 'unmeasurable', reason: 'keyboard-not-observed' }, undefined, 'ios')).toBe(false);
+  });
+
+  it("tests the keyboard at the rounded centre agent-device tests a cover at", () => {
+    // Height 117 puts the centre at 1499.5: agent-device rounds it to 1500, inside the keyboard, and marks the nodes covered.
+    const app = 'dev.e2e.benchmark';
+    let counter = 0;
+    const { index } = projectSnapshot(
+      [
+        { index: 0, depth: 0, type: 'android.widget.FrameLayout', bundleId: app, rect: { x: 0, y: 0, width: 1080, height: 2400 } },
+        { index: 1, parentIndex: 0, type: 'android.widget.EditText', bundleId: app, identifier: 'brand', focused: true, interactionBlocked: 'covered', rect: { x: 24, y: 1441, width: 1032, height: 117 } },
+        { index: 2, parentIndex: 0, type: 'android.widget.TextView', bundleId: app, identifier: 'hint', label: 'Required', interactionBlocked: 'covered', rect: { x: 24, y: 1441, width: 300, height: 117 } },
+      ],
+      { mintId: () => `n${++counter}`, viewport: { width: 1080, height: 2400 }, keyboard: { x: 0, y: 1500, width: 1080, height: 900 } },
+    );
+    expect(index.find((entry) => entry.node.testId === 'brand')?.node.states).toEqual({ focused: true });
+    expect(index.find((entry) => entry.node.testId === 'hint')?.node.states).toBeUndefined();
+  });
+
+  it('tests the keyboard at the rounded centre across too, as for a one-handed keyboard', () => {
+    // Width 539 puts the centre at x 269.5: agent-device rounds it to 270, inside a keyboard that starts there.
+    const app = 'dev.e2e.benchmark';
+    let counter = 0;
+    const { index } = projectSnapshot(
+      [
+        { index: 0, depth: 0, type: 'android.widget.FrameLayout', bundleId: app, rect: { x: 0, y: 0, width: 1080, height: 2400 } },
+        { index: 1, parentIndex: 0, type: 'android.widget.TextView', bundleId: app, identifier: 'hint', label: 'Required', interactionBlocked: 'covered', rect: { x: 0, y: 1600, width: 539, height: 120 } },
+      ],
+      { mintId: () => `n${++counter}`, viewport: { width: 1080, height: 2400 }, keyboard: { x: 270, y: 1500, width: 810, height: 900 } },
+    );
+    expect(index.find((entry) => entry.node.testId === 'hint')?.node.states).toBeUndefined();
+  });
+
+  it("keeps the keyboard's own dock visible though agent-device marks it covered", () => {
+    // XCTest can list the keyboard before an app whose tab bar agent-device then reads as drawn over the dock.
+    const KEYBOARD = { x: 0, y: 566, width: 402, height: 308 };
+    let counter = 0;
+    const { index } = projectSnapshot(
+      [
+        { index: 0, depth: 0, type: 'Application', label: 'Shop', rect: { x: 0, y: 0, width: 402, height: 874 } },
+        { index: 1, parentIndex: 0, depth: 1, type: 'Window', rect: { x: 0, y: 0, width: 402, height: 874 } },
+        { index: 2, parentIndex: 1, depth: 2, type: 'Other', rect: { x: 0, y: 566, width: 402, height: 308 } },
+        { index: 3, parentIndex: 2, depth: 3, type: 'Keyboard', rect: { x: 0, y: 583, width: 402, height: 233 } },
+        { index: 4, parentIndex: 3, depth: 4, type: 'Key', label: 'q', rect: { x: 4, y: 590, width: 39, height: 54 } },
+        { index: 5, parentIndex: 2, depth: 3, type: 'Button', label: 'Next keyboard', interactionBlocked: 'covered', rect: { x: 8, y: 805, width: 68, height: 68 } },
+        { index: 6, parentIndex: 0, depth: 1, type: 'TabBar', label: 'Tab Bar', rect: { x: 0, y: 791, width: 402, height: 83 } },
+      ],
+      { mintId: () => `n${++counter}`, keyboard: KEYBOARD },
+    );
+    expect(index.find((entry) => entry.node.name === 'q')?.node.states).toBeUndefined();
+    expect(index.find((entry) => entry.node.name === 'Next keyboard')?.node.states).toBeUndefined();
   });
 
   it('starts a keyboard-dismissing drag on a node the platform reports not shown', () => {

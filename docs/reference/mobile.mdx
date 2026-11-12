@@ -1100,18 +1100,21 @@ with `getByText`.
 ## Visibility
 
 A device node is hidden when the platform reports it off screen, when the
-soft keyboard covers its centre, or when agent-device marks it covered (see
-[Covered nodes](#covered-nodes)). So `toBeVisible()`, `scrollUntilVisible`,
-and `getByRole` treat a field under the keyboard like a field scrolled out
-of view. The keyboard's own keys, suggestion bar, and dock stay visible, and
-so does the focused field. These keyboard rules decide only what the keyboard
-hides: a node agent-device marks covered is hidden either way.
+soft keyboard covers its centre, or when agent-device marks it covered outside
+the keyboard (see [Covered nodes](#covered-nodes)). So `toBeVisible()`,
+`scrollUntilVisible`, and `getByRole` treat a field under the keyboard like a
+field scrolled out of view. The keyboard's own keys, suggestion bar, and dock
+stay visible, and so does the focused field. Under the keyboard these rules
+decide, even for a node agent-device marks covered, as it does under the
+Android keyboard.
 
 - The keyboard's area is the frame agent-device measures. When a capture has
   no frame, the area runs from the top of the keyboard in the tree to the
-  bottom of the screen.
+  bottom of the screen. An Android tree has no `Keyboard` or `Key` elements,
+  since the keyboard's nodes are plain views, so a keyboard agent-device cannot
+  measure there leaves no area, and the covered mark then hides nothing.
 - A container whose centre is under the keyboard stays visible while one of
-  its children shows above it.
+  its children is above it, even one agent-device marks covered.
 - A node under another view, such as a footer the keyboard lifts, is hidden
   only when agent-device marks it covered. A tap on it fails with
   `ACTION_FAILED` when agent-device finds the cover, and the message names the
@@ -1125,15 +1128,18 @@ node's centre, where a tap on it lands: a tab bar, a toolbar, a sheet, or the
 Android keyboard, for example. Any node with a label, value, or id can be
 marked, text included, not only controls.
 
-- A covered node reads as hidden: `toBeVisible()` waits, `toBeHidden()`
-  passes, and `scrollUntilVisible` keeps scrolling until it is clear.
+- Outside the soft keyboard, a covered node reads as hidden: `toBeVisible()`
+  waits, `toBeHidden()` passes, and `scrollUntilVisible` keeps scrolling until
+  it is clear. Under the keyboard, and on Android while a keyboard
+  agent-device cannot measure may be up, the [Visibility](#visibility) rules
+  decide instead, since agent-device counts the Android keyboard as a cover.
 - agent-device refuses an action that would touch it (a tap, fill, check,
   long press, or drag) before anything reaches the device. The action fails
   with `ACTION_FAILED`, and agent-device's hint names the cover when it found
   one. Scroll it clear first.
 - Role queries still find a covered node, though it is hidden, so
   `getByRole(...).tap()` fails with that error rather than finding nothing.
-  A node under the soft keyboard stays out of role queries, as in
+  A node the keyboard hides stays out of role queries, as in
   [Visibility](#visibility).
 - `tap({ position })` waits for it to be visible, as for any hidden node. A
   tap at a screen point (`screen.tapAt`) goes where it is aimed.

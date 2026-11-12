@@ -3652,22 +3652,6 @@ describe('deterministic actions', () => {
 
 describe('nodes agent-device refuses as covered (tester-army/e2e#1324)', () => {
   const NEXT = { kind: 'button', label: 'Next', rect: { x: 195, y: 360, width: 195, height: 112 } };
-  /** A form whose Back/Next footer agent-device found drawn over the Brand field's centre. */
-  const coveredForm = () => ({
-    nodes: [
-      { index: 0, ref: '@e1', depth: 0, type: 'Application', label: 'Covered', rect: { x: 0, y: 0, width: 390, height: 844 } },
-      { index: 1, ref: '@e2', parentIndex: 0, type: 'TextField', identifier: 'product-name', rect: { x: 16, y: 300, width: 358, height: 48 } },
-      {
-        index: 2, ref: '@e3', parentIndex: 0, type: 'TextField', identifier: 'brand', rect: { x: 16, y: 372, width: 358, height: 48 },
-        hittable: false, interactionBlocked: 'covered', coveredBy: NEXT,
-      },
-      { index: 3, ref: '@e4', parentIndex: 0, type: 'Button', label: 'Back', rect: { x: 0, y: 360, width: 195, height: 112 } },
-      { index: 4, ref: '@e5', parentIndex: 0, type: 'Button', label: 'Next', rect: NEXT.rect },
-    ],
-    appName: 'Covered',
-    appBundleId: 'dev.e2erepro.coveredinput',
-    truncated: false,
-  });
 
   /** agent-device's hint for a target the Next button covers, as `coveredInteractionDetails` words it. */
   const NEXT_HINT =
@@ -3685,22 +3669,25 @@ describe('nodes agent-device refuses as covered (tester-army/e2e#1324)', () => {
     });
   }
 
-
   it("finds a covered button by role, and its tap fails not actionable with agent-device's refusal as the cause", async () => {
     const h = harness();
     await openAttempt(h);
+    // Save sits under the footer's Next button; the mark and the refusal stand in for agent-device's.
     h.fake.respond('capture.snapshot', () => ({
-      ...coveredForm(),
       nodes: [
-        ...coveredForm().nodes,
+        { index: 0, ref: '@e1', depth: 0, type: 'Application', label: 'Covered', rect: { x: 0, y: 0, width: 390, height: 844 } },
         {
-          index: 5, ref: '@e6', parentIndex: 0, type: 'Button', label: 'Save', rect: { x: 16, y: 380, width: 100, height: 40 },
+          index: 1, ref: '@e2', parentIndex: 0, type: 'Button', label: 'Save', rect: { x: 230, y: 380, width: 100, height: 40 },
           hittable: false, interactionBlocked: 'covered', coveredBy: NEXT,
         },
+        { index: 2, ref: '@e3', parentIndex: 0, type: 'Button', label: 'Next', rect: NEXT.rect },
       ],
+      appName: 'Covered',
+      appBundleId: 'dev.e2erepro.coveredinput',
+      truncated: false,
     }));
     h.fake.respond('interactions.press', () => {
-      throw coveredRefusal('@e6');
+      throw coveredRefusal('@e2');
     });
     const [save] = await h.engine.locate!(
       { kind: 'query', query: { kind: 'role', value: { kind: 'string', value: 'button', exact: true }, name: { kind: 'string', value: 'Save', exact: true } } },
@@ -3709,8 +3696,46 @@ describe('nodes agent-device refuses as covered (tester-army/e2e#1324)', () => {
     expect(save?.states?.hidden).toBe(true);
     await expect(h.engine.perform!(save!.ref, { kind: 'tap' }, operation())).rejects.toMatchObject({
       code: 'NOT_ACTIONABLE',
-      message: `perform tap failed: Ref @e6 is covered by another visible element and cannot be tapped safely Hint: ${NEXT_HINT}`,
-      cause: { code: 'COMMAND_FAILED', details: { reason: 'target_covered', ref: '@e6' } },
+      message: `perform tap failed: Ref @e2 is covered by another visible element and cannot be tapped safely Hint: ${NEXT_HINT}`,
+      cause: { code: 'COMMAND_FAILED', details: { reason: 'target_covered', ref: '@e2' } },
     });
+  });
+
+  it("hides a covered node while the keyboard is gone, and not while agent-device reports an Android keyboard it could not measure", async () => {
+    const h = harness({ platform: 'android' });
+    await openAttempt(h);
+    const app = 'dev.e2erepro.coveredinput';
+    const nodes = [
+      { index: 0, ref: '@e1', depth: 0, type: 'android.widget.FrameLayout', bundleId: app, rect: { x: 0, y: 0, width: 1080, height: 2400 } },
+      {
+        index: 1, ref: '@e2', parentIndex: 0, type: 'android.widget.EditText', bundleId: app, label: 'Brand', focused: true,
+        interactionBlocked: 'covered', rect: { x: 24, y: 1600, width: 1032, height: 120 },
+      },
+    ];
+    const brand = { kind: 'query', query: { kind: 'text', value: { kind: 'string', value: 'Brand', exact: true } } } as const;
+    const snapshot = (keyboard: unknown) => ({ nodes, appName: 'Covered', appBundleId: app, truncated: false, keyboard });
+    h.fake.respond('capture.snapshot', () => snapshot({ kind: 'absent' }));
+    expect((await h.engine.locate!(brand, operation()))[0]?.states).toEqual({ focused: true, hidden: true });
+    h.fake.respond('capture.snapshot', () => snapshot({ kind: 'unmeasurable', reason: 'window-bounds-unavailable' }));
+    expect((await h.engine.locate!(brand, operation()))[0]?.states).toEqual({ focused: true });
+  });
+
+  it('keeps hiding a covered node on iOS while agent-device reports a keyboard it did not observe', async () => {
+    // A Limrun iOS capture with no keyboard in its tree reports it unmeasurable (`keyboard-not-observed`); agent-device never counts the iOS keyboard as a cover.
+    const h = harness();
+    await openAttempt(h);
+    h.fake.respond('capture.snapshot', () => ({
+      nodes: [
+        { index: 0, ref: '@e1', depth: 0, type: 'Application', label: 'Feed', rect: { x: 0, y: 0, width: 402, height: 874 } },
+        { index: 1, ref: '@e2', parentIndex: 0, type: 'Cell', label: 'Row 9', interactionBlocked: 'covered', rect: { x: 0, y: 800, width: 402, height: 60 } },
+        { index: 2, ref: '@e3', parentIndex: 0, type: 'TabBar', label: 'Tab Bar', rect: { x: 0, y: 791, width: 402, height: 83 } },
+      ],
+      appName: 'Feed',
+      appBundleId: 'dev.e2e.benchmark',
+      truncated: false,
+      keyboard: { kind: 'unmeasurable', reason: 'keyboard-not-observed' },
+    }));
+    const row = { kind: 'query', query: { kind: 'text', value: { kind: 'string', value: 'Row 9', exact: true } } } as const;
+    expect((await h.engine.locate!(row, operation()))[0]?.states).toEqual({ hidden: true });
   });
 });

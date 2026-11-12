@@ -263,7 +263,7 @@ describe('covered nodes in locator queries (tester-army/e2e#1324)', () => {
     expect(resolveExpression(query('role', 'button'), index, 'ios').map((entry) => entry.node.name)).toEqual(['Save']);
   });
 
-  it('keeps a covered button in role queries when its only child above the keyboard is covered too', () => {
+  it("leaves a covered button under the keyboard to the keyboard's rules, its covered label above the keyboard keeping it visible", () => {
     // Pay's centre is under the keyboard; its label sits above it, under a toolbar.
     let counter = 0;
     const { index } = projectSnapshot(
@@ -274,7 +274,8 @@ describe('covered nodes in locator queries (tester-army/e2e#1324)', () => {
       ],
       { mintId: () => `n${++counter}`, keyboard: { x: 0, y: 566, width: 390, height: 278 } },
     );
-    expect(index.find((entry) => entry.node.name === 'Pay')?.node.states?.hidden).toBe(true);
+    expect(index.find((entry) => entry.node.name === 'Pay')?.node.states).toBeUndefined();
+    expect(index.find((entry) => entry.node.name === 'Pay now')?.node.states).toEqual({ hidden: true });
     expect(resolveExpression(query('role', 'button'), index, 'ios').map((entry) => entry.node.name)).toEqual(['Pay']);
   });
 });

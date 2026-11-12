@@ -12,7 +12,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { CaptureSnapshotResult } from 'agent-device';
 import type { SemanticNode } from 'e2e/engine';
-import { keyboardBand, projectSnapshot, screenRoot, screenTitle } from '../../src/nodes.ts';
+import { keyboardBand, keyboardUnplaced, projectSnapshot, screenRoot, screenTitle } from '../../src/nodes.ts';
 
 const ROOT = path.join(import.meta.dirname, '../fixtures/snapshots');
 const UPDATE = process.env['E2E_GOLDEN_UPDATE'] === '1';
@@ -80,13 +80,16 @@ const IOS_TITLES: Record<string, string | undefined> = {
 /** A captured snapshot projected the way `observe` projects it. */
 function project(file: string) {
   const raw = JSON.parse(readFileSync(file, 'utf8')) as Pick<CaptureSnapshotResult, 'nodes' | 'viewport' | 'truncated' | 'keyboard'>;
+  const platform = path.basename(path.dirname(file)) === 'android' ? 'android' : 'ios';
+  const keyboard = keyboardBand(raw.nodes, raw.keyboard, raw.viewport);
   let counter = 0;
   return {
     raw,
     projected: projectSnapshot(raw.nodes, {
       mintId: () => `n${(counter += 1)}`,
       viewport: raw.viewport,
-      keyboard: keyboardBand(raw.nodes, raw.keyboard, raw.viewport),
+      keyboard,
+      keyboardUnplaced: keyboardUnplaced(raw.keyboard, keyboard, platform),
     }),
   };
 }
