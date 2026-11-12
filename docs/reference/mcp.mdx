@@ -584,7 +584,8 @@ options, or to name an export, write `engine` as an object:
 - **Lookup.** The server looks for each package in the project, then beside
   the running `e2e`, then in `~/.e2e/engines`. When it is in none of them,
   the error names the command that installs it for every project:
-  `npm install --prefix ~/.e2e/engines @e2e-dev/web`.
+  `npm install --prefix ~/.e2e/engines @e2e-dev/web`. An agent that cannot
+  run it, such as one in a sandbox without network access, asks you to.
 - **`app`** takes `url`, `bundleId`, and `appPath`, as a target's
   [`app`](/reference/config#the-app-under-test) does. `@e2e-dev/web` needs
   `url`. `@e2e-dev/mobile` needs `bundleId` or `appPath`.
