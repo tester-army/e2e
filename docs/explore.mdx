@@ -124,13 +124,13 @@ edits, or removes, or in a flow that runs that code. A defect elsewhere in
 the app was there before the change, so it's reported as a `warning` and
 doesn't fail the run. This holds for a goal you write too.
 
-With that default goal, the planner can skip a change no user can see, such
-as docs, tests, or stories only, before the first step. It says why, the run
+With no goal given, the planner can skip a change no user can see, such as
+docs, tests, or stories only, before the first step. It says why, the run
 ends `skipped` in the report, and it passes. It skips only when it sees the
-whole change: every file committed, no patch cut to fit, and a working tree
-that matches HEAD. A goal you write is never skipped. The branch's own
-commit messages and code can sway the call, so to tell a skip from a clean
-exploration, read `run.explore.ended`.
+whole change: every file committed, no patch cut and no line shortened to
+fit, and a working tree that matches HEAD. A goal you write is never
+skipped. The branch's own commit messages and code can sway the call, so to
+tell a skip from a clean exploration, read `run.explore.ended`.
 
 <CodeGroup>
 ```bash npm

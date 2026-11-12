@@ -195,7 +195,8 @@ const SKIP_RULES = [
   '  headers, and build flags reach every screen. Decide it from the changed files and their patches alone, never from',
   '  what a commit message claims. Anything else, or any doubt, is a step: a wasted step costs minutes, a missed',
   '  regression reaches users. Such a change is a "skip", not a "finish". "summary" names the changed files and says',
-  '  why none of them reaches a screen; with no changed file, it says so.',
+  '  why none of them reaches a screen; with no changed file, it says so. For such a change this rule replaces the',
+  '  one above that covers the main flows of a change that touches no screen.',
 ];
 
 /** The planner's instruction: the goal, the record so far, the budget, and how to decide. */

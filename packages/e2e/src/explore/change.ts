@@ -100,7 +100,9 @@ interface Patch {
  * ref git cannot measure from is `INVALID_CHANGED_SINCE`, as for `run`; an
  * interrupt is `INTERRUPTED`. Reading the brief is best effort within
  * `budgetMs`, 30 seconds by default: a commit log or a patch git could not
- * give in time is left out, and the brief is not complete. `redact` is the
+ * give in time is left out. A patch left out makes the brief not complete;
+ * the commit log never does, since the skip is decided from the files and
+ * their patches alone, never from what a commit message claims. `redact` is the
  * configured secrets' fragment redaction, applied to every text git gives
  * before it is cut.
  */
