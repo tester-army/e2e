@@ -90,7 +90,7 @@ export class TargetWorker {
     return this.inFlight;
   }
   /** Whether the run has a failure limit, so each failure this worker reports waits for the runner's answer. */
-  private failureLimit = false;
+  private answersFailures = false;
   /** Failures this worker reported that the runner has not answered yet. */
   private unanswered = 0;
   /** Wakes the wait in `failuresAnswered` once the last of them is answered. */
@@ -135,7 +135,7 @@ export class TargetWorker {
               this.inFlight = undefined;
             }
             // Counted before it is sent: an in-process runner answers inside `emit`.
-            if (this.failureLimit && countsTowardFailureLimit(result.status)) this.unanswered += 1;
+            if (this.answersFailures && countsTowardFailureLimit(result.status)) this.unanswered += 1;
             this.host.emit({ type: 'result', result: encodeResult(result) });
           },
           onSerialGroup: (group) => this.host.emit({ type: 'serial-group', group }),
@@ -223,7 +223,7 @@ export class TargetWorker {
         return;
       case 'continue':
         // Now too: the running unit is what waits for it.
-        this.unanswered = Math.max(0, this.unanswered - 1);
+        this.unanswered -= 1;
         if (this.unanswered === 0) this.answered?.();
         return;
       default:
@@ -309,7 +309,7 @@ export class TargetWorker {
     // fatal for the worker; the scheduler still holds the unit and synthesizes
     // failed results for every pair it never heard about. Reporting the unit
     // done first would clear that bookkeeping and drop those tests silently.
-    this.failureLimit = message.failureLimit === true;
+    this.answersFailures = message.answersFailures === true;
     const { pairs, missing, registration } = await deps.resolvePairs(message);
     for (const wire of missing) {
       executor.recordDisappeared(
@@ -321,7 +321,6 @@ export class TargetWorker {
       // The imported registration has run nothing yet, so only the first
       // setup pair may adopt it; any later one needs its own fresh realm.
       for (const [index, pair] of pairs.entries()) {
-        await this.failuresAnswered();
         await executor.runSetupUnit(pair, index === 0 ? registration : undefined);
       }
     } else {

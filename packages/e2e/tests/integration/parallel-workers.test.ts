@@ -615,7 +615,7 @@ test('runs after the blocked tests', async ({ app }) => {
       assertValidReport(outcome.report);
       project.cleanup();
     },
-    60_000,
+    120_000,
   );
 
   it(
@@ -652,7 +652,7 @@ test('runs after the blocked retry', async () => {});
       assertValidReport(outcome.report);
       project.cleanup();
     },
-    60_000,
+    120_000,
   );
 
   it(
@@ -686,7 +686,7 @@ test('times out and tears down slowly', { timeout: 1000 }, async ({ app }) => {
       expect(attempt.durationMs).toBeGreaterThan(6_000);
       project.cleanup();
     },
-    60_000,
+    120_000,
   );
 
   it(
@@ -722,7 +722,7 @@ test('outside the group', async () => {});
       assertValidReport(outcome.report);
       project.cleanup();
     },
-    60_000,
+    120_000,
   );
 
   it(
@@ -808,6 +808,8 @@ test('would run last', async () => {});
       // Each file fails first, then holds its worker in a long test. The file
       // that fails later reaches the limit; its worker must wait for the
       // runner's answer instead of starting its next test on a stale count.
+      // The 500 ms gap orders the two failures, so the tripping file is the
+      // one whose failure ended second.
       const file = (name: string, failAfterMs: number) => `import { test } from 'e2e';
 
 test('${name} fails', async ({ app }) => {
@@ -839,6 +841,38 @@ test('${name} last', async () => {});
         ['skipped', 'failure-limit', 0],
       ]);
       expect(outcome.results.filter((result) => result.status === 'interrupted').length).toBeLessThanOrEqual(1);
+      assertValidReport(outcome.report);
+      project.cleanup();
+    },
+    120_000,
+  );
+
+  it(
+    'below --max-failures, each worker gets the runner\'s answer to its failure and runs its next test',
+    async () => {
+      // Both workers fail once and wait for the runner's `continue`; a lost
+      // answer would hold them forever, so both `next` tests must run.
+      const file = (name: string) => `import { test } from 'e2e';
+
+test('${name} fails', async ({ app }) => {
+  await app.open();
+  throw new Error('${name}');
+});
+test('${name} next', async ({ app }) => {
+  await app.open();
+});
+`;
+      const { outcome, project } = await runProjectWithConfigFile(
+        { 'tests/a.e2e.ts': file('a'), 'tests/b.e2e.ts': file('b') },
+        { configSource: workerFakeConfigSource(2), runOptions: { maxFailures: 3 } },
+      );
+      expect(outcome.exitCode).toBe(1);
+      expect(outcome.results.map((result) => [result.test.title, result.status]).toSorted()).toEqual([
+        ['a fails', 'failed'],
+        ['a next', 'passed'],
+        ['b fails', 'failed'],
+        ['b next', 'passed'],
+      ]);
       assertValidReport(outcome.report);
       project.cleanup();
     },

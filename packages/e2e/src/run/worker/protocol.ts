@@ -92,7 +92,7 @@ export interface RunUnitMessage {
    * per failure: with several workers, two failures can land faster than any
    * count the runner could send ahead.
    */
-  readonly failureLimit?: true;
+  readonly answersFailures?: true;
 }
 
 export interface InterruptMessage {
@@ -132,7 +132,7 @@ export interface PingMessage {
 /**
  * The runner counted a failure the worker reported, and the run is still
  * below its failure limit. Handled at once, like `ping`; see
- * `RunUnitMessage.failureLimit`.
+ * `RunUnitMessage.answersFailures`.
  */
 export interface ContinueMessage {
   readonly type: 'continue';

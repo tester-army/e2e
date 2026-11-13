@@ -137,11 +137,7 @@ export interface TargetExecutorOptions {
    * and retries never wait.
    */
   readonly holdStep?: ((step: HeldStep, signal: AbortSignal) => Promise<void>) | undefined;
-  /**
-   * Awaited before each pair of a file unit, ahead of the interrupt check:
-   * a worker holds its next test here until the runner has answered the
-   * failures it reported (see `RunUnitMessage.failureLimit`).
-   */
+  /** Awaited before each pair starts, before the interrupt check. */
   readonly beforePair?: (() => Promise<void>) | undefined;
   readonly debug?: DebugTrace;
   readonly events?: ExecutionEvents;
