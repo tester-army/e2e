@@ -1343,6 +1343,9 @@ describe('perform', () => {
       ['interactions.scroll', { direction: 'up', settle: true, settleQuietMs: 150 }],
       ['interactions.drag', { source: '@e4', destination: '@e3' }],
     ]);
+    const presses = h.fake.calls.filter((call) => call.method === 'interactions.press');
+    expect(presses).not.toHaveLength(0);
+    expect(presses.every((call) => call.signal instanceof AbortSignal)).toBe(true);
   });
 
   it.each(['Enter', 'a'])('sends %s to a focused field without tapping it first', async (key) => {
@@ -1965,6 +1968,9 @@ describe('device fixture', () => {
       await device.dismissKeyboard();
       expect(h.fake.methods().slice(before)).toEqual(['command.keyboard', 'capture.snapshot', 'interactions.press', 'capture.snapshot']);
       expect(h.fake.lastArgs('interactions.press')).toEqual({ x: 195, y: 722 });
+      const presses = h.fake.calls.filter((call) => call.method === 'interactions.press');
+      expect(presses).not.toHaveLength(0);
+      expect(presses.every((call) => call.signal instanceof AbortSignal)).toBe(true);
     });
 
     it('leaves any other refusal to the caller', async () => {
@@ -3397,7 +3403,7 @@ describe('deterministic actions', () => {
     const search = await observed(h, 'Search');
     if (action === 'Enter') await h.engine.perform!(search.ref, { kind: 'press', key: 'Enter' }, test());
     else if (action === 'focused Enter') await h.engine.keyboard!.press('Enter', test());
-    else await h.surface.dismissKeyboard(test().signal, h.surface.inputBudget('keyboard dismiss', test().timeoutMs));
+    else await h.surface.dismissKeyboard(test().signal, h.surface.inputBudget('keyboard dismiss', test()));
     h.fake.respond('capture.snapshot', () => ({ ...SETTINGS_SNAPSHOT, keyboard: { kind: 'absent' } }));
     const stale = await observed(h, 'About');
     h.fake.respond('capture.snapshot', () => ({
@@ -3485,6 +3491,9 @@ describe('deterministic actions', () => {
     const about = await observed(h, 'About');
     await h.engine.perform!(about.ref, { kind: 'tap' }, { ...operation(), origin: 'agent' });
     expect(h.fake.lastArgs('interactions.press')).toEqual({ ref: '@e4', settle: true, settleQuietMs: 150 });
+    const presses = h.fake.calls.filter((call) => call.method === 'interactions.press');
+    expect(presses).not.toHaveLength(0);
+    expect(presses.every((call) => call.signal instanceof AbortSignal)).toBe(true);
   });
 
   it('skips the post-gesture stabilization wait for a test swipe and scroll, and keeps it for the agent', async () => {
