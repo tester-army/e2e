@@ -1,6 +1,6 @@
 # e2e
 
-[e2e](https://tester.army/e2e) is an open source end-to-end testing framework
+[e2e](https://e2e.com) is an open source end-to-end testing framework
 for web and mobile apps. A test mixes agent goals (`agent.act`) with exact
 locator steps and assertions, and runs in a browser or on an iOS simulator,
 Android emulator, or phone.
