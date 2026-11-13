@@ -147,10 +147,20 @@ jobs:
           npx expo prebuild --platform android --no-install
           (cd android && ./gradlew :app:assembleRelease -PreactNativeArchitectures=x86_64)
 
-      # The emulator action downloads the system image once and fails the job when that download drops.
-      # sdkmanager can also report success for a package that holds no image, so the step checks for one.
+      # The runner image's command-line tools can be older than the system image's package format,
+      # and the emulator action uses them to create the device, so the job puts current ones in place first.
+      # The action downloads the image once and fails the job when that download drops, and sdkmanager
+      # can report success for a package that holds no image, so the image is installed and checked here.
       - name: Install the emulator system image
+        env:
+          CMDLINE_TOOLS: commandlinetools-linux-16111833_latest.zip
+          CMDLINE_TOOLS_SHA256: 0877a1d048fe4a24efe2eff536ca4223f7adeb58648bb81909d33c446918cfa8
         run: |
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/$CMDLINE_TOOLS" "https://dl.google.com/android/repository/$CMDLINE_TOOLS"
+          echo "$CMDLINE_TOOLS_SHA256  $RUNNER_TEMP/$CMDLINE_TOOLS" | sha256sum --check --quiet
+          rm -rf "$ANDROID_HOME/cmdline-tools/latest"
+          unzip -q "$RUNNER_TEMP/$CMDLINE_TOOLS" -d "$RUNNER_TEMP/cmdline-tools"
+          mv "$RUNNER_TEMP/cmdline-tools/cmdline-tools" "$ANDROID_HOME/cmdline-tools/latest"
           SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
           IMAGE="$ANDROID_HOME/system-images/android-36/google_apis/x86_64"
           "$SDKMANAGER" --licenses < <(yes) > /dev/null
