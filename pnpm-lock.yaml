@@ -761,8 +761,8 @@ importers:
   packages/revyl:
     dependencies:
       '@agent-device/revyl':
-        specifier: 0.21.36
-        version: 0.21.36
+        specifier: 0.21.37
+        version: 0.21.37
     devDependencies:
       '@e2e-dev/mobile':
         specifier: workspace:*
@@ -850,8 +850,8 @@ importers:
 
 packages:
 
-  '@agent-device/revyl@0.21.36':
-    resolution: {integrity: sha512-jv9A0vufbFF3BbKw431+pj8T/VJdVR6+p3/AsR+zKfENasSpxQiTRjlfr9u9ggxa0KrhgOd2hURTxBOcn1MenQ==}
+  '@agent-device/revyl@0.21.37':
+    resolution: {integrity: sha512-7O1/30NF+8oFO4yhaFBQsentLuwpSXJWo8B+QqdOD5vQ1A2YtzQPbJwNh2FxF0axrPkRFN5iz0hAEZTMIL//Pw==}
 
   '@agent-device/testmu@0.21.37':
     resolution: {integrity: sha512-kEtEC16tbtle/E7vB/MLZVcIPVwwYzi/VaoHTaMLPUKpvWUZ1IJzIFWZlLswrcxwDfKs/lvNdztVmi59ErpXOA==}
@@ -5568,7 +5568,7 @@ packages:
 
 snapshots:
 
-  '@agent-device/revyl@0.21.36': {}
+  '@agent-device/revyl@0.21.37': {}
 
   '@agent-device/testmu@0.21.37': {}
 

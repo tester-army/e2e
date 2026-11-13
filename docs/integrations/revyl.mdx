@@ -63,16 +63,11 @@ export default {
     },
   ],
   workers: 2,
-  assertionTimeout: 10_000,
 } satisfies E2EConfig;
 ```
 
 Revyl installs `app` when it starts each device, so leave `app.appPath` off
 the target. For Android, `bundleId` is the app's package name.
-
-On iOS, the first screen read after `app.open()` usually takes about 4
-seconds, close to the default 5-second `expect` deadline, and a heavier app
-can take longer. The example raises `assertionTimeout` to leave a margin.
 
 ## Test an app flow
 
@@ -100,18 +95,18 @@ test('opens the cart', async ({ app, screen }) => {
 
 Unknown or invalid options fail config load with `INVALID_CONFIG`.
 
-Each worker gets an isolated agent-device daemon on the test runner, running
-agent-device's `@agent-device/revyl` plugin, and one Revyl device. The
-integration pins the same agent-device version as the mobile engine and
-checks that before allocation. Lease IDs appear in progress output.
-
 ## Limits
 
 - Keep `workers` within the number of concurrent devices your Revyl plan allows.
 - A device runs from lease until release. The engine releases every acquired
   device when the run finishes or is interrupted.
+- If the runner is killed before it releases a device, nothing sends the
+  session another command, and Revyl ends it after 30 minutes idle.
 - `app` must be reachable over `https` without credentials in the URL. A
   presigned storage URL works.
+- The app runs on Revyl's network, not yours, and port reverse is not
+  available, so it cannot reach `localhost` or a server on your network.
+  Point it at a server it can reach over `https`.
 - Revyl devices do not record video: an attempt that records one, such as
   with `--video`, fails with `UNSUPPORTED_CAPABILITY`. Use `app.screenshot()`
   for evidence instead.

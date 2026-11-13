@@ -52,7 +52,7 @@
     "test:unit": "vitest run tests/unit"
   },
   "peerDependencies": {
-    "@e2e-dev/mobile": ">=0.12.5 <1",
+    "@e2e-dev/mobile": ">=0.12.8 <1",
     "e2e": ">=0.15.0 <1"
   },
   "devDependencies": {
@@ -66,6 +66,6 @@
     "node": "^22.22.3 || >=24.8.0"
   },
   "dependencies": {
-    "@agent-device/revyl": "0.21.36"
+    "@agent-device/revyl": "0.21.37"
   }
 }

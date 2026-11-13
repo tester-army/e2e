@@ -5,14 +5,15 @@
  * device with the app installed from an `https` URL.
  */
 
-import type { DeviceClientConfig, DeviceLease, DeviceProvider, DeviceRequest } from '@e2e-dev/mobile';
-import { agentDeviceLeases, type LeaseSelectors } from '@e2e-dev/mobile/lease';
+import type { DeviceLease, DeviceProvider, DeviceRequest } from '@e2e-dev/mobile';
+import { agentDeviceLeases, agentDevicePlugin, type LeaseSelectors } from '@e2e-dev/mobile/lease';
 import { ConfigurationError, rejectUnknownKeys } from 'e2e/engine';
 import { credentialsEnv, revylCredentials } from './credentials.ts';
-import { assertPluginVersion, installPlugin } from './daemon.ts';
 
 /** agent-device's name for Revyl, as the lease provider and the tenant. */
 const PROVIDER = 'revyl';
+
+const plugin = agentDevicePlugin(import.meta.resolve('@agent-device/revyl'));
 
 /** Every option `revyl()` takes, kept equal to `RevylOptions` by the compiler. */
 const OPTION_KEYS: readonly string[] = Object.keys({
@@ -54,7 +55,8 @@ export function revyl(options: RevylOptions): DeviceProvider {
     throw new ConfigurationError('INVALID_CONFIG', 'revyl: `osVersion` must be a non-empty string');
   }
   if (!isHttpsUrl(options.app)) {
-    throw new ConfigurationError('INVALID_CONFIG', `revyl: \`app\` must be an https URL Revyl can download the build from, not ${JSON.stringify(options.app)}`);
+    // The value is left out: a rejected URL can carry credentials or a presigned signature.
+    throw new ConfigurationError('INVALID_CONFIG', 'revyl: `app` must be an https URL, without credentials, that Revyl can download the build from');
   }
   const { app, device } = options;
   const leases = agentDeviceLeases({ provider: PROVIDER, label: 'Revyl' });
@@ -62,7 +64,7 @@ export function revyl(options: RevylOptions): DeviceProvider {
   return {
     name: PROVIDER,
     async acquire(request: DeviceRequest): Promise<DeviceLease> {
-      assertPluginVersion(request.agentDeviceVersion);
+      plugin.assertVersion(request.agentDeviceVersion);
       if (request.appPath !== undefined) throw new Error("Revyl installs the app from `app`; leave the target's `app.appPath` out");
       const credentials = revylCredentials(request.env);
       const selectors = {
@@ -70,29 +72,15 @@ export function revyl(options: RevylOptions): DeviceProvider {
         providerApp: app,
         ...(options.osVersion === undefined ? {} : { providerOsVersion: options.osVersion }),
       } satisfies LeaseSelectors;
-      const lease = await leases.acquire(request, {
+      return leases.acquire(request, {
         env: credentialsEnv(credentials),
         selectors,
-        summary: `${device}, ${request.platform}${options.osVersion === undefined ? '' : ` ${options.osVersion}`}; Revyl device started`,
-        prepareHome: installPlugin,
+        summary: `${device}, ${options.osVersion ?? request.platform}; Revyl device started`,
+        prepareHome: plugin.prepareHome,
       });
-      return withoutModelName(lease);
     },
     release: (lease, context) => leases.release(lease, context),
   };
-}
-
-/**
- * The lease without `device` on its client. The model only selects which
- * device Revyl starts; the plugin lists the started device under its own
- * name (`Revyl android <id>`), so a worker selecting it by model would find no
- * device. The lease scope already picks the one device the daemon holds.
- */
-function withoutModelName(lease: DeviceLease): DeviceLease {
-  if (lease.client === undefined) return lease;
-  // `@e2e-dev/mobile/lease` spreads the selectors onto the client at runtime, though its type does not name `device`.
-  const client = Object.fromEntries(Object.entries(lease.client).filter(([key]) => key !== 'device')) as DeviceClientConfig;
-  return { ...lease, client };
 }
 
 /** An `https` URL without credentials in it, the only app source the Revyl plugin accepts. */

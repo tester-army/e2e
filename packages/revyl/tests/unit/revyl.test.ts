@@ -17,8 +17,8 @@ const mocks = vi.hoisted(() => ({
   acquire: vi.fn(),
   release: vi.fn(async () => {}),
 }));
-vi.mock('../../src/daemon.ts', () => ({ assertPluginVersion: mocks.version, installPlugin: mocks.install }));
 vi.mock('@e2e-dev/mobile/lease', () => ({
+  agentDevicePlugin: () => ({ assertVersion: mocks.version, prepareHome: mocks.install }),
   agentDeviceLeases: (options: AgentDeviceLeaseOptions) => {
     mocks.leases(options);
     return { acquire: mocks.acquire, release: mocks.release };
@@ -43,7 +43,7 @@ function request(overrides: Partial<DeviceRequest> = {}): DeviceRequest {
     slot: 0,
     slots: 2,
     app: 'com.example.app',
-    agentDeviceVersion: '0.21.36',
+    agentDeviceVersion: '0.21.37',
     projectRoot: ROOT,
     env,
     signal: new AbortController().signal,
@@ -65,7 +65,7 @@ describe('revyl()', () => {
 
   it("checks the plugin against the engine's agent-device before anything starts", async () => {
     mocks.version.mockImplementationOnce(() => {
-      throw new Error('@e2e-dev/revyl uses @agent-device/revyl 0.21.36, but @e2e-dev/mobile uses agent-device 0.21.40. Install matching versions.');
+      throw new Error('@agent-device/revyl 0.21.37 is installed, but @e2e-dev/mobile runs agent-device 0.21.40. Install matching versions.');
     });
     await expect(revyl(options).acquire(request({ agentDeviceVersion: '0.21.40' }))).rejects.toThrow(/Install matching versions/);
     expect(mocks.version).toHaveBeenCalledWith('0.21.40');
@@ -87,18 +87,13 @@ describe('revyl()', () => {
     expect(mocks.release).toHaveBeenCalledWith(lease, context);
   });
 
-  it('leaves the model off the lease the worker selects its device with, since the plugin names the started device itself', async () => {
-    const lease = await revyl(options).acquire(request());
-    expect(lease).toEqual({ id: 'lease-1', client: { providerApp: 'https://builds.example.com/app.apk' } });
-  });
-
   it('leases an iOS device with its OS version, and passes a REVYL_API_URL override to the daemon', async () => {
     await revyl({ app: 'https://builds.example.com/App.zip', device: 'iPhone 17 Pro Max', osVersion: 'iOS 27.0' }).acquire(
       request({ platform: 'ios', env: { ...env, REVYL_API_URL: ' https://backend-staging.revyl.ai ' } }),
     );
     expect(leased()).toMatchObject({
       env: { REVYL_API_KEY: 'revyl-key', REVYL_API_URL: 'https://backend-staging.revyl.ai' },
-      summary: 'iPhone 17 Pro Max, ios iOS 27.0; Revyl device started',
+      summary: 'iPhone 17 Pro Max, iOS 27.0; Revyl device started',
       selectors: { device: 'iPhone 17 Pro Max', providerApp: 'https://builds.example.com/App.zip', providerOsVersion: 'iOS 27.0' },
     });
   });
@@ -132,7 +127,7 @@ describe('revyl()', () => {
     'refuses an app Revyl cannot download over https (%s)',
     (app) => {
       expect(() => revyl({ ...options, app })).toThrow(
-        expect.objectContaining({ code: 'INVALID_CONFIG', message: `revyl: \`app\` must be an https URL Revyl can download the build from, not ${JSON.stringify(app)}` }),
+        expect.objectContaining({ code: 'INVALID_CONFIG', message: 'revyl: `app` must be an https URL, without credentials, that Revyl can download the build from' }),
       );
     },
   );
