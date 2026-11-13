@@ -14,6 +14,7 @@ export type Responder = (args: unknown) => unknown;
 export interface RecordedCall {
   readonly method: string;
   readonly args: unknown;
+  readonly signal?: AbortSignal;
 }
 
 export interface FakeClient {
@@ -38,7 +39,12 @@ export function createFakeClient(initial: Readonly<Record<string, Responder>> = 
       },
       apply: (_target, _self, args: unknown[]) => {
         const method = path.join('.');
-        calls.push({ method, args: args[0] });
+        const argument = args[0];
+        const options = typeof argument === 'object' && argument !== null && 'signal' in argument
+          ? argument as Record<string, unknown>
+          : undefined;
+        const { signal, ...recordedArgs } = options ?? {};
+        calls.push({ method, args: options === undefined ? argument : recordedArgs, ...(signal instanceof AbortSignal ? { signal } : {}) });
         const responder = responders.get(method);
         return Promise.resolve().then(() => (responder === undefined ? {} : responder(args[0])));
       },

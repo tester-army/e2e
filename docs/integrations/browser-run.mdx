@@ -1,0 +1,84 @@
+---
+title: Cloudflare Browser Run
+sidebarTitle: Browser Run
+description: Run web targets in Cloudflare's hosted Chromium with the browserRun() browser provider.
+---
+
+`browserRun()` from `@e2e-dev/browser-run` gives each worker slot, or each test attempt, a Cloudflare-hosted Chromium browser.
+Tests use the same web engine and fixtures.
+
+## Connect your account
+
+Create a [Cloudflare API token](https://developers.cloudflare.com/browser-run/cdp/) with `Browser Rendering - Edit` permission for your account.
+Set `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` in the environment where `e2e run` starts.
+
+Install the provider alongside `e2e` and `@e2e-dev/web`:
+
+<CodeGroup>
+```bash npm
+npm install --save-dev @e2e-dev/browser-run
+```
+
+```bash pnpm
+pnpm add -D @e2e-dev/browser-run
+```
+
+```bash bun
+bun add -d @e2e-dev/browser-run
+```
+</CodeGroup>
+
+Set the target's browser:
+
+```ts title="e2e.config.ts"
+import type { E2EConfig } from 'e2e';
+import { web } from '@e2e-dev/web';
+import { browserRun } from '@e2e-dev/browser-run';
+
+export default {
+  targets: [{
+    name: 'cloudflare',
+    engine: web({ browser: browserRun() }),
+    app: { url: 'https://staging.example.com' },
+  }],
+  workers: 2,
+} satisfies E2EConfig;
+```
+
+Use a public HTTPS app URL. A hosted browser cannot reach the runner's `localhost`; expose local apps through a tunnel.
+
+## Set browser lifetime
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `scope` | `'worker'` | One browser per worker slot. `'attempt'` leases a fresh browser for every attempt and retry. |
+| `keepAlive` | `600000` | Inactivity timeout in milliseconds, from `10000` to `1200000`. |
+
+The timeout counts time without CDP commands, even while connected. Increase `keepAlive` when a test can pause longer than ten minutes.
+
+Worker scope creates an isolated context for every attempt.
+Attempt scope uses the fresh browser's default context and supports reconnecting to that browser after a transport drop.
+The [per-attempt provider limits](/browser#hosted-browsers) apply.
+
+Sessions are deleted during teardown. If the runner exits before cleanup, the inactivity timeout ends the browser.
+
+## Check compatibility
+
+Chromium, navigation, locators, network routes, cookies, screenshots, and the web engine's screencast video use CDP.
+CDP authorization headers authenticate the browser connection and do not become page request headers.
+
+History navigation can time out on Browser Run while waiting for the page's `load` event after `browser.back()` or `browser.forward()`.
+
+Remote file downloads are not supported. Browser Run exposes no browser filesystem API for the provider to read.
+Cloudflare-native session recordings are not attached to reports.
+When [video](/reference/config#video) is enabled, the web engine records a per-attempt WebM screencast.
+
+Keep `workers` within your account's [concurrency and acquisition limits](https://developers.cloudflare.com/browser-run/limits/).
+An HTTP `401` or `403` names the token permission to check.
+
+## Next
+
+<CardGroup cols={2}>
+  <Card title="Hosted browsers" href="/browser#hosted-browsers">Understand provider scopes and isolation.</Card>
+  <Card title="Web engine" href="/web">Configure viewports, app access, and video.</Card>
+</CardGroup>

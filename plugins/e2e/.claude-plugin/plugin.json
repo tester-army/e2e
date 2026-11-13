@@ -1,12 +1,12 @@
 {
   "name": "e2e",
-  "version": "0.23.0",
+  "version": "0.23.1",
   "description": "Write, run, and debug end-to-end tests for web and mobile apps with e2e, the open source agentic test runner.",
   "author": {
-    "name": "TesterArmy",
-    "url": "https://tester.army"
+    "name": "e2e",
+    "url": "https://e2e.com"
   },
-  "homepage": "https://e2e.com/docs",
+  "homepage": "https://e2e.com",
   "repository": "https://github.com/e2e-inc/e2e",
   "license": "Apache-2.0",
   "keywords": [
@@ -22,5 +22,9 @@
     "bug-bash"
   ],
   "skills": "./skills/",
-  "mcpServers": "./.mcp.json"
+  "mcpServers": "./.mcp.json",
+  "displayName": "e2e",
+  "documentationUrl": "https://e2e.com/docs",
+  "privacyPolicyUrl": "https://e2e.com/privacy",
+  "supportUrl": "https://e2e.com/contact"
 }

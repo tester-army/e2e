@@ -1,6 +1,6 @@
 {
   "name": "@e2e-dev/limrun",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "description": "Limrun hosted iOS simulators and Android emulators for e2e mobile tests",
   "keywords": [
     "e2e",
@@ -64,6 +64,6 @@
     "node": "^22.22.3 || >=24.8.0"
   },
   "dependencies": {
-    "agent-device": "0.21.36"
+    "agent-device": "0.21.37"
   }
 }

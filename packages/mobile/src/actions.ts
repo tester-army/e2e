@@ -2,7 +2,7 @@
 
 import type { LocatorActionKind, PointerAction, PointerActionKind, ViewportPoint } from 'e2e/engine';
 import type { AgentDeviceClient } from './options.ts';
-import { unsupported } from './support.ts';
+import { unsupported, type InputBudget } from './support.ts';
 
 /**
  * The action kinds a device honors, declared so the harness offers exactly
@@ -63,27 +63,32 @@ export function pointerInteraction(
   action: PointerAction,
   settle: Record<string, unknown>,
   stabilization: Record<string, unknown>,
+  input: InputBudget,
 ): Promise<unknown> {
   const at = { x: point.x, y: point.y };
   switch (action.kind) {
     case 'tap':
-      return client.interactions.press({ ...at, ...settle });
+      return input.press(client, { ...at, ...settle });
     case 'doubleTap':
-      return client.interactions.press({ ...at, count: 2, ...settle });
+      return input.press(client, { ...at, count: 2, ...settle });
     case 'longPress':
-      return client.interactions.longPress({ ...at, ...settle, durationMs: action.durationMs ?? DEFAULT_LONG_PRESS_MS });
+      return input.send(
+        () => client.interactions.longPress({ ...at, ...settle, durationMs: action.durationMs ?? DEFAULT_LONG_PRESS_MS }),
+        action.durationMs ?? DEFAULT_LONG_PRESS_MS,
+      );
     case 'swipeTo': {
       const to = { x: action.target.x, y: action.target.y };
-      if (action.durationMs !== undefined) {
-        return client.interactions.pan({
+      const durationMs = action.durationMs;
+      if (durationMs !== undefined) {
+        return input.send(() => client.interactions.pan({
           x: at.x,
           y: at.y,
           dx: to.x - at.x,
           dy: to.y - at.y,
-          durationMs: action.durationMs,
-        });
+          durationMs,
+        }), durationMs);
       }
-      return client.interactions.swipe({ from: at, to, ...stabilization });
+      return input.send(() => client.interactions.swipe({ from: at, to, ...stabilization }));
     }
     case 'secondaryTap':
     case 'hover':

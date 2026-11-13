@@ -4,7 +4,7 @@ import { isStepExecutor, type StepExecutor } from '../agent/executor.ts';
 import { GRAMMAR_TOOL_NAMES, HARNESS_TOOL_NAMES } from '../agent/action-names.ts';
 import { AgentError } from '../agent/error.ts';
 import { isDefinedTool } from '../agent/tool.ts';
-import { boundedInt, positiveInt } from './validate.ts';
+import { boundedInt, timerMs } from './validate.ts';
 import { ConfigurationError, TestError } from '../internal/errors.ts';
 import { didYouMean } from '../internal/suggest.ts';
 import type {
@@ -195,7 +195,7 @@ export function resolveAgentConfig(
   const maxSteps = boundedInt(agent?.maxSteps, `${label}.maxSteps`, 1, 100) ?? 25;
   const maxModelCalls = boundedInt(agent?.maxModelCalls, `${label}.maxModelCalls`, 1, 100) ?? 25;
   const judgmentTimeout =
-    positiveInt(agent?.judgmentTimeout, `${label}.judgmentTimeout`, 'milliseconds') ?? DEFAULT_JUDGMENT_TIMEOUT_MS;
+    timerMs(agent?.judgmentTimeout, `${label}.judgmentTimeout`) ?? DEFAULT_JUDGMENT_TIMEOUT_MS;
   const maxObservationBytes =
     boundedInt(agent?.maxObservationBytes, `${label}.maxObservationBytes`, 1_024, 16_777_216) ??
     DEFAULT_OBSERVATION_BYTES;

@@ -388,8 +388,13 @@ failed `open <app>` step:
 ```
 
 <Note>
-agent-device commands take no abort signal, so a timed-out command keeps
-running on the device. The next attempt waits for it to settle.
+A pending tap, double tap, focus, check or uncheck is cancelled when the step
+stops waiting for it or the run is interrupted. This also covers the tap that
+dismisses a keyboard tip.
+
+Input already sent to the device may still finish.
+Other commands can outlive their caller's timeout; the next attempt waits for
+them to finish.
 </Note>
 
 #### Capabilities

@@ -1,9 +1,10 @@
 /**
  * Copy the maintained skills into the shared Claude, Codex, and Cursor plugin.
- * Each skill's agents/openai.yaml, the plugin's assets, and its .mcp.json
- * belong to the plugin; every other skill file, the license, every manifest's version
- * (the runner's, so plugin installs update with each release), and the Claude
- * and Cursor manifests are generated here from Codex's. `version-packages`
+ * Each skill's agents/openai.yaml and the plugin's assets belong to the plugin;
+ * every other skill file, the license, every manifest's version (the runner's,
+ * so plugin installs update with each release), the Claude and Cursor manifests
+ * (from Codex's), and .mcp.json, which pins the MCP server's `npx` launcher to
+ * that version, are generated here. `version-packages`
  * runs it after `changeset version`. Use --check in CI to report missing,
  * stale, or removed generated files.
  */
@@ -64,8 +65,19 @@ const json = (value: unknown) => Buffer.from(`${JSON.stringify(value, null, 2)}\
 
 const versioned = { ...codexManifest, version: runner.version };
 generated.set(join(plugin, '.codex-plugin/plugin.json'), json(versioned));
-// Claude reads the same top-level fields; JSON.stringify drops Codex's `interface` block.
-generated.set(join(plugin, '.claude-plugin/plugin.json'), json({ ...versioned, interface: undefined }));
+// Claude reads the same top-level fields plus its directory listing's name and links; JSON.stringify
+// drops Codex's `interface` block.
+generated.set(
+  join(plugin, '.claude-plugin/plugin.json'),
+  json({
+    ...versioned,
+    interface: undefined,
+    displayName: codexManifest.interface.displayName,
+    documentationUrl: 'https://e2e.com/docs',
+    privacyPolicyUrl: codexManifest.interface.privacyPolicyURL,
+    supportUrl: codexManifest.interface.supportURL,
+  }),
+);
 // Cursor adds a display name and one logo.
 generated.set(
   join(plugin, '.cursor-plugin/plugin.json'),
@@ -77,6 +89,11 @@ generated.set(
   }),
 );
 generated.set(join(plugin, 'LICENSE'), readFileSync(join(root, 'LICENSE')));
+// Claude's plugin directory refuses a launcher that fetches an unpinned package.
+generated.set(
+  join(plugin, '.mcp.json'),
+  json({ mcpServers: { e2e: { command: 'npx', args: ['-y', `e2e@${runner.version}`, 'mcp'] } } }),
+);
 
 const stale: string[] = [];
 for (const path of files(join(plugin, 'skills'))) {

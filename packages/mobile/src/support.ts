@@ -1,7 +1,8 @@
 /** Shared helpers for the agent-device engine: error constructors, filenames, PNG headers, gestures, the screen location and size. */
 
-import type { CaptureScreenshotResult } from 'agent-device';
+import type { CaptureScreenshotResult, PressOptions } from 'agent-device';
 import { EngineError, withTimeout, type Momentum, type ScrollDirection, type ViewportSize } from 'e2e/engine';
+import type { AgentDeviceClient } from './options.ts';
 
 export interface Point {
   readonly x: number;
@@ -35,16 +36,25 @@ export class InputBudget {
   private sent = false;
 
   /**
-   * `track` keeps the device command itself in flight, past a timeout that
-   * abandons it, until it settles. The callers' own tracking settles with the
-   * race, so this is the registration the next attempt waits on.
+   * `track` keeps the SDK request in flight, past a timeout that abandons
+   * it, until its promise settles. Cancellation can settle that promise
+   * before already accepted native work ends.
    */
   constructor(
     private readonly label: string,
     timeoutMs: number,
     private readonly track: <T>(pending: Promise<T>) => Promise<T>,
+    private readonly signal: AbortSignal,
   ) {
     this.endsAt = Date.now() + timeoutMs;
+  }
+
+  /**
+   * Press requests receive caller cancellation and are cancelled when this
+   * wait expires, including its existing acknowledgement allowance.
+   */
+  press(client: AgentDeviceClient, options: PressOptions): Promise<unknown> {
+    return this.send((signal) => client.interactions.press({ ...options, signal }));
   }
 
   /**
@@ -55,7 +65,7 @@ export class InputBudget {
    * it is refused unsent. An input that does not answer in time may have
    * landed, so it is `ACTION_MAY_HAVE_COMMITTED` and the runner never repeats it.
    */
-  send<T>(dispatch: () => Promise<T>, holdMs = 0): Promise<T> {
+  send<T>(dispatch: (signal: AbortSignal) => Promise<T>, holdMs = 0): Promise<T> {
     const remaining = this.remainingMs();
     if (remaining <= 0) return Promise.reject(this.spent());
     if (holdMs >= remaining) {
@@ -67,9 +77,15 @@ export class InputBudget {
         ),
       );
     }
-    const pending = this.track(dispatch());
+    const answerMs = Math.max(remaining, MIN_ANSWER_MS);
+    const deadline = new AbortController();
+    const requestSignal = AbortSignal.any([this.signal, deadline.signal]);
+    const pending = this.track(dispatch(requestSignal));
     this.sent = true;
-    return withTimeout(pending, Math.max(remaining, MIN_ANSWER_MS), () => this.maybeCommitted());
+    return withTimeout(pending, answerMs, () => {
+      deadline.abort();
+      return this.maybeCommitted();
+    });
   }
 
   /**

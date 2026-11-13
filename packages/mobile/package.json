@@ -1,6 +1,6 @@
 {
   "name": "@e2e-dev/mobile",
-  "version": "0.12.6",
+  "version": "0.12.7",
   "description": "Mobile engine (iOS and Android) for e2e agentic end-to-end testing, built on agent-device",
   "keywords": [
     "e2e",
@@ -64,7 +64,7 @@
   },
   "dependencies": {
     "@napi-rs/image": "1.16.0",
-    "agent-device": "0.21.36",
+    "agent-device": "0.21.37",
     "zod": "4.6.7"
   },
   "peerDependencies": {

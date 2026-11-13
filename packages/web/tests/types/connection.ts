@@ -1,6 +1,6 @@
 /** Compile-time assertions for endpoint provisioning, transport recovery, and the browser provider seam. */
 import { secrets } from 'e2e';
-import type { BrowserLease, BrowserProvider, WebConnectOptions, WebInitScript, WebOptions } from '../../src/index.ts';
+import type { BrowserLease, BrowserProvider, CdpTarget, WebConnectOptions, WebInitScript, WebOptions } from '../../src/index.ts';
 
 ({ cdpEndpoint: () => 'ws://localhost:9222', reconnectEndpoint: async (signal) => {
   signal.throwIfAborted();
@@ -14,6 +14,13 @@ import type { BrowserLease, BrowserProvider, WebConnectOptions, WebInitScript, W
 
 ({ name: 'hosted', scope: 'attempt', acquire: async () => ({ id: 's', cdpEndpoint: 'ws://localhost:9222' }), release: async () => undefined }) satisfies BrowserProvider;
 ({ id: 's', cdpEndpoint: 'ws://localhost:9222', reconnectEndpoint: undefined }) satisfies BrowserLease;
+
+({ name: 'hosted', acquire: async () => ({ id: 's', cdpEndpoint: 'ws://localhost:9222' }), release: async () => undefined, cdpHeaders: async (_lease, context) => ({ Authorization: context.env.TOKEN ?? '' }) }) satisfies BrowserProvider;
+// @ts-expect-error CDP headers do not travel in lease JSON.
+({ id: 's', cdpEndpoint: 'ws://localhost:9222', cdpHeaders: {} }) satisfies BrowserLease;
+// @ts-expect-error CDP handshake headers carry string values.
+({ name: 'hosted', acquire: async () => ({ id: 's', cdpEndpoint: 'ws://localhost:9222' }), release: async () => undefined, cdpHeaders: async () => ({ Authorization: 42 }) }) satisfies BrowserProvider;
+
 ({ browser: { name: 'hosted', acquire: async () => ({ id: 's', cdpEndpoint: 'ws://localhost:9222' }), release: async () => undefined } }) satisfies WebOptions;
 
 // @ts-expect-error a lease names its endpoint; a browser object or a page is not one.
@@ -70,3 +77,10 @@ import type { BrowserLease, BrowserProvider, WebConnectOptions, WebInitScript, W
 ({ screencast: { size: { width: 1280, height: 720 }, quality: 80 } }) satisfies WebOptions;
 // @ts-expect-error web({ video }) was renamed web({ screencast }).
 ({ video: { quality: 80 } }) satisfies WebOptions;
+
+({ endpoint: 'wss://browser.example', headers: { Authorization: 'token' } }) satisfies CdpTarget;
+({ cdpEndpoint: () => ({ endpoint: 'wss://browser.example', headers: { Authorization: 'token' } }), reconnectEndpoint: async () => ({ endpoint: 'wss://browser.example' }) }) satisfies WebConnectOptions;
+// @ts-expect-error CDP headers must contain strings.
+({ endpoint: 'wss://browser.example', headers: { Authorization: 42 } }) satisfies CdpTarget;
+// @ts-expect-error a CDP target must name its endpoint.
+({ cdpEndpoint: () => ({ headers: {} }) }) satisfies WebConnectOptions;

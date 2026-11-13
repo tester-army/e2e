@@ -244,6 +244,15 @@ describe('resolveConfig', () => {
     expect(() => resolve({ launchTimeout: 0 })).toThrow('launchTimeout must be a positive safe integer of milliseconds, got 0');
   });
 
+  it('rejects config timeouts a timer cannot wait for', () => {
+    for (const key of ['timeout', 'launchTimeout', 'actionTimeout', 'assertionTimeout', 'cleanupTimeout'] as const) {
+      expect(resolve({ [key]: 2 ** 31 - 1 })[key]).toBe(2 ** 31 - 1);
+      expect(() => resolve({ [key]: 2 ** 31 })).toThrow(
+        expect.objectContaining({ code: 'INVALID_CONFIG', message: `${key} must be at most 2147483647 milliseconds, got 2147483648` }),
+      );
+    }
+  });
+
   it('accepts a command only beside a URL to poll, and defaults readyUrl to it', () => {
     expect(() => resolveApp({ command: { executable: 'node' } })).toThrow(/without a URL to poll/);
     expect(commandOf({ url: 'http://localhost:3000', command: { executable: 'node' } })).toMatchObject({
@@ -1006,6 +1015,18 @@ describe('resolveConfig', () => {
         );
       }
       expect(commandOf({ url: APP_URL, command: { executable: 'x', startupTimeout: 5_000, shutdownTimeout: 500 } }).command).toMatchObject({ startupTimeout: 5_000, shutdownTimeout: 500 });
+    });
+
+    it('rejects timeouts a timer cannot wait for', () => {
+      for (const key of ['startupTimeout', 'shutdownTimeout'] as const) {
+        expect(commandOf({ url: APP_URL, command: { executable: 'x', [key]: 2 ** 31 - 1 } }).command).toMatchObject({ [key]: 2 ** 31 - 1 });
+        expect(() => resolveApp({ url: APP_URL, command: { executable: 'x', [key]: 2 ** 31 } })).toThrow(
+          expect.objectContaining({
+            code: 'INVALID_CONFIG',
+            message: `target "web" app.command.${key} must be at most 2147483647 milliseconds, got 2147483648`,
+          }),
+        );
+      }
     });
 
   });

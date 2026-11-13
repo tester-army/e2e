@@ -1,5 +1,21 @@
 # @e2e-dev/acp
 
+## 0.1.2
+
+### Patch Changes
+
+- [#1626](https://github.com/e2e-inc/e2e/pull/1626) [`c9783a0`](https://github.com/e2e-inc/e2e/commit/c9783a0666ffea9af4d156d1154657fb94b4af1b) Thanks [@Varshith-Kali](https://github.com/Varshith-Kali)! - Fix `WORKER_CRASH (EPERM)` on Windows when an ACP session ends: a failed session directory removal no longer crashes the worker and is retried after the agent exits.
+
+- [#1568](https://github.com/e2e-inc/e2e/pull/1568) [`1144df4`](https://github.com/e2e-inc/e2e/commit/1144df4e710a448f0553a9cc8def1fd98aaed3ee) Thanks [@bheemreddy-samsara](https://github.com/bheemreddy-samsara)! - Add opt-in scrolling exploration to agent.assert with bounded action and model-call budgets. Enforce read-only assertion tools for built-in and custom executors. ACP assertions now deny hover; mutating actions from custom executors fail with POLICY_DENIED during any assertion. `createVerdictTool(kind)` drops ASSERTION_INCONCLUSIVE from an act verdict, and `createToolLoopExecutor({ inconclusiveOnOverflow: true })` fails a context overflow as ASSERTION_INCONCLUSIVE instead of shortening the history.
+
+- [#1666](https://github.com/e2e-inc/e2e/pull/1666) [`795f71f`](https://github.com/e2e-inc/e2e/commit/795f71f2ffa6d2d6d38d0de512ce6862b5f6c7dd) Thanks [@okwasniewski](https://github.com/okwasniewski)! - Bump runtime dependencies: `@clack/prompts` 1.9.0, `oxc-parser`, `oxc-transform`, and `@oxc-project/runtime` 0.158.0, `@ai-sdk/provider` 4.0.37, and `@agentclientprotocol/sdk` 2.5.0 (ACP schema v1.30.0).
+
+- [#1712](https://github.com/e2e-inc/e2e/pull/1712) [`97093eb`](https://github.com/e2e-inc/e2e/commit/97093ebed44e5a785395b46cc48dcfda6e2b6a46) Thanks [@okwasniewski](https://github.com/okwasniewski)! - Bump `@agentclientprotocol/sdk` to 2.6.0.
+
+- [#1672](https://github.com/e2e-inc/e2e/pull/1672) [`3735887`](https://github.com/e2e-inc/e2e/commit/373588756937562aa89c7dd7f7995ac6b16db972) Thanks [@okwasniewski](https://github.com/okwasniewski)! - Move GitHub repository metadata and CLI links to e2e-inc/e2e after the organization rename. Register the MCP server as io.github.e2e-inc/e2e.
+
+- [#1715](https://github.com/e2e-inc/e2e/pull/1715) [`be460ec`](https://github.com/e2e-inc/e2e/commit/be460ecd91f4790884a36127310aab0d33853903) Thanks [@okwasniewski](https://github.com/okwasniewski)! - Redact project tool results and errors before the model or AI trace recorder reads them, and redact and bound skip reasons before reporting. Avoid repeated scanning of malformed stack frames and trailing slashes in provider API endpoints. Keep ACP forwarding errors out of HTTP responses while preserving the cause in the runner's redacted failure output.
+
 ## 0.1.1
 
 ### Patch Changes
