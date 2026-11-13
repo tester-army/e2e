@@ -741,8 +741,14 @@ agent-device daemon per worker slot with the credentials in `env`, allocates
 a lease with the `selectors`, keeps it alive while the run holds it, and on
 release fails unless agent-device confirms the session ended. `testmu()`
 from `@e2e-dev/testmu` works this way for [TestMu AI](/integrations/testmu),
-and `browserstack()` from `@e2e-dev/browserstack` for
-[BrowserStack](/integrations/browserstack).
+`browserstack()` from `@e2e-dev/browserstack` for
+[BrowserStack](/integrations/browserstack), and `revyl()` from
+`@e2e-dev/revyl` for [Revyl](/integrations/revyl).
+
+When the cloud needs an agent-device provider plugin, depend on it and pass
+`agentDevicePlugin(import.meta.resolve('@agent-device/<plugin>'))`: call its
+`assertVersion(request.agentDeviceVersion)` in `acquire`, and pass its
+`prepareHome` with the lease, which registers the plugin in the daemon's home.
 
 ```ts title="device-cloud-provider.ts" expandable
 import type { DeviceProvider } from '@e2e-dev/mobile';
