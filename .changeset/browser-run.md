@@ -1,6 +1,5 @@
 ---
-"@e2e-dev/browser-run": patch
-"@e2e-dev/web": patch
+"@e2e-dev/browser-run": minor
 ---
 
-Add a Cloudflare Browser Run browser provider and CDP handshake headers for hosted browser leases.
+**Release:** New package: `@e2e-dev/browser-run`. A Cloudflare Browser Run browser provider for hosted Chromium leases.
