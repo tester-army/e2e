@@ -79,6 +79,10 @@ describe('agent config defaults', () => {
       /agents\.default\.judgmentTimeout must be a positive/,
     );
     expect(() => resolve({ agents: { default: { judgmentTimeout: 1.5 } } })).toThrow(/agents\.default\.judgmentTimeout/);
+    expect(resolve({ agents: { default: { judgmentTimeout: 2 ** 31 - 1 } } }).agent.judgmentTimeout).toBe(2 ** 31 - 1);
+    expect(() => resolve({ agents: { default: { judgmentTimeout: 2 ** 31 } } })).toThrow(
+      'agents.default.judgmentTimeout must be at most 2147483647 milliseconds, got 2147483648',
+    );
   });
 
   it('rejects unknown agent keys with the nearest one, including the removed cache mode', () => {
