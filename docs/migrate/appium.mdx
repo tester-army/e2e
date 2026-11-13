@@ -292,16 +292,13 @@ is not a step, so it skips the report and secret redaction.
 
 | Appium | Use today |
 | --- | --- |
-| `appium:platformVersion` on a local device, a phone's `appium:udid` | Name a simulator or emulator that runs the version. Put the phone's name in `device` |
 | `appium:autoGrantPermissions`, Android permissions off the list, iOS location `always` | List each permission in `app.permissions`, or run `adb shell pm grant` before the run. For iOS location `always`, tap the prompt's button |
 | Device settings and alerts on a `browserstack()` or `testmu()` device | Tap the prompt as UI. Run those tests on a local device |
 | `bstack:options.local`, `lt:options.tunnel` | Point the app at a backend the hosted device can reach |
 | `appium:appActivity`, `appWaitActivity`, `startActivity()` | `device.openLink(url)`, or `client.apps.open` through [`unstable_raw`](/reference/mobile#unstable_raw) |
 | `appium:processArguments.env` | Pass a launch argument and read it in the app |
 | `appium:language`, `appium:locale` on a local device | On iOS, `app.launchArguments: ['-AppleLanguages', '(fr)', '-AppleLocale', 'fr_FR']`, see [Run the app in another language](/mobile#run-the-app-in-another-language). On Android, set the device language before the run |
-| `appium:avd`, `avdArgs`, `isHeadless` | Boot the emulator before the run and name its serial |
 | `appium:disableWindowAnimation`, `reduceMotion` | On Android, `client.settings.update` through [`unstable_raw`](/reference/mobile#unstable_raw) |
-| `sauce:options` | Write a [`DeviceProvider`](/mobile#hosted-devices) |
 
 </Accordion>
 <Accordion title="Elements and gestures">
@@ -321,7 +318,6 @@ is not a step, so it skips the report and secret redaction.
 | Appium | Use today |
 | --- | --- |
 | `driver.getLogs('logcat')`, `'syslog'`, `'crashlog'` | Run `adb logcat` or `xcrun simctl spawn <udid> log stream` from a hook |
-| Appium Inspector | `screen.debug()`, or [`npx e2e mcp`](/mcp-server) for a coding agent's live session |
 | `driver.removeApp(id)`, `isAppInstalled(id)`, `queryAppState(id)` | `client.apps.uninstall` or `.list` through [`unstable_raw`](/reference/mobile#unstable_raw) |
 | `driver.lock()`, `unlock()`, power and volume buttons | `client.command.hardwareButton` through [`unstable_raw`](/reference/mobile#unstable_raw) |
 | `driver.openNotifications()`, `mobile: pushNotification` | `screen.swipe({ from, to })` from the top edge; `xcrun simctl push` from Node |
@@ -340,15 +336,14 @@ is not a step, so it skips the report and secret redaction.
 | Webview contexts: `getContexts()`, `switchContext()`, CSS selectors, `execute(js)` | Query the webview's accessibility nodes with `getByText` and `getByRole` |
 | Mobile web: `browserName: 'Safari'` or `'Chrome'` | A `web()` target at a [phone viewport](/web#viewports), layout only |
 | `appium:unlockType`, `unlockKey` | Keep the device unlocked |
-| `driver.updateSettings()`, `appium:settings[...]` | `snapshot`, `settle`, and `transition` on [`mobile()`](/reference/mobile#engine) |
-| `.getAttribute('clickable')`, `.isClickable()` | Act on the element. The action waits until it is actionable |
 | `driver.getPageSource()` as XML | No XML export. `screen.tree()` returns the tree as text, and `client.capture.snapshot()` through [`unstable_raw`](/reference/mobile#unstable_raw) returns its nodes. Keep XML consumers in Appium |
 | `performActions()` with several fingers or waypoints | Single gestures, or `client.interactions.gesture` through [`unstable_raw`](/reference/mobile#unstable_raw) |
 | `mobile: shell`, `getPerformanceData()` | Run `adb` or `simctl` from Node with `device.unstable_raw.deviceId`; local devices only |
 | `mobile: setSimulatedLocation`, `mobile: setAppearance`, `mobile: setPasteboard` on an iPhone | Run those tests on a simulator, see [Physical devices](/mobile#physical-devices) |
-| A remote Appium server (`hostname`, `port`) | Run e2e on the machine that has the devices |
 | Other `bstack:options` keys, such as `gpsLocation` and `uploadMedia` | - |
-| Allure | Feed it `.e2e/junit.xml`, or use `htmlReporter()` |
+| `appium:platformVersion` on a local device, a phone's `appium:udid` | Name a simulator or emulator that runs the version. Put the phone's name in `device` |
+| `appium:avd`, `avdArgs`, `isHeadless` | Boot the emulator before the run and name its serial |
+| Tests in Java, Python, Ruby, or C# | e2e tests run in Node. Rewrite them in TypeScript in an `e2e/` folder beside the app |
 
 ### Not planned
 
@@ -357,12 +352,17 @@ is not a step, so it skips the report and secret redaction.
 | XPath | Chain queries (`screen.getByTestId('row').getByText('Delete')`) or use `filter({ has, hasText })`. XPath ties a test to one platform's tree |
 | `-image` selectors, `findImage` | `screen.tapAt({ x, y })`, or an `agent.act` goal |
 | `$(selector)` acting on the first of several matches | `.first()`, see [Rewrite selectors](#rewrite-selectors) |
-| Tests in Java, Python, Ruby, or C# | e2e tests run in Node. Rewrite them in TypeScript in an `e2e/` folder beside the app |
 | WebDriverAgent capabilities such as `usePrebuiltWDA` | Nothing to set. agent-device builds and signs its own runner |
 | Compound `-ios predicate string` logic, `UiSelector` flags and `fromParent()` | A `getBy*` query with `filter({ has })` or a `RegExp` |
 | Gherkin feature files | One test per scenario. A step can be an `agent.act` goal |
 | Saved sessions, `test.setup` and `{ session }` | Sign in per test or seed the app. A device has no session to save, see [What differs from the web](/mobile#what-differs-from-the-web) |
 | A device grid or hub, other device clouds | A hosted provider, or a `DeviceProvider` you write |
+| `sauce:options` | Write a [`DeviceProvider`](/mobile#hosted-devices) |
+| Appium Inspector | `screen.debug()`, or [`npx e2e mcp`](/mcp-server) for a coding agent's live session |
+| `driver.updateSettings()`, `appium:settings[...]` | `snapshot`, `settle`, and `transition` on [`mobile()`](/reference/mobile#engine) |
+| `.getAttribute('clickable')`, `.isClickable()` | Act on the element. The action waits until it is actionable |
+| A remote Appium server (`hostname`, `port`) | Run e2e on the machine that has the devices |
+| Allure | Feed it `.e2e/junit.xml`, or use `htmlReporter()` |
 
 ## Next
 

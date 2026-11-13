@@ -127,14 +127,12 @@ Planned gaps are on the roadmap, and Not yet gaps have no date. Not planned gaps
 | `cypress open`, time-travel snapshots | `npx e2e run --headed --watch`, or `--step`; the [trace page](/debugging#traces) shows each step after the run |
 | `before()` and `after()` that drive the app, `describe.only` | UI setup in `beforeEach`, cleanup in `afterEach`; sign-in in a top-level `test.setup` that saves a session; `test.only` on each test |
 | `cy.clock()`, `cy.tick()` | A fake-timers script loaded with `browser.addInitScript({ path })`, driven by `browser.evaluate` |
+| `cy.request()` with the browser's cookies | Send `browser.cookies()` with `fetch`, see [Signed-in requests](/api-testing#signed-in-requests) |
 
 ### Not yet
 
 | Cypress | Use today |
 | --- | --- |
-| `.parent()`, `.closest()`, `.siblings()`, `.next()` | Locate the ancestor and narrow it: `card.filter({ has: child })` |
-| `{ force: true }` | Act on the visible label, or `tap({ position })`, which skips the actionability checks |
-| `cy.request()` with the browser's cookies | Send `browser.cookies()` with `fetch`, see [Signed-in requests](/api-testing#signed-in-requests) |
 | `supportFile`, `blockHosts` | A shared `test` from `test.extend` that every file imports; abort hosts there with `browser.route` |
 | `cypress run --record --parallel`, Cypress Cloud | `--shard` on each CI job, the `junit` and `github()` reporters, `.e2e` uploaded as an artifact |
 | `cy.visit()` failing on a 4xx or 5xx page | `app.open` ignores the status. Assert on the page content |
@@ -151,6 +149,8 @@ Planned gaps are on the roadmap, and Not yet gaps have no date. Not planned gaps
 | Mocha reporters, `reporterOptions` | `list`, `json`, `junit`, `markdown`, `htmlReporter()`, `github()`, or your own [reporter](/reference/reporters) |
 | Cucumber `.feature` files, `file:preprocessor` | Rewrite features as tests. TypeScript needs no preprocessor |
 | Component testing | Keep it in Cypress. e2e tests a running app |
+| `.parent()`, `.closest()`, `.siblings()`, `.next()` | Locate the ancestor and narrow it: `card.filter({ has: child })` |
+| `{ force: true }` | Act on the visible label, or `tap({ position })`, which skips the actionability checks |
 
 ## What differs on purpose
 

@@ -170,7 +170,6 @@ on purpose.
 | `permissions: { all }`, the grant-all default, names such as `bluetooth` and `storage` | Name each permission in `app.permissions`, or accept the prompt with `device.alert('accept')` |
 | `point: "50%,50%"`, percent `start` and `end` on `swipe` | Compute pixels from a full-screen node's `boundingBox()` |
 | `inputText` and `pressKey: Enter` with no field, `eraseText: N`, `pressKey: backspace`, `tab` | `fill` or `press` on the field's locator; `fill` a shortened `inputValue()` to erase; tap the next field for Tab |
-| Maestro Studio | A coding agent over [`npx e2e mcp`](/mcp-server), or `screen.debug()` with `npx e2e run --watch` or `--step` |
 | `addMedia` | On an iOS simulator, `xcrun simctl addmedia` before `app.open()`; Android is unchecked. See "Photos for a picker test" under [The device fixture](/mobile#the-device-fixture) |
 | `label` on a command | `-`. The call names each step |
 | `scrollUntilVisible: { centerElement, visibilityPercentage }` | No exact match. After it resolves, read `boundingBox()`, then `screen.swipe({ direction, momentum: 'slow' })` if the node is off center |
@@ -179,20 +178,18 @@ on purpose.
 | `--device-locale` | `app.launchArguments: ['-AppleLanguages', '(de)', '-AppleLocale', 'de_DE']` on iOS, see [Run the app in another language](/mobile#run-the-app-in-another-language); on Android, set the device language before the run |
 | Maestro Cloud | Your [CI](/ci) with a [hosted device provider](/mobile#hosted-devices) |
 | `pressKey: lock`, `power`, `volume up`, `volume down` | `client.command.hardwareButton` on [`unstable_raw`](/reference/mobile#unstable_raw): power and volume on Android, volume on a physical iPhone |
+| JUnit `properties`, a JUnit path with `--output` | Ids in tags or the title; copy `.e2e/junit.xml` after the run |
+| `--device` on the command line | `device: process.env.DEVICE` in the config |
 
 ### Not yet
 
 | Maestro | Use today |
 | --- | --- |
 | `optional: true` | `if (await locator.isVisible())` or try/catch; the report shows no warning |
-| `waitForAnimationToEnd` | `await expect(locator).toBeVisible()` on what the animation ends with |
-| `below`, `above`, `leftOf`, `rightOf` | `getByLabel`, a test id, `filter({ has })` on a shared container, or an `agent.act` goal |
 | `executionOrder` | One `describe(..., { serial: true })` that calls each flow as a function |
 | `retry: { maxRetries, commands }` | A `for` loop with try/catch; `expect.poll` for a value, `{ retries }` for the whole test |
 | Android process death with `killApp` | `device.home()`, then `adb shell am kill <package>`, then `device.openApp(id)` |
 | `assertDarkMode`, `assertLightMode` | Assert on a themed control, or `toHaveScreenshot` |
-| JUnit `properties`, a JUnit path with `--output` | Ids in tags or the title; copy `.e2e/junit.xml` after the run |
-| `--device` on the command line | `device: process.env.DEVICE` in the config |
 | TV remote keys | `-` |
 
 ### Not planned
@@ -203,6 +200,9 @@ on purpose.
 | `retryTapIfNoChange` | Assert the result, then tap again in the test. A blind second tap can fire a control twice |
 | `waitToSettleTimeoutMs` | An assertion with its own `timeout` after the action; that assertion is the wait |
 | `toggleAirplaneMode`, `toggleDarkMode` | Set the state you want: `device.setAirplaneMode(true)`, `device.setAppearance('dark')` |
+| Maestro Studio | A coding agent over [`npx e2e mcp`](/mcp-server), or `screen.debug()` with `npx e2e run --watch` or `--step` |
+| `waitForAnimationToEnd` | `await expect(locator).toBeVisible()` on what the animation ends with |
+| `below`, `above`, `leftOf`, `rightOf` | `getByLabel`, a test id, `filter({ has })` on a shared container, or an `agent.act` goal |
 
 ## What differs on purpose
 

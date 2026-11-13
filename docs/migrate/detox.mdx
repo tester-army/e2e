@@ -155,7 +155,6 @@ on purpose.
 | Detox | Use today |
 | --- | --- |
 | `beforeAll` that launches the app | `app.open()` in `beforeEach` |
-| Install at init, `behavior.init.reinstallApp`, `--reuse` | `device.installApp()` in a fixture |
 | `artifacts.plugins.log`, `--record-logs` | `adb logcat` or `xcrun simctl spawn booted log stream` in a CI step |
 | `by.id('x').and(by.text('y'))` | `.filter({ hasText })`, or `device.locator('id=x label="y"')` |
 | `system.element(by.system.label('Allow'))` | `device.alert('accept' \| 'dismiss')`, or `app.permissions` so no prompt shows |
@@ -168,23 +167,20 @@ on purpose.
 | `device.sendUserNotification()`, `device.uninstallApp()`, `.pinch()` | `client.apps.push()`, `client.apps.uninstall()`, `client.interactions.pinch()` on [`unstable_raw`](/reference/mobile#unstable_raw) |
 | `launchApp({ languageAndLocale })` | On iOS, `app.launchArguments: ['-AppleLanguages', '(fr)', '-AppleLocale', 'fr_FR']`, see [Run the app in another language](/mobile#run-the-app-in-another-language) |
 | Jest `globalSetup`, `globalTeardown` | Start dependencies before the run |
-| `device: { type, os }`, `headless`, `bootArgs`, `device.reverseTcpPort()` | Create and boot the device, and run `adb reverse`, in a CI step |
+| `device.reverseTcpPort()` | Run `adb reverse` in a CI step |
 | `device.shake()` | - |
+| `launchArgs` as one key-value map | `['-key', 'value']` on iOS, `['--es', 'key', 'value']` on Android |
+| `.getAttributes()` | `.textContent()`, `.inputValue()`, `.isEnabled()`, `.isVisible()`, `.isChecked()`, `.boundingBox()` |
+| `device.setStatusBar()` | `xcrun simctl status_bar`. `toHaveScreenshot` holds the status bar fixed |
 
 ### Not yet
 
 | Detox | Use today |
 | --- | --- |
-| `apps.<name>.build`, `detox build` | Your normal build, before `e2e run` |
-| `launchArgs` as one key-value map | `['-key', 'value']` on iOS, `['--es', 'key', 'value']` on Android |
-| `.scroll()` by an exact offset | `screen.swipe({ from, to })` |
-| `by.type('RCTImageView')` | `device.locator('role=image')`, or a `testID` |
-| `.getAttributes()` | `.textContent()`, `.inputValue()`, `.isEnabled()`, `.isVisible()`, `.isChecked()`, `.boundingBox()` |
 | `.toBeVisible(50)`, and the 75% default | `.toBeVisible()` checks the platform's flag, not the area. Compare `.boundingBox()` |
 | `web.element(by.web.cssSelector('x'))` | The WebView's accessibility text and labels, or an `agent.act` goal |
-| Jest reporters, Allure | The `junit` reporter, or a custom reporter |
 | `device.resetContentAndSettings()` | `app.clearState()`, plus `device.clearKeychain()` on iOS |
-| `device.setStatusBar()` | `xcrun simctl status_bar`. `toHaveScreenshot` holds the status bar fixed |
+| `device: { type, os }`, `headless`, `bootArgs` | Create and boot the device in a CI step |
 
 ### Not planned
 
@@ -193,6 +189,11 @@ on purpose.
 | `device.reloadReactNative()` | `app.restart()`. A reload needs the Detox framework in the app |
 | `device.disableSynchronization()`, `enableSynchronization()` | Delete the calls. There is no synchronization to switch off |
 | `device.setURLBlacklist()` | Delete the call. Network activity never blocks an action |
+| Install at init, `behavior.init.reinstallApp`, `--reuse` | `device.installApp()` in a fixture |
+| `apps.<name>.build`, `detox build` | Your normal build, before `e2e run` |
+| `.scroll()` by an exact offset | `screen.swipe({ from, to })` |
+| `by.type('RCTImageView')` | `device.locator('role=image')`, or a `testID` |
+| Jest reporters, Allure | The `junit` reporter, or a custom reporter |
 
 ## What differs on purpose
 
