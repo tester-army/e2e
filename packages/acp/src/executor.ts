@@ -264,7 +264,7 @@ function inputTokens(usage: Usage): number {
   return cacheApart ? usage.inputTokens + cached : usage.inputTokens;
 }
 
-/** Whether `promise` settles within `ms`, unless the waiting step ends first; no promise has nothing to wait for. */
+/** Whether `promise` settles within `ms`; rejects with the step's reason if the step ends first. */
 async function settled(promise: Promise<unknown> | undefined, ms: number, signal: AbortSignal): Promise<boolean> {
   if (promise === undefined) return true;
   let timer: NodeJS.Timeout | undefined;
