@@ -136,7 +136,7 @@ export interface DeviceProvider {
    * records with agent-device. `lease` is the lease as it traveled to the
    * worker: its `id` and the other fields declared on `DeviceLease`, never
    * what else the provider kept on the object `acquire` returned.
-   * `ProviderRecording` comes from `e2e/engine`: its `stop` writes a file
+   * `ProviderRecording` comes from `e2e-core/engine`: its `stop` writes a file
    * into the directory it is given, or names a recording the service keeps
    * by URL.
    */
