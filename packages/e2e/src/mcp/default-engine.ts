@@ -7,14 +7,22 @@
  * already on disk is loaded.
  */
 
-import { existsSync, readFileSync } from 'node:fs';
-import { createRequire, isBuiltin } from 'node:module';
+import { existsSync } from 'node:fs';
+import { isBuiltin } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { resolveModuleURL } from 'exsolve';
 import { ENGINE_SPI_VERSION } from '../engine/contract.ts';
 import { isEngineHandle, type EngineHandle } from '../engine/index.ts';
 import { ConfigurationError, errorMessage, isE2EError } from '../internal/errors.ts';
+
+/** Returns the Node export conditions used for dynamic imports. */
+function importConditions(): readonly string[] {
+  return process.features.require_module ? ['node', 'import', 'module-sync'] : ['node', 'import'];
+}
+
+const engineConditions: readonly string[] = importConditions();
 
 /** npm's package name grammar with an optional subpath, so a path, a URL, or a `..` segment is never resolved. */
 const PACKAGE = /^(?:@[a-z0-9][a-z0-9._~-]*\/)?[a-z0-9][a-z0-9._~-]*(?:\/[A-Za-z0-9][A-Za-z0-9._~-]*)*$/;
@@ -85,7 +93,7 @@ async function callFactory(ref: FactoryRef, lookup: EngineLookup, role: 'engine'
   const entry = resolveEntry(ref.package, lookup, role);
   let exports: Record<string, unknown>;
   try {
-    exports = (await import(pathToFileURL(entry).href)) as Record<string, unknown>;
+    exports = (await import(entry)) as Record<string, unknown>;
   } catch (cause) {
     throw new ConfigurationError('INVALID_CONFIG', `package ${ref.package} (${entry}) failed to load: ${errorMessage(cause)}`, { cause });
   }
@@ -145,7 +153,7 @@ function describe(ref: FactoryRef): string {
 }
 
 /**
- * The package's entry file, from the first place that has the package
+ * The package's entry URL, from the first place that has the package
  * installed. A package that is there but has no loadable entry is an error
  * of its own, never a reason to look further or to install it again.
  */
@@ -157,12 +165,13 @@ function resolveEntry(name: string, lookup: EngineLookup, role: 'engine' | 'opti
     if (directory === undefined) continue;
     try {
       // The file need not exist: it only says which node_modules directories to walk.
-      return createRequire(path.join(root, 'package.json')).resolve(name);
+      return resolveModuleURL(name, { from: pathToFileURL(path.join(root, 'package.json')), conditions: [...engineConditions], cache: false });
     } catch (cause) {
-      // `require` conditions miss an entry a package exports to `import` alone.
-      const imported = (cause as NodeJS.ErrnoException).code === 'ERR_PACKAGE_PATH_NOT_EXPORTED' ? importEntry(directory, name.slice(installable.length)) : undefined;
-      if (imported !== undefined) return imported;
-      throw new ConfigurationError('INVALID_CONFIG', `package ${name} is installed at ${directory} but its entry cannot be resolved: ${errorMessage(cause)}`, { cause });
+      throw new ConfigurationError(
+        'INVALID_CONFIG',
+        `package ${name} is installed at ${directory} but its entry cannot be resolved (conditions: ${engineConditions.join(', ')}): ${errorMessage(cause)}. Check the package's exports and entry files`,
+        { cause },
+      );
     }
   }
   // An option is only read as a call by its shape, so the message says how it was read before it names a command.
@@ -180,25 +189,4 @@ function installedAt(name: string, root: string): string | undefined {
     if (existsSync(path.join(candidate, 'package.json'))) return candidate;
     if (path.dirname(directory) === directory) return undefined;
   }
-}
-
-/** The file `subpath` (`''` for the main entry) of the package at `directory` exports to `import`, when its `exports` names one. */
-function importEntry(directory: string, subpath: string): string | undefined {
-  const manifest: unknown = JSON.parse(readFileSync(path.join(directory, 'package.json'), 'utf8'));
-  const exports = typeof manifest === 'object' && manifest !== null && 'exports' in manifest ? manifest.exports : undefined;
-  const key = `.${subpath}`;
-  const keyed = typeof exports === 'object' && exports !== null && !Array.isArray(exports) && Object.keys(exports).some((entry) => entry.startsWith('.'));
-  const target = importTarget(keyed ? (exports as Record<string, unknown>)[key] : key === '.' ? exports : undefined);
-  return target === undefined ? undefined : path.join(directory, target);
-}
-
-/** The first target an `import` of this `exports` value selects: a path, or the first matching condition's, in the order written. */
-function importTarget(value: unknown): string | undefined {
-  if (typeof value === 'string') return value;
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined;
-  for (const [condition, target] of Object.entries(value)) {
-    const selected = condition === 'import' || condition === 'node' || condition === 'default' ? importTarget(target) : undefined;
-    if (selected !== undefined) return selected;
-  }
-  return undefined;
 }
