@@ -151,7 +151,7 @@ function readSince(file: string, offset: number): { readonly text: string; reado
  */
 export async function startStepped(address: StepAddress, args: readonly string[]): Promise<number> {
   if (await listening(address.socket)) {
-    throw new Error(ALREADY_GOING);
+    throw new ConfigurationError('RUNNER_BUSY', ALREADY_GOING);
   }
   // Before a `--`, which ends the options.
   const end = args.includes('--') ? args.indexOf('--') : args.length;
@@ -302,7 +302,7 @@ export async function serveSteps(options: RunOptions, signals: SignalLadder, add
    */
   const apply = (action: StepAction, starting: boolean): string => {
     // The run is over; the command gets its end.
-    if (ended !== undefined) return action === 'stop' ? '' : `e2e run --step ${action} was not applied: the run had ended.\n`;
+    if (ended !== undefined) return action === 'stop' || starting ? '' : `e2e run --step ${action} was not applied: the run had ended.\n`;
     if (action === 'stop') stop();
     // The starting command waits for the first held step and presses nothing.
     else if (starting) return '';

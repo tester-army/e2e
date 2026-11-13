@@ -12,7 +12,7 @@ import picocolors from 'picocolors';
 import { detectPackageManager, execCommand, runScriptCommand } from '../internal/package-manager.ts';
 import { packageVersion } from '../internal/package-version.ts';
 import { MAX_TIMER_MS } from '../internal/time.ts';
-import { classifyError, exitCodeForCategory } from '../internal/errors.ts';
+import { classifyError, codedMessage, exitCodeForCategory } from '../internal/errors.ts';
 import type { Shard, TagMode } from '../collect/select.ts';
 import { listSelection, run, type ListedPair, type RunOptions, type RunOutcome } from '../run/runner.ts';
 import { claimRunnerOutput } from './run-output.ts';
@@ -369,7 +369,7 @@ async function driveStepped(command: Command, drive: () => Promise<number>): Pro
   try {
     process.exitCode = await drive();
   } catch (cause) {
-    command.error(`error: ${cause instanceof Error ? cause.message : String(cause)}`, { exitCode: 2 });
+    command.error(`error: ${codedMessage(cause)}`, { exitCode: 2 });
   }
 }
 

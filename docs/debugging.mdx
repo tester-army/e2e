@@ -293,11 +293,12 @@ The keys follow [`--watch`](/reference/cli#watch-mode). These work at a prompt:
 
 ## Step through a test without a terminal
 
-Without a terminal on stdin and stdout, as in a coding agent's shell,
+When stdin or stdout is not a terminal, as in a coding agent's shell,
 `--step` runs the test in the background. The command returns at the first
 held step, with the screen that step waits on. Run each later command from
 the same directory. A shell that gives commands a terminal gets the key
-prompt instead; add `< /dev/null`.
+prompt instead; redirect stdin from the null device (`< /dev/null`, or
+`< NUL` in Windows `cmd`).
 
 <CodeGroup>
 ```bash npm

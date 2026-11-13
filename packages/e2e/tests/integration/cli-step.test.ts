@@ -105,6 +105,7 @@ describe('e2e run --step without a terminal', () => {
     const started = e2e(dir, ['run', 'tests/missing.e2e.ts', '--step']);
     expect(started.exitCode).toBe(2);
     expect(started.stdout).toContain('NO_TESTS');
+    expect(started.stdout).not.toContain('was not applied');
     expect(started.stdout).toMatch(/The stepped run has ended\.\n$/);
   });
 
@@ -130,7 +131,7 @@ describe('e2e run --step without a terminal', () => {
 
     const second = e2e(dir, ['run', '--step']);
     expect(second.exitCode).toBe(2);
-    expect(second.stderr).toContain('a stepped run is already going in this directory: drive it with e2e run --step next, rest, or stop');
+    expect(second.stderr).toContain('RUNNER_BUSY: a stepped run is already going in this directory: drive it with e2e run --step next, rest, or stop');
 
     const withFiles = e2e(dir, ['run', '--step', 'next', 'tests/pages.e2e.ts']);
     expect(withFiles.exitCode).toBe(2);
