@@ -465,10 +465,10 @@ mobile({ platform: 'ios', device: ['iPhone 17', 'iPhone 17 Pro'] })
 ```
 
 Without `device`, the engine uses booted devices, up to the worker limit.
-A paired iPhone or iPad counts as booted. If none are booted, it boots
-a shut-down one: on iOS an iPhone before an iPad before an Apple TV, on Android a phone or
-tablet before a TV, then the newest OS, then
-name order. Two workers never drive the same device.
+A paired iPhone or iPad that is reachable (USB or network) counts as booted.
+If none are booted, it boots a shut-down one: on iOS an iPhone before an iPad
+before an Apple TV, on Android a phone or tablet before a TV, then the newest
+OS, then name order. Two workers never drive the same device.
 
 ## Agent tools
 
@@ -529,7 +529,7 @@ mobile({ platform: 'ios', device: 'QA iPhone' })
 Use the name, not the id. The engine reads a `device` string as an id only
 for a simulator UDID or an `emulator-<port>` serial. The first device with
 a matching name wins, so give each phone a unique name. Without `device`, a
-paired phone counts as booted and joins the pool beside booted
+paired iPhone or connected Android phone counts as booted and joins the pool beside booted
 simulators.
 
 Set the phone up one time:

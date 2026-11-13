@@ -60,7 +60,7 @@ export interface MobileOptions {
    * drives the `n`th, so `workers` at or above the pool size runs the target's
    * files across every device at once. Omitted, the pool is every booted device
    * of the platform at `prepare` that no other agent-device session holds, as
-   * many as the run has slots. A paired iPhone or iPad counts as booted and
+   * many as the run has slots. A paired iPhone or iPad that is reachable (USB or network) counts as booted and
    * joins the pool. With none booted, agent-device boots a shut-down one: on
    * iOS an iPhone over an iPad over an Apple TV, on Android a phone or tablet
    * over a TV, then the newest OS, then name order (a stopped Android emulator
