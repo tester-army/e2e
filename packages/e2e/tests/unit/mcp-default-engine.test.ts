@@ -95,6 +95,7 @@ describe('loadEngine', () => {
     ['module-sync before require', { '.': { 'module-sync': './sync.js', require: './index.cjs' } }, 'from-module-sync'],
     ['require before module-sync', { '.': { require: './index.cjs', 'module-sync': './sync.js' } }, 'from-module-sync'],
     ['require alone, read as before', { '.': { require: './index.cjs' } }, 'from-require'],
+    ['a target with an empty segment, which Node.js only warns about', { '.': { import: './/index.js', require: './index.cjs' } }, 'from-import'],
   ])('loads the entry import() loads for %s', async (_shape, exports, name) => {
     installShaped(exports);
     expect(await loadEngine({ package: 'shaped' }, lookup)).toMatchObject({ name });

@@ -190,7 +190,7 @@ function installedAt(name: string, root: string): string | undefined {
 /** Conditions Node.js matches for `import()`, besides `default`. */
 const IMPORT_CONDITIONS = new Set(['node', 'import', 'module-sync', 'default']);
 
-/** A target Node.js refuses: it does not start with `./`, or a segment is empty, `.`, `..` or `node_modules`. */
+/** A target Node.js refuses: it does not start with `./`, or a segment is `.`, `..` or `node_modules` (an empty one only gets a deprecation warning). */
 class InvalidTarget extends Error {}
 
 /**
@@ -276,5 +276,5 @@ function exportTarget(directory: string, target: unknown, match?: string): strin
 }
 
 function hasInvalidSegment(relative: string): boolean {
-  return relative.split(/[\\/]/).some((segment) => segment === '' || segment === '.' || segment === '..' || segment.toLowerCase() === 'node_modules');
+  return relative.split(/[\\/]/).some((segment) => segment === '.' || segment === '..' || segment.toLowerCase() === 'node_modules');
 }
