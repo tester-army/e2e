@@ -529,8 +529,8 @@ mobile({ platform: 'ios', device: 'QA iPhone' })
 Use the name, not the id. The engine reads a `device` string as an id only
 for a simulator UDID or an `emulator-<port>` serial. The first device with
 a matching name wins, so give each phone a unique name. Without `device`, a
-paired iPhone or connected Android phone counts as booted and joins the pool beside booted
-simulators.
+paired iPhone or iPad that is reachable (USB or network), or a connected
+Android phone, counts as booted and joins the pool beside booted simulators.
 
 Set the phone up one time:
 
