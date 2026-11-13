@@ -64,7 +64,7 @@
   },
   "dependencies": {
     "@napi-rs/image": "1.16.0",
-    "agent-device": "0.21.36",
+    "agent-device": "0.21.37",
     "zod": "4.6.7"
   },
   "peerDependencies": {

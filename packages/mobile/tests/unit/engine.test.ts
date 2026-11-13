@@ -338,6 +338,8 @@ describe('lifecycle', () => {
       { platform: 'ios', id: '2BBF3F07-AF66-4F95-82AB-BF442506FC89', name: 'iPhone 16e', booted: true },
       { platform: 'ios', id: '8A2DC8D6-7B20-44FA-ADBB-47D3EAE6E8F3', name: 'iPhone 17', booted: true },
       { platform: 'ios', id: 'CAB49ABB-4A25-48B3-99C9-949153F95902', name: 'iPhone 17 Pro Max', booted: false },
+      // A paired phone whose CoreDevice tunnel is unavailable, as agent-device 0.21.37 lists it (#1528).
+      { platform: 'ios', id: '00008110-001A2B3C4D5E6F70', name: 'iPhone 15', kind: 'device', booted: false },
     ];
     const h = harness({ device: undefined });
     h.fake.respond('devices.list', () => inventory);
@@ -356,7 +358,7 @@ describe('lifecycle', () => {
     });
     expect(result).toMatchObject({ workers: 2 });
     expect(h.fake.lastArgs('devices.list')).toEqual({ platform: 'ios' });
-    // Both booted iPhones, by UDID, under slot sessions; the Android device and the shut-down iPhone are not the pool's.
+    // Both booted iPhones, by UDID, under slot sessions; the Android device, the shut-down iPhone, and the unreachable phone are not the pool's.
     expect(h.fake.calls.filter((call) => call.method === 'devices.boot').map((call) => call.args)).toEqual([
       { platform: 'ios', udid: '2BBF3F07-AF66-4F95-82AB-BF442506FC89' },
       { platform: 'ios', udid: '8A2DC8D6-7B20-44FA-ADBB-47D3EAE6E8F3' },
