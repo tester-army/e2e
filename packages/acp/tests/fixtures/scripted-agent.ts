@@ -10,7 +10,7 @@
  * answers `initialize`.
  */
 
-import { appendFileSync } from 'node:fs';
+import { appendFileSync, existsSync } from 'node:fs';
 import { Readable, Writable } from 'node:stream';
 import {
   agent,
@@ -43,7 +43,7 @@ type Move =
   | { readonly say: string }
   | { readonly fail: string }
   /** `thenRan` runs a tool of the agent's own without asking once the turn is cancelled, before the turn ends. */
-  | { readonly hang: true; readonly thenRan?: string }
+  | { readonly hang: true; readonly thenRan?: string; readonly cancelUntilFile?: string }
   | { readonly ignoreCancel: true };
 
 /** Moves per turn in order, or per step: the moves of the first key the prompt contains. */
@@ -217,6 +217,7 @@ agent()
             cancelled = resolve;
           });
         }
+        while (move.cancelUntilFile !== undefined && !existsSync(move.cancelUntilFile)) await new Promise((resolve) => setTimeout(resolve, 10));
         if (move.thenRan !== undefined) {
           // Logged first: the executor stops this agent as soon as it reports the tool.
           log({ ran: move.thenRan });

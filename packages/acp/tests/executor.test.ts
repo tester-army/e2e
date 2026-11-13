@@ -2,6 +2,7 @@ import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { setImmediate } from 'node:timers/promises';
 import { AgentError, type ExecutorActions, type ExecutorModelCall, type StepExecutorContext } from 'e2e';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { acp } from '../src/index.ts';
@@ -351,6 +352,35 @@ describe('acp', () => {
     // The next step's prompt is the agent's first turn.
     const second = context({ attempt: { attempt: first.ctx.attempt as never, end: first.end } });
     await expect(executor.runStep(second.ctx)).resolves.toMatchObject({ status: 'passed' });
+    expect(log().filter((entry) => 'prompt' in entry)).toHaveLength(1);
+  });
+
+  it('does not read a cancelled step screen after the previous turn stops', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'e2e-acp-turn-'));
+    cleanups.push(() => rmSync(directory, { recursive: true, force: true }));
+    const release = join(directory, 'release');
+    const { executor, log } = scripted([[{ hang: true, cancelUntilFile: release }]]);
+    const first = context();
+    cleanups.push(first.end);
+    const run = executor.runStep(first.ctx);
+    await eventually(() => expect(log().filter((entry) => 'prompt' in entry)).toHaveLength(1));
+    first.abortStep(new AgentError('STEP_TIMEOUT', 'the first step timed out'));
+    await expect(run).rejects.toMatchObject({ code: 'STEP_TIMEOUT' });
+    const second = context({ attempt: { attempt: first.ctx.attempt as never, end: first.end } });
+    const observe = vi.mocked(second.ctx.observe);
+    const look = observe.getMockImplementation()!;
+    observe.mockImplementation(async (request) => {
+      second.ctx.signal.throwIfAborted();
+      return look(request);
+    });
+    const next = executor.runStep(second.ctx);
+    await eventually(() => expect(log()).toContainEqual({ cancelled: true }));
+    await setImmediate();
+    const reason = new AgentError('STEP_TIMEOUT', 'the second step timed out while waiting for the first turn');
+    second.abortStep(reason);
+    writeFileSync(release, '');
+    await expect(next).rejects.toBe(reason);
+    expect(observe).not.toHaveBeenCalled();
     expect(log().filter((entry) => 'prompt' in entry)).toHaveLength(1);
   });
 
