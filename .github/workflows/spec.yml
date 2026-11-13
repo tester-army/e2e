@@ -144,7 +144,7 @@ jobs:
       - uses: ./.github/actions/workspace-install
         with:
           agent-device-version: ${{ inputs.agent-device-version }}
-      - run: pnpm --filter e2e run build
+      - run: pnpm --filter e2e-core run build && pnpm --filter e2e run build
       - name: The CLI on Bun ${{ matrix.bun }}
         run: pnpm --filter e2e exec vitest run tests/integration/bun-runtime.test.ts
         env:
