@@ -18,8 +18,8 @@ const mocks = vi.hoisted(() => ({
   acquire: vi.fn(),
   release: vi.fn(async () => {}),
 }));
-vi.mock('../../src/daemon.ts', () => ({ assertPluginVersion: mocks.version, installPlugin: mocks.install }));
 vi.mock('@e2e-dev/mobile/lease', () => ({
+  agentDevicePlugin: () => ({ assertVersion: mocks.version, prepareHome: mocks.install }),
   agentDeviceLeases: (options: AgentDeviceLeaseOptions) => {
     mocks.leases(options);
     return { acquire: mocks.acquire, release: mocks.release };
@@ -70,7 +70,7 @@ describe('testmu()', () => {
 
   it("checks the plugin against the engine's agent-device before anything starts", async () => {
     mocks.version.mockImplementationOnce(() => {
-      throw new Error('@e2e-dev/testmu uses @agent-device/testmu 0.21.28, but @e2e-dev/mobile uses agent-device 0.21.30. Install matching versions.');
+      throw new Error('@agent-device/testmu 0.21.28 is installed, but @e2e-dev/mobile runs agent-device 0.21.30. Install matching versions.');
     });
     await expect(testmu(options).acquire(request({ agentDeviceVersion: '0.21.30' }))).rejects.toThrow(/Install matching versions/);
     expect(mocks.version).toHaveBeenCalledWith('0.21.30');
