@@ -65,8 +65,18 @@ const json = (value: unknown) => Buffer.from(`${JSON.stringify(value, null, 2)}\
 
 const versioned = { ...codexManifest, version: runner.version };
 generated.set(join(plugin, '.codex-plugin/plugin.json'), json(versioned));
-// Claude reads the same top-level fields; JSON.stringify drops Codex's `interface` block.
-generated.set(join(plugin, '.claude-plugin/plugin.json'), json({ ...versioned, interface: undefined }));
+// Claude reads the same top-level fields plus its directory listing's links; JSON.stringify
+// drops Codex's `interface` block.
+generated.set(
+  join(plugin, '.claude-plugin/plugin.json'),
+  json({
+    ...versioned,
+    interface: undefined,
+    documentationUrl: 'https://e2e.com/docs',
+    privacyPolicyUrl: codexManifest.interface.privacyPolicyURL,
+    supportUrl: codexManifest.interface.supportURL,
+  }),
+);
 // Cursor adds a display name and one logo.
 generated.set(
   join(plugin, '.cursor-plugin/plugin.json'),
