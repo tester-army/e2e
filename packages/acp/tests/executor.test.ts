@@ -354,6 +354,39 @@ describe('acp', () => {
     expect(log().filter((entry) => 'prompt' in entry)).toHaveLength(1);
   });
 
+  it('ends a cancelled step without waiting for its opening screen', async () => {
+    const { executor, log } = scripted([[pass], [pass]]);
+    const first = context();
+    cleanups.push(first.end);
+    await executor.runStep(first.ctx);
+    const second = context({ attempt: { attempt: first.ctx.attempt as never, end: first.end } });
+    const observe = vi.mocked(second.ctx.observe);
+    const look = observe.getMockImplementation()!;
+    let release: () => void = () => undefined;
+    const heldScreen = new Promise<void>((resolve) => { release = resolve; });
+    observe.mockImplementationOnce(async (request) => {
+      await heldScreen;
+      return look(request);
+    });
+    const reason = new AgentError('STEP_TIMEOUT', 'the step timed out while reading its screen');
+    const rejected = vi.fn();
+    const run = executor.runStep(second.ctx);
+    void run.catch(rejected);
+    try {
+      await eventually(() => expect(observe).toHaveBeenCalled());
+      second.abortStep(reason);
+      await vi.waitFor(() => expect(rejected).toHaveBeenCalledWith(reason), { timeout: 1_000 });
+      expect(log().filter((entry) => 'prompt' in entry)).toHaveLength(1);
+      const third = context({ attempt: { attempt: first.ctx.attempt as never, end: first.end } });
+      await expect(executor.runStep(third.ctx)).resolves.toMatchObject({ status: 'passed' });
+      expect(log().filter((entry) => 'session' in entry)).toHaveLength(1);
+    } finally {
+      release();
+      await run.catch(() => undefined);
+    }
+    expect(log().filter((entry) => 'prompt' in entry)).toHaveLength(2);
+  });
+
   it('gives up on a session whose agent never stops the turn of a step that ended', async () => {
     const { executor, log } = scripted([[{ ignoreCancel: true }], [pass]]);
     const first = context();
