@@ -65,13 +65,14 @@ const json = (value: unknown) => Buffer.from(`${JSON.stringify(value, null, 2)}\
 
 const versioned = { ...codexManifest, version: runner.version };
 generated.set(join(plugin, '.codex-plugin/plugin.json'), json(versioned));
-// Claude reads the same top-level fields plus its directory listing's links; JSON.stringify
+// Claude reads the same top-level fields plus its directory listing's name and links; JSON.stringify
 // drops Codex's `interface` block.
 generated.set(
   join(plugin, '.claude-plugin/plugin.json'),
   json({
     ...versioned,
     interface: undefined,
+    displayName: codexManifest.interface.displayName,
     documentationUrl: 'https://e2e.com/docs',
     privacyPolicyUrl: codexManifest.interface.privacyPolicyURL,
     supportUrl: codexManifest.interface.supportURL,

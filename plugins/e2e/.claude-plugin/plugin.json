@@ -23,6 +23,7 @@
   ],
   "skills": "./skills/",
   "mcpServers": "./.mcp.json",
+  "displayName": "e2e",
   "documentationUrl": "https://e2e.com/docs",
   "privacyPolicyUrl": "https://e2e.com/privacy",
   "supportUrl": "https://e2e.com/contact"
