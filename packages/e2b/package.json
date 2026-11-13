@@ -1,6 +1,6 @@
 {
   "name": "@e2e-dev/e2b",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "description": "E2B sandboxes for e2e: Android on the android-16 template for mobile tests, and Chromium for web tests",
   "keywords": [
     "e2e",
