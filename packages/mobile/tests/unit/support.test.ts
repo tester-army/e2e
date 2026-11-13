@@ -105,69 +105,69 @@ describe('support helpers', () => {
     expect(sanitizeFilename('')).toBe('artifact');
     expect(sanitizeFilename('x'.repeat(100))).toHaveLength(64);
   });
-});
 
-it.each(['press', 'type'] as const)('preserves the acknowledgement allowance for %s at the SDK boundary', async (command) => {
-  const stateDir = mkdtempSync(path.join(tmpdir(), 'e2e-input-ack-'));
-  let delivered = 0;
-  const client = createAgentDeviceClient({ session: 'input-ack', stateDir }, {
-    transport: async (request) => {
-      delivered += 1;
-      await new Promise((resolve) => setTimeout(resolve, 180));
-      return request.command === 'type'
-        ? { ok: false, error: { code: 'UNSUPPORTED_OPERATION', message: 'Typing is unavailable' } }
-        : { ok: true, data: {} };
-    },
-  });
-  const budget = new InputBudget(command, 100, (pending) => pending, new AbortController().signal);
-  try {
-    if (command === 'press') {
-      await expect(budget.press(client, { x: 20, y: 20 })).resolves.toBeDefined();
-    } else {
-      await expect(budget.send((signal) => client.interactions.type({ text: 'hello', signal }))).rejects.toMatchObject({ code: 'UNSUPPORTED_OPERATION', message: 'Typing is unavailable' });
-    }
-    expect(delivered).toBe(1);
-  } finally {
-    rmSync(stateDir, { recursive: true, force: true });
-  }
-});
-
-it('keeps caller cancellation on later inputs from the same operation', async () => {
-  const stateDir = mkdtempSync(path.join(tmpdir(), 'e2e-input-operation-cancel-'));
-  const controller = new AbortController();
-  let release!: () => void;
-  let markStarted!: () => void;
-  let markFinished!: () => void;
-  const held = new Promise<void>((resolve) => { release = resolve; });
-  const started = new Promise<void>((resolve) => { markStarted = resolve; });
-  const finished = new Promise<void>((resolve) => { markFinished = resolve; });
-  let requests = 0;
-  let delivered = 0;
-  const client = createAgentDeviceClient({ session: 'operation-cancel', stateDir }, {
-    transport: async (_request, context) => {
-      requests += 1;
-      if (requests === 2) {
-        markStarted();
-        await held;
+  it.each(['press', 'type'] as const)('preserves the acknowledgement allowance for %s at the SDK boundary', async (command) => {
+    const stateDir = mkdtempSync(path.join(tmpdir(), 'e2e-input-ack-'));
+    let delivered = 0;
+    const client = createAgentDeviceClient({ session: 'input-ack', stateDir }, {
+      transport: async (request) => {
+        delivered += 1;
+        await new Promise((resolve) => setTimeout(resolve, 180));
+        return request.command === 'type'
+          ? { ok: false, error: { code: 'UNSUPPORTED_OPERATION', message: 'Typing is unavailable' } }
+          : { ok: true, data: {} };
+      },
+    });
+    const budget = new InputBudget(command, 100, (pending) => pending, new AbortController().signal);
+    try {
+      if (command === 'press') {
+        await expect(budget.press(client, { x: 20, y: 20 })).resolves.toBeDefined();
+      } else {
+        await expect(budget.send((signal) => client.interactions.type({ text: 'hello', signal }))).rejects.toMatchObject({ code: 'UNSUPPORTED_OPERATION', message: 'Typing is unavailable' });
       }
-      if (context?.signal?.aborted !== true) delivered += 1;
-      if (requests === 2) markFinished();
-      return { ok: true, data: {} };
-    },
+      expect(delivered).toBe(1);
+    } finally {
+      rmSync(stateDir, { recursive: true, force: true });
+    }
   });
-  const budget = new InputBudget('tap', 30000, (pending) => pending, controller.signal);
-  try {
-    await budget.press(client, { x: 20, y: 20 });
-    const second = budget.press(client, { x: 30, y: 30 });
-    const canceled = expect(second).rejects.toMatchObject({ details: { reason: 'request_canceled' } });
-    await started;
-    controller.abort();
-    await canceled;
-    release();
-    await finished;
-    expect(delivered).toBe(1);
-  } finally {
-    release();
-    rmSync(stateDir, { recursive: true, force: true });
-  }
+
+  it('keeps caller cancellation on later inputs from the same operation', async () => {
+    const stateDir = mkdtempSync(path.join(tmpdir(), 'e2e-input-operation-cancel-'));
+    const controller = new AbortController();
+    let release!: () => void;
+    let markStarted!: () => void;
+    let markFinished!: () => void;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    const started = new Promise<void>((resolve) => { markStarted = resolve; });
+    const finished = new Promise<void>((resolve) => { markFinished = resolve; });
+    let requests = 0;
+    let delivered = 0;
+    const client = createAgentDeviceClient({ session: 'operation-cancel', stateDir }, {
+      transport: async (_request, context) => {
+        requests += 1;
+        if (requests === 2) {
+          markStarted();
+          await held;
+        }
+        if (context?.signal?.aborted !== true) delivered += 1;
+        if (requests === 2) markFinished();
+        return { ok: true, data: {} };
+      },
+    });
+    const budget = new InputBudget('tap', 30000, (pending) => pending, controller.signal);
+    try {
+      await budget.press(client, { x: 20, y: 20 });
+      const second = budget.press(client, { x: 30, y: 30 });
+      const canceled = expect(second).rejects.toMatchObject({ details: { reason: 'request_canceled' } });
+      await started;
+      controller.abort();
+      await canceled;
+      release();
+      await finished;
+      expect(delivered).toBe(1);
+    } finally {
+      release();
+      rmSync(stateDir, { recursive: true, force: true });
+    }
+  });
 });

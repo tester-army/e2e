@@ -359,9 +359,9 @@ so a cold boot on CI is never charged against `launchTimeout`.
   first attempt, and that device's app is not opened there.
 
 <Note>
-A pending tap, double tap, focus, check or uncheck is cancelled when its timeout
-expires or the run is interrupted. This also covers the tap that dismisses a
-keyboard tip.
+A pending tap, double tap, focus, check or uncheck is cancelled when the step
+stops waiting for it or the run is interrupted. This also covers the tap that
+dismisses a keyboard tip.
 
 Input already sent to the device may still finish.
 Other commands can outlive their caller's timeout; the next attempt waits for
