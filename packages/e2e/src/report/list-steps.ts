@@ -125,6 +125,26 @@ export function stepPromptLine(prompt: StepPrompt): string {
   return `paused at ${at} ${numbers} of ${bounded(first.step.title)} [${bounded(first.step.target)}]: ${steps.join('; ')} · press ${keys}`;
 }
 
+/**
+ * A held step's prompt as plain lines for a reader with no terminal
+ * (`e2e run --step` driven by later commands): the test, the steps waiting
+ * with their call sites, the screen they wait on, and the commands that go on.
+ */
+export function stepPromptText(prompt: StepPrompt): string {
+  const [first] = prompt.steps;
+  const numbers = prompt.steps.map(({ number }) => number).join(', ');
+  const lines = [`Paused before ${prompt.steps.length === 1 ? 'step' : 'steps'} ${numbers} of ${bounded(first.step.title)} [${bounded(first.step.target)}]:`];
+  for (const { step } of prompt.steps) {
+    const source = promptSource(step);
+    lines.push(`  ${step.api} ${quotedLabel(step.label)}${source === '' ? '' : ` (${source})`}`);
+  }
+  const { screen } = first.step;
+  if (screen === undefined) lines.push('Screen: could not be read.');
+  else lines.push('Screen:', ...screen.split('\n').map((line) => `  ${bounded(line)}`));
+  lines.push(`Next: e2e run --step next runs ${prompt.steps.length === 1 ? 'it' : 'them'}, e2e run --step rest runs the rest, e2e run --step stop ends the run.`);
+  return `${lines.join('\n')}\n`;
+}
+
 /** Recording mismatches under one test, deduplicated across its attempts. */
 export function replayNotices(attempts: readonly (readonly StepRecord[])[], configured: ConfiguredModel | undefined): ReplayNotice[] {
   if (configured === undefined) return [];

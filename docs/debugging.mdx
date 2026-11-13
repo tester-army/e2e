@@ -288,8 +288,69 @@ The keys follow [`--watch`](/reference/cli#watch-mode). These work at a prompt:
 - A hosted browser or device can end a session that sits idle too long while
   a step is held.
 
-`--step` runs one test at a time. It needs a terminal, and it is refused in
-CI, with `--watch`, with `--workers` above 1, and with the json reporter.
+`--step` runs one test at a time. It is refused in CI, with `--watch`, with
+`--workers` above 1, and with the json reporter.
+
+## Step through a test without a terminal
+
+Without a terminal on stdin and stdout, as in a coding agent's shell,
+`--step` runs the test in the background. The command returns at the first
+held step, with the screen that step waits on. Run each later command from
+the same directory. A shell that gives commands a terminal gets the key
+prompt instead; add `< /dev/null`.
+
+<CodeGroup>
+```bash npm
+npx e2e run tests/checkout.e2e.ts --step
+npx e2e run --step next
+```
+
+```bash pnpm
+pnpm exec e2e run tests/checkout.e2e.ts --step
+pnpm exec e2e run --step next
+```
+
+```bash bun
+bunx e2e run tests/checkout.e2e.ts --step
+bunx e2e run --step next
+```
+</CodeGroup>
+
+```text
+✓ app.open "/checkout" 124ms
+Paused before step 2 of pays with a card [web]:
+  locator.fill "getByLabel("Email")" (tests/checkout.e2e.ts:9)
+Screen:
+  http://localhost:3000/checkout
+  heading "Checkout"
+  textbox "Email"
+  button "Pay"
+Next: e2e run --step next runs it, e2e run --step rest runs the rest, e2e run --step stop ends the run.
+```
+
+| Command | Does |
+| --- | --- |
+| `e2e run --step next` | runs the held step and returns at the next one |
+| `e2e run --step rest` | runs the rest of the run without stopping |
+| `e2e run --step stop` | stops the run as `q` does, exit 130, even while another command waits |
+
+- Each answer starts with what the run printed since the last command: a
+  line per step that ran, as the first line above, with the error under a
+  failed one. The last answer ends with the run summary and
+  `The stepped run has ended.`, and the command exits with the run's exit
+  code.
+- The screen lists the app's nodes as a trace page does, with secrets
+  redacted.
+- One directory has one stepped run. A second `--step` there exits 2 until
+  the first ends.
+- `next` and `rest` only act on a step a command has printed. When a
+  command is killed while it waits, the next one prints what it missed: the
+  step, without running it, or the end of the run. A `next` or `rest` sent while a step runs waits for
+  the next pause without acting. Either way, the answer opens with a line
+  saying the action was not applied.
+- A step held for 30 minutes with no command stops the run.
+- With `--step`, a file or directory named `next`, `rest`, or `stop` needs
+  a path, such as `./next`.
 
 ## Console output
 

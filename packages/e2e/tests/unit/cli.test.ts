@@ -357,20 +357,15 @@ describe('e2e run argument parsing', () => {
     }
   });
 
-  it('refuses --step in CI and without a terminal, exit code 2, without running', async () => {
+  it('refuses --step in CI and beside --workers, --watch, and the json reporter, exit code 2, without running', async () => {
     const ci = process.env.CI;
     const tty = { stdin: process.stdin.isTTY, stdout: process.stdout.isTTY };
     try {
       process.env.CI = '1';
       await invoke('run', '--step');
       expect(process.exitCode).toBe(2);
-      expect(written(stderrSpy)).toContain('--step waits for a key at every step, so it is refused in CI');
+      expect(written(stderrSpy)).toContain('--step waits at every step, so it is refused in CI');
       delete process.env.CI;
-      process.exitCode = undefined;
-      process.stdin.isTTY = false;
-      await invoke('run', '--step');
-      expect(process.exitCode).toBe(2);
-      expect(written(stderrSpy)).toContain('stdin and stdout must both be one');
       process.exitCode = undefined;
       process.stdin.isTTY = true;
       process.stdout.isTTY = true;

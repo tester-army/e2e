@@ -137,6 +137,10 @@ describe('beforeStep on the worker path', () => {
       source: { file: 'tests/hooks.e2e.ts' },
     });
   });
+
+  it('reads no screen unless the run asks for held screens', () => {
+    expect(held.filter((step) => step.screen !== undefined)).toEqual([]);
+  });
 });
 
 describe('beforeStep and the run limits', () => {

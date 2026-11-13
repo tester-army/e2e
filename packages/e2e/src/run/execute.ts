@@ -137,6 +137,8 @@ export interface TargetExecutorOptions {
    * and retries never wait.
    */
   readonly holdStep?: ((step: HeldStep, signal: AbortSignal) => Promise<void>) | undefined;
+  /** Whether each hold reads the screen it starts on into `HeldStep.screen`. */
+  readonly heldScreens?: boolean | undefined;
   readonly debug?: DebugTrace;
   readonly events?: ExecutionEvents;
   /** The virtual file of tests registered in memory, and the agents they run as; see `InMemoryAttempts`. */
@@ -272,6 +274,27 @@ export class TargetExecutor implements SerialHost {
   /** Builds one engine operation context. */
   private op(attemptId: string, timeoutMs: number, signal: AbortSignal): OperationContext {
     return { signal, timeoutMs, runId: this.options.runId, attemptId, origin: 'test' };
+  }
+
+  /**
+   * The screen a held step waits on, as the trace page lists one: its
+   * location, then a line per node, redacted with the session's ledger. Read
+   * while the test clock is stopped; a screen that cannot be read (no app
+   * open yet, an engine without a tree) is undefined and never fails the test.
+   */
+  private async readHeldScreen(session: TargetSession, attemptId: string, signal: AbortSignal): Promise<string | undefined> {
+    try {
+      const observation = await session.observe(this.op(attemptId, this.config.actionTimeout, signal));
+      const screen = traceScreen(observation, {
+        ledger: sessionLedger(session, this.config.allSecrets),
+        maxBytes: this.config.limits.maxObservationBytes,
+        appOrigin: this.target.app.base?.origin,
+      });
+      if (screen === undefined) return undefined;
+      return [...(screen.location === undefined ? [] : [screen.location]), ...screen.lines.map((line) => line.text)].join('\n');
+    } catch {
+      return undefined;
+    }
   }
 
   /** Run-level errors recorded so far, in order. */
@@ -1051,17 +1074,33 @@ export class TargetExecutor implements SerialHost {
       const budget = new AttemptBudget(attemptAbort.signal, testDeadline);
       if (holdStep !== undefined) {
         const title = pair.test.titlePath.join(' › ');
+        // Steps held together (one `Promise.all`) wait on one screen, read once.
+        let heldScreen: Promise<string | undefined> | undefined;
         holds = new AttemptHolds({
           budget,
           signal: attemptAbort.signal,
-          ask: (step, signal) =>
-            holdStep(
-              { target: this.target.name, testId: pair.test.id, agent: pair.agent, repeat: pair.repeat, title, api: step.api, label: step.label, ...(step.source === undefined ? {} : { source: step.source }) },
+          ask: async (step, signal) => {
+            const screen = this.options.heldScreens === true ? await (heldScreen ??= this.readHeldScreen(session, attemptId, signal)) : undefined;
+            await holdStep(
+              {
+                target: this.target.name,
+                testId: pair.test.id,
+                agent: pair.agent,
+                repeat: pair.repeat,
+                title,
+                api: step.api,
+                label: step.label,
+                ...(step.source === undefined ? {} : { source: step.source }),
+                ...(screen === undefined ? {} : { screen }),
+              },
               signal,
-            ),
+            );
+          },
           // The runner's watchdog keeps the test deadline too; it gets what is left.
-          onResume: (remainingMs) =>
-            this.options.events?.onAttemptDeadline?.(pair, { index: attemptIndex, id: attemptId, startedAt, remainingMs }),
+          onResume: (remainingMs) => {
+            heldScreen = undefined;
+            this.options.events?.onAttemptDeadline?.(pair, { index: attemptIndex, id: attemptId, startedAt, remainingMs });
+          },
         });
       }
       const saveSession =

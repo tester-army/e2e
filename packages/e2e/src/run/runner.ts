@@ -52,7 +52,7 @@ import { allocateAppPorts } from './app-ports.ts';
 import { inProcessSpawner } from './in-process.ts';
 import { cleanupErrorsOf, someSkippedAfterFailure, tracedResultIds, type ResultRecord, type RunError, type SerialGroupRecord } from './records.ts';
 import { runUnits, type TargetFailure } from './scheduler.ts';
-import type { BeforeStep, HeldStep, StepPrompt } from './step-hold.ts';
+import type { BeforeStep, HeldStep, StepHolding, StepPrompt } from './step-hold.ts';
 import { stepPromptLine } from '../report/list-steps.ts';
 import { buildWorkPlans, nonRunResult, orderWorkPlans, plannedSlots, type TargetWorkPlan, type TimeLimit } from './units.ts';
 import { SessionStore } from './sessions.ts';
@@ -233,6 +233,8 @@ export interface RunOptions {
    * whose stdout the prompt would break.
    */
   beforeStep?: BeforeStep | undefined;
+  /** Whether each step `beforeStep` holds carries the screen it is held on (`HeldStep.screen`); `e2e run --step` without a terminal. */
+  heldScreens?: boolean | undefined;
   /** A second sink on the run's event spine, beside the list reporter. */
   onEvent?: RunEventSink | undefined;
   /** Budget for each reporter's `onRunFinished`, in ms. Only the test harness sets it; there is no flag. */
@@ -1086,6 +1088,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
       aiTraceRecorder = new AiTraceRecorder(processSecrets.redact);
       await registerAiTraceRecorder(aiTraceRecorder, loadAiSdk);
     }
+    const stepHolding: StepHolding | undefined = options.beforeStep === undefined ? undefined : options.heldScreens === true ? 'screen' : 'hold';
     const spawn =
       workerConfigPath === undefined
         ? inProcessSpawner({
@@ -1098,7 +1101,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
             sessionStore: store,
             headed: options.headed ?? false,
             debug,
-            step: options.beforeStep !== undefined,
+            step: stepHolding,
             envFor: workerEnvFor(plans, env),
           })
         : childProcessSpawner({
@@ -1115,7 +1118,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
             sessionKeyBase64: store.exportKeyForWorker(),
             debug: debug.enabled,
             aiTrace: aiTrace !== undefined,
-            step: options.beforeStep !== undefined,
+            step: stepHolding,
             envFor: workerEnvFor(plans, env),
           });
 

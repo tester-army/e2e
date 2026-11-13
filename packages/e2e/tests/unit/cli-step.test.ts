@@ -14,9 +14,12 @@ function gate() {
   let now = 0;
   const shown: (StepPrompt | undefined)[] = [];
   let stops = 0;
-  const subject = new StepGate(() => {
-    stops += 1;
-  }, () => now);
+  const subject = new StepGate(
+    () => {
+      stops += 1;
+    },
+    { now: () => now },
+  );
   const context = (signal = new AbortController().signal): StepHoldContext => ({ signal, show: (prompt) => shown.push(prompt) });
   /** Holds `held` and reports, after the microtasks drain, whether it was let through. */
   const hold = (held: HeldStep, signal?: AbortSignal) => {

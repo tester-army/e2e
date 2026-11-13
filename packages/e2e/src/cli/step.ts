@@ -40,6 +40,15 @@ export function stepKeyOf(press: Keypress): StepKey | undefined {
   }
 }
 
+/** What `e2e run --step <action>` asks a stepped run without a terminal to do (`step-control.ts`). */
+export const STEP_ACTIONS = ['next', 'rest', 'stop'] as const;
+export type StepAction = (typeof STEP_ACTIONS)[number];
+
+/** Whether `e2e run --step <value>` drives a stepped run rather than naming a file. */
+export function isStepAction(value: string | undefined): value is StepAction {
+  return (STEP_ACTIONS as readonly (string | undefined)[]).includes(value);
+}
+
 /** How long a prompt ignores keys after it appears: a key pressed for the step before must not run this one. */
 const KEY_GUARD_MS = 150;
 
@@ -77,10 +86,20 @@ export class StepGate {
   /** Where the prompt shows; every hold's context shows it in the same place. */
   private show: StepHoldContext['show'] | undefined;
 
+  private readonly now: () => number;
+  private readonly keyGuardMs: number;
+
+  /**
+   * `stop` interrupts the run. `keyGuardMs` defaults to `KEY_GUARD_MS`; a
+   * caller whose keys are commands, not presses that can repeat, passes 0.
+   */
   constructor(
     private readonly stop: () => void,
-    private readonly now: () => number = Date.now,
-  ) {}
+    options: { readonly now?: () => number; readonly keyGuardMs?: number } = {},
+  ) {
+    this.now = options.now ?? Date.now;
+    this.keyGuardMs = options.keyGuardMs ?? KEY_GUARD_MS;
+  }
 
   /** The runner's `beforeStep` hook. */
   readonly beforeStep: BeforeStep = (step, context) => {
@@ -116,14 +135,14 @@ export class StepGate {
     });
   };
 
-  /** Acts on one key. Ctrl-C works at any time; the others only on a prompt, once it has been up for `KEY_GUARD_MS`. */
+  /** Acts on one key. Ctrl-C works at any time; the others only on a prompt, once it has been up for the key guard. */
   press(key: Exclude<StepKey, 'suspend'>): void {
     if (key === 'interrupt') {
       this.stop();
       return;
     }
     const shown = this.queue[0];
-    if (shown === undefined || this.now() - this.shownAt < KEY_GUARD_MS) return;
+    if (shown === undefined || this.now() - this.shownAt < this.keyGuardMs) return;
     const test = testKey(shown.step);
     switch (key) {
       case 'continue':

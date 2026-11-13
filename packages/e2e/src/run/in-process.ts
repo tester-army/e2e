@@ -14,6 +14,7 @@ import { classifyError, ConfigurationError, serializeError } from '../internal/e
 import type { DebugTrace } from '../internal/debug.ts';
 import type { InMemoryAttempts } from './execute.ts';
 import type { SessionStore } from './sessions.ts';
+import type { StepHolding } from './step-hold.ts';
 import type { SpawnUnitRunner, UnitRunner, UnitRunnerEvents } from './unit-runner.ts';
 import { pairKey } from './units.ts';
 import type { MainToWorker, RunUnitMessage, WirePair } from './worker/protocol.ts';
@@ -39,7 +40,7 @@ export interface InProcessRunnerOptions {
   readonly headed: boolean;
   readonly debug: DebugTrace;
   /** See `TargetWorkerDeps.step`. */
-  readonly step: boolean;
+  readonly step: StepHolding | undefined;
   /** The environment each target's workers run with; see `EngineInitInfo.env`. */
   readonly envFor: (targetName: string) => Readonly<Record<string, string | undefined>>;
 }
