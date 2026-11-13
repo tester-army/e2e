@@ -1,5 +1,17 @@
 # @e2e-dev/decision
 
+## 0.3.3
+
+### Patch Changes
+
+- [#1672](https://github.com/e2e-inc/e2e/pull/1672) [`3735887`](https://github.com/e2e-inc/e2e/commit/373588756937562aa89c7dd7f7995ac6b16db972) Thanks [@okwasniewski](https://github.com/okwasniewski)! - Move GitHub repository metadata and CLI links to e2e-inc/e2e after the organization rename. Register the MCP server as io.github.e2e-inc/e2e.
+
+- [#1587](https://github.com/e2e-inc/e2e/pull/1587) [`34ccc5f`](https://github.com/e2e-inc/e2e/commit/34ccc5f38820befd2cc77795dd463507aaccd8ea) Thanks [@kdy1](https://github.com/kdy1)! - PNG decoding and encoding now run on `@napi-rs/image`, a native addon with a prebuilt binary per platform, in place of `fast-png` and `pngjs`: decoding is 8 to 15 times faster, encoding 5 to 8 times, and a `toHaveScreenshot` capture 4 to 12 times. Stored screenshots decode to the same pixels as before. A screenshot the runner writes (a new baseline, or one rewritten because the screen changed) has the same pixels in different bytes: a Chromium capture comes out about 15% larger and a device screenshot about 20% smaller. The binary adds about 15 to 21 MB to an install, depending on the platform, and the package publishes none for Linux on ppc64, s390x, or riscv64. `e2e` loads it when the first screenshot is read or written, so `--version` and a run that takes none never need it, and a missing binding fails that call with `IMAGE_CODEC_UNAVAILABLE`; `@e2e-dev/mobile` and `@e2e-dev/decision` load it when they are imported. Gray PNGs with 1, 2, or 4 bits per sample now decode, and a 16-bit gray or RGB PNG with a transparent color now compares pixels to it at 16 bits, so a pixel that only rounds to it at 8 bits stays opaque.
+
+- [#1589](https://github.com/e2e-inc/e2e/pull/1589) [`b5e4703`](https://github.com/e2e-inc/e2e/commit/b5e47036ba0f8657478be967eb9e1a3a120dec51) Thanks [@kdy1](https://github.com/kdy1)! - A test filter can score the tests it keeps. `relevance` in its result gives each test a number from 0 to 1, and a run with `--changed-since` starts the files of the likeliest first in each target, in bands at 75%, 50%, and 25%, so a failure shows sooner and `--max-failures` stops earlier. Targets go by the band of their best file, ties in config order. Inside a band, a run with more than one worker still starts the file the previous run spent longest in first.
+  
+  `decisionFilter()` now scores every test it keeps: 100% for a test whose file, setup file, or stored screenshots changed, the model's answer for one it judged, and 50% for one it did not judge. When it fails, as without a key, it puts the scores the change alone gives on the error it throws, so the run still warns and runs every test, with the touched ones first. A filter of your own can do the same: an error it throws may carry `relevance`. `decisionFilter()` requires e2e 0.23.1 or newer, since an older runner refuses the new `relevance` key and drops the whole filter.
+
 ## 0.3.2
 
 ### Patch Changes

@@ -375,7 +375,7 @@ The attempt deadline in milliseconds. Innermost wins.
 test('imports a large file', { timeout: 300_000 }, async ({ app }) => {}); // default: config.timeout
 ```
 
-`timeout` must be a positive safe integer.
+`timeout` must be a positive safe integer, at most 2147483647 (about 24 days).
 
 #### `retries`
 

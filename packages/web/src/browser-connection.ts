@@ -1,6 +1,6 @@
 /** Shares one browser process connection across a worker's attempts. */
 
-import type { Browser, BrowserType } from 'playwright-core';
+import type { Browser, BrowserType, ConnectOverCDPOptions } from 'playwright-core';
 import { SELECTOR_ENGINES } from './selector-engines.ts';
 
 /**
@@ -14,6 +14,12 @@ const loadPlaywright = () => import('playwright-core');
 export const BROWSER_NAMES = ['chromium', 'firefox', 'webkit'] as const;
 
 export type BrowserName = (typeof BROWSER_NAMES)[number];
+
+/** A CDP connection endpoint and its handshake headers, resolved together. */
+export interface CdpTarget {
+  readonly endpoint: string;
+  readonly headers?: Readonly<Record<string, string>> | undefined;
+}
 
 /** Whether `name` is a browser the engine launches. */
 export function isBrowserName(name: string): name is BrowserName {
@@ -105,10 +111,21 @@ export async function browserType(name: BrowserName): Promise<BrowserType> {
  * the endpoint itself and hands it here. `browser.close()` on the result
  * detaches the CDP session without killing the remote process the host owns.
  */
-export async function connectCdp(endpoint: string, timeoutMs: number): Promise<Browser> {
+export async function connectCdp({ endpoint, headers }: CdpTarget, timeoutMs: number): Promise<Browser> {
   await registerSelectorEngines();
   const { chromium } = await loadPlaywright();
-  return chromium.connectOverCDP(endpoint, { timeout: timeoutMs });
+  const options: ConnectOverCDPOptions = { timeout: timeoutMs };
+  if (headers !== undefined) options.headers = { ...headers };
+  try {
+    return await chromium.connectOverCDP(endpoint, options);
+  } catch (cause) {
+    if (headers === undefined) throw cause;
+    // Connection errors can echo credentials in altered forms, so retain only their type.
+    // oxlint-disable-next-line preserve-caught-error -- the original message, stack, and cause may contain CDP credentials
+    const error = new Error('CDP connection failed; check the endpoint, handshake headers, and connection timeout');
+    if (cause instanceof Error) error.name = cause.name;
+    throw error;
+  }
 }
 
 /** Registration is process-wide and rejected twice; one shared promise serves every connection. */

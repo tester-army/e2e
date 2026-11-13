@@ -1,5 +1,11 @@
 # @e2e-dev/lightpanda
 
+## 0.0.2
+
+### Patch Changes
+
+- [#1672](https://github.com/e2e-inc/e2e/pull/1672) [`3735887`](https://github.com/e2e-inc/e2e/commit/373588756937562aa89c7dd7f7995ac6b16db972) Thanks [@okwasniewski](https://github.com/okwasniewski)! - Move GitHub repository metadata and CLI links to e2e-inc/e2e after the organization rename. Register the MCP server as io.github.e2e-inc/e2e.
+
 ## 0.0.1
 
 ### Patch Changes

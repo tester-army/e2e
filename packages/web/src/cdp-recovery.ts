@@ -1,11 +1,11 @@
 /** Validates a persistent CDP binding without publishing or retaining it. */
 import type { Browser, BrowserContext, Page } from 'playwright-core';
 import { EngineError } from 'e2e/engine';
-import { connectCdp } from './browser-connection.ts';
+import { connectCdp, type CdpTarget } from './browser-connection.ts';
 import { registerCdpSelectors, requireCdpShadowTracking } from './cdp-selectors.ts';
 import { connectionAbort, type ConnectionBudget } from './operation-budget.ts';
 
-export type CdpEndpointResolver = (signal: AbortSignal) => string | Promise<string>;
+export type CdpEndpointResolver = (signal: AbortSignal) => string | CdpTarget | Promise<string | CdpTarget>;
 
 export interface TargetIdentity {
   readonly targetId: string;
@@ -51,12 +51,13 @@ export async function attachPersistent(
   const deadline = Date.now() + budget.timeoutMs;
   const check = () => { if (signal.aborted) throw connectionAbort(signal, 'CDP connection'); };
   check();
-  const endpoint = await resolve(signal);
+  const resolved = await resolve(signal);
+  const connection = typeof resolved === 'string' ? { endpoint: resolved } : resolved;
   check();
-  if (typeof endpoint !== 'string' || endpoint.trim() === '') throw recoveryFailed('the endpoint is empty');
+  if (typeof connection?.endpoint !== 'string' || connection.endpoint.trim() === '') throw recoveryFailed('the endpoint is empty');
   const remaining = deadline - Date.now();
   if (remaining <= 0) throw new EngineError('OPERATION_TIMEOUT', 'CDP connection timed out', { retryable: false });
-  const browser = await connectCdp(endpoint, remaining);
+  const browser = await connectCdp(connection, remaining);
   const detach = () => { void browser.close().catch(() => undefined); };
   signal.addEventListener('abort', detach, { once: true });
   try {

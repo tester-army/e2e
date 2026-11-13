@@ -14,7 +14,7 @@ import { ellipsize } from '../report/format.ts';
 import { isStepExecutor } from '../agent/executor.ts';
 import { compileGlob, compileGlobList, literalPrefix } from '../internal/globs.ts';
 import { isRecord } from './command.ts';
-import { boundedInt, describeValue, positiveInt, timerMs } from './validate.ts';
+import { boundedInt, describeValue, timerMs } from './validate.ts';
 import type {
   ArtifactStore,
   ArtifactsConfig,
@@ -270,11 +270,11 @@ export function resolveConfig(
   }));
   const tests = normalizeTests(raw.tests, options.projectRoot);
 
-  const timeout = positiveInt(raw.timeout, 'timeout', 'milliseconds') ?? 120_000;
-  const launchTimeout = positiveInt(raw.launchTimeout, 'launchTimeout', 'milliseconds') ?? 60_000;
-  const configActionTimeout = positiveInt(raw.actionTimeout, 'actionTimeout', 'milliseconds');
-  const configAssertionTimeout = positiveInt(raw.assertionTimeout, 'assertionTimeout', 'milliseconds');
-  const cleanupTimeout = positiveInt(raw.cleanupTimeout, 'cleanupTimeout', 'milliseconds') ?? 30_000;
+  const timeout = timerMs(raw.timeout, 'timeout') ?? 120_000;
+  const launchTimeout = timerMs(raw.launchTimeout, 'launchTimeout') ?? 60_000;
+  const configActionTimeout = timerMs(raw.actionTimeout, 'actionTimeout');
+  const configAssertionTimeout = timerMs(raw.assertionTimeout, 'assertionTimeout');
+  const cleanupTimeout = timerMs(raw.cleanupTimeout, 'cleanupTimeout') ?? 30_000;
   const maxDuration = timerMs(raw.maxDuration, 'maxDuration');
 
   // CLI overrides obey the same bounds as the config keys they replace: a

@@ -20,6 +20,7 @@
     "explore:bench": "node scripts/explore-bench.mjs"
   },
   "dependencies": {
+    "@e2e-dev/browser-run": "workspace:*",
     "@e2e-dev/decision": "workspace:*",
     "@e2e-dev/lightpanda": "workspace:*",
     "@e2e-dev/web": "workspace:*",

@@ -1,5 +1,33 @@
 # @e2e-dev/web
 
+## 0.16.0
+
+### Minor Changes
+
+- [#1393](https://github.com/e2e-inc/e2e/pull/1393) [`046bd08`](https://github.com/e2e-inc/e2e/commit/046bd08f4a5ea4693239c825539812f6b0d05060) Thanks [@KrzysztofMoch](https://github.com/KrzysztofMoch)! - **Breaking:** `web({ headers })` and `web({ basicAuth })` go only to the app's origin, the scheme, host, and port of `app.url`. Before, `headers` went to every host on the app's site (another port on the same host, sibling subdomains, every host under a shared domain such as `vercel.app`), and `basicAuth` answered a `401` from any origin, so a third-party origin the app embeds could collect the credential.
+  
+  To migrate, list each other origin that needs the credentials in `credentialOrigins: ['https://api.example.com']`; it covers both. An app whose `app.url` redirects to another origin (`http:` to `https:`, the apex to `www`) needs the origin it lands on listed, or set `app.url` to it. `headers` still ride a request's own redirects to any origin, as before. WebKit can't scope basic auth to an origin on a default port or an IPv6 host, so there it still answers any origin. Update `e2e` with this release: the engine needs the app's origin from the runner.
+
+### Patch Changes
+
+- [#1609](https://github.com/e2e-inc/e2e/pull/1609) [`34a260c`](https://github.com/e2e-inc/e2e/commit/34a260cc59d7ebd1d414fd2716f955bd2a51795f) Thanks [@okwasniewski](https://github.com/okwasniewski)! - Bump playwright-core to 1.65.0 and commander to 15.1.0. `fill` no longer rejects malformed date, time, color, and range values, and actions wait for an element to leave an `inert` subtree. Smol sandboxes use the Playwright 1.65.0 image.
+
+- [#1595](https://github.com/e2e-inc/e2e/pull/1595) [`12c6c01`](https://github.com/e2e-inc/e2e/commit/12c6c01929883782062fd9e308cd4be71977bf7c) Thanks [@samanyudas](https://github.com/samanyudas)! - `check`, `uncheck`, and `tap` click a checkbox or radio hidden under its own label (as in Element Plus) through that label. `uncheck` still refuses a native radio without clicking it. Anything else on top of the point the click lands on still fails `ACTION_FAILED`.
+
+- [#1672](https://github.com/e2e-inc/e2e/pull/1672) [`3735887`](https://github.com/e2e-inc/e2e/commit/373588756937562aa89c7dd7f7995ac6b16db972) Thanks [@okwasniewski](https://github.com/okwasniewski)! - Move GitHub repository metadata and CLI links to e2e-inc/e2e after the organization rename. Register the MCP server as io.github.e2e-inc/e2e.
+
+- [#1595](https://github.com/e2e-inc/e2e/pull/1595) [`12c6c01`](https://github.com/e2e-inc/e2e/commit/12c6c01929883782062fd9e308cd4be71977bf7c) Thanks [@samanyudas](https://github.com/samanyudas)! - The agent now sees a checkbox or radio that a component library shrinks to no size under its own label (as in Element Plus), with its checked state. Before, it saw only the label text, and a tap that ticked the box reported no change.
+
+- [#1665](https://github.com/e2e-inc/e2e/pull/1665) [`3c9de80`](https://github.com/e2e-inc/e2e/commit/3c9de80d9e6017c8ce66e310742b92580a029cba) Thanks [@KrzysztofMoch](https://github.com/KrzysztofMoch)! - Open an MCP session in a directory with no config: `open_session {engine: "@e2e-dev/web", app: {url}}` names the engine to drive and `app` the app under test. `engine` is a package name, or the factory call a config would write as `{package, export, options}`, where an option can be another such call: `{package: "@e2e-dev/mobile", options: {platform: "ios", device: {package: "@e2e-dev/limrun", export: "limrun"}}}`. Each package is found in the project, beside e2e, or in `~/.e2e/engines`; when it is in none, `ENGINE_NOT_INSTALLED` names the install command. `@e2e-dev/web` and `@e2e-dev/mobile` export their factory as the default export for this, and `mobile()` called without a platform now says which platforms it takes.
+
+- [#1614](https://github.com/e2e-inc/e2e/pull/1614) [`f6aba97`](https://github.com/e2e-inc/e2e/commit/f6aba97257700339b60fb67722178d23ee2c5f93) Thanks [@okwasniewski](https://github.com/okwasniewski)! - A screenshot taken while the page navigates still captures the document showing when Playwright reports the destroyed context before the navigation event.
+
+- [#1592](https://github.com/e2e-inc/e2e/pull/1592) [`b43e846`](https://github.com/e2e-inc/e2e/commit/b43e8469ce55c96e54d979d08ccf0034ad93e546) Thanks [@KrzysztofMoch](https://github.com/KrzysztofMoch)! - `expect(browser).toHaveURL` failures print a relative expected URL resolved against the app URL, the same way it is compared, so it reads beside the absolute observed URL.
+
+- [#1747](https://github.com/e2e-inc/e2e/pull/1747) [`a94c765`](https://github.com/e2e-inc/e2e/commit/a94c76534498c867f4dc74d061b5a4ac0804b1b4) Thanks [@okwasniewski](https://github.com/okwasniewski)! - Send CDP handshake headers for hosted browser leases.
+
+- [#1710](https://github.com/e2e-inc/e2e/pull/1710) [`0920ef5`](https://github.com/e2e-inc/e2e/commit/0920ef5f941a428545c9e16a36d5ba361ac1ba54) Thanks [@kdy1](https://github.com/kdy1)! - The `browser` fixture drives tabs. A tab the app opens (a `target="_blank"` link, `window.open`, an OAuth popup) joins `browser.tabs()` in the background, and the active tab stays where it was. `browser.waitForPopup(trigger)` runs the trigger and makes the tab it opens active, `browser.newTab()` opens a tab in the same context, and each `BrowserTab` has `url`, `title`, `isActive`, `isClosed`, `activate`, and `close`. When the active tab closes, the tab that opened it is active again, or the tab active most recently when that one is closed too. The agent's `switch_tab` and `close_tab` verbs move between tabs and close them. The web engine needs `e2e` 0.23.1 or newer. [Tabs](https://e2e.com/docs/reference/web#tabs)
+
 ## 0.15.5
 
 ### Patch Changes

@@ -25,6 +25,7 @@ import {
   type ProviderRecordContext,
   type ProviderRecording,
 } from 'e2e/engine';
+import type { CdpTarget } from './browser-connection.ts';
 import { connectionAbort } from './operation-budget.ts';
 import { invalidState, message } from './support.ts';
 
@@ -51,7 +52,7 @@ export interface BrowserRequest {
   readonly attemptId?: string | undefined;
   /** The run's environment: where a provider reads its token from, never `process.env`. */
   readonly env: Readonly<Record<string, string | undefined>>;
-  /** Aborts on interrupt, and when the attempt that needs the browser is cancelled or exceeds its budget. */
+  /** Aborts on interrupt, and when the init or attempt that needs the browser is cancelled or exceeds its budget. */
   readonly signal: AbortSignal;
   /** Reports one line of progress to the run's reporter (a session URL to watch), from the runner and from a worker alike. */
   readonly log: (line: string) => void;
@@ -147,6 +148,8 @@ export interface BrowserProvider {
   readonly scope?: BrowserProviderScope | undefined;
   acquire(request: BrowserRequest): Promise<BrowserLease>;
   release(lease: BrowserLease, context: BrowserReleaseContext): Promise<void>;
+  /** Resolves CDP handshake headers in the worker from its own environment; never serialized with the lease. */
+  cdpHeaders?(lease: BrowserLease, context: BrowserRequest): Readonly<Record<string, string>> | Promise<Readonly<Record<string, string>>>;
   /**
    * Records the leased browser for an attempt that records video, in place
    * of the engine's screencast of the page: the service's own recording of
@@ -169,8 +172,8 @@ export interface BrowserProvider {
    * in the runner, after every worker exited and the leases `prepare` made
    * were released: whatever it finds is a lease a worker acquired (a
    * per-attempt browser, a replacement) and never gave back, because the
-   * worker died before it could. Find them by what `acquire` tagged them
-   * with at the service: the run id and the target.
+   * worker died before it could. Find them by service tags or a shared
+   * journal scoped to the run id and target.
    */
   sweep?(context: BrowserReleaseContext): Promise<readonly string[]>;
 }
@@ -188,7 +191,7 @@ export function asBrowserProvider(browser: object): BrowserProvider {
       throw new ConfigurationError('INVALID_CONFIG', `web: browser provider "${candidate.name}" must implement ${member}()`);
     }
   }
-  for (const member of ['record', 'sweep'] as const) {
+  for (const member of ['record', 'sweep', 'cdpHeaders'] as const) {
     if (candidate[member] !== undefined && typeof candidate[member] !== 'function') {
       throw new ConfigurationError('INVALID_CONFIG', `web: browser provider "${candidate.name}" has a ${member} that is not a function`);
     }
@@ -487,12 +490,12 @@ export class LeasedBrowsers {
    * replacement that arrives once the attempt was cancelled or the worker
    * disposed is given straight back and never committed.
    */
-  async endpoint(signal: AbortSignal): Promise<string> {
+  async endpoint(signal: AbortSignal): Promise<CdpTarget> {
     const run = this.requireRun();
     const previous = this.current;
     if (previous !== undefined && !this.attached) {
       this.attached = true;
-      return previous.lease.cdpEndpoint;
+      return this.cdpTarget(previous.lease, signal);
     }
     const { tenure } = this;
     const lease = await this.acquire({ runId: run.runId, targetName: run.targetName, slot: run.slot, slots: run.slots, env: run.env, signal, log: run.log });
@@ -503,7 +506,14 @@ export class LeasedBrowsers {
     this.current = { lease, owned: true };
     this.attached = true;
     if (previous?.owned === true) await this.provider.release(previous.lease, this.releaseContext(run, signal)).catch(discard);
-    return lease.cdpEndpoint;
+    return this.cdpTarget(lease, signal);
+  }
+
+  /** Resolves connection credentials inside the worker, separately from the lease handoff. */
+  async cdpTarget(lease: BrowserLease, signal: AbortSignal, endpoint = lease.cdpEndpoint): Promise<CdpTarget> {
+    const run = this.requireRun();
+    const headers = await this.provider.cdpHeaders?.(lease, { ...run, signal });
+    return { endpoint, ...(headers === undefined ? {} : { headers }) };
   }
 
   /**

@@ -28,7 +28,7 @@ Set `E2B_API_KEY` from the [E2B dashboard](https://e2b.dev/dashboard), and `E2B_
 for a dedicated E2B cluster. Android on E2B is x86_64 only, without Google Play Services.
 Sandboxes refuse public traffic; tests reach them through a local tunnel on `127.0.0.1`.
 
-See the [integration guide](https://e2e.tester.army/docs/integrations/e2b) for every
+See the [integration guide](https://e2e.com/docs/integrations/e2b) for every
 option and the limits.
 
 ## Browsers
@@ -55,7 +55,7 @@ export default {
 It uses the same `E2B_API_KEY`, and a sandbox template with Chromium that you build once
 from the Playwright image. The browser runs in E2B's cloud, so `app.url` must be reachable
 from the internet. See the
-[integration guide](https://e2e.tester.army/docs/integrations/e2b) for the template, the
+[integration guide](https://e2e.com/docs/integrations/e2b) for the template, the
 defaults, and the limits.
 
 ## License

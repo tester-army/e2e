@@ -152,7 +152,7 @@ async function prepared(cloud: BrowserProvider, slots: number): Promise<{ runner
 
 beforeEach(() => {
   vi.mocked(connectCdp).mockReset();
-  vi.mocked(connectCdp).mockImplementation(async (endpoint) => fakeBrowser(`context-${endpoint}`).browser);
+  vi.mocked(connectCdp).mockImplementation(async ({ endpoint }) => fakeBrowser(`context-${endpoint}`).browser);
 });
 
 describe('web({ browser: provider })', () => {
@@ -179,6 +179,12 @@ describe('web({ browser: provider })', () => {
       /provider "toy-cloud" has downloads.dir "downloads"; name an absolute path on the browser's machine/,
     );
     expect(() => web({ browser: { ...provider().impl, downloads: { dir: 'C:\\Users\\kernel\\Downloads', read } } })).not.toThrow();
+  });
+
+  it.each([null, 'Authorization', {}])('rejects non-function cdpHeaders: %j', (cdpHeaders) => {
+    expect(() => web({ browser: { ...provider().impl, cdpHeaders } as unknown as BrowserProvider })).toThrow(
+      /provider "toy-cloud" has a cdpHeaders that is not a function/,
+    );
   });
 
   it('rejects a provider together with connect: two browser sources', () => {
@@ -245,7 +251,7 @@ describe('worker scope', () => {
     // A worker reads its slot's lease from the environment and attaches to that endpoint.
     const worker = new PlaywrightSurface({ browser: cloud.impl });
     await worker.init(initInfo(1, { [variable]: env[variable] }));
-    expect(vi.mocked(connectCdp).mock.calls.map(([endpoint]) => endpoint)).toEqual(['wss://1.example']);
+    expect(vi.mocked(connectCdp).mock.calls.map(([target]) => target.endpoint)).toEqual(['wss://1.example']);
     await worker.startAttempt(attempt('a1'));
     await worker.endAttempt(cleanup());
     await worker.dispose(cleanup());
@@ -360,7 +366,7 @@ describe('worker scope', () => {
   it('leases a replacement in the worker once its browser dropped, releases only what the worker acquired, and the rest on dispose', async () => {
     const cloud = provider();
     const browsers: ReturnType<typeof fakeBrowser>[] = [];
-    vi.mocked(connectCdp).mockImplementation(async (endpoint) => {
+    vi.mocked(connectCdp).mockImplementation(async ({ endpoint }) => {
       const fake = fakeBrowser(`context-${endpoint}`);
       browsers.push(fake);
       return fake.browser;
@@ -376,7 +382,7 @@ describe('worker scope', () => {
 
     browsers[0]!.drop();
     await worker.startAttempt(attempt('a2'));
-    expect(vi.mocked(connectCdp).mock.calls.map(([endpoint]) => endpoint)).toEqual(['wss://0.example', 'wss://2.example']);
+    expect(vi.mocked(connectCdp).mock.calls.map(([target]) => target.endpoint)).toEqual(['wss://0.example', 'wss://2.example']);
     // The replacement is asked for the same slot, from the worker, with no attempt id.
     expect(cloud.acquired.at(-1)).toMatchObject({ slot: 0, slots: 2, runId: 'run-1', targetName: 'web' });
     expect(cloud.acquired.at(-1)?.attemptId).toBeUndefined();
@@ -450,7 +456,7 @@ describe('worker scope', () => {
     expect(cloud.released).toEqual([]);
     grant();
     await expect.poll(() => cloud.released.map((lease) => lease.id)).toEqual(['lease-1']);
-    expect(vi.mocked(connectCdp).mock.calls.map(([endpoint]) => endpoint)).toEqual(['wss://0.example']);
+    expect(vi.mocked(connectCdp).mock.calls.map(([target]) => target.endpoint)).toEqual(['wss://0.example']);
   });
 
   it('fails the attempt start, naming the provider, when no replacement can be leased', async () => {
@@ -498,7 +504,7 @@ describe('attempt scope', () => {
     expect(cloud.acquired.map((request) => [request.slot, request.slots, request.attemptId, request.env])).toEqual([[1, 2, 'a1', { ...env, BROWSER_TOKEN: 't' }]]);
     // Its progress reaches the reporter through the worker, as a lease from prepare does through the runner.
     expect(lines).toEqual(['toy-cloud: starting']);
-    expect(vi.mocked(connectCdp).mock.calls.map(([endpoint]) => endpoint)).toEqual(['wss://0.example']);
+    expect(vi.mocked(connectCdp).mock.calls.map(([target]) => target.endpoint)).toEqual(['wss://0.example']);
     await worker.endAttempt(cleanup());
     expect(cloud.released.map((lease) => lease.id)).toEqual(['lease-0']);
     expect(cloud.released[0]).toHaveProperty('secret');
@@ -507,7 +513,7 @@ describe('attempt scope', () => {
 
     await worker.startAttempt(attempt('a2'));
     expect(cloud.acquired.at(-1)).toMatchObject({ attemptId: 'a2' });
-    expect(vi.mocked(connectCdp).mock.calls.map(([endpoint]) => endpoint)).toEqual(['wss://0.example', 'wss://1.example']);
+    expect(vi.mocked(connectCdp).mock.calls.map(([target]) => target.endpoint)).toEqual(['wss://0.example', 'wss://1.example']);
     await worker.dispose(cleanup());
     expect(cloud.released.map((lease) => lease.id)).toEqual(['lease-0', 'lease-1']);
   });
@@ -622,7 +628,7 @@ describe('attempt scope', () => {
       await worker.startAttempt(attempt('a1'));
       fakes[0]!.drop();
       await expect(worker.guard(operation(), 'probe', async () => 'reattached')).resolves.toBe('reattached');
-      expect(vi.mocked(connectCdp).mock.calls.map(([endpoint]) => endpoint)).toEqual([
+      expect(vi.mocked(connectCdp).mock.calls.map(([target]) => target.endpoint)).toEqual([
         'wss://0.example',
         reconnect ? 'wss://0.example/reconnect' : 'wss://0.example',
       ]);
@@ -926,4 +932,53 @@ describe('recording', () => {
       await worker.dispose(cleanup());
     }
   });
+});
+
+it.each(['worker', 'attempt'] as const)('resolves CDP credentials from the worker environment in %s scope', async (scope) => {
+  const toy = provider({ scope });
+  const cdpHeaders = vi.fn(async (_lease: BrowserLease, context: BrowserRequest) => ({ Authorization: context.env.WORKER_TOKEN! }));
+  const cloud = { ...toy.impl, cdpHeaders };
+  const { runner, env } = await prepared(cloud, 1);
+  expect(cdpHeaders).not.toHaveBeenCalled();
+  expect(JSON.stringify(env)).not.toContain('worker-secret');
+  const worker = new PlaywrightSurface({ browser: cloud });
+  await worker.init(initInfo(0, { ...env, WORKER_TOKEN: 'worker-secret' }));
+  await worker.startAttempt(attempt('with-headers'));
+  expect(connectCdp).toHaveBeenCalledWith({ endpoint: 'wss://0.example', headers: { Authorization: 'worker-secret' } }, expect.any(Number));
+  expect(cdpHeaders).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ id: 'lease-0' }), expect.objectContaining({ env: expect.objectContaining({ WORKER_TOKEN: 'worker-secret' }) }));
+  await worker.endAttempt(cleanup());
+  await worker.dispose(cleanup());
+  await runner.finish(finishInfo());
+});
+
+it('accepts endpoint and handshake headers together from a connect resolver', async () => {
+  const target = { endpoint: 'wss://authenticated.example', headers: { Authorization: 'synthetic-token' } };
+  const worker = new PlaywrightSurface({ connect: { cdpEndpoint: async () => target } });
+  await worker.init(initInfo(0));
+  expect(connectCdp).toHaveBeenCalledWith(target, expect.any(Number));
+  await worker.dispose(cleanup());
+});
+
+it.each([false, true])('retains attempt CDP credentials on reconnect, dedicated endpoint %s', async (reconnect) => {
+  const toy = provider({ scope: 'attempt', reconnect });
+  const headers = { Authorization: 'synthetic-reconnect-token' };
+  const cdpHeaders = vi.fn(async () => headers);
+  const cloud = { ...toy.impl, cdpHeaders };
+  const browsers: ReturnType<typeof fakeBrowser>[] = [];
+  vi.mocked(connectCdp).mockImplementation(async () => {
+    const browser = fakeBrowser('same-browser');
+    browsers.push(browser);
+    return browser.browser;
+  });
+  const { runner, env } = await prepared(cloud, 1);
+  const worker = new PlaywrightSurface({ browser: cloud });
+  await worker.init(initInfo(0, env));
+  await worker.startAttempt(attempt('a1'));
+  browsers[0]!.drop();
+  await expect(worker.guard(operation(), 'probe', async () => 'recovered')).resolves.toBe('recovered');
+  expect(connectCdp).toHaveBeenNthCalledWith(2, { endpoint: reconnect ? 'wss://0.example/reconnect' : 'wss://0.example', headers }, expect.any(Number));
+  expect(cdpHeaders).toHaveBeenCalledTimes(2);
+  expect(toy.acquired).toHaveLength(1);
+  await worker.dispose(cleanup());
+  await runner.finish(finishInfo());
 });
