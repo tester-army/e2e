@@ -5,52 +5,18 @@
  * `credentials`, and `secrets` come from `e2e` itself.
  */
 
-import { test as base, type App } from 'e2e';
-import type { Browser } from './browser.ts';
+import { test as base } from 'e2e';
+import type { WebFixtures } from './fixtures.ts';
 
-export { web, surfaceOf } from './engine.ts';
-/** The engine factory again, as the default export: what `e2e mcp` calls when `open_session` names this package as its `engine`. */
-export { web as default } from './engine.ts';
-export type { PlaywrightLiveSurface } from './engine.ts';
-export type { WebBasicAuth, WebConnectOptions, WebOptions, WebScreencastOptions } from './surface.ts';
-export type { WebInitScript } from './init-scripts.ts';
-export type { WebMedia } from './media.ts';
-export type {
-  BrowserDownloadContext,
-  BrowserLease,
-  BrowserProvider,
-  BrowserProviderDownloads,
-  BrowserProviderScope,
-  BrowserReleaseContext,
-  BrowserRequest,
-} from './provider.ts';
-export type { BrowserName, CdpTarget } from './browser-connection.ts';
-export type { Dialog, DialogHandler } from './dialogs.ts';
-export type {
-  Browser,
-  BrowserExpectation,
-  BrowserTab,
-  Cookie,
-  CookieFields,
-  CookieFilter,
-  FrameScreen,
-  RouteContinueOverrides,
-  RouteFulfillResponse,
-  WebResponse,
-  WebRoute,
-} from './browser.ts';
-
-/** `app` on a web target. A `web()` target always declares `app.url`, so `baseUrl` is always set. */
-export interface WebApp extends App {
-  /** The target's `app.url` with the run's port and no trailing slash: `${app.baseUrl}/api/users`. */
-  readonly baseUrl: string;
-}
+export * from './engine-entry.ts';
+/** The engine factory as the default export: what `e2e mcp` calls when `open_session` names this package as its `engine`. */
+export { default } from './engine-entry.ts';
 
 /**
  * `test` typed with this engine's contributed `browser` fixture and its
  * `app`. The same runtime `test` as `e2e`'s; only the fixture types differ.
  */
-export const test = base.extend<{ browser: Browser; app: WebApp }>();
+export const test = base.extend<WebFixtures>();
 
 /** `describe` and the hooks, the same functions as `test.describe` and `test.beforeEach`, typed with the `browser` fixture. */
 export const { describe, beforeEach, afterEach, beforeAll, afterAll } = test;

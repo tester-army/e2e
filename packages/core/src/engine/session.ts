@@ -299,6 +299,7 @@ export function createEngineSession(options: EngineSessionOptions): TargetSessio
 
   const app: SessionApp = {
     open: guard('navigation', engine?.session?.open),
+    openLink: guard('app links', engine?.session?.openLink),
     back: guard('back navigation', engine?.session?.back),
     resize: guard('viewport resizing', engine?.session?.resize),
     switchTab: guard('tab switching', engine?.session?.switchTab),

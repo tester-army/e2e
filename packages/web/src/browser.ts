@@ -13,7 +13,7 @@
  */
 
 import type { Download, Route } from 'playwright-core';
-import type { ActionOptions, Expectable, JsonValue, Locator, Screen, TextMatch } from 'e2e';
+import type { ActionOptions, Expectable, JsonValue, Locator, Screen, TextMatch } from 'e2e-core';
 import {
   ConfigurationError,
   Deadline,

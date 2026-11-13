@@ -88,6 +88,15 @@ describe('trace-1 entry', () => {
     expect(entryOf(trace({ actions })).payload.actions).toEqual(actions);
   });
 
+  it('round-trips a space press: a single character is a key, whitespace included', () => {
+    const target = { role: 'checkbox', name: 'Remember me' };
+    const actions: RecordedAction[] = [
+      { name: 'press', summary: 'press " "', target, key: ' ' },
+      { name: 'pressKey', summary: 'press " " in the focused field', key: ' ' },
+    ];
+    expect(entryOf(trace({ actions })).payload.actions).toEqual(actions);
+  });
+
   it('round-trips the postcondition: end path and end anchors', () => {
     const endAnchors = [
       { role: 'status', name: 'Marker', text: 'saved' },

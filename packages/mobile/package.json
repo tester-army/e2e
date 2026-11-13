@@ -41,6 +41,10 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
+    "./engine": {
+      "types": "./dist/engine-entry.d.ts",
+      "default": "./dist/engine-entry.js"
+    },
     "./tools": {
       "types": "./dist/tools.d.ts",
       "default": "./dist/tools.js"
@@ -74,6 +78,9 @@
   },
   "peerDependenciesMeta": {
     "ai": {
+      "optional": true
+    },
+    "e2e": {
       "optional": true
     }
   },

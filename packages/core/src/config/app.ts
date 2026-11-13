@@ -9,7 +9,7 @@ import { ConfigurationError } from '../internal/errors.ts';
 import { obj } from '../internal/objects.ts';
 import { rejectUnknownKeys } from '../internal/options.ts';
 import { didYouMean } from '../internal/suggest.ts';
-import { isImplicitTestHost, normalizeBaseUrl, portOf, requestsFreePort, siteOf, withPort, type NormalizedBaseUrl } from '../internal/urls.ts';
+import { isImplicitTestHost, isRefusedLinkScheme, normalizeBaseUrl, portOf, requestsFreePort, siteOf, withPort, type NormalizedBaseUrl } from '../internal/urls.ts';
 import type { AppPermissionState, CommandConfig, TargetApp } from '../types.ts';
 import { checkLog, digestCommand, isRecord, normalizeCommand } from './command.ts';
 import { httpUrl } from './validate.ts';
@@ -18,6 +18,7 @@ import { httpUrl } from './validate.ts';
 export interface TargetAppDeclaration {
   readonly url: string | undefined;
   readonly bundleId: string | undefined;
+  readonly linkBase: string | undefined;
   readonly appPath: string | undefined;
   readonly identity: string | undefined;
   readonly environment: 'test' | 'staging' | 'production' | undefined;
@@ -65,6 +66,8 @@ export interface ResolvedApp {
   readonly identity: string | undefined;
   readonly bundleId: string | undefined;
   readonly appPath: string | undefined;
+  /** The link base `app.open(path)` joins on a device target; see `TargetApp.linkBase`. */
+  readonly linkBase: string | undefined;
   readonly launchArguments: readonly string[] | undefined;
   readonly permissions: Readonly<Record<string, AppPermissionState>> | undefined;
   /** `app.command` with `{port}` expanded to the port the app is served on. */
@@ -82,6 +85,7 @@ const TARGET_APP_KEYS: readonly string[] = Object.keys({
   url: true,
   bundleId: true,
   appPath: true,
+  linkBase: true,
   identity: true,
   environment: true,
   launchArguments: true,
@@ -147,6 +151,7 @@ export function checkTargetApp(targetName: string, engine: EngineHandle | undefi
   const checked: TargetAppDeclaration = {
     url: nonEmptyString(app.url, `${where}.url`),
     bundleId: nonEmptyString(app.bundleId, `${where}.bundleId`),
+    linkBase: checkLinkBase(app.linkBase, engine, where),
     appPath: nonEmptyString(app.appPath, `${where}.appPath`),
     identity: nonEmptyString(app.identity, `${where}.identity`),
     environment,
@@ -158,6 +163,56 @@ export function checkTargetApp(targetName: string, engine: EngineHandle | undefi
   const { url, bundleId, appPath } = checked;
   engine?.validateApp?.(obj({ url, bundleId, appPath, launchArguments, permissions }) satisfies EngineAppDeclaration, { targetName });
   return checked;
+}
+
+/** Schemes a link base may not name: local content, an inline document, and the wrappers that carry one. */
+
+/**
+ * A link base: an absolute URL, or a bare custom scheme (`shopapp://`), with
+ * no query or fragment for a path to land after, on an engine that opens
+ * links. The message never echoes the value: it may carry a token.
+ */
+function checkLinkBase(value: unknown, engine: EngineHandle | undefined, where: string): string | undefined {
+  const linkBase = nonEmptyString(value, `${where}.linkBase`);
+  if (linkBase === undefined) return undefined;
+  if (engine?.session?.openLink === undefined) {
+    throw new ConfigurationError(
+      'INVALID_CONFIG',
+      `${where}.linkBase opens links in a device app, and engine ${engine?.name ?? 'none'} opens none; a browser target opens paths against app.url`,
+    );
+  }
+  let url: URL;
+  try {
+    url = new URL(linkBase);
+  } catch {
+    throw new ConfigurationError('INVALID_CONFIG', `${where}.linkBase must be an absolute URL such as https://shop.example.com or a scheme such as shopapp://`);
+  }
+  if (refusesLink(linkBase)) throw new ConfigurationError('INVALID_CONFIG', `${where}.linkBase names a refused scheme, ${url.protocol}`);
+  // Checked on the raw string, which a path joins as written: the URL parser trims whitespace and drops an empty `?` or `#`.
+  if (/[?#]/.test(linkBase)) throw new ConfigurationError('INVALID_CONFIG', `${where}.linkBase must have no query or fragment: a path joins its end`);
+  if (linkBase.trim() !== linkBase) throw new ConfigurationError('INVALID_CONFIG', `${where}.linkBase must have no surrounding whitespace`);
+  return linkBase;
+}
+
+/** Whether a link names a refused scheme; one that does not parse is refused too. */
+export function refusesLink(link: string): boolean {
+  try {
+    return isRefusedLinkScheme(new URL(link).protocol);
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * The link `app.open(path)` opens on a target with a link base: an absolute
+ * link as given, else the path joined to the base with one slash, none after
+ * a bare scheme (`shopapp://` and `/orders/42` join to `shopapp://orders/42`).
+ */
+export function joinLink(linkBase: string, path: string): string {
+  if (/^[A-Za-z][A-Za-z0-9+.-]*:/.test(path)) return path;
+  const tail = path.replace(/^\/+/, '');
+  if (linkBase.endsWith('://')) return `${linkBase}${tail}`;
+  return `${linkBase.replace(/\/+$/, '')}/${tail}`;
 }
 
 /** The token a command or a readiness URL writes where the app's port goes. */
@@ -234,6 +289,7 @@ export function resolveTargetApp(targetName: string, app: TargetAppDeclaration, 
     identity: app.identity ?? (declaredBase === undefined ? undefined : `${declaredBase.origin}${declaredBase.basePath}`) ?? app.bundleId ?? app.appPath,
     bundleId: app.bundleId,
     appPath: app.appPath,
+    linkBase: app.linkBase,
     launchArguments: app.launchArguments,
     permissions: app.permissions,
     command,

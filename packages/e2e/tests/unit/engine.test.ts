@@ -87,7 +87,7 @@ describe('defineEngine', () => {
     );
     expect(() =>
       defineEngine(observingEngine({ session: { navigate: async () => undefined } as never })),
-    ).toThrow(/session has unknown key "navigate"; expected one of open, back, resize, switchTab, closeTab, restart, reset/);
+    ).toThrow(/session has unknown key "navigate"; expected one of open, openLink, back, resize, switchTab, closeTab, restart, reset/);
     expect(() =>
       defineEngine(observingEngine({ session: { open: 'https://example.test/' } as never })),
     ).toThrow(/session.open must be a function/);

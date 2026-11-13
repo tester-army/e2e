@@ -113,6 +113,8 @@ interface ObservationMetadata {
 export interface SessionApp {
   /** Opens the app at one resolved URL. */
   open(url: string, operation: OperationContext): Promise<void>;
+  /** Opens one checked link in the app under test. */
+  openLink(url: string, operation: OperationContext): Promise<void>;
   /** Navigates back once. */
   back(operation: OperationContext): Promise<void>;
   /** Sets the viewport size in CSS pixels. */

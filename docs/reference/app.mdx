@@ -64,13 +64,16 @@ await app.open('/settings/billing'); // a path relative to app.url
 await app.open('https://example.com/login'); // any http(s) URL
 ```
 
-On a device target, which has no URL, `open()` launches the pinned app fresh
-and takes no path.
+On a device target, which has no URL, `open()` launches the pinned app fresh.
+A path opens as a link in the app when the target declares
+[`app.linkBase`](/reference/config#linkbase), and is `APP_URL_REQUIRED`
+without it. With a link base, an absolute link opens as given, custom app
+schemes included.
 
 | Throws | When |
 | --- | --- |
-| `APP_URL_REQUIRED` | A path, on a target that declares no `app.url`. |
-| `POLICY_DENIED` | A URL whose scheme is not `http:` or `https:`. `about:blank` is allowed. |
+| `APP_URL_REQUIRED` | A path, on a target that declares no `app.url` (or, on a device, no `app.linkBase`). |
+| `POLICY_DENIED` | A URL whose scheme is not `http:` or `https:`. `about:blank` is allowed. On a device with `app.linkBase`, a link whose scheme is `file:`, `data:`, `javascript:`, `view-source:`, `blob:`, or `filesystem:`. |
 | `APP_UNREACHABLE` | The app URL could not be reached. |
 | `ACTION_FAILED` | The operation failed or timed out. |
 | `UNSUPPORTED_CAPABILITY` | No `session.open` on a target with a URL, or no `session.restart` on one without. On a device with no `app.bundleId`, also the target's build not installed yet ([mobile](/reference/mobile#the-app-under-test)). |
@@ -211,7 +214,8 @@ export interface App {
   /**
    * Opens the app: the declared URL, a path relative to it, or any absolute
    * http(s) URL. On a device target, which has no URL, it launches the pinned
-   * app fresh and takes no path.
+   * app fresh; a path opens as a link in it when the target declares
+   * `app.linkBase`.
    */
   open(path?: string): Promise<void>;
   /**

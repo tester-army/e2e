@@ -49,7 +49,7 @@ const NESTED_HOOKS = {
   keyboard: ['type', 'press', 'dismiss'],
   state: ['capture', 'restore'],
   artifacts: ['screenshot', 'startVideo', 'stopVideo'],
-  session: ['open', 'back', 'resize', 'switchTab', 'closeTab', 'restart', 'reset'],
+  session: ['open', 'openLink', 'back', 'resize', 'switchTab', 'closeTab', 'restart', 'reset'],
 } as const;
 
 /**
@@ -164,8 +164,10 @@ function declaredKinds<Kind extends string>(
  * The handle is assembled member by member from the known keys, reading
  * through the prototype chain and binding every function to the spec, so a
  * class instance (own state fields included) is as valid a body as a literal.
+ * `Fixtures` types what the engine's `fixtures` contribute; it is not checked
+ * against them at runtime.
  */
-export function defineEngine(spec: Engine): EngineHandle {
+export function defineEngine<Fixtures extends object = {}>(spec: Engine): EngineHandle<Fixtures> {
   if (typeof spec !== 'object' || spec === null) {
     throw new ConfigurationError('INVALID_CONFIG', 'defineEngine requires an engine object');
   }
@@ -309,7 +311,7 @@ export function defineEngine(spec: Engine): EngineHandle {
     ...handle,
     [engineBrand]: true as const,
     capabilities,
-  }) as unknown as EngineHandle;
+  }) as unknown as EngineHandle<Fixtures>;
 }
 
 /** True for a defineEngine-branded handle, across realms. */

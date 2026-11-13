@@ -165,6 +165,16 @@ describe('templateTrace and expandTrace', () => {
     expect(expandTrace(recorded, [])).toBeUndefined();
   });
 
+  it('templates the action a guard stopped the step before, so a replay reports this run\'s value', () => {
+    const stopped = (value: string): ActionTrace => ({
+      ...trace(value),
+      stop: { kind: 'navigate', node: { role: 'link', name: value, testId: 'open' }, url: '/companies', destination: `/companies/${value}` },
+    });
+    const recorded = templateTrace(stopped('E2E abc Company'), name('E2E abc Company'))!;
+    expect(recorded.stop).toEqual({ kind: 'navigate', node: { role: 'link', name: '{{param:/name}}', testId: 'open' }, url: '/companies', destination: '/companies/{{param:/name}}' });
+    expect(expandTrace(recorded, name('E2E xyz Company'))?.stop).toEqual(stopped('E2E xyz Company').stop);
+  });
+
   it('keeps the verdict summary as recorded: prose about the recording run, not a replay input', () => {
     const recorded = templateTrace({ ...trace('Daily'), summary: 'set the title to Daily and left the daily frequency unchanged' }, [{ pointer: '/title', value: 'Daily' }])!;
     expect(recorded.summary).toBe('set the title to Daily and left the daily frequency unchanged');

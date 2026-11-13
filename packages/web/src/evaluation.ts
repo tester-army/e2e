@@ -1,5 +1,5 @@
 /** Separates exceptions thrown by trusted page code from failures of the evaluation transport. */
-import type { JsonValue } from 'e2e';
+import type { JsonValue } from 'e2e-core';
 import { TestError } from 'e2e-core/engine';
 import { message } from './support.ts';
 

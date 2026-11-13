@@ -779,7 +779,7 @@ export function cloudDevices(options: { provider: string; device: string; osVers
 
 | On the web | On a device |
 | --- | --- |
-| `app.open('/path')` and the agent's `navigate` verb | No app URL and no `navigate`. `app.open()` launches `app.bundleId` fresh, and `device.openLink(url)` opens a link into it |
+| `app.open('/path')` and the agent's `navigate` verb | No app URL and no `navigate`. `app.open()` launches `app.bundleId` fresh, and `device.openLink(url)` opens a link into it. With [`app.linkBase`](/reference/config#linkbase), `app.open('/path')` opens the path as a link |
 | `test.setup` saves a session, `session:` restores it | Not available. A simulator has no portable session snapshot; sign in per test or seed the app |
 | Secret input | `type_secret` and `screen.getByLabel(...).fill(secret)` fill declared secrets into secure fields |
 | `--video` writes a WebM screencast | `--video` writes an MP4 of the device screen with taps shown (`videoTouches: false` hides them), or keeps a device provider's own recording |

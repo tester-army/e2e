@@ -3,15 +3,16 @@
 import { discoverConfig, loadConfigModule, missingConfigError } from '../config/load.ts';
 import { type ResolvedConfig } from 'e2e-core/lib/config/resolve';
 import { resolveConfig } from '../config/resolve-run.ts';
-import { classifyError, ConfigurationError, E2EError, serializeError, type SerializedError } from 'e2e-core/lib/internal/errors';
+import { ConfigurationError, type SerializedError } from 'e2e-core/lib/internal/errors';
 import type { TestFixtures } from 'e2e-core/lib/types';
 import type { E2EConfig, Report } from '../run-types.ts';
 import { allocateTargetPorts } from './app-ports.ts';
-import { processSecrets, registerStaticSecrets } from 'e2e-core/lib/run/secrecy';
+import { registerStaticSecrets } from 'e2e-core/lib/run/secrecy';
 import { selectTarget } from './select-target.ts';
 import { openStandaloneHost } from './standalone-kinds.ts';
 import type { StepProgress, StepRecord } from 'e2e-core/lib/run/steps';
 import { reserveHostedRun } from './public-ownership.ts';
+import { redactOpening } from 'e2e-core/lib/run/redact-opening';
 
 export interface OpenHostOptions {
   /** Config search directory, or project root of a config value; default `process.cwd()`. */
@@ -120,25 +121,6 @@ async function openHostWorker<Fixtures extends object>(options: OpenHostOptions)
   } catch (cause) {
     release();
     throw cause;
-  }
-}
-
-/** Opening errors go straight to the external runner, never through a report writer. */
-async function redactOpening<T>(open: () => Promise<T>): Promise<T> {
-  try {
-    return await open();
-  } catch (cause) {
-    const classified = classifyError(cause);
-    const safe = serializeError(classified, { redact: processSecrets.redact });
-    // Arbitrary engine causes can carry non-text secret data; only the sanitized record crosses out.
-    const error = safe.category === 'configuration'
-      ? new ConfigurationError(safe.code, safe.message, safe.details === undefined ? {} : { details: safe.details })
-      : new E2EError(safe.category, safe.code, safe.message, {
-        retryable: safe.retryable, ...(safe.details === undefined ? {} : { details: safe.details }),
-      });
-    error.name = processSecrets.redact(classified.name);
-    if (safe.stack !== undefined) error.stack = safe.stack;
-    throw error;
   }
 }
 

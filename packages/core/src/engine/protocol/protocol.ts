@@ -61,6 +61,7 @@ export const METHODS = {
   'artifacts/startVideo': operation('artifacts.startVideo', ['operation']),
   'artifacts/stopVideo': operation('artifacts.stopVideo', ['operation']),
   'session/open': operation('session.open', ['url', 'operation']),
+  'session/openLink': operation('session.openLink', ['url', 'operation']),
   'session/back': operation('session.back', ['operation']),
   'session/resize': operation('session.resize', ['size', 'operation']),
   'session/switchTab': operation('session.switchTab', ['index', 'operation']),

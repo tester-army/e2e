@@ -5,6 +5,8 @@ export const credentialBrand: unique symbol = Symbol.for('e2e.credential');
 export const uniqueBrand: unique symbol = Symbol.for('e2e.unique');
 export const testCaseBrand: unique symbol = Symbol.for('e2e.testCase');
 export const engineBrand: unique symbol = Symbol.for('e2e.engine.v1');
+/** Type-only slot naming the fixtures an engine contributes; no handle carries a value under it. */
+export const engineFixtures: unique symbol = Symbol.for('e2e.engine.fixtures.v1');
 export const locatorBrand: unique symbol = Symbol.for('e2e.locator');
 /** Slot under which a fixture carries its attached expectation surface. */
 export const expectationBrand: unique symbol = Symbol.for('e2e.expectation.v1');

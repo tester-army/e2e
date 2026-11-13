@@ -187,7 +187,7 @@ export class StepAccounting {
 
   /** One engine operation: `actionTimeout`, capped by the step clock. */
   operation(): OperationContext {
-    return this.stamped(boundedOperation(this.runtime.engine, this.runtime.config.actionTimeout, this.deadline));
+    return this.stamped(boundedOperation(this.runtime.engine, this.runtime.engine.actionTimeout, this.deadline));
   }
 
   /**
@@ -198,7 +198,7 @@ export class StepAccounting {
    */
   actionOperation(): OperationContext {
     return this.stamped(
-      boundedOperation(this.runtime.engine, Math.min(this.runtime.config.actionTimeout, MAX_TARGETED_ACTION_MS), this.deadline),
+      boundedOperation(this.runtime.engine, Math.min(this.runtime.engine.actionTimeout, MAX_TARGETED_ACTION_MS), this.deadline),
     );
   }
 

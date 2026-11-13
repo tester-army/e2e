@@ -40,6 +40,7 @@ const runnerSessions: WorkerPolicy<TargetExecutor, never>['sessions'] = (options
 export function openStandaloneHost(options: StandaloneHostOptions): Promise<StandaloneHost<HostedReport>> {
   return openWorker<TargetExecutor, HostedReport>(options, {
     claimsEngine: true,
+    holdsRegistry: true,
     sessions: runnerSessions,
     identity: ({ target, config }, attemptId, agent, redactedName) => {
       // The directory is `host/<file>-<title>-<digest>`: the digest covers the
@@ -96,6 +97,7 @@ export async function openStandaloneAttempt(options: StandaloneAttemptOptions): 
   const { test } = options;
   const host = await openWorker<TargetExecutor, StandaloneTestRun | undefined>(options, {
     claimsEngine: false,
+    holdsRegistry: true,
     sessions: runnerSessions,
     identity: ({ target }, attemptId) => ({ testId: test?.pair.test.id ?? `session:${target.name}`, segments: ['mcp', `${target.name}-${attemptId}`] }),
     launched: ({ worker, attemptId, session, steps, artifacts, fixtureBase, signal, redact }) => {

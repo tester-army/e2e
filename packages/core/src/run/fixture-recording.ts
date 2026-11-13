@@ -8,7 +8,11 @@ export class FixtureRecorder {
   /** Every declared surface, keyed to the fixture (or namespace) name it was declared under. */
   private readonly declared = new WeakMap<object, string>();
 
-  constructor(private readonly environment: AttemptEnvironment) {}
+  constructor(
+    private readonly environment: AttemptEnvironment,
+    /** The default operation timeout, read per call: an `e2e-core` session's `setDefaultTimeout` moves it. */
+    private readonly actionTimeout: () => number = () => environment.config.actionTimeout,
+  ) {}
 
   /**
    * The surface a factory returned, which must be the one it declared through
@@ -75,7 +79,7 @@ export class FixtureRecorder {
       const own = timeout === false ? false : stepTimeout(timeout, api);
       const pending = withAbort(() => translated(label === '' ? api : `${api} ${label}`, body), environment.budget.signal, () => new TestError('CANCELLED', `${api} cancelled`));
       if (own === false) return pending;
-      const timeoutMs = own ?? environment.config.actionTimeout;
+      const timeoutMs = own ?? this.actionTimeout();
       return withTimeout(pending, timeoutMs, () => new TestError('ACTION_FAILED', `${api} exceeded its timeout of ${timeoutMs}ms`));
     }, { verifies: operation.verifies ?? operation.kind === 'assertion' });
   }

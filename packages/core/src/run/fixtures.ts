@@ -29,7 +29,7 @@ import {
   type ScreenContext,
   type SecretResolver,
 } from '../locator/screen.ts';
-import { engineAppInfo } from '../config/app.ts';
+import { engineAppInfo, joinLink, refusesLink } from '../config/app.ts';
 import type { ResolvedAgentConfig, ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
 import type { Agent, App, CommandConfig, Expectable, RecordingOptions, SetupSession, TestFixtures } from '../types.ts';
 import type { StepRecord, StepRecorder } from './steps.ts';
@@ -334,7 +334,7 @@ function contributedFixtures(
   const declared = environment.target.engine?.fixtures;
   if (declared === undefined) return {};
   const contributed: Record<string, unknown> = {};
-  const recorder = new FixtureRecorder(environment);
+  const recorder = new FixtureRecorder(environment, () => engine.actionTimeout);
   const context = fixtureContext(environment, engine, screenContext, recorder);
   for (const [name, factory] of Object.entries(declared)) {
     let instance: object | undefined;
@@ -367,10 +367,15 @@ function fixtureContext(
         return resolveNavigationUrl(url, app.base).url;
       },
     },
+    // Getters: an `e2e-core` session's `setDefaultTimeout` moves them under a live fixture.
     timeouts: {
       test: config.timeout,
-      action: config.actionTimeout,
-      assertion: config.assertionTimeout,
+      get action() {
+        return engine.actionTimeout;
+      },
+      get assertion() {
+        return engine.assertionTimeout;
+      },
     },
     // A getter, not a snapshot: the SPI promises the running phase's signal.
     get signal() {
@@ -403,7 +408,7 @@ function fixtureContext(
  * actually runs. Deterministic suites and custom-executor projects never pay
  * for it.
  */
-function lazyBuiltInAgent(config: ResolvedAgentConfig): StepExecutor {
+export function lazyBuiltInAgent(config: ResolvedAgentConfig): StepExecutor {
   let executor: StepExecutor | undefined;
   return {
     // Cache provenance and model policyVersion record this wrapper, not the
@@ -519,11 +524,18 @@ function createApp(environment: AttemptEnvironment, engine: LocatorEngine): App 
    * cannot launch, such as a build not installed yet.
    */
   const launchPinnedApp = (openPath: string | undefined): Promise<void> =>
-    steps.run('app', 'app.open', '', async () => {
+    steps.run('app', 'app.open', openPath ?? '', async () => {
+      const { linkBase } = target.app;
+      if (openPath !== undefined && linkBase !== undefined) {
+        const link = joinLink(linkBase, openPath);
+        if (refusesLink(link)) throw new ConfigurationError('POLICY_DENIED', `app.open() refuses the link's scheme on target "${target.name}"`);
+        await engine.session.app.openLink(link, engine.operation(config.timeout));
+        return;
+      }
       if (openPath !== undefined) {
         throw new ConfigurationError(
           'APP_URL_REQUIRED',
-          `app.open("${openPath}") needs an app URL and target "${target.name}" has none: on a device app.open() launches the pinned app, and a link goes through device.openLink`,
+          `app.open("${openPath}") needs an app URL and target "${target.name}" has none: on a device app.open() launches the pinned app; declare app.linkBase to open a path as a link in it, or open one through device.openLink`,
         );
       }
       if (target.engine?.session?.restart === undefined) {
@@ -571,7 +583,7 @@ function createApp(environment: AttemptEnvironment, engine: LocatorEngine): App 
 }
 
 /** Builds a value on first read and keeps it. */
-function lazily<T>(build: () => T): () => T {
+export function lazily<T>(build: () => T): () => T {
   let built: { value: T } | undefined;
   return () => (built ??= { value: build() }).value;
 }

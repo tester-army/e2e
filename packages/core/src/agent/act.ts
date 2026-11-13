@@ -24,8 +24,9 @@ import { join } from 'node:path';
 import { resolveVision } from '../config/agent.ts';
 import { ConfigurationError } from '../internal/errors.ts';
 import { withAbort, withTimeout } from '../internal/time.ts';
-import type { ActionHook, ActOptions, AssertOptions, BeforeActionHook, ActResult, AgentErrorCode, JsonValue, ModelInstance, Secret, VisionMode } from '../types.ts';
+import type { ActionHook, ActOptions, AssertOptions, BeforeActionHook, ActResult, AgentErrorCode, JsonValue, ModelInstance, ProposedAction, Secret, VisionMode } from '../types.ts';
 import { AgentError, CATEGORY_BY_CODE, toAgentError } from './error.ts';
+import { GuardStop } from './guard.ts';
 import { redactParams, validateActOptions, validateInstruction, validateParams, validateVerdict } from './act-validation.ts';
 import { ActionDispatcher } from './action-dispatcher.ts';
 import { resolveBoundedBudget, resolveTimeout } from './call-options.ts';
@@ -182,6 +183,11 @@ export async function dispatchAgentStep(
       try {
         verdict = await dispatch.run();
       } catch (cause) {
+        // A guard's stop is the step's end, not its failure: what the agent did stands and is recorded.
+        if (spec.kind === 'act' && dispatch.stopped !== undefined) {
+          await dispatch.conclude('passed');
+          return dispatch.result();
+        }
         const error = unservedModelError(cause) ?? toAgentError(cause);
         if (isUnservedModelError(error)) runtime.reportUnservedModel(error);
         throw dispatch.settleThrown(error);
@@ -389,7 +395,27 @@ class ActDispatch {
   /** Hands the settled outcome to the cache session, which stages, evicts, or does nothing. */
   async conclude(outcome: StepOutcome): Promise<void> {
     const model = this.agent.config.model;
-    await this.stepCache?.conclude(outcome, this.explanation, model === undefined ? undefined : { provider: model.provider, model: model.id });
+    const stoppedOn = this.guardStop?.screen;
+    if (this.stepCache !== undefined && stoppedOn !== undefined) this.stepCache.stoppedScreen = screenOf(stoppedOn, this.runtime.app.base?.origin);
+    await this.stepCache?.conclude(
+      outcome,
+      this.explanation,
+      model === undefined ? undefined : { provider: model.provider, model: model.id },
+      this.guardStop?.action,
+    );
+  }
+
+  /** The guard's stop the agent ran into, live; the explanation becomes the stop. */
+  private get guardStop(): GuardStop | undefined {
+    const hardStop = this.accounting.hardStop;
+    if (!(hardStop instanceof GuardStop)) return undefined;
+    this.explanation ??= hardStop.message;
+    return hardStop;
+  }
+
+  /** The action a guard stopped this step before: live, or as the replayed recording stopped. */
+  get stopped(): ProposedAction | undefined {
+    return this.guardStop?.action ?? this.stepCache?.replayedStop;
   }
 
   /**
@@ -487,12 +513,14 @@ class ActDispatch {
   /** What the settled step did, for the caller of `agent.act()`. */
   result(): ActResult {
     const cache = this.stepCache?.cacheInfo;
-    return {
+    const stopped = this.stopped;
+    const outcome = {
       summary: this.explanation ?? '',
       ...(cache === undefined ? {} : { cache }),
       modelCalls: this.accounting.metrics.modelCalls,
       actions: this.accounting.metrics.actionSteps,
     };
+    return stopped === undefined ? { status: 'done', ...outcome } : { status: 'stopped', stoppedAt: stopped, ...outcome };
   }
 
   /** Closes the books and attaches metrics, model provenance, and the verdict explanation to the step. */

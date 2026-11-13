@@ -21,7 +21,7 @@
  * of silently demoting itself to a lower tier.
  */
 
-import { engineBrand } from '../internal/brands.ts';
+import { engineBrand, engineFixtures } from '../internal/brands.ts';
 
 // Semantics the spec requires every engine and contributed fixture to
 // reproduce exactly, exported so an engine never carries its own copy: the
@@ -45,7 +45,7 @@ export type {
   ProviderRecordingTarget,
 } from './recording.ts';
 export { Deadline, pollCondition, stepTimeout, withTimeout, withinCleanupBudget, type PollConditionOptions } from '../internal/time.ts';
-export { sameSite, siteOf, urlMatches } from '../internal/urls.ts';
+export { isRefusedLinkScheme, sameSite, siteOf, urlMatches } from '../internal/urls.ts';
 export { obj, type WithoutUndefined } from '../internal/objects.ts';
 import type { AppPermissionState, Expectable, Locator, Screen, Secret } from '../types.ts';
 import type {
@@ -361,6 +361,13 @@ export interface EngineSession {
    * origin policy. Absent on a surface without addressable locations.
    */
   open?(url: string, context: OperationContext): Promise<void>;
+  /**
+   * Opens a link in the app under test, as a deep link or a universal link
+   * would: `app.open(path)` on a target that declares `app.linkBase` lands
+   * here with the link joined and its scheme checked. A device engine's hook;
+   * a target whose engine lacks it cannot declare `linkBase`.
+   */
+  openLink?(url: string, context: OperationContext): Promise<void>;
   /** Navigates back once in the surface's history. */
   back?(context: OperationContext): Promise<void>;
   /** Sets the viewport to `size` in CSS pixels, for this page and every page the attempt opens after it. */
@@ -932,10 +939,16 @@ export interface Engine {
   dispose?(context: EngineDisposeContext): Promise<void>;
 }
 
-/** A validated engine: branded, frozen, capabilities computed. */
-export interface EngineHandle extends Engine {
+/**
+ * A validated engine: branded, frozen, capabilities computed. `Fixtures` names
+ * what its `fixtures` contribute (`{ browser: Browser }`), so `launch` from
+ * `e2e-core` types a session without a hand-written argument. It is a type
+ * only: no handle carries a value under `engineFixtures`.
+ */
+export interface EngineHandle<Fixtures extends object = {}> extends Engine {
   readonly [engineBrand]: true;
   readonly capabilities: ReadonlySet<EngineCapability>;
+  readonly [engineFixtures]?: Fixtures;
 }
 
 export { defineEngine, isEngineHandle } from './manifest.ts';

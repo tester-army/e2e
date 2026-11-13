@@ -274,8 +274,87 @@ export interface BeforeActionEvent {
   readonly source: 'model' | 'replay';
 }
 
-/** What one passing `act` step did, as the report records it. */
-export interface ActResult {
+/** The node an action lands on, as a guard reads it. */
+export interface GuardNode {
+  readonly role: string;
+  readonly name: string;
+  readonly testId?: string;
+}
+
+/** One action the agent is about to take, as a guard reads it. */
+export interface ProposedAction {
+  /** The action, by the name `onAction` reports it under: `tap`, `type`, `pressKey`, `tapAt`, or `tool:<name>` for a mutating project tool. */
+  readonly kind: GuardedActionName;
+  /**
+   * The node it lands on: the target of a node action, the node under the
+   * point of a point action, the focused node of a keyboard action. Absent
+   * when there is none.
+   */
+  readonly node?: GuardNode;
+  /** The screen's location when the action was proposed: a URL on the web; absent where the engine reports none. */
+  readonly url?: string;
+  /** Where a `navigate` goes, resolved against the app's URL. */
+  readonly destination?: string;
+  /** The key of a `press` or `pressKey`. */
+  readonly key?: string;
+}
+
+/** An action a guard rule names: a grammar action, or `tool:<name>` for a mutating project tool. */
+export type GuardedActionName = ActionName | `${typeof PROJECT_TOOL_EVENT_PREFIX}${string}`;
+
+/**
+ * One rule. Every field it sets must match; a rule that sets none matches
+ * every action. Text fields match like `getByRole`: a string exactly, a
+ * RegExp by its own flags.
+ */
+export interface GuardRule {
+  readonly role?: Role;
+  readonly name?: TextMatch;
+  readonly text?: TextMatch;
+  readonly testId?: TextMatch;
+  /** The screen's location when the action is proposed. */
+  readonly url?: TextMatch;
+  /** Where a `navigate` goes; never matches another action. */
+  readonly destination?: TextMatch;
+  /** The key of a `press` or `pressKey`, as the key grammar spells it: `Enter`, `Control+s`. */
+  readonly key?: string;
+  /** The actions the rule covers; every action when omitted. */
+  readonly actions?: readonly GuardedActionName[];
+}
+
+export type GuardDecision = 'allow' | 'deny' | 'stop';
+
+/** What the agent may not do on its own. */
+export interface Guard {
+  /** Actions that end `act` before they run, with `status: 'stopped'`; the program takes over. */
+  readonly stop?: readonly GuardRule[];
+  /** Actions refused with `POLICY_DENIED`; the model reads the refusal and plans around it. */
+  readonly deny?: readonly GuardRule[];
+  /** Decides what the rules allowed; awaited before the action. A throw fails the step. */
+  readonly check?: (action: ProposedAction) => GuardDecision | Promise<GuardDecision>;
+  /**
+   * An action whose target the guard cannot name: a point action that lands
+   * on no control the screen lists (a canvas, a bare container), or a
+   * mutating project tool. `deny` (the default while any rule or `check` is
+   * set) or `allow`. Fails closed: a rule that cannot see the target cannot
+   * clear it.
+   */
+  readonly unidentified?: 'deny' | 'allow';
+}
+
+/**
+ * What one passing `act` step did, as the report records it. `status` is
+ * `done` when the step finished, and `stopped` when an `e2e-core` agent's
+ * guard stopped it before an action, for the program to take over; only a
+ * guard stops a step, and `stoppedAt` is the action it stopped before.
+ */
+export type ActResult = ActOutcome & (
+  | { readonly status: 'done'; readonly stoppedAt?: never }
+  | { readonly status: 'stopped'; readonly stoppedAt: ProposedAction }
+);
+
+/** What every passing `act` step reports, whatever its `status`. */
+export interface ActOutcome {
   /** The executor's one-line account of the step, or the replay's when the cache finished it. */
   readonly summary: string;
   /** How the replay cache took part; absent when caching is off for the step. */
@@ -1233,6 +1312,15 @@ export interface TargetApp {
    */
   bundleId?: string | undefined;
   /**
+   * Where `app.open(path)` opens on a device target: the link base a path
+   * joins, so `app.open('/orders/42')` opens `https://shop.example.com/orders/42`
+   * (a universal or App Link) or, with `shopapp://`, `shopapp://orders/42`
+   * (a custom scheme), in the pinned app. Only a target whose engine opens
+   * links takes it; `file:`, `data:`, `javascript:`, `view-source:`, `blob:`,
+   * and `filesystem:` are refused.
+   */
+  linkBase?: string | undefined;
+  /**
    * The build a device target runs against, an iOS `.app` bundle or an
    * Android `.apk`, resolved against the project root. Without `bundleId`,
    * the app it installs is the one launched.
@@ -1548,8 +1636,8 @@ export type AgentConfig = AgentOptions &
 
 /**
  * The project half of `E2EConfig`: targets, agents, the replay cache,
- * secrets, budgets, and output, which `resolveProjectConfig` resolves;
- * `E2EConfig` adds the runner's reporters and test filters.
+ * secrets, budgets, and output. The test runner and `e2e-core` both resolve
+ * it; `E2EConfig` adds the runner's reporters and test filters.
  */
 export interface ProjectConfig {
   /** Stable project id, 1 through 256 characters; defaults to the root `package.json` name. */

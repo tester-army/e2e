@@ -1,7 +1,8 @@
 /**
- * The worker a hosted test runner or the one-shot MCP path keeps alive
- * between attempts. What differs by kind is a `WorkerPolicy`; the runner's
- * kinds are in `standalone-kinds.ts`.
+ * The worker an `e2e-core` host, a hosted test runner, or the one-shot MCP
+ * path keeps alive between attempts. What differs by kind is a
+ * `WorkerPolicy`: `openCoreHost` here, the runner's kinds in
+ * `standalone-kinds.ts`.
  */
 
 import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
@@ -10,7 +11,7 @@ import { classifyError, InfrastructureError, serializeError, type SerializedErro
 import { realmSlot } from '../internal/realm-slot.ts';
 import { uuidv7 } from '../internal/ids.ts';
 import { holdSecretRegistry } from '../secrets.ts';
-import type { EngineSessions, EngineSessionsOptions } from './engine-sessions.ts';
+import { EngineSessions, type EngineSessionsOptions } from './engine-sessions.ts';
 import type { AppProcesses } from './managed-process.ts';
 import { outputLayout } from './output.ts';
 import type { ProcessPool } from './process-pool.ts';
@@ -39,10 +40,12 @@ export interface StandaloneHost<Extra = unknown> {
   close(): Promise<readonly SerializedError[]>;
 }
 
-/** What a kind of worker adds: who owns the engine, and what runs its sessions. */
+/** What a kind of worker adds: who owns the engine, the secret registry, and what runs its sessions. */
 export interface WorkerPolicy<Sessions extends EngineSessions = EngineSessions, Extra = undefined> extends AttemptPolicy<Sessions, Extra> {
   /** Whether the worker claims its engine instance against other hosts until a clean teardown. */
   readonly claimsEngine: boolean;
+  /** Whether the worker holds the process secret registry, which the test runner's `secrets` read. */
+  readonly holdsRegistry: boolean;
   /** The worker's engine sessions, given where its results go. */
   sessions(options: EngineSessionsOptions & { readonly artifactsRoot: string }): Sessions;
 }
@@ -81,6 +84,20 @@ function claimEngine(engine: object | undefined): () => void {
   return () => owners().delete(engine);
 }
 
+/**
+ * An `e2e-core` host: a worker whose sessions publish nothing to `globalThis`
+ * and hold no process-wide secret registry, so any number of hosts coexist in
+ * one process. It owns its engine instance.
+ */
+export function openCoreHost(options: StandaloneHostOptions): Promise<StandaloneHost> {
+  return openWorker(options, {
+    claimsEngine: true,
+    holdsRegistry: false,
+    sessions: (sessionOptions) => new EngineSessions(sessionOptions),
+    identity: ({ target }, attemptId) => ({ testId: `core:${attemptId}`, segments: ['core', `${target.name}-${attemptId}`] }),
+  });
+}
+
 /** Prepares, starts app processes, and initializes one worker of the policy's kind. */
 export async function openWorker<Sessions extends EngineSessions, Extra>(
   options: StandaloneHostOptions,
@@ -98,7 +115,8 @@ export async function openWorker<Sessions extends EngineSessions, Extra>(
   for (const message of recordingNotices([{ target, pairs: [] }], new Map([[target.name, grade]]))) notice(target.name, message);
   refuseOwnedEngine(target.engine);
   const releaseEngine = policy.claimsEngine ? claimEngine(target.engine) : () => undefined;
-  const releaseRegistry = holdSecretRegistry(config);
+  // A core host resolves its secrets against its own config alone: nothing reads the process registry.
+  const releaseRegistry = policy.holdsRegistry ? holdSecretRegistry(config) : () => undefined;
   const engines = new PreparedEngines();
   const layout = outputLayout(config.output);
   const sessionStore = SessionStore.create(runId, layout.sessions);
