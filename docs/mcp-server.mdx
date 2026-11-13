@@ -25,7 +25,7 @@ step with no recording.
 
 ## Set it up
 
-The [e2e plugin](/coding-agents) includes the server as `npx -y e2e mcp`.
+The [e2e plugin](/coding-agents) includes the server as `npx -y e2e@<version> mcp`, pinned to the plugin's e2e release. It runs that release even when the project has another e2e version installed.
 Without the plugin, register it in the project. `e2e init` offers to register the server in `.mcp.json` (Claude Code),
 `.cursor/mcp.json` (Cursor), and `.codex/config.toml` (Codex). Install the
 project dependencies and start the MCP client in the project directory so
