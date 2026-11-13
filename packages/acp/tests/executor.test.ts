@@ -1,6 +1,7 @@
 import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
+import { setImmediate } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { AgentError, type ExecutorActions, type ExecutorModelCall, type StepExecutorContext } from 'e2e';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -364,6 +365,25 @@ describe('acp', () => {
     await expect(run).rejects.toMatchObject({ code: 'STEP_TIMEOUT' });
     const second = context({ attempt: { attempt: first.ctx.attempt as never, end: first.end } });
     await expect(executor.runStep(second.ctx)).rejects.toMatchObject({ code: 'MODEL_PROVIDER_FAILED', message: expect.stringContaining('did not stop') });
+  });
+
+  it('preserves cancellation while waiting for the previous turn to stop', async () => {
+    const { executor, log } = scripted([[{ ignoreCancel: true }], [pass]]);
+    const first = context();
+    cleanups.push(first.end);
+    const run = executor.runStep(first.ctx);
+    await eventually(() => expect(log().filter((entry) => 'prompt' in entry)).toHaveLength(1));
+    first.abortStep(new AgentError('STEP_TIMEOUT', 'the first step timed out'));
+    await expect(run).rejects.toMatchObject({ code: 'STEP_TIMEOUT' });
+
+    const second = context({ attempt: { attempt: first.ctx.attempt as never, end: first.end } });
+    const next = executor.runStep(second.ctx);
+    await setImmediate();
+    const reason = new AgentError('STEP_TIMEOUT', 'the next step timed out');
+    second.abortStep(reason);
+    await expect(next).rejects.toBe(reason);
+    expect(second.ctx.observe).not.toHaveBeenCalled();
+    expect(log().filter((entry) => 'prompt' in entry)).toHaveLength(1);
   });
 
   it('allows only calls the adapter names as one of the step tools, never by text the agent wrote', async () => {

@@ -58,6 +58,8 @@ install `@e2e-dev/acp` and its adapter, and put
 `executor`; no model provider is needed. See the shipped `docs/subscriptions.mdx` or
 [the online guide](https://e2e.com/docs/subscriptions#use-your-coding-agent).
 
+A step's timeout also cancels its wait for the previous ACP turn to stop.
+
 - Pass a model instance, not a string (`INVALID_CONFIG`).
 - An agents entry is one plain object of `model`, `judge`, `system`,
   `context`, `tools`, `maxSteps`, `maxModelCalls`, `judgmentTimeout`,
