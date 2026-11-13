@@ -33,13 +33,13 @@ const BLOCK_OPENER = /^(\d{1,9})([.)])(?=\s|$)|^[#+=_-]/;
 /**
  * Text safe inside a table cell, a list item, or at the start of a line: one
  * line, clipped by code point so an emoji at the cut survives whole, markdown
- * that could open a construct escaped, angle brackets as entities so no HTML
- * gets through, and the cell separator escaped. A token GitHub would link on
- * its own (a mention, an issue number, a URL) is shown as code, the one
- * rendering GitHub's autolink filters leave alone, so screen text from the
- * app under test cannot notify anyone or plant a link in a pull request
- * comment. An underscore stays: inside a word GitHub never reads it as
- * emphasis, and error codes are full of them.
+ * that could open a construct escaped, ampersands and angle brackets as
+ * entities so no HTML or entity gets through, and the cell separator
+ * escaped. A token GitHub would link on its own (a mention, an issue number,
+ * a URL) is shown as code, the one rendering GitHub's autolink filters leave
+ * alone, so screen text from the app under test cannot notify anyone or plant
+ * a link in a pull request comment. An underscore stays: inside a word GitHub
+ * never reads it as emphasis, and error codes are full of them.
  */
 export function cell(text: string, max = MAX_CELL_CHARS): string {
   const line = ellipsize(collapseText(text), max)
@@ -51,10 +51,16 @@ export function cell(text: string, max = MAX_CELL_CHARS): string {
   );
 }
 
-/** Inline markdown a token could open, escaped; angle brackets become entities. */
+/**
+ * Inline markdown a token could open, escaped; ampersands and angle brackets
+ * become entities. The ampersand goes first, so the entities this writes are
+ * not escaped again and text that already reads as an entity (`&copy;`) shows
+ * as written instead of rendering as the character.
+ */
 function escapeInline(text: string): string {
   return text
     .replace(/[\\`*[\]~|]/g, (char) => `\\${char}`)
+    .replaceAll('&', '&amp;')
     .replaceAll('<', '&lt;')
     .replaceAll('>', '&gt;');
 }
