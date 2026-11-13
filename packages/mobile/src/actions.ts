@@ -52,7 +52,7 @@ export const DEVICE_POINTER_ACTIONS: readonly PointerActionKind[] = ['tap', 'dou
  * actions do; `stabilization` is the post-gesture option a swipe carries.
  * A double tap is two presses (`count: 2`), as it is on a node:
  * agent-device's own double-tap gesture reaches a React Native `Pressable`
- * on iOS as one press, while two presses in a row land about 285 ms apart.
+ * on iOS as one press, while two presses in a row land about 285 to 335 ms apart.
  * The kinds outside `DEVICE_POINTER_ACTIONS` never arrive: the harness
  * routes only declared kinds. They are refused here so the switch stays
  * exhaustive against the contract.
