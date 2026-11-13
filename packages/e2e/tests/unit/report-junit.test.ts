@@ -357,6 +357,26 @@ describe('renderJunitReport', () => {
     expect(xml).not.toContain('');
   });
 
+  it('keeps a carriage return in an attribute as a character reference', () => {
+    const xml = render(
+      reportDocument({
+        results: [
+          reportResult({
+            status: 'failed',
+            attempts: [
+              reportAttempt({
+                status: 'failed',
+                error: reportError({ message: 'line one\r\nline two' }),
+              }),
+            ],
+          }),
+        ],
+      }),
+    );
+    expect(xml).toContain('message="line one&#13;&#10;line two"');
+    expect(xml).not.toContain('&#13;�');
+  });
+
   it('replaces XML-forbidden noncharacters and lone surrogates in text and attributes', () => {
     const lonePair = '\ud83d\ude00';
     const xml = render(
