@@ -156,12 +156,15 @@ function resolveEntry(name: string, lookup: EngineLookup, role: 'engine' | 'opti
     const directory = installedAt(installable, root);
     if (directory === undefined) continue;
     try {
-      // The file need not exist: it only says which node_modules directories to walk.
-      return createRequire(path.join(root, 'package.json')).resolve(name);
+      // The entry is loaded with `import()`, so the `import` entry wins over the one `require` conditions pick.
+      const imported = importEntry(directory, name.slice(installable.length));
+      if (imported === undefined) {
+        // The file need not exist: it only says which node_modules directories to walk.
+        return createRequire(path.join(root, 'package.json')).resolve(name);
+      }
+      if (!existsSync(imported)) throw new Error(`Cannot find module '${imported}'`);
+      return imported;
     } catch (cause) {
-      // `require` conditions miss an entry a package exports to `import` alone.
-      const imported = (cause as NodeJS.ErrnoException).code === 'ERR_PACKAGE_PATH_NOT_EXPORTED' ? importEntry(directory, name.slice(installable.length)) : undefined;
-      if (imported !== undefined) return imported;
       throw new ConfigurationError('INVALID_CONFIG', `package ${name} is installed at ${directory} but its entry cannot be resolved: ${errorMessage(cause)}`, { cause });
     }
   }

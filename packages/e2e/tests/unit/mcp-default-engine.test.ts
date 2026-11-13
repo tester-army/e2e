@@ -49,6 +49,17 @@ describe('loadEngine', () => {
     expect(await loadEngine({ package: 'esm-only/web' }, lookup)).toMatchObject({ name: 'from-subpath' });
   });
 
+  it('loads the import entry of a package that exports separate import and require entries', async () => {
+    install(lookup.cwd, 'dual', FACTORY.replace("'fake'", "'from-import'"));
+    const packageDir = path.join(lookup.cwd, 'node_modules', 'dual');
+    const exports = { '.': { types: './index.d.ts', import: './index.js', require: './index.cjs' }, './web': { require: './web.cjs', import: './web.js' } };
+    writeFileSync(path.join(packageDir, 'package.json'), JSON.stringify({ name: 'dual', type: 'module', exports }));
+    writeFileSync(path.join(packageDir, 'web.js'), FACTORY.replace("'fake'", "'from-import'"));
+    for (const file of ['index.cjs', 'web.cjs']) writeFileSync(path.join(packageDir, file), `module.exports = () => ({ [Symbol.for('e2e.engine.v1')]: true, spiVersion: 1, name: 'from-require' });\n`);
+    expect(await loadEngine({ package: 'dual' }, lookup)).toMatchObject({ name: 'from-import' });
+    expect(await loadEngine({ package: 'dual/web' }, lookup)).toMatchObject({ name: 'from-import' });
+  });
+
   it('makes the factory calls among the options first, so an engine gets a provider JSON cannot carry', async () => {
     install(lookup.cwd, 'engine', FACTORY);
     install(lookup.enginesDir, 'cloud', `export const devices = (options) => ({ name: 'cloud', region: options?.region, acquire: () => 'leased' });\n`);
