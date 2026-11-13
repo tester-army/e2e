@@ -1,6 +1,6 @@
 {
   "name": "@e2e-dev/browser-run",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Cloudflare Browser Run hosted Chromium for e2e web targets",
   "keywords": [
     "e2e",

@@ -1,6 +1,6 @@
 {
   "name": "@e2e-dev/html-reporter",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "description": "HTML reporter for e2e: one self-contained page per run, steps, screenshots, and video",
   "keywords": [
     "e2e",
