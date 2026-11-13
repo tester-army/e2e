@@ -191,8 +191,29 @@ function importEntry(directory: string, subpath: string): string | undefined {
   const exports = typeof manifest === 'object' && manifest !== null && 'exports' in manifest ? manifest.exports : undefined;
   const key = `.${subpath}`;
   const keyed = typeof exports === 'object' && exports !== null && !Array.isArray(exports) && Object.keys(exports).some((entry) => entry.startsWith('.'));
-  const target = importTarget(keyed ? (exports as Record<string, unknown>)[key] : key === '.' ? exports : undefined);
-  return target === undefined ? undefined : path.join(directory, target);
+  if (!keyed) {
+    const target = key === '.' ? importTarget(exports) : undefined;
+    return target === undefined ? undefined : path.join(directory, target);
+  }
+  const entries = exports as Record<string, unknown>;
+  if (Object.hasOwn(entries, key) && !key.includes('*')) {
+    const target = importTarget(entries[key]);
+    return target === undefined ? undefined : path.join(directory, target);
+  }
+  // A `./*` style pattern: Node.js picks the matching key with the longest part before `*`, then the longest key, and puts the matched text in place of every `*` in the target.
+  let best: { pattern: string; match: string } | undefined;
+  for (const pattern of Object.keys(entries)) {
+    const star = pattern.indexOf('*');
+    if (star === -1 || star !== pattern.lastIndexOf('*')) continue;
+    const prefix = pattern.slice(0, star);
+    const suffix = pattern.slice(star + 1);
+    if (key.length < pattern.length || !key.startsWith(prefix) || !key.endsWith(suffix)) continue;
+    if (best !== undefined && (prefix.length < best.pattern.indexOf('*') || (prefix.length === best.pattern.indexOf('*') && pattern.length <= best.pattern.length))) continue;
+    best = { pattern, match: key.slice(star, key.length - suffix.length) };
+  }
+  if (best === undefined) return undefined;
+  const target = importTarget(entries[best.pattern]);
+  return target === undefined ? undefined : path.join(directory, target.replaceAll('*', best.match));
 }
 
 /** The first target an `import` of this `exports` value selects: a path, or the first matching condition's, in the order written. */

@@ -60,6 +60,25 @@ describe('loadEngine', () => {
     expect(await loadEngine({ package: 'dual/web' }, lookup)).toMatchObject({ name: 'from-import' });
   });
 
+  it('loads the import entry of a subpath that only a wildcard export pattern matches', async () => {
+    install(lookup.cwd, 'patterned', FACTORY);
+    const packageDir = path.join(lookup.cwd, 'node_modules', 'patterned');
+    const exports = {
+      '.': './index.js',
+      './*': { require: './cjs/*.cjs', import: './esm/*.js' },
+      './engines/*': { require: './cjs/engines/*.cjs', import: './esm/engines/*.js' },
+    };
+    writeFileSync(path.join(packageDir, 'package.json'), JSON.stringify({ name: 'patterned', type: 'module', exports }));
+    const cjs = (name: string) => `module.exports = () => ({ [Symbol.for('e2e.engine.v1')]: true, spiVersion: 1, name: '${name}' });\n`;
+    for (const dir of ['esm/engines', 'cjs/engines']) mkdirSync(path.join(packageDir, dir), { recursive: true });
+    writeFileSync(path.join(packageDir, 'esm', 'web.js'), FACTORY.replace("'fake'", "'from-import'"));
+    writeFileSync(path.join(packageDir, 'esm', 'engines', 'kiosk.js'), FACTORY.replace("'fake'", "'from-longest-pattern'"));
+    writeFileSync(path.join(packageDir, 'cjs', 'web.cjs'), cjs('from-require'));
+    writeFileSync(path.join(packageDir, 'cjs', 'engines', 'kiosk.cjs'), cjs('from-require'));
+    expect(await loadEngine({ package: 'patterned/web' }, lookup)).toMatchObject({ name: 'from-import' });
+    expect(await loadEngine({ package: 'patterned/engines/kiosk' }, lookup)).toMatchObject({ name: 'from-longest-pattern' });
+  });
+
   it('makes the factory calls among the options first, so an engine gets a provider JSON cannot carry', async () => {
     install(lookup.cwd, 'engine', FACTORY);
     install(lookup.enginesDir, 'cloud', `export const devices = (options) => ({ name: 'cloud', region: options?.region, acquire: () => 'leased' });\n`);
