@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { checkStepClock, instrumentPhase, retryingObserve } from '../../src/agent/phases.ts';
-import type { Observation } from '../../src/engine/surface.ts';
-import { Deadline } from '../../src/internal/time.ts';
-import { StepRecorder } from '../../src/run/steps.ts';
+import { checkStepClock, instrumentPhase, retryingObserve } from 'e2e-core/lib/agent/phases';
+import type { Observation } from 'e2e-core/lib/engine/surface';
+import { Deadline } from 'e2e-core/lib/internal/time';
+import { StepRecorder } from 'e2e-core/lib/run/steps';
 
 /**
  * An `EngineError` the way an engine loaded from a config file throws it:

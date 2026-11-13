@@ -9,7 +9,7 @@
  * listeners `subscribe` registered, as `ExploreProgress`.
  */
 
-import { timestamp, uuidv7 } from '../internal/ids.ts';
+import { timestamp, uuidv7 } from 'e2e-core/lib/internal/ids';
 import type { ReportExplore, ReportExploreChange, ReportExploreFinding, ReportExploreStep } from '../report/build.ts';
 import type { ExploreBudgets, ExploreListener, ExploreProgress, OpenedStep } from './progress.ts';
 

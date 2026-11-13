@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { loadAiSdk } from '../../src/agent/ai-sdk.ts';
-import { failureHint } from '../../src/agent/model/sdk.ts';
+import { loadAiSdk } from 'e2e-core/lib/agent/ai-sdk';
+import { failureHint } from 'e2e-core/lib/agent/model/sdk';
 
 const { APICallError, RetryError } = await loadAiSdk();
 

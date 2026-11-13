@@ -4,20 +4,20 @@ import path from 'node:path';
 import type { Collection } from '../collect/collect.ts';
 import { select, type Selection, type SelectionFilters, type TestExclusion, type TestTargetPair } from '../collect/select.ts';
 import type { ResolvedRunConfig } from '../config/resolve-run.ts';
-import { describeValue } from '../config/validate.ts';
-import { leaveWorkBehind } from '../internal/abandoned.ts';
-import { E2EError, errorMessage } from '../internal/errors.ts';
-import { isPlainObject } from '../internal/options.ts';
-import { onDiskPath } from '../internal/paths.ts';
-import { collapseText } from '../internal/text.ts';
-import { budgetText, withAbort } from '../internal/time.ts';
+import { describeValue } from 'e2e-core/lib/config/validate';
+import { leaveWorkBehind } from 'e2e-core/lib/internal/abandoned';
+import { E2EError, errorMessage } from 'e2e-core/lib/internal/errors';
+import { isPlainObject } from 'e2e-core/lib/internal/options';
+import { onDiskPath } from 'e2e-core/lib/internal/paths';
+import { collapseText } from 'e2e-core/lib/internal/text';
+import { budgetText, withAbort } from 'e2e-core/lib/internal/time';
 import { compareTests, type FilterOutcome, type ReportChanges, type ReportFilter } from '../report/build.ts';
 import { ellipsize, filterDecision, shortCommit } from '../report/format.ts';
 import { plural } from '../report/markdown-text.ts';
 import { leftOutTests } from '../report/left-out.ts';
 import type { TestFilter, TestFilterCandidate, TestFilterChanges, TestFilterContext } from '../run-types.ts';
 import { findChanges } from './changes.ts';
-import { staticSecretLedger } from './secrecy.ts';
+import { staticSecretLedger } from 'e2e-core/lib/run/secrecy';
 import { relevanceBand } from './units.ts';
 
 /** What `filterSelection` judges a selection with, and where each line about what the gate and the filters decided goes. */

@@ -11,7 +11,7 @@
  * (`view-source:file:...`, `blob:`, `filesystem:`) that carry one inside.
  */
 
-import { ConfigurationError, TestError } from 'e2e/engine';
+import { ConfigurationError, TestError } from 'e2e-core/engine';
 
 const FORBIDDEN_PROTOCOLS = new Set(['file:', 'data:', 'javascript:', 'view-source:', 'blob:', 'filesystem:']);
 

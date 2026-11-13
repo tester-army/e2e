@@ -1,7 +1,7 @@
 /** The attempt secret ledger: live registration and rotation-safe redaction. */
 
 import { describe, expect, it } from 'vitest';
-import { SecretLedger, StreamRedactor } from '../../src/internal/redact.ts';
+import { SecretLedger, StreamRedactor } from 'e2e-core/lib/internal/redact';
 import { redactResult, textResult } from '../../src/mcp/tools.ts';
 
 describe('SecretLedger', () => {

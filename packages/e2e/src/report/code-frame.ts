@@ -5,7 +5,7 @@
  */
 
 import { readFileSync } from 'node:fs';
-import { userFrame, type StackFrame } from '../internal/source.ts';
+import { userFrame, type StackFrame } from 'e2e-core/lib/internal/source';
 import { bounded, fitColumns, terminalColumns, visibleWidth, type Colors } from './format.ts';
 
 export { userFrame, type StackFrame };

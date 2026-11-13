@@ -8,8 +8,8 @@
  * `dist` next to a runner on `src`, or a nested install).
  */
 
-import { currentAttempt } from '../expect/attempt.ts';
-import { CollectionError, TestError } from './errors.ts';
+import { currentAttempt } from 'e2e-core/lib/expect/attempt';
+import { CollectionError, TestError } from 'e2e-core/lib/internal/errors';
 
 const runtimeSkipBrand: unique symbol = Symbol.for('e2e.runtimeSkip.v1');
 

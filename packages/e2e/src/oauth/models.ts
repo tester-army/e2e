@@ -2,7 +2,7 @@
 
 import { OAuthError } from './errors.ts';
 import { createOAuthFetch } from './fetch.ts';
-import { USER_AGENT } from '../internal/client-identity.ts';
+import { USER_AGENT } from 'e2e-core/lib/internal/client-identity';
 import { credentialSource, getProvider, type ProviderId } from './providers.ts';
 import type { CredentialStore, SubscriptionModel } from './types.ts';
 

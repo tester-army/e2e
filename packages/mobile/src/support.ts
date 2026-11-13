@@ -1,7 +1,7 @@
 /** Shared helpers for the agent-device engine: error constructors, filenames, PNG headers, gestures, the screen location and size. */
 
 import type { CaptureScreenshotResult, PressOptions } from 'agent-device';
-import { EngineError, withTimeout, type Momentum, type ScrollDirection, type ViewportSize } from 'e2e/engine';
+import { EngineError, withTimeout, type Momentum, type ScrollDirection, type ViewportSize } from 'e2e-core/engine';
 import type { AgentDeviceClient } from './options.ts';
 
 export interface Point {

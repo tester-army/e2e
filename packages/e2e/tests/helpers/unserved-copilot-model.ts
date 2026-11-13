@@ -1,9 +1,9 @@
 /** A Copilot-shaped failure and model the account cannot use, marked as `copilot()` marks a refusal; a worker-path config file imports it. */
 
 import { APICallError } from '@ai-sdk/provider';
-import { markUnservedModel } from '../../src/internal/unserved-model.ts';
+import { markUnservedModel } from 'e2e-core/lib/internal/unserved-model';
 import { copilotRefusal } from '../../src/oauth/providers/github-copilot.ts';
-import type { ModelInstance } from '../../src/types.ts';
+import type { ModelInstance } from 'e2e-core/lib/types';
 import { createScriptedInstance } from './scripted-model.ts';
 
 const REFUSED_MODEL_ID = 'claude-haiku-4.5';

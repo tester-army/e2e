@@ -10,9 +10,9 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { ArtifactStore, StoredArtifact } from '../../src/types.ts';
-import { SecretLedger } from '../../src/internal/redact.ts';
-import { createAttemptArtifacts } from '../../src/run/artifacts.ts';
+import type { ArtifactStore, StoredArtifact } from 'e2e-core/lib/types';
+import { SecretLedger } from 'e2e-core/lib/internal/redact';
+import { createAttemptArtifacts } from 'e2e-core/lib/run/artifacts';
 
 const roots: string[] = [];
 function root(): string {

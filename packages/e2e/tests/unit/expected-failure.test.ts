@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { publishAttempt } from '../../src/expect/attempt.ts';
-import { SoftFailures } from '../../src/expect/soft.ts';
-import { serializeError, TestError, type SerializedError } from '../../src/internal/errors.ts';
-import { expectedFailureOption, markRunningTestExpectedToFail, type ExpectedFailureInfo } from '../../src/internal/expected-failure.ts';
+import { publishAttempt } from 'e2e-core/lib/expect/attempt';
+import { SoftFailures } from 'e2e-core/lib/expect/soft';
+import { serializeError, TestError, type SerializedError } from 'e2e-core/lib/internal/errors';
+import { expectedFailureOption, markRunningTestExpectedToFail, type ExpectedFailureInfo } from 'e2e-core/lib/internal/expected-failure';
 import { settleExpectedFailure } from '../../src/run/expected-failure.ts';
-import { AttemptBudget } from '../../src/run/budget.ts';
-import { Deadline } from '../../src/internal/time.ts';
+import { AttemptBudget } from 'e2e-core/lib/run/budget';
+import { Deadline } from 'e2e-core/lib/internal/time';
 
 type Attempt = {
   status: 'passed' | 'failed' | 'timed-out' | 'interrupted' | 'skipped';

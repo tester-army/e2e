@@ -4,8 +4,8 @@ const { killManagedProcessGroups, stopsSettled } = vi.hoisted(() => ({
   killManagedProcessGroups: vi.fn(),
   stopsSettled: vi.fn<() => Promise<void>>(),
 }));
-vi.mock('../../src/run/managed-process.ts', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../../src/run/managed-process.ts')>()),
+vi.mock('e2e-core/lib/run/managed-process', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('e2e-core/lib/run/managed-process')>()),
   killManagedProcessGroups,
   stopsSettled,
 }));
@@ -13,7 +13,7 @@ vi.mock('../../src/run/managed-process.ts', async (importOriginal) => ({
 /** `exitIfStopped`, `exitAfterGrace`, and `leaveWorkBehind` from fresh modules, so work one test leaves behind is not the next one's. */
 async function fresh() {
   vi.resetModules();
-  const [{ exitAfterGrace, exitIfStopped }, { leaveWorkBehind }] = await Promise.all([import('../../src/cli/run-output.ts'), import('../../src/internal/abandoned.ts')]);
+  const [{ exitAfterGrace, exitIfStopped }, { leaveWorkBehind }] = await Promise.all([import('../../src/cli/run-output.ts'), import('e2e-core/lib/internal/abandoned')]);
   return { exitAfterGrace, exitIfStopped, leaveWorkBehind };
 }
 

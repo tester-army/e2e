@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { validateJsonValue } from '../../src/internal/json-value.ts';
+import { validateJsonValue } from 'e2e-core/lib/internal/json-value';
 
 describe('validateJsonValue', () => {
   it('accepts the same object reached twice by different paths', () => {

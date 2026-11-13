@@ -5,7 +5,7 @@
  */
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { StepExecutor, StepExecutorContext } from '../../src/agent/executor.ts';
+import type { StepExecutor, StepExecutorContext } from 'e2e-core/lib/agent/executor';
 import { fakeCalls, installFakeModel, judgment } from '../helpers/fake-model.ts';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 import { resultByTitle, runProject, type FixtureProject, type RunOutcome } from '../helpers/run-project.ts';

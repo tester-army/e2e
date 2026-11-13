@@ -5,7 +5,7 @@
  * caller that is the process.
  */
 
-import { killManagedProcessGroups } from '../run/managed-process.ts';
+import { killManagedProcessGroups } from 'e2e-core/lib/run/managed-process';
 
 /** How long a CLI whose parent died waits on each rung of the ladder before the next. */
 const PARENT_GONE_ESCALATE_MS = 15_000;

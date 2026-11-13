@@ -9,14 +9,14 @@
 import type { ToolSet } from 'ai';
 import { z } from 'zod';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { describeAction } from '../../src/agent/actions.ts';
-import type { StepExecutorContext } from '../../src/agent/executor.ts';
-import { createGrammarTools } from '../../src/agent/primitives.ts';
-import { replayTrace, type ReplayHost, type SemanticScreen } from '../../src/agent/replay.ts';
-import { TraceRecorder } from '../../src/cache/recorder.ts';
-import { buildTraceEntry, type ActionTrace, type RecordedAction } from '../../src/cache/trace.ts';
-import { readTraceEntry } from '../../src/cache/trace-read.ts';
-import type { SemanticNode } from '../../src/engine/surface.ts';
+import { describeAction } from 'e2e-core/lib/agent/actions';
+import type { StepExecutorContext } from 'e2e-core/lib/agent/executor';
+import { createGrammarTools } from 'e2e-core/lib/agent/primitives';
+import { replayTrace, type ReplayHost, type SemanticScreen } from 'e2e-core/lib/agent/replay';
+import { TraceRecorder } from 'e2e-core/lib/cache/recorder';
+import { buildTraceEntry, type ActionTrace, type RecordedAction } from 'e2e-core/lib/cache/trace';
+import { readTraceEntry } from 'e2e-core/lib/cache/trace-read';
+import type { SemanticNode } from 'e2e-core/lib/engine/surface';
 import { fakeExecutorContext } from '../helpers/fake-executor-context.ts';
 import { redacted, redactedNodes } from '../helpers/redacted.ts';
 

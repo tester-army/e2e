@@ -11,7 +11,7 @@ import { codeFrame } from '../report/code-frame.ts';
 import { formatTime } from '../report/format.ts';
 import { plural } from '../report/markdown-text.ts';
 import { testLocation, type StandaloneTest, type StandaloneTestOutcome } from '../run/standalone-test.ts';
-import type { StepRecord } from '../run/steps.ts';
+import type { StepRecord } from 'e2e-core/lib/run/steps';
 
 const plain = picocolors.createColors(false);
 /** Steps the text lists; a longer run shows its last ones, where it stopped. */

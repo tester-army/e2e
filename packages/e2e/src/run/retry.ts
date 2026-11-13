@@ -1,7 +1,7 @@
 /** Shared retry policy for ordinary tests, setup tests, and serial groups. */
 
-import type { SerializedError } from '../internal/errors.ts';
-import type { AttemptStatus, ResultStatus, SerialAttemptRecord } from './records.ts';
+import type { SerializedError } from 'e2e-core/lib/internal/errors';
+import type { AttemptStatus, ResultStatus, SerialAttemptRecord } from 'e2e-core/lib/run/records';
 
 /**
  * Whether a retry's member records are not the verdict. True when the retry

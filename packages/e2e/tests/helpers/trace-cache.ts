@@ -8,9 +8,9 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { expect } from 'vitest';
-import type { TraceEntry } from '../../src/cache/trace.ts';
+import type { TraceEntry } from 'e2e-core/lib/cache/trace';
 import type { E2EConfig, ModelInstance } from '../../src/index.ts';
-import type { StepCacheInfo, StepRecord } from '../../src/run/steps.ts';
+import type { StepCacheInfo, StepRecord } from 'e2e-core/lib/run/steps';
 import { installFakeLoopModel, nodeIdFor, type LoopCall, type LoopToolCall } from './fake-loop-model.ts';
 import { resultByTitle, type FixtureProject, type RunOutcome } from './run-project.ts';
 

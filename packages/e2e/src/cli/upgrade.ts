@@ -13,7 +13,7 @@ import path from 'node:path';
 import picocolors from 'picocolors';
 import { z } from 'zod';
 import { detectWorkspacePackageManager, execCommand, LOCKFILE_NAMES, type PackageManager } from '../internal/package-manager.ts';
-import { insideProjectRoot, realpathOfExisting } from '../internal/paths.ts';
+import { insideProjectRoot, realpathOfExisting } from 'e2e-core/lib/internal/paths';
 import { compareVersions, parseVersion, satisfies } from '../internal/semver.ts';
 import type { UpgradeOutcome, UpgradeResult } from '../telemetry/events.ts';
 import { describeLinks, describeObstacles, findInstalledSkillDirs, planSkillInstall } from './init/agent-skill.ts';

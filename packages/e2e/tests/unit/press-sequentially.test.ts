@@ -5,9 +5,9 @@
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { LOCATOR_ACTION_KINDS, type LocatorActionKind } from '../../src/engine/index.ts';
+import { LOCATOR_ACTION_KINDS, type LocatorActionKind } from 'e2e-core/lib/engine/index';
 import { resolveConfig } from '../../src/config/resolve-run.ts';
-import { secrets, setSecretRegistry } from '../../src/secrets.ts';
+import { secrets, setSecretRegistry } from 'e2e-core/lib/secrets';
 import { screenOver } from '../helpers/screen-over.ts';
 import { snapshot } from '../helpers/snapshot.ts';
 

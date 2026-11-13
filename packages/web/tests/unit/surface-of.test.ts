@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { EngineError, defineEngine } from 'e2e/engine';
+import { EngineError, defineEngine } from 'e2e-core/engine';
 import { web, surfaceOf } from '../../src/index.ts';
 
 describe('surfaceOf', () => {

@@ -51,7 +51,7 @@
   "ignoreBinaries": ["eas"],
   "ignoreExports": [
     {
-      "file": "packages/e2e/src/types.ts",
+      "file": "packages/core/src/types.ts",
       "exports": ["StandardSchemaV1"]
     }
   ],

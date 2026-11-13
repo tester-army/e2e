@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { boundToolOutput, MAX_TOOL_OUTPUT_BYTES, MAX_TOOL_OUTPUT_LINES } from '../../src/agent/tool-output.ts';
+import { boundToolOutput, MAX_TOOL_OUTPUT_BYTES, MAX_TOOL_OUTPUT_LINES } from 'e2e-core/lib/agent/tool-output';
 
 /** The whole returned text, notice included, must fit the advertised limits. */
 function expectWithinLimits(text: string, maxLines = MAX_TOOL_OUTPUT_LINES, maxBytes = MAX_TOOL_OUTPUT_BYTES): void {

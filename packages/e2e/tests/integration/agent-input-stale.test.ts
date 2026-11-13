@@ -1,7 +1,7 @@
 /** A stale fill must re-enter secret authorization, on live actions and cached replay alike. */
 
 import { describe, expect, it } from 'vitest';
-import type { StepExecutor } from '../../src/agent/executor.ts';
+import type { StepExecutor } from 'e2e-core/lib/agent/executor';
 import { EngineError, type SemanticNode } from 'e2e/engine';
 import { createFakeEngine } from '../helpers/fake-engine.ts';
 import { nodeIdFor } from '../helpers/fake-loop-model.ts';

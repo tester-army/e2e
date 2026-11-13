@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { defineEngine } from '../../src/engine/index.ts';
-import { assignPorts } from '../../src/config/resolve.ts';
+import { defineEngine } from 'e2e-core/lib/engine/index';
+import { assignPorts } from 'e2e-core/lib/config/resolve';
 import { resolveConfig } from '../../src/config/resolve-run.ts';
-import { declaredCommands } from '../../src/run/declared-processes.ts';
-import type { TargetApp } from '../../src/types.ts';
+import { declaredCommands } from 'e2e-core/lib/run/declared-processes';
+import type { TargetApp } from 'e2e-core/lib/types';
 import { snapshot } from '../helpers/snapshot.ts';
 
 const ROOT = '/tmp/e2e-declared-processes';

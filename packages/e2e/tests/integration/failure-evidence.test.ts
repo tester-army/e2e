@@ -12,7 +12,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import type { OperationContext, SemanticNode } from '../../src/engine/contract.ts';
+import type { OperationContext, SemanticNode } from 'e2e-core/lib/engine/contract';
 import type { E2EConfig } from '../../src/index.ts';
 import { createFakeEngine, FAKE_APP, FAKE_APP_URL, type FakeEngineHandle } from '../helpers/fake-engine.ts';
 import { assertValidReport } from '../helpers/report-schema.ts';

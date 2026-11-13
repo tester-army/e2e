@@ -8,11 +8,11 @@
  * run, or a broken test.
  */
 
-import { BLOCKABLE_CODES } from '../agent/executor.ts';
-import { sanitizeText, TestError, truncateUtf8, type ErrorPhase, type SerializedError } from '../internal/errors.ts';
-import type { ExpectedFailureInfo } from '../internal/expected-failure.ts';
-import type { AgentErrorCode } from '../types.ts';
-import type { AttemptStatus } from './records.ts';
+import { BLOCKABLE_CODES } from 'e2e-core/lib/agent/executor';
+import { sanitizeText, TestError, truncateUtf8, type ErrorPhase, type SerializedError } from 'e2e-core/lib/internal/errors';
+import type { ExpectedFailureInfo } from 'e2e-core/lib/internal/expected-failure';
+import type { AgentErrorCode } from 'e2e-core/lib/types';
+import type { AttemptStatus } from 'e2e-core/lib/run/records';
 
 /** The report schema's bound on a reason. */
 const MAX_REASON_BYTES = 8192;

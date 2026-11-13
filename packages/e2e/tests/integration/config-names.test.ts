@@ -3,7 +3,7 @@
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { defineEngine } from '../../src/engine/index.ts';
+import { defineEngine } from 'e2e-core/lib/engine/index';
 import { runProject } from '../helpers/run-project.ts';
 import { snapshot } from '../helpers/snapshot.ts';
 

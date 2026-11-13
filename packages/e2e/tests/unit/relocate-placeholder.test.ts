@@ -1,10 +1,10 @@
 /** A field named only by its placeholder is recorded and relocated by it. */
 
 import { describe, expect, it } from 'vitest';
-import type { RedactedNode } from '../../src/agent/observation.ts';
+import type { RedactedNode } from 'e2e-core/lib/agent/observation';
 import { redacted } from '../helpers/redacted.ts';
-import { describeTarget } from '../../src/agent/actions.ts';
-import { relocateDescriptor } from '../../src/cache/relocate.ts';
+import { describeTarget } from 'e2e-core/lib/agent/actions';
+import { relocateDescriptor } from 'e2e-core/lib/cache/relocate';
 
 function textbox(id: string, placeholder: string, name?: string): RedactedNode {
   return redacted({

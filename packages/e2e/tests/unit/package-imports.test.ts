@@ -3,7 +3,7 @@
  * builtin, one of its `dependencies`, or a peer. A devDependency, a sibling
  * package, or a typo resolves on this checkout, where the workspace hoists
  * everything, and fails the first project to install the tarball. Optional
- * peers are stricter: `ai` is loaded lazily by one module and each
+ * peers are stricter: `ai` is loaded lazily by one module of `e2e-core` and each
  * `@ai-sdk/*` provider by the `e2e/oauth/*` constructor that wraps it, so the
  * CLI boots (and `npx e2e init` runs) before any of them is installed, and
  * the mobile tool pack names `ai` in types only. `copilot()` loads
@@ -40,7 +40,7 @@ const SCOPES: readonly Scope[] = [
   {
     dir: 'e2e',
     optionalPeerHomes: {
-      ai: ['agent/ai-sdk.ts'],
+      ai: [],
       '@ai-sdk/anthropic': ['oauth/opencode-console.ts'],
       '@ai-sdk/google': ['oauth/opencode-console.ts'],
       '@ai-sdk/openai': ['oauth/chatgpt.ts', 'oauth/copilot.ts', 'oauth/opencode-console.ts'],
@@ -51,6 +51,7 @@ const SCOPES: readonly Scope[] = [
   { dir: 'web', optionalPeerHomes: {} },
   { dir: 'mobile', optionalPeerHomes: { ai: [] } },
   { dir: 'github', optionalPeerHomes: {} },
+  { dir: 'core', optionalPeerHomes: { ai: ['agent/ai-sdk.ts'] } },
 ];
 
 /** A block comment, a template literal, or a line comment: where an import statement is only quoted. */
@@ -141,7 +142,7 @@ describe.each(SCOPES)('packages/$dir/src', (scope) => {
 
 describe('the ai package', () => {
   it('is reached at runtime only through the lazy loader', () => {
-    const loader = readFileSync(path.join(PACKAGES, 'e2e/src/agent/ai-sdk.ts'), 'utf8');
+    const loader = readFileSync(path.join(PACKAGES, 'core/src/agent/ai-sdk.ts'), 'utf8');
     const packages = valueImports(loader).filter((found) => !found.specifier.startsWith('.'));
     expect(packages).toEqual([{ specifier: 'ai', text: "import('ai')" }]);
   });
@@ -153,21 +154,35 @@ function staticImports(source: string): string[] {
   return [...code.matchAll(STATIC)].filter((match) => match[1] === undefined).map((match) => match[2]!);
 }
 
+/** The `e2e-core` entries and its `lib/*` modules, as files under `packages/core/src`. */
+const CORE_ENTRIES: Readonly<Record<string, string>> = { 'e2e-core/engine': 'engine/index.ts' };
+
+/** The module under `packages/<dir>/src` a specifier names, `e2e-core`'s included, or undefined for another package. */
+function sourceModule(dir: string, file: string, specifier: string): string | undefined {
+  if (specifier.startsWith('.')) return path.join(dir, path.normalize(path.join(path.dirname(file), specifier)));
+  if (specifier.startsWith('e2e-core/lib/')) return path.join('core', `${specifier.slice('e2e-core/lib/'.length)}.ts`);
+  const entry = CORE_ENTRIES[specifier];
+  return entry === undefined ? undefined : path.join('core', entry);
+}
+
 /**
  * Every package the static imports reach from `entry`, each with the chain of
- * files that leads to it. A dynamic import is not followed: that module loads
- * when the code that asks for it runs.
+ * files that leads to it, through `e2e-core` too, since `e2e` runs on it. A
+ * dynamic import is not followed: that module loads when the code that asks
+ * for it runs.
  */
 function startupPackages(dir: string, entry: string): Map<string, string[]> {
-  const src = path.join(PACKAGES, dir, 'src');
-  const chains = new Map<string, string[]>([[entry, [entry]]]);
+  const start = path.join(dir, entry);
+  const chains = new Map<string, string[]>([[start, [start]]]);
   const reached = new Map<string, string[]>();
-  const queue = [entry];
-  for (const file of queue) {
-    const chain = chains.get(file)!;
-    for (const specifier of staticImports(readFileSync(path.join(src, file), 'utf8'))) {
-      if (specifier.startsWith('.')) {
-        const next = path.normalize(path.join(path.dirname(file), specifier));
+  const queue = [start];
+  for (const module of queue) {
+    const chain = chains.get(module)!;
+    const [owner, ...rest] = module.split(path.sep);
+    const file = rest.join(path.sep);
+    for (const specifier of staticImports(readFileSync(path.join(PACKAGES, owner!, 'src', file), 'utf8'))) {
+      const next = sourceModule(owner!, file, specifier);
+      if (next !== undefined) {
         if (chains.has(next)) continue;
         chains.set(next, [...chain, next]);
         queue.push(next);
@@ -234,17 +249,22 @@ describe('the scan', () => {
   });
 
   it('objects to a devDependency, a bare builtin, and an optional peer outside its home', () => {
-    const e2e = SCOPES[0]!;
+    const scope = (dir: string): Scope => SCOPES.find((candidate) => candidate.dir === dir)!;
+    const e2e = scope('e2e');
     const manifest = manifestOf(e2e);
-    expect(objection(e2e, manifest, 'run/steps.ts', 'node:path')).toBeUndefined();
-    expect(objection(e2e, manifest, 'run/steps.ts', '../internal/ids.ts')).toBeUndefined();
-    expect(objection(e2e, manifest, 'run/steps.ts', 'commander')).toBeUndefined();
-    expect(objection(e2e, manifest, 'agent/ai-sdk.ts', 'ai')).toBeUndefined();
-    expect(objection(e2e, manifest, 'run/steps.ts', 'ai')).toBe('ai is an optional peer of e2e; load it from agent/ai-sdk.ts only');
-    expect(objection(e2e, manifest, 'run/steps.ts', 'path')).toBe('path is a builtin; import it as node:path');
-    expect(objection(e2e, manifest, 'run/steps.ts', 'playwright')).toBe('playwright is neither a dependency nor a peer of e2e');
-    expect(objection(e2e, manifest, 'run/steps.ts', '@e2e-dev/web')).toBe('@e2e-dev/web is neither a dependency nor a peer of e2e');
-    const mobile = SCOPES[2]!;
+    expect(objection(e2e, manifest, 'run/runner.ts', 'node:path')).toBeUndefined();
+    expect(objection(e2e, manifest, 'run/runner.ts', '../internal/git.ts')).toBeUndefined();
+    expect(objection(e2e, manifest, 'run/runner.ts', 'commander')).toBeUndefined();
+    expect(objection(e2e, manifest, 'run/runner.ts', 'e2e-core/lib/run/steps')).toBeUndefined();
+    expect(objection(e2e, manifest, 'run/runner.ts', 'ai')).toBe('ai is an optional peer of e2e; import its types only');
+    expect(objection(e2e, manifest, 'run/runner.ts', 'path')).toBe('path is a builtin; import it as node:path');
+    expect(objection(e2e, manifest, 'run/runner.ts', 'playwright')).toBe('playwright is neither a dependency nor a peer of e2e');
+    expect(objection(e2e, manifest, 'run/runner.ts', '@e2e-dev/web')).toBe('@e2e-dev/web is neither a dependency nor a peer of e2e');
+    const core = scope('core');
+    expect(objection(core, manifestOf(core), 'agent/ai-sdk.ts', 'ai')).toBeUndefined();
+    expect(objection(core, manifestOf(core), 'run/steps.ts', 'ai')).toBe('ai is an optional peer of e2e-core; load it from agent/ai-sdk.ts only');
+    expect(objection(core, manifestOf(core), 'run/steps.ts', 'e2e')).toBe('e2e is neither a dependency nor a peer of e2e-core');
+    const mobile = scope('mobile');
     expect(objection(mobile, manifestOf(mobile), 'tools.ts', 'ai')).toBe('ai is an optional peer of @e2e-dev/mobile; import its types only');
   });
 });

@@ -14,8 +14,8 @@ import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 import { EXIT_CODES } from '../cli/exit-codes.ts';
-import { ConfigurationError, InfrastructureError } from '../internal/errors.ts';
-import { MAX_TIMER_MS } from '../internal/time.ts';
+import { ConfigurationError, InfrastructureError } from 'e2e-core/lib/internal/errors';
+import { MAX_TIMER_MS } from 'e2e-core/lib/internal/time';
 import { defineMcpTool, redacting, type McpToolResult, type McpToolSpec } from './tools.ts';
 
 /** How long each rung of the CLI's Ctrl-C ladder (interrupt, force, exit) waits before the next, and the kill after the last. */

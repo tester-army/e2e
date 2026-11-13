@@ -5,10 +5,10 @@
  */
 
 import type { HeldStep, StepPrompt } from '../run/step-hold.ts';
-import type { StepRecord } from '../run/steps.ts';
-import { modelLabel } from '../config/agent.ts';
-import { sanitizeText, truncateUtf8 } from '../internal/errors.ts';
-import { collapseText } from '../internal/text.ts';
+import type { StepRecord } from 'e2e-core/lib/run/steps';
+import { modelLabel } from 'e2e-core/lib/config/agent';
+import { sanitizeText, truncateUtf8 } from 'e2e-core/lib/internal/errors';
+import { collapseText } from 'e2e-core/lib/internal/text';
 import {
   bounded,
   F_CHECK,

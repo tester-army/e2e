@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { resultId } from '../../src/internal/ids.ts';
+import { resultId } from 'e2e-core/lib/internal/ids';
 import type { Report1Document } from '../../src/report/build.ts';
 import { carryForward, fileDurationKey, lastFailedIds, previousFileDurations, readLastRun, reportArtifactPaths } from '../../src/run/last-run.ts';
 

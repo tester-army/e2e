@@ -1,16 +1,16 @@
 /** Option resolution and test-target selection. */
 
-import { staticSecretLedger } from '../run/secrecy.ts';
-import { ConfigurationError, CollectionError, sanitizeText, truncateUtf8 } from '../internal/errors.ts';
-import { resultId } from '../internal/ids.ts';
-import { expectedFailureOption } from '../internal/expected-failure.ts';
-import { didYouMean, suggestionNote } from '../internal/suggest.ts';
-import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
-import { attemptKeep, attemptVideo, pairRecording, type AttemptRecordings } from '../internal/recording-modes.ts';
-import type { Capability, RecordingMode, TestOptions } from '../types.ts';
+import { staticSecretLedger } from 'e2e-core/lib/run/secrecy';
+import { ConfigurationError, CollectionError, sanitizeText, truncateUtf8 } from 'e2e-core/lib/internal/errors';
+import { resultId } from 'e2e-core/lib/internal/ids';
+import { expectedFailureOption } from 'e2e-core/lib/internal/expected-failure';
+import { didYouMean, suggestionNote } from 'e2e-core/lib/internal/suggest';
+import type { ResolvedConfig, ResolvedTarget } from 'e2e-core/lib/config/resolve';
+import { attemptKeep, attemptVideo, pairRecording, type AttemptRecordings } from 'e2e-core/lib/internal/recording-modes';
+import type { Capability, RecordingMode, TestOptions } from 'e2e-core/lib/types';
 import { excludingEntry, type Collection, type CollectedTest, type UncollectedFile } from './collect.ts';
 import { groupChain } from './registry.ts';
-import type { SkipInfo } from '../run/records.ts';
+import type { SkipInfo } from 'e2e-core/lib/run/records';
 
 export interface ResolvedTestOptions {
   readonly timeout: number;

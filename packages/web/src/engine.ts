@@ -17,7 +17,7 @@ import {
   type EngineAppCheckInfo,
   type EngineAppDeclaration,
   type EngineHandle,
-} from 'e2e/engine';
+} from 'e2e-core/engine';
 import { createRequire } from 'node:module';
 import { asBrowserProvider } from './provider.ts';
 import { PlaywrightSurface, type WebOptions } from './surface.ts';

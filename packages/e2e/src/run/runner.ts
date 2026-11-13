@@ -3,7 +3,7 @@
 import { rm } from 'node:fs/promises';
 import path from 'node:path';
 import { discoverConfig, loadConfigModule, missingConfigError } from '../config/load.ts';
-import { isCiMode, type ResolvedTarget } from '../config/resolve.ts';
+import { isCiMode, type ResolvedTarget } from 'e2e-core/lib/config/resolve';
 import { resolveConfig, type ResolvedRunConfig, type RunCliOverrides } from '../config/resolve-run.ts';
 import { collect, collectInMemory, collectSetups, type Collection } from '../collect/collect.ts';
 import type { ModuleRegistration } from '../collect/registry.ts';
@@ -27,16 +27,16 @@ import {
   exitCodeForCategory,
   serializeError,
   type ErrorPhase,
-} from '../internal/errors.ts';
-import { loadAiSdk } from '../agent/ai-sdk.ts';
-import { leaveWorkBehind } from '../internal/abandoned.ts';
-import { AiTraceCollector, AiTraceRecorder, registerAiTraceRecorder } from '../internal/ai-trace.ts';
-import { DebugTrace } from '../internal/debug.ts';
-import { printableUrl } from '../internal/urls.ts';
-import { resultId, timestamp, uuidv7 } from '../internal/ids.ts';
+} from 'e2e-core/lib/internal/errors';
+import { loadAiSdk } from 'e2e-core/lib/agent/ai-sdk';
+import { leaveWorkBehind } from 'e2e-core/lib/internal/abandoned';
+import { AiTraceCollector, AiTraceRecorder, registerAiTraceRecorder } from 'e2e-core/lib/internal/ai-trace';
+import { DebugTrace } from 'e2e-core/lib/internal/debug';
+import { printableUrl } from 'e2e-core/lib/internal/urls';
+import { resultId, timestamp, uuidv7 } from 'e2e-core/lib/internal/ids';
 import type { ExploreProgress } from '../explore/progress.ts';
 import { buildReport, projectSource, type Report1Document, type ReportChanges, type ReportExplore, type ReportFilter } from '../report/build.ts';
-import type { TargetProvenance } from './provision.ts';
+import type { TargetProvenance } from 'e2e-core/lib/run/provision';
 import { agentStepTable } from '../report/debug-steps.ts';
 import { writeTracePages, type TracePages } from '../report/traces.ts';
 import { STATELESS_REPORTERS } from '../report/builtin.ts';
@@ -46,31 +46,31 @@ import { writeJsonReport } from '../report/write.ts';
 import { createRunEventEmitter, toEventResult, type RunEventSink, type RunExitCode, type RunStatus, type RunEventFact, type SetupOutcome, type SetupStep } from './events.ts';
 import { allocateAppPorts } from './app-ports.ts';
 import { inProcessSpawner } from './in-process.ts';
-import { cleanupErrorsOf, someSkippedAfterFailure, tracedResultIds, type ResultRecord, type RunError, type SerialGroupRecord } from './records.ts';
+import { cleanupErrorsOf, someSkippedAfterFailure, tracedResultIds, type ResultRecord, type RunError, type SerialGroupRecord } from 'e2e-core/lib/run/records';
 import { runUnits, type TargetFailure } from './scheduler.ts';
 import type { BeforeStep, HeldStep, StepPrompt } from './step-hold.ts';
 import { stepPromptLine } from '../report/list-steps.ts';
 import { buildWorkPlans, nonRunResult, orderWorkPlans, plannedSlots, type TargetWorkPlan, type TimeLimit } from './units.ts';
-import { SessionStore } from './sessions.ts';
-import { outputLayout } from './output.ts';
+import { SessionStore } from 'e2e-core/lib/run/sessions';
+import { outputLayout } from 'e2e-core/lib/run/output';
 import type { RunnerOutput } from './process-output.ts';
 import { refuseBun } from './public-ownership.ts';
-import { processSecrets, registerStaticSecrets, staticSecretLedger } from './secrecy.ts';
-import { nextRerunDir, pruneArtifacts } from './artifacts.ts';
+import { processSecrets, registerStaticSecrets, staticSecretLedger } from 'e2e-core/lib/run/secrecy';
+import { nextRerunDir, pruneArtifacts } from 'e2e-core/lib/run/artifacts';
 import { carryForward, fileDurationKey, lastFailedIds, readLastRun, reportArtifactPaths, type RerunCollection } from './last-run.ts';
 import { loadTimings, writeTimings } from './timings.ts';
 import { childProcessSpawner } from './worker/handle.ts';
-import { setSecretRegistry } from '../secrets.ts';
-import { budgetText, withAbort } from '../internal/time.ts';
-import type { RecordingMode } from '../types.ts';
+import { setSecretRegistry } from 'e2e-core/lib/secrets';
+import { budgetText, withAbort } from 'e2e-core/lib/internal/time';
+import type { RecordingMode } from 'e2e-core/lib/types';
 import type { BuiltinReporter, E2EConfig, FinishedRun, Reporter, ReporterSummary } from '../run-types.ts';
-import { modelLabel } from '../config/agent.ts';
-import { boundedInt, describeValue, positiveInt, timerMs } from '../config/validate.ts';
+import { modelLabel } from 'e2e-core/lib/config/agent';
+import { boundedInt, describeValue, positiveInt, timerMs } from 'e2e-core/lib/config/validate';
 import { validateChangedSince } from './changes.ts';
 import { detectVcs, type VcsInfo } from '../internal/vcs.ts';
-import type { EnginePrepareResult } from '../engine/index.ts';
-import type { AppProcesses } from './managed-process.ts';
-import { PreparedEngines, recordingNotices, startDeclaredProcesses, validateEngine, type EngineGrade, type PrepareScope } from './provision.ts';
+import type { EnginePrepareResult } from 'e2e-core/lib/engine/index';
+import type { AppProcesses } from 'e2e-core/lib/run/managed-process';
+import { PreparedEngines, recordingNotices, startDeclaredProcesses, validateEngine, type EngineGrade, type PrepareScope } from 'e2e-core/lib/run/provision';
 import { filterSelection, rankingNotice } from './test-filters.ts';
 
 export interface RunOptions {

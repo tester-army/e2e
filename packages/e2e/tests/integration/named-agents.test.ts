@@ -2,7 +2,7 @@
 
 import { stripVTControlCharacters } from 'node:util';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import type { StepExecutor } from '../../src/agent/executor.ts';
+import type { StepExecutor } from 'e2e-core/lib/agent/executor';
 import type { RunEvent } from '../../src/run/events.ts';
 import { judgment } from '../helpers/fake-model.ts';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';

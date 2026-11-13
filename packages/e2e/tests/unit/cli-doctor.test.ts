@@ -7,9 +7,9 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { doctor, type DoctorOptions, type DoctorReport } from '../../src/cli/doctor.ts';
-import { cancelledError } from '../../src/internal/time.ts';
+import { cancelledError } from 'e2e-core/lib/internal/time';
 import { withProcessOutput } from '../../src/run/process-output.ts';
-import { processSecrets } from '../../src/run/secrecy.ts';
+import { processSecrets } from 'e2e-core/lib/run/secrecy';
 import { createProject, type FixtureProject } from '../helpers/run-project.ts';
 
 const projects: FixtureProject[] = [];

@@ -1,8 +1,8 @@
 /** Runner-owned polling locator assertions. */
 
-import type { SemanticNode } from '../engine/surface.ts';
-import { TestError } from '../internal/errors.ts';
-import { rejectUnknownOptions } from '../internal/options.ts';
+import type { SemanticNode } from 'e2e-core/lib/engine/surface';
+import { TestError } from 'e2e-core/lib/internal/errors';
+import { rejectUnknownOptions } from 'e2e-core/lib/internal/options';
 import {
   isTextMatch,
   normalizeText,
@@ -12,14 +12,14 @@ import {
   withIgnoreCase,
   type TextComparison,
   type TextPattern,
-} from '../internal/text.ts';
-import { isValueControl } from '../internal/roles.ts';
-import { pollReads, type ReadWindow } from '../internal/time.ts';
-import { SampleHistory } from './samples.ts';
-import { attributeOf, denySecureRead, isNodeVisible } from '../locator/engine.ts';
-import { describeExpression } from '../locator/expression.ts';
-import type { LocatorInternals } from '../locator/screen.ts';
-import type { AsyncExpectation, ScreenshotOptions, TextMatch, TextMatcherOptions } from '../types.ts';
+} from 'e2e-core/lib/internal/text';
+import { isValueControl } from 'e2e-core/lib/internal/roles';
+import { pollReads, type ReadWindow } from 'e2e-core/lib/internal/time';
+import { SampleHistory } from 'e2e-core/lib/expect/samples';
+import { attributeOf, denySecureRead, isNodeVisible } from 'e2e-core/lib/locator/engine';
+import { describeExpression } from 'e2e-core/lib/locator/expression';
+import type { LocatorInternals } from 'e2e-core/lib/locator/screen';
+import type { AsyncExpectation, ScreenshotOptions, TextMatch, TextMatcherOptions } from 'e2e-core/lib/types';
 import { expectScreenshot } from './screenshot.ts';
 
 interface Sample {

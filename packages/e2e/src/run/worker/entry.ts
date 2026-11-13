@@ -9,17 +9,17 @@ import { collectFromRegistration } from '../../collect/collect.ts';
 import { collectModule } from '../../collect/registry.ts';
 import type { TestTargetPair } from '../../collect/select.ts';
 import { importModule, loadConfigModule } from '../../config/load.ts';
-import { assignPorts } from '../../config/resolve.ts';
+import { assignPorts } from 'e2e-core/lib/config/resolve';
 import { resolveConfig } from '../../config/resolve-run.ts';
-import { setSecretRegistry } from '../../secrets.ts';
-import { loadAiSdk } from '../../agent/ai-sdk.ts';
-import { AiTraceRecorder, registerAiTraceRecorder } from '../../internal/ai-trace.ts';
-import { DebugTrace } from '../../internal/debug.ts';
-import { classifyError, ConfigurationError, serializeError } from '../../internal/errors.ts';
-import { StreamRedactor } from '../../internal/redact.ts';
+import { setSecretRegistry } from 'e2e-core/lib/secrets';
+import { loadAiSdk } from 'e2e-core/lib/agent/ai-sdk';
+import { AiTraceRecorder, registerAiTraceRecorder } from 'e2e-core/lib/internal/ai-trace';
+import { DebugTrace } from 'e2e-core/lib/internal/debug';
+import { classifyError, ConfigurationError, serializeError } from 'e2e-core/lib/internal/errors';
+import { StreamRedactor } from 'e2e-core/lib/internal/redact';
 import { ConfigLoadHold, writtenChunk } from '../process-output.ts';
-import { processSecrets, registerStaticSecrets, staticSecretLedger } from '../secrecy.ts';
-import { SessionStore } from '../sessions.ts';
+import { processSecrets, registerStaticSecrets, staticSecretLedger } from 'e2e-core/lib/run/secrecy';
+import { SessionStore } from 'e2e-core/lib/run/sessions';
 import type {
   ChildProcessInbound,
   OutputMessage,
@@ -29,7 +29,7 @@ import type {
   WorkerToMain,
 } from './protocol.ts';
 import { TargetWorker, type ResolvedUnitPairs, type TargetWorkerDeps } from './session.ts';
-import { isAbandonedRejection } from '../../internal/abandoned.ts';
+import { isAbandonedRejection } from 'e2e-core/lib/internal/abandoned';
 
 /**
  * Outbound messages in flight. `process.send` is asynchronous and a

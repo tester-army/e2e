@@ -7,9 +7,9 @@
 import { chmodSync, symlinkSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_LIMITS } from '../../src/config/agent.ts';
+import { DEFAULT_LIMITS } from 'e2e-core/lib/config/agent';
 import { changeContext, readExploreChange } from '../../src/explore/change.ts';
-import { staticSecretLedger } from '../../src/run/secrecy.ts';
+import { staticSecretLedger } from 'e2e-core/lib/run/secrecy';
 import { commitFiles, initRepo, runGit, useTempDirs } from '../helpers/git-repo.ts';
 
 const tempDir = useTempDirs();

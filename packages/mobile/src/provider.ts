@@ -20,7 +20,7 @@ import {
   type EnginePrepareInfo,
   type ProviderRecordContext,
   type ProviderRecording,
-} from 'e2e/engine';
+} from 'e2e-core/engine';
 import { isSlotBinding, type DeviceClientConfig, type DeviceDaemon, type DeviceSource, type SlotBinding } from './bindings.ts';
 import { message } from './errors.ts';
 import { isLink } from './links.ts';

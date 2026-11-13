@@ -3,7 +3,10 @@
  * `@e2e-dev/web`, and `@e2e-dev/mobile`, installs them with a given pnpm
  * into a fresh project outside this repository, installs again from the
  * lockfile, typechecks a custom mobile tool, and runs a TypeScript test
- * through the installed CLI.
+ * through the installed CLI. `e2e-core` is packed too and reaches the
+ * project only through `e2e`'s dependency and the engines' peer, as it does
+ * for a user, and the install must hold one copy of it: two would split the
+ * error classes and the engine registry between the runner and the engines.
  *
  * pnpm 11 and later fail an install on any dependency build script the
  * project has not decided on (`ERR_PNPM_IGNORED_BUILDS`), and write a
@@ -28,8 +31,8 @@ if (pnpmVersion === undefined) {
   process.exit(2);
 }
 
-/** The packages a new user installs: the runner and its engines. */
-const PACKAGES = ['e2e', 'web', 'mobile'] as const;
+/** The packages a new user installs: the runner and its engines, and the core both build on. */
+const PACKAGES = ['core', 'e2e', 'web', 'mobile'] as const;
 
 const root = mkdtempSync(join(tmpdir(), 'e2e-install-smoke-'));
 const tarballs = join(root, 'tarballs');
@@ -53,8 +56,7 @@ const mobileManifest = JSON.parse(readFileSync(join(REPO_ROOT, 'packages/mobile/
   devDependencies: Record<string, string>;
 };
 const problems: string[] = [];
-const driverWorkspace = driverVersion ? `overrides:\n  agent-device: ${JSON.stringify(driverVersion)}\n` : undefined;
-if (driverWorkspace) writeFileSync(join(project, 'pnpm-workspace.yaml'), driverWorkspace);
+let workspaceYaml: string | undefined;
 try {
   for (const name of PACKAGES) {
     const packed = run(join(REPO_ROOT, 'packages', name), 'pnpm', ['pack', '--pack-destination', tarballs]);
@@ -62,6 +64,9 @@ try {
   }
   const files = readdirSync(tarballs);
   const tarball = (prefix: string): string => `file:${join(tarballs, files.find((file) => file.startsWith(prefix))!)}`;
+  // `e2e` names its exact `e2e-core`, which the registry has not published yet: the override serves the tarball.
+  workspaceYaml = `overrides:\n  e2e-core: ${JSON.stringify(tarball('e2e-core-'))}\n${driverVersion ? `  agent-device: ${JSON.stringify(driverVersion)}\n` : ''}`;
+  writeFileSync(join(project, 'pnpm-workspace.yaml'), workspaceYaml);
   writeFileSync(
     join(project, 'package.json'),
     JSON.stringify({
@@ -130,10 +135,14 @@ export async function checkFixture(device: Device) {
     process.stdout.write(`$ ${step}: exit ${status}\n`);
     if (status !== 0) problems.push(`${step} exited ${status}:\n${output}`);
     if (output.includes('ERR_PNPM_IGNORED_BUILDS')) problems.push(`${step} reported ERR_PNPM_IGNORED_BUILDS:\n${output}`);
-    if (existsSync(join(project, 'pnpm-workspace.yaml')) && readFileSync(join(project, 'pnpm-workspace.yaml'), 'utf8') !== driverWorkspace) {
+    if (existsSync(join(project, 'pnpm-workspace.yaml')) && readFileSync(join(project, 'pnpm-workspace.yaml'), 'utf8') !== workspaceYaml) {
       problems.push(`${step} wrote or changed pnpm-workspace.yaml`);
     }
     if (problems.length > 0) break;
+    if (args[0] === 'install') {
+      const copies = readdirSync(join(project, 'node_modules', '.pnpm')).filter((dir) => dir.startsWith('e2e-core@'));
+      if (copies.length !== 1) problems.push(`${step} installed ${copies.length} copies of e2e-core: ${copies.join(', ')}`);
+    }
     if (driverVersion && args[0] === 'install') {
       const graph = pnpm(['list', 'agent-device', '--depth', 'Infinity', '--json']);
       const versions: string[] = [];

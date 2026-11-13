@@ -14,9 +14,9 @@
  * Nothing here guesses at a file's role from its path or language.
  */
 
-import { E2EError } from '../internal/errors.ts';
+import { E2EError } from 'e2e-core/lib/internal/errors';
 import { GitFailure, runGit } from '../internal/git.ts';
-import { bound } from '../internal/text.ts';
+import { bound } from 'e2e-core/lib/internal/text';
 import type { ReportExploreChange } from '../report/build.ts';
 import { findChanges } from '../run/changes.ts';
 

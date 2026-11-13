@@ -6,7 +6,7 @@
  * conditions, and the `complete_step` verdict — without a provider.
  */
 
-import type { ModelInstance } from '../../src/types.ts';
+import type { ModelInstance } from 'e2e-core/lib/types';
 import { createScriptedInstance, scriptedResult, type ScriptedWarning } from './scripted-model.ts';
 
 export interface LoopCall {

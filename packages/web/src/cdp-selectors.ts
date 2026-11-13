@@ -1,7 +1,7 @@
 /** Registers the engine's selector engines in a CDP default context; every locator and secure-field mask needs them. */
 
 import type { BrowserContext, Page } from 'playwright-core';
-import { EngineError } from 'e2e/engine';
+import { EngineError } from 'e2e-core/engine';
 import { connectionAbort, type ConnectionBudget } from './operation-budget.ts';
 import { CLOSED_SHADOW_ROOTS_KEY } from './closed-shadow.ts';
 import { SELECTOR_ENGINES } from './selector-engines.ts';

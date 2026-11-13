@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { createModelAdapter } from '../../src/agent/model/sdk.ts';
-import { defineEngine } from '../../src/engine/index.ts';
-import { createEngineSession } from '../../src/engine/session.ts';
+import { createModelAdapter } from 'e2e-core/lib/agent/model/sdk';
+import { defineEngine } from 'e2e-core/lib/engine/index';
+import { createEngineSession } from 'e2e-core/lib/engine/session';
 import { resolveConfig } from '../../src/config/resolve-run.ts';
-import { Deadline } from '../../src/internal/time.ts';
-import { AttemptBudget } from '../../src/run/budget.ts';
-import { createFixtures } from '../../src/run/fixtures.ts';
-import { StepRecorder } from '../../src/run/steps.ts';
-import { WorkerModels } from '../../src/run/worker-models.ts';
+import { Deadline } from 'e2e-core/lib/internal/time';
+import { AttemptBudget } from 'e2e-core/lib/run/budget';
+import { createFixtures } from 'e2e-core/lib/run/fixtures';
+import { StepRecorder } from 'e2e-core/lib/run/steps';
+import { WorkerModels } from 'e2e-core/lib/run/worker-models';
 import { snapshot } from '../helpers/snapshot.ts';
 
 function contentFilterModel(text = '') {

@@ -1,6 +1,6 @@
 /** Owns one attempt's live binding, its tabs, recovery, references, and recordings. */
 import type { Browser, BrowserContext, BrowserContextOptions, Page, Request } from 'playwright-core';
-import { EngineError, raceAbort, TestError, withinCleanupBudget, type EngineCleanupContext, type OperationContext, type VideoSegment, type ViewportSize } from 'e2e/engine';
+import { EngineError, raceAbort, TestError, withinCleanupBudget, type EngineCleanupContext, type OperationContext, type VideoSegment, type ViewportSize } from 'e2e-core/engine';
 import { attachPersistent, recoveryFailed, targetIdentity, type CdpEndpointResolver, type SessionBinding, type TargetIdentity } from './cdp-recovery.ts';
 import { connectionAbort, withConnectionBudget, withOperationDeadline, type ConnectionBudget, type OperationBound } from './operation-budget.ts';
 import { RefRegistry } from './refs.ts';

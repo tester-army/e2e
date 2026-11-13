@@ -5,7 +5,7 @@
  * subject; a tool body that reaches an action is the failure.
  */
 
-import type { ExecutorActions, ExecutorStep, ExecutorVerb, StepExecutorContext } from '../../src/agent/executor.ts';
+import type { ExecutorActions, ExecutorStep, ExecutorVerb, StepExecutorContext } from 'e2e-core/lib/agent/executor';
 
 export interface FakeExecutorContext {
   readonly context: StepExecutorContext;

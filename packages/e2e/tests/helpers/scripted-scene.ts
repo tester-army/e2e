@@ -8,7 +8,7 @@
  * owns one `Scene` per attempt and forwards its calls.
  */
 
-import type { LocatorAction, LocatorExpression, SemanticNode } from '../../src/engine/index.ts';
+import type { LocatorAction, LocatorExpression, SemanticNode } from 'e2e-core/lib/engine/index';
 import { engineFailure, obj, parseKey, resolveExpression } from './engine-runtime.ts';
 
 /** The stable id of the observation root; `perform(root, swipe)` is the viewport swipe. */

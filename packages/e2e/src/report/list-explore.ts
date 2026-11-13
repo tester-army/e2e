@@ -9,12 +9,12 @@
 
 import path from 'node:path';
 import type { ExploreBudgets, ExploreProgress, OpenedStep } from '../explore/progress.ts';
-import type { SerializedError } from '../internal/errors.ts';
-import { collapseText } from '../internal/text.ts';
+import type { SerializedError } from 'e2e-core/lib/internal/errors';
+import { collapseText } from 'e2e-core/lib/internal/text';
 import type { ReportExplore, ReportExploreFinding, ReportExploreStep } from '../report/build.ts';
-import type { ArtifactRecord } from '../run/records.ts';
+import type { ArtifactRecord } from 'e2e-core/lib/run/records';
 import { ENDED_TEXT, orderFindings, SEVERITY_WORDS, stepCountParts } from './explore-text.ts';
-import type { StepEvent } from '../run/steps.ts';
+import type { StepEvent } from 'e2e-core/lib/run/steps';
 import {
   bounded,
   F_CHECK,

@@ -12,15 +12,15 @@
 
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { formatNode, prepareObservation, type AgentObservation, type RedactedNode } from '../agent/observation.ts';
-import type { ResolvedConfig } from '../config/resolve.ts';
-import type { OperationContext, TargetSession } from '../engine/surface.ts';
-import { truncateUtf8, type E2EError } from '../internal/errors.ts';
-import type { SecretLedger } from '../internal/redact.ts';
-import { isTypoOf } from '../internal/suggest.ts';
-import { withAbort } from '../internal/time.ts';
-import type { ArtifactSink } from './fixtures.ts';
-import type { FailureEvidence } from './records.ts';
+import { formatNode, prepareObservation, type AgentObservation, type RedactedNode } from 'e2e-core/lib/agent/observation';
+import type { ResolvedConfig } from 'e2e-core/lib/config/resolve';
+import type { OperationContext, TargetSession } from 'e2e-core/lib/engine/surface';
+import { truncateUtf8, type E2EError } from 'e2e-core/lib/internal/errors';
+import type { SecretLedger } from 'e2e-core/lib/internal/redact';
+import { isTypoOf } from 'e2e-core/lib/internal/suggest';
+import { withAbort } from 'e2e-core/lib/internal/time';
+import type { ArtifactSink } from 'e2e-core/lib/run/fixtures';
+import type { FailureEvidence } from 'e2e-core/lib/run/records';
 
 /** The whole capture, observation and screenshot together, gets this long. */
 const EVIDENCE_TIMEOUT_MS = 5_000;

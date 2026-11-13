@@ -3,9 +3,9 @@
 import { APICallError } from '@ai-sdk/provider';
 import { RetryError } from 'ai';
 import { describe, expect, it } from 'vitest';
-import { AgentError } from '../../src/agent/error.ts';
-import { isUnservedModelError, unservedModelError } from '../../src/agent/model/sdk.ts';
-import { markUnservedModel, unservedModelExplanation } from '../../src/internal/unserved-model.ts';
+import { AgentError } from 'e2e-core/lib/agent/error';
+import { isUnservedModelError, unservedModelError } from 'e2e-core/lib/agent/model/sdk';
+import { markUnservedModel, unservedModelExplanation } from 'e2e-core/lib/internal/unserved-model';
 
 const EXPLANATION = 'GitHub Copilot does not serve claude-haiku-4.5 to this account';
 

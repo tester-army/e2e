@@ -7,25 +7,25 @@
  * test (`open_session {test}`).
  */
 
-import { createAgentCacheContext } from '../cache/context.ts';
-import { storedRecordingsFor } from '../cache/rekeyed.ts';
-import { publishAttempt } from '../expect/attempt.ts';
-import { SoftFailures } from '../expect/soft.ts';
-import type { SerializedError } from '../internal/errors.ts';
-import { resultId } from '../internal/ids.ts';
-import { Deadline } from '../internal/time.ts';
-import { holdSecretRegistry } from '../secrets.ts';
+import { createAgentCacheContext } from 'e2e-core/lib/cache/context';
+import { storedRecordingsFor } from 'e2e-core/lib/cache/rekeyed';
+import { publishAttempt } from 'e2e-core/lib/expect/attempt';
+import { SoftFailures } from 'e2e-core/lib/expect/soft';
+import type { SerializedError } from 'e2e-core/lib/internal/errors';
+import { resultId } from 'e2e-core/lib/internal/ids';
+import { Deadline } from 'e2e-core/lib/internal/time';
+import { holdSecretRegistry } from 'e2e-core/lib/secrets';
 import type { Report } from '../run-types.ts';
-import { resultSegment } from './artifacts.ts';
-import { AttemptBudget } from './budget.ts';
+import { resultSegment } from 'e2e-core/lib/run/artifacts';
+import { AttemptBudget } from 'e2e-core/lib/run/budget';
 import { TargetExecutor } from './execute.ts';
-import { createFixtures } from './fixtures.ts';
+import { createFixtures } from 'e2e-core/lib/run/fixtures';
 import { writeHostTrace } from './host-trace.ts';
-import { WrittenScreenshots } from './screenshots.ts';
-import { processSecrets } from './secrecy.ts';
-import { targetIdentity } from './sessions.ts';
-import { openWorker, type StandaloneHost, type StandaloneHostOptions, type WorkerPolicy } from './standalone.ts';
-import type { StandaloneAttempt, StandaloneSessionOptions } from './standalone-attempt.ts';
+import { WrittenScreenshots } from 'e2e-core/lib/run/screenshots';
+import { processSecrets } from 'e2e-core/lib/run/secrecy';
+import { targetIdentity } from 'e2e-core/lib/run/sessions';
+import { openWorker, type StandaloneHost, type StandaloneHostOptions, type WorkerPolicy } from 'e2e-core/lib/run/standalone';
+import type { StandaloneAttempt, StandaloneSessionOptions } from 'e2e-core/lib/run/standalone-attempt';
 import { createStandaloneTestRun, type StandaloneTest, type StandaloneTestRun } from './standalone-test.ts';
 
 /** What a hosted attempt keeps beside the shared ones: the report its trace was written from. */

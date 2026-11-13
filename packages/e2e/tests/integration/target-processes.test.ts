@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { RunEvent } from '../../src/run/events.ts';
-import type { Target, TargetApp } from '../../src/types.ts';
+import type { Target, TargetApp } from 'e2e-core/lib/types';
 import { createFakeEngine } from '../helpers/fake-engine.ts';
 import { freePort } from '../helpers/free-port.ts';
 import { createProject, runExisting } from '../helpers/run-project.ts';

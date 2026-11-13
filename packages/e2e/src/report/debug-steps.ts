@@ -5,9 +5,9 @@
  * of what happened.
  */
 
-import { formatMs, table } from '../internal/debug.ts';
-import type { ResultRecord, SerialGroupRecord } from '../run/records.ts';
-import type { StepRecord } from '../run/steps.ts';
+import { formatMs, table } from 'e2e-core/lib/internal/debug';
+import type { ResultRecord, SerialGroupRecord } from 'e2e-core/lib/run/records';
+import type { StepRecord } from 'e2e-core/lib/run/steps';
 import { stepModelLabel } from './format.ts';
 
 /**

@@ -8,10 +8,10 @@
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { withHint } from '../internal/errors.ts';
-import { isPlainObject } from '../internal/options.ts';
+import { withHint } from 'e2e-core/lib/internal/errors';
+import { isPlainObject } from 'e2e-core/lib/internal/options';
 import { addDevDependencyCommand, detectPackageManager } from '../internal/package-manager.ts';
-import { didYouMean, suggest } from '../internal/suggest.ts';
+import { didYouMean, suggest } from 'e2e-core/lib/internal/suggest';
 
 /** The runtime exports of `e2e`; a unit test keeps this list equal to the real module. */
 export const RUNTIME_EXPORTS: readonly string[] = [

@@ -1,6 +1,6 @@
 /** Fixture configs over one in-memory engine, in the shape `runProject` merges over its defaults. */
 
-import type { EngineHandle } from '../../src/engine/index.ts';
+import type { EngineHandle } from 'e2e-core/lib/engine/index';
 import type { E2EConfig } from '../../src/index.ts';
 import { FAKE_APP } from './fake-engine.ts';
 

@@ -3,7 +3,7 @@ import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 import { assertValidReport } from '../helpers/report-schema.ts';
-import { resultId } from '../../src/internal/ids.ts';
+import { resultId } from 'e2e-core/lib/internal/ids';
 import {
   createProject,
   listExisting,

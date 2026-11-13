@@ -21,21 +21,21 @@
 
 import type { ToolExecutionOptions, ToolSet } from 'ai';
 import { z } from 'zod';
-import type { StepExecutorContext } from '../agent/executor.ts';
-import { redactNode, type NodeRedaction } from '../agent/observation.ts';
-import { recordPolicyEvent } from '../agent/phases.ts';
-import type { ScreenPresenter } from '../agent/screen-update.ts';
-import { authorizeSecretFill } from '../agent/secrets.ts';
-import type { TargetSession } from '../engine/surface.ts';
+import type { StepExecutorContext } from 'e2e-core/lib/agent/executor';
+import { redactNode, type NodeRedaction } from 'e2e-core/lib/agent/observation';
+import { recordPolicyEvent } from 'e2e-core/lib/agent/phases';
+import type { ScreenPresenter } from 'e2e-core/lib/agent/screen-update';
+import { authorizeSecretFill } from 'e2e-core/lib/agent/secrets';
+import type { TargetSession } from 'e2e-core/lib/engine/surface';
 import { createAsyncExpectation } from '../expect/async.ts';
-import { classifyError, codedMessage, ConfigurationError, TestError, type E2EError } from '../internal/errors.ts';
-import { isPlainObject, rejectUnknownOptions } from '../internal/options.ts';
-import { describeExpression } from '../locator/expression.ts';
-import { createScreen, locatorInternals, type LocatorInternals } from '../locator/screen.ts';
-import { createScreenContext } from '../run/fixtures.ts';
-import type { StandaloneAttempt } from '../run/standalone-attempt.ts';
-import { secretHandle } from '../secrets.ts';
-import type { App, Screen, Secret } from '../types.ts';
+import { classifyError, codedMessage, ConfigurationError, TestError, type E2EError } from 'e2e-core/lib/internal/errors';
+import { isPlainObject, rejectUnknownOptions } from 'e2e-core/lib/internal/options';
+import { describeExpression } from 'e2e-core/lib/locator/expression';
+import { createScreen, locatorInternals, type LocatorInternals } from 'e2e-core/lib/locator/screen';
+import { createScreenContext } from 'e2e-core/lib/run/fixtures';
+import type { StandaloneAttempt } from 'e2e-core/lib/run/standalone-attempt';
+import { secretHandle } from 'e2e-core/lib/secrets';
+import type { App, Screen, Secret } from 'e2e-core/lib/types';
 import { parseCode, type Call, type Chain, type Statement, type Value } from './code-parse.ts';
 import { SURFACE } from './code-surface.ts';
 

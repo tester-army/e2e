@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { afterEach, describe, expect, it } from 'vitest';
 import { copilot } from '../../../src/oauth/copilot.ts';
 import { copilotBaseUrl, copilotProtocolFor, copilotRefusal, createCopilotProvider, enterpriseHost, sendCopilotRequest } from '../../../src/oauth/providers/github-copilot.ts';
-import { unservedModelExplanation } from '../../../src/internal/unserved-model.ts';
+import { unservedModelExplanation } from 'e2e-core/lib/internal/unserved-model';
 import { json, useServers, type Received } from '../../helpers/recording-server.ts';
 import { echoUpstream, useVendor, type Echo } from './helpers/vendor.ts';
 import { onFakeTimeouts } from './helpers/time.ts';

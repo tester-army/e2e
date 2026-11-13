@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { unsupportedRuntimeMessage } from '../internal/runtime.ts';
-import { packageVersion } from '../internal/package-version.ts';
+import { packageVersion } from 'e2e-core/lib/internal/package-version';
 import { ignoreBrokenPipes } from './broken-pipe.ts';
 import type { DoctorReport } from './doctor.ts';
 

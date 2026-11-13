@@ -1,7 +1,7 @@
 /** Record and replay around Next.js App Router's route announcer in real Chromium; no model. */
 
 import { expect, it } from 'vitest';
-import type { StepExecutor } from '../../src/agent/executor.ts';
+import type { StepExecutor } from 'e2e-core/lib/agent/executor';
 import { startFixtureApp } from '../helpers/fixture-app.ts';
 import { nodeIdFor } from '../helpers/fake-loop-model.ts';
 import { createProject, runExisting } from '../helpers/run-project.ts';

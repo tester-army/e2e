@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { ExecutorObservation } from '../../src/agent/executor.ts';
-import { ScreenPresenter } from '../../src/agent/screen-update.ts';
+import type { ExecutorObservation } from 'e2e-core/lib/agent/executor';
+import { ScreenPresenter } from 'e2e-core/lib/agent/screen-update';
 
 function screen(revision: string, lines: readonly string[], extra: Partial<ExecutorObservation> = {}): ExecutorObservation {
   return {

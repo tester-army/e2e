@@ -10,7 +10,7 @@ import {
   GLOB_SYNTAX,
   literalPrefix,
   matchesGlob,
-} from '../../src/internal/globs.ts';
+} from 'e2e-core/lib/internal/globs';
 
 function matches(pattern: string, candidate: string): boolean {
   return matchesGlob(compileGlob(pattern), candidate);

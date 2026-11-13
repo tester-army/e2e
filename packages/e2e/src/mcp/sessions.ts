@@ -8,9 +8,9 @@
  * and closing it, belongs to the host; this module only orders it.
  */
 
-import type { EngineHandle } from '../engine/index.ts';
-import { ConfigurationError } from '../internal/errors.ts';
-import { uuidv7 } from '../internal/ids.ts';
+import type { EngineHandle } from 'e2e-core/lib/engine/index';
+import { ConfigurationError } from 'e2e-core/lib/internal/errors';
+import { uuidv7 } from 'e2e-core/lib/internal/ids';
 
 /** How many ended sessions keep the reason they ended, for the error a call naming one gets. */
 const ENDED_KEPT = 32;

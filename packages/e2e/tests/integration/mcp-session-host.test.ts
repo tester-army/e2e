@@ -22,16 +22,16 @@ import { gate } from '../helpers/gate.ts';
 import { startupLog, writeStartupScripts } from '../helpers/startup-scripts.ts';
 import type { EngineSession } from '../../src/mcp/config.ts';
 import type { McpSessionSummary } from '../../src/mcp/usage.ts';
-import type { RecordingMode, TargetApp } from '../../src/types.ts';
+import type { RecordingMode, TargetApp } from 'e2e-core/lib/types';
 
 const sessionModule = new URL('../../dist/mcp/session.js', import.meta.url).href;
 const { SessionHost } = (await import(sessionModule)) as typeof import('../../src/mcp/session.ts');
 const resolveModule = new URL('../../dist/config/resolve-run.js', import.meta.url).href;
 const { resolveConfig } = (await import(resolveModule)) as typeof import('../../src/config/resolve-run.ts');
-const secretsModule = new URL('../../dist/secrets.js', import.meta.url).href;
-const { credentials, secrets } = (await import(secretsModule)) as typeof import('../../src/secrets.ts');
-const agentModule = new URL('../../dist/agent/public.js', import.meta.url).href;
-const { defineTool } = (await import(agentModule)) as typeof import('../../src/agent/public.ts');
+const secretsModule = 'e2e-core/lib/secrets';
+const { credentials, secrets } = (await import(secretsModule)) as typeof import('e2e-core/lib/secrets');
+const agentModule = 'e2e-core/lib/agent/public';
+const { defineTool } = (await import(agentModule)) as typeof import('e2e-core/lib/agent/public');
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 

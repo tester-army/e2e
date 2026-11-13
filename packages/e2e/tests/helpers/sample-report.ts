@@ -9,7 +9,7 @@
  * engine name and the platform are declared names and reach it as they are.
  */
 
-import { ENGINE_SPI_VERSION } from '../../src/engine/contract.ts';
+import { ENGINE_SPI_VERSION } from 'e2e-core/lib/engine/contract';
 import type { Report1Document, ReportStep } from '../../src/report/build.ts';
 import { reportAttempt, reportDocument, reportError, reportResult, reportStep, reportTarget } from './report.ts';
 

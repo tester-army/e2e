@@ -4,11 +4,11 @@
  * each consumer renders at its own indent and width when it prints.
  */
 
-import type { ResultStatus } from '../run/records.ts';
-import type { RecordedModel } from '../cache/trace.ts';
-import type { SerializedError } from '../internal/errors.ts';
+import type { ResultStatus } from 'e2e-core/lib/run/records';
+import type { RecordedModel } from 'e2e-core/lib/cache/trace';
+import type { SerializedError } from 'e2e-core/lib/internal/errors';
 import type { StepPrompt } from '../run/step-hold.ts';
-import type { StepActivity, StepEvent, StepKind, StepProgress } from '../run/steps.ts';
+import type { StepActivity, StepEvent, StepKind, StepProgress } from 'e2e-core/lib/run/steps';
 import type { AiUsage } from './format.ts';
 
 /** Step events worth a glance in the live window; polls and policy decisions stay quiet. */

@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createAgentDeviceClient } from 'agent-device';
 import { expect, it } from 'vitest';
-import type { EngineFixtureContext, OperationContext } from 'e2e/engine';
+import type { EngineFixtureContext, OperationContext } from 'e2e-core/engine';
 import type { Device } from '../../src/device.ts';
 import { buildEngine } from '../../src/engine.ts';
 import { AgentDeviceSurface } from '../../src/surface.ts';

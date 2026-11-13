@@ -6,10 +6,10 @@
  * app is never charged to the test.
  */
 
-import { abortError, cancelledError } from '../internal/time.ts';
-import type { SourceLocation } from '../internal/source.ts';
-import type { AttemptBudget } from './budget.ts';
-import type { StepHoldRequest } from './steps.ts';
+import { abortError, cancelledError } from 'e2e-core/lib/internal/time';
+import type { SourceLocation } from 'e2e-core/lib/internal/source';
+import type { AttemptBudget } from 'e2e-core/lib/run/budget';
+import type { StepHoldRequest } from 'e2e-core/lib/run/steps';
 
 /** A step held before it runs, as the runner's `beforeStep` hook sees it. */
 export interface HeldStep {

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { Deadline } from '../../src/internal/time.ts';
-import { AttemptBudget } from '../../src/run/budget.ts';
+import { Deadline } from 'e2e-core/lib/internal/time';
+import { AttemptBudget } from 'e2e-core/lib/run/budget';
 import { AttemptHolds } from '../../src/run/step-hold.ts';
 
 describe('AttemptHolds', () => {

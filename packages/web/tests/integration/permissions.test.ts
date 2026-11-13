@@ -9,7 +9,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { AppPermissionState, EngineCleanupContext, EngineHandle, OperationContext } from 'e2e/engine';
+import type { AppPermissionState, EngineCleanupContext, EngineHandle, OperationContext } from 'e2e-core/engine';
 import { web, surfaceOf } from '../../src/index.ts';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 import { ignoreTrace, noSecrets } from '../helpers/secrets.ts';

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DebugTrace } from '../../src/internal/debug.ts';
+import { DebugTrace } from 'e2e-core/lib/internal/debug';
 
 describe('DebugTrace', () => {
   it('times async work and rethrows failures', async () => {

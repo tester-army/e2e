@@ -6,9 +6,9 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { defineEngine } from '../../src/engine/index.ts';
-import type { StepExecutor } from '../../src/agent/executor.ts';
-import type { SemanticNode } from '../../src/engine/surface.ts';
+import { defineEngine } from 'e2e-core/lib/engine/index';
+import type { StepExecutor } from 'e2e-core/lib/agent/executor';
+import type { SemanticNode } from 'e2e-core/lib/engine/surface';
 import { assertValidReport } from '../helpers/report-schema.ts';
 import { createProject, runProjectWithConfigFile } from '../helpers/run-project.ts';
 import { snapshot } from '../helpers/snapshot.ts';

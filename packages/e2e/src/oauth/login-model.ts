@@ -4,7 +4,7 @@
  * A registry symbol, not module state: the config may load its own copy of e2e.
  */
 
-import { realmSlot } from '../internal/realm-slot.ts';
+import { realmSlot } from 'e2e-core/lib/internal/realm-slot';
 import type { ProviderId } from './providers.ts';
 
 const loginSlot = realmSlot<ProviderId>('e2e.oauth.login.v1');

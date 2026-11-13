@@ -1,11 +1,11 @@
 /** Step trace recording: durable descriptors, redaction, verbatim inputs. */
 
 import { describe, expect, it } from 'vitest';
-import { describeTarget } from '../../src/agent/actions.ts';
-import { TraceRecorder } from '../../src/cache/recorder.ts';
-import { buildTraceEntry, MAX_TRACE_INPUT_CHARS } from '../../src/cache/trace.ts';
-import { readTraceEntry } from '../../src/cache/trace-read.ts';
-import { createRedactor, SecretLedger } from '../../src/internal/redact.ts';
+import { describeTarget } from 'e2e-core/lib/agent/actions';
+import { TraceRecorder } from 'e2e-core/lib/cache/recorder';
+import { buildTraceEntry, MAX_TRACE_INPUT_CHARS } from 'e2e-core/lib/cache/trace';
+import { readTraceEntry } from 'e2e-core/lib/cache/trace-read';
+import { createRedactor, SecretLedger } from 'e2e-core/lib/internal/redact';
 import { redacted } from '../helpers/redacted.ts';
 
 const upgradeButton = redacted({

@@ -9,34 +9,34 @@
  * the run as it serves a run's first attempt, settled when the body ends.
  */
 
-import { isModelUnreachable } from '../agent/error.ts';
-import { settleStagedTraces, type AgentCacheContext } from '../cache/context.ts';
+import { isModelUnreachable } from 'e2e-core/lib/agent/error';
+import { settleStagedTraces, type AgentCacheContext } from 'e2e-core/lib/cache/context';
 import { collect, type CollectedFile } from '../collect/collect.ts';
-import type { TestIdentity } from './records.ts';
+import type { TestIdentity } from 'e2e-core/lib/run/records';
 import { select, type TestTargetPair } from '../collect/select.ts';
-import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
-import type { OperationContext, TargetSession } from '../engine/surface.ts';
-import { publishAttempt } from '../expect/attempt.ts';
-import { PollScope, runInPollScope } from '../expect/poll-scope.ts';
-import { SoftFailures } from '../expect/soft.ts';
+import type { ResolvedConfig, ResolvedTarget } from 'e2e-core/lib/config/resolve';
+import type { OperationContext, TargetSession } from 'e2e-core/lib/engine/surface';
+import { publishAttempt } from 'e2e-core/lib/expect/attempt';
+import { PollScope, runInPollScope } from 'e2e-core/lib/expect/poll-scope';
+import { SoftFailures } from 'e2e-core/lib/expect/soft';
 import {
   classifyError, ConfigurationError, E2EError, InfrastructureError, serializeError, TestError, TestTimeoutError, type ErrorPhase, type SerializedError,
-} from '../internal/errors.ts';
-import type { ExpectedFailureInfo } from '../internal/expected-failure.ts';
+} from 'e2e-core/lib/internal/errors';
+import type { ExpectedFailureInfo } from 'e2e-core/lib/internal/expected-failure';
 import { isRuntimeSkip, type RuntimeSkip } from '../internal/skip.ts';
 import { settleExpectedFailure } from './expected-failure.ts';
-import { withAbort, withTimeout } from '../internal/time.ts';
-import type { SetupFn } from '../types.ts';
-import type { AttemptBudget } from './budget.ts';
+import { withAbort, withTimeout } from 'e2e-core/lib/internal/time';
+import type { SetupFn } from 'e2e-core/lib/types';
+import type { AttemptBudget } from 'e2e-core/lib/run/budget';
 import type { TargetExecutor } from './execute.ts';
-import { classifyAttemptStatus } from './engine-sessions.ts';
+import { classifyAttemptStatus } from 'e2e-core/lib/run/engine-sessions';
 import { createExtendedFixtures, type ExtendedFixtures } from './extended-fixtures.ts';
 import { captureFailureEvidence } from './failure-evidence.ts';
-import type { ArtifactSink, AttemptFixtures } from './fixtures.ts';
+import type { ArtifactSink, AttemptFixtures } from 'e2e-core/lib/run/fixtures';
 import { findRegistered, runHook, type Realm } from './realm.ts';
-import type { FailureEvidence } from './records.ts';
-import { sessionLedger } from './secrecy.ts';
-import type { StepRecord, StepRecorder } from './steps.ts';
+import type { FailureEvidence } from 'e2e-core/lib/run/records';
+import { sessionLedger } from 'e2e-core/lib/run/secrecy';
+import type { StepRecord, StepRecorder } from 'e2e-core/lib/run/steps';
 
 /** A queue: each piece of work starts once every piece queued before it has settled. */
 function oneAtATime(): <T>(work: () => Promise<T>) => Promise<T> {

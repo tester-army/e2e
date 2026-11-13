@@ -7,11 +7,11 @@
  * require a prior build.
  */
 
-import type { EngineErrorCode } from '../../src/engine/index.ts';
+import type { EngineErrorCode } from 'e2e-core/lib/engine/index';
 
-const builtEngineModule = '../../dist/engine/index.js';
+const builtEngineModule = 'e2e-core/lib/engine/index';
 
-const built = (await import(builtEngineModule)) as typeof import('../../src/engine/index.ts');
+const built = (await import(builtEngineModule)) as typeof import('e2e-core/lib/engine/index');
 
 export const { defineEngine, ENGINE_SPI_VERSION, LOCATOR_ACTION_KINDS, POINTER_ACTION_KINDS, obj, parseKey, resolveExpression } =
   built;

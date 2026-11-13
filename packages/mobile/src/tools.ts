@@ -10,7 +10,7 @@
 import type { Tool } from 'ai';
 import { z } from 'zod';
 import { defineTool, type DefinedTool, type ToolAnnotations } from 'e2e/agent';
-import { EngineError, TestError, type EngineHandle } from 'e2e/engine';
+import { EngineError, TestError, type EngineHandle } from 'e2e-core/engine';
 import { rawSession, type DeviceSession } from './device.ts';
 import { surfaceOf } from './engine.ts';
 import { isAppNotInstalled } from './errors.ts';

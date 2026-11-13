@@ -6,12 +6,12 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { createEngineSession } from '../../src/engine/session.ts';
-import type { EngineSnapshot } from '../../src/engine/index.ts';
-import type { Observation } from '../../src/engine/surface.ts';
-import type { SecretLedger } from '../../src/internal/redact.ts';
-import { compareScreens, traceScreen } from '../../src/run/step-screens.ts';
-import { StepRecorder } from '../../src/run/steps.ts';
+import { createEngineSession } from 'e2e-core/lib/engine/session';
+import type { EngineSnapshot } from 'e2e-core/lib/engine/index';
+import type { Observation } from 'e2e-core/lib/engine/surface';
+import type { SecretLedger } from 'e2e-core/lib/internal/redact';
+import { compareScreens, traceScreen } from 'e2e-core/lib/run/step-screens';
+import { StepRecorder } from 'e2e-core/lib/run/steps';
 
 /** A screen from listing-like lines, `#id description` each; the description is what the trace compares. */
 const screen = (...lines: string[]) => ({

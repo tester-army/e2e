@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { credentials, holdSecretRegistry, isSecret, secrets, setSecretRegistry, type SecretRegistry } from '../../src/secrets.ts';
-import { ConfigurationError } from '../../src/internal/errors.ts';
-import type { ResolvedCredential, ResolvedSecret } from '../../src/config/resolve.ts';
+import { credentials, holdSecretRegistry, isSecret, secrets, setSecretRegistry, type SecretRegistry } from 'e2e-core/lib/secrets';
+import { ConfigurationError } from 'e2e-core/lib/internal/errors';
+import type { ResolvedCredential, ResolvedSecret } from 'e2e-core/lib/config/resolve';
 
 const adminPassword: ResolvedSecret = {
   name: 'admin.password',

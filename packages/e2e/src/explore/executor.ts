@@ -8,9 +8,9 @@
 
 import type { ToolExecutionOptions } from 'ai';
 import { z } from 'zod';
-import type { ResolvedAgentConfig } from '../config/agent.ts';
-import { defineTool, getToolContext, type DefinedTool } from '../agent/tool.ts';
-import type { AgentConfig } from '../types.ts';
+import type { ResolvedAgentConfig } from 'e2e-core/lib/config/agent';
+import { defineTool, getToolContext, type DefinedTool } from 'e2e-core/lib/agent/tool';
+import type { AgentConfig } from 'e2e-core/lib/types';
 import type { ExploreState } from './state.ts';
 
 export const FINDING_TOOL_NAME = 'report_finding';

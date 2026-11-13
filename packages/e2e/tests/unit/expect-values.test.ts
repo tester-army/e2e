@@ -1,7 +1,7 @@
 import { describe, expect as vexpect, it } from 'vitest';
 import { z } from 'zod';
 import { expect as e2eExpect } from '../../src/expect/index.ts';
-import { TestError } from '../../src/internal/errors.ts';
+import { TestError } from 'e2e-core/lib/internal/errors';
 
 function failsWith(fn: () => void, pattern: RegExp): void {
   try {

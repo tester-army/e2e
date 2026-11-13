@@ -4,20 +4,20 @@ import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { settleStagedTraces, type AgentCacheContext, type ClaimedKey } from '../../src/cache/context.ts';
-import { instructionDigest, paramsDigest } from '../../src/cache/identity.ts';
-import { StoredRecordings } from '../../src/cache/rekeyed.ts';
-import { FileCacheStore, MAX_CACHE_WIRE_BYTES } from '../../src/cache/store.ts';
-import { buildTraceEntry, type ActionTrace, type DerivedReason, type TraceEntry } from '../../src/cache/trace.ts';
-import { failedStepOutcome, recordedVerdictOf, StepTraceSession, type StepCacheHost, type StepCacheOptions } from '../../src/agent/step-cache.ts';
-import { AgentError } from '../../src/agent/error.ts';
-import type { ExecutorActions } from '../../src/agent/executor.ts';
-import type { SettleMode } from '../../src/agent/settle-policy.ts';
-import type { RedactedNode } from '../../src/agent/observation.ts';
-import type { SemanticNode } from '../../src/engine/surface.ts';
+import { settleStagedTraces, type AgentCacheContext, type ClaimedKey } from 'e2e-core/lib/cache/context';
+import { instructionDigest, paramsDigest } from 'e2e-core/lib/cache/identity';
+import { StoredRecordings } from 'e2e-core/lib/cache/rekeyed';
+import { FileCacheStore, MAX_CACHE_WIRE_BYTES } from 'e2e-core/lib/cache/store';
+import { buildTraceEntry, type ActionTrace, type DerivedReason, type TraceEntry } from 'e2e-core/lib/cache/trace';
+import { failedStepOutcome, recordedVerdictOf, StepTraceSession, type StepCacheHost, type StepCacheOptions } from 'e2e-core/lib/agent/step-cache';
+import { AgentError } from 'e2e-core/lib/agent/error';
+import type { ExecutorActions } from 'e2e-core/lib/agent/executor';
+import type { SettleMode } from 'e2e-core/lib/agent/settle-policy';
+import type { RedactedNode } from 'e2e-core/lib/agent/observation';
+import type { SemanticNode } from 'e2e-core/lib/engine/surface';
 import { redacted, redactedNodes } from '../helpers/redacted.ts';
-import type { JsonValue } from '../../src/types.ts';
-import { SecretLedger } from '../../src/internal/redact.ts';
+import type { JsonValue } from 'e2e-core/lib/types';
+import { SecretLedger } from 'e2e-core/lib/internal/redact';
 
 const savedMarker: SemanticNode = {
   ref: { id: 'm1', revision: 'r1' },

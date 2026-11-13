@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { LocatorExpression, TextPattern } from 'e2e/engine';
+import type { LocatorExpression, TextPattern } from 'e2e-core/engine';
 import { resolveExpression } from '../../src/locate.ts';
 import { projectSnapshot, type RawNode } from '../../src/nodes.ts';
 import type { MobilePlatform } from '../../src/options.ts';

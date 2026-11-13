@@ -4,8 +4,8 @@ import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { FileCacheStore, MAX_CACHE_WIRE_BYTES } from '../../src/cache/store.ts';
-import type { ActionTrace } from '../../src/cache/trace.ts';
+import { FileCacheStore, MAX_CACHE_WIRE_BYTES } from 'e2e-core/lib/cache/store';
+import type { ActionTrace } from 'e2e-core/lib/cache/trace';
 
 const KEY = 'a'.repeat(64);
 

@@ -7,8 +7,8 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import type { LocatorAction, SemanticNode } from '../../src/engine/index.ts';
-import type { SelectOption } from '../../src/types.ts';
+import type { LocatorAction, SemanticNode } from 'e2e-core/lib/engine/index';
+import type { SelectOption } from 'e2e-core/lib/types';
 import { invalid } from '../helpers/invalid.ts';
 import { screenOver } from '../helpers/screen-over.ts';
 import { snapshot } from '../helpers/snapshot.ts';

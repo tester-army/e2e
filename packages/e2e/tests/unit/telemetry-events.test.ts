@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { resolveConfig } from '../../src/config/resolve-run.ts';
-import { defineEngine } from '../../src/engine/index.ts';
+import { defineEngine } from 'e2e-core/lib/engine/index';
 import type { McpSessionSummary } from '../../src/mcp/usage.ts';
 import type { ReportExplore } from '../../src/report/build.ts';
 import {
@@ -16,7 +16,7 @@ import {
   upgradeCompletedEvent,
   type RunContext,
 } from '../../src/telemetry/events.ts';
-import type { StepEvent } from '../../src/run/steps.ts';
+import type { StepEvent } from 'e2e-core/lib/run/steps';
 import { REPORT_AT, reportAttempt, reportDocument, reportError, reportResult, reportStep } from '../helpers/report.ts';
 import { SAMPLE_REPORT_SECRETS, sampleReport } from '../helpers/sample-report.ts';
 import { snapshot } from '../helpers/snapshot.ts';

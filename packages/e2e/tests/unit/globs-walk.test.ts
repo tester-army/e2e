@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { discoverFiles } from '../../src/internal/globs.ts';
+import { discoverFiles } from 'e2e-core/lib/internal/globs';
 
 const { readDirectories } = vi.hoisted(() => ({ readDirectories: [] as string[] }));
 

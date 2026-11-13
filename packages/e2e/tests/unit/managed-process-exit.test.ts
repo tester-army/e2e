@@ -2,8 +2,8 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { InfrastructureError } from '../../src/internal/errors.ts';
-import { ManagedProcess } from '../../src/run/managed-process.ts';
+import { InfrastructureError } from 'e2e-core/lib/internal/errors';
+import { ManagedProcess } from 'e2e-core/lib/run/managed-process';
 import { freePort } from '../helpers/free-port.ts';
 
 /** Whether the operating system still sees the managed child. */

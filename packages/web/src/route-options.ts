@@ -9,7 +9,7 @@
 
 import { statSync } from 'node:fs';
 import { types } from 'node:util';
-import { rejectUnknownOptions, TestError, validateJsonValue, type JsonValue } from 'e2e/engine';
+import { rejectUnknownOptions, TestError, validateJsonValue, type JsonValue } from 'e2e-core/engine';
 import { headerProblem } from './protected-app.ts';
 
 /** What `route.fulfill` hands Playwright once the response is validated. */

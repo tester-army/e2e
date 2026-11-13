@@ -2,9 +2,9 @@
 
 import { registerHooks } from 'node:module';
 import { afterAll, describe, expect, it } from 'vitest';
-import { downscalePixels } from '../../src/agent/pixels.ts';
-import { InfrastructureError } from '../../src/internal/errors.ts';
-import { clipBox, compareImages, cropImage, decodePng, encodePng, resampleImage, type RgbaImage } from '../../src/internal/image.ts';
+import { downscalePixels } from 'e2e-core/lib/agent/pixels';
+import { InfrastructureError } from 'e2e-core/lib/internal/errors';
+import { clipBox, compareImages, cropImage, decodePng, encodePng, resampleImage, type RgbaImage } from 'e2e-core/lib/internal/image';
 
 // What the loader reports when npm left the binding out. This file imports nothing that loads the addon, so no earlier test in the process has.
 let loaderFailure = new Error('Cannot find native binding. npm has a bug related to optional dependencies');

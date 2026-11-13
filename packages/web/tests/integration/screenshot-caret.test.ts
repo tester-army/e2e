@@ -2,7 +2,7 @@
 
 import type { Browser, BrowserContext, Page } from 'playwright-core';
 import { afterAll, beforeAll, expect, it, vi } from 'vitest';
-import type { OperationContext } from 'e2e/engine';
+import type { OperationContext } from 'e2e-core/engine';
 import { BrowserConnection } from '../../src/browser-connection.ts';
 import { CLOSED_SHADOW_ROOTS_INIT_SCRIPT } from '../../src/closed-shadow.ts';
 import { capturePixels } from '../../src/observe.ts';

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SecretLedger } from '../../src/internal/redact.ts';
+import { SecretLedger } from 'e2e-core/lib/internal/redact';
 import { McpOutput } from '../../src/mcp/output.ts';
 
 const TOKEN = 'mcp-output-token-1';

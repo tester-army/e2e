@@ -12,7 +12,7 @@ import {
   type SemanticNode,
   type SemanticQuery,
   type TextPattern,
-} from '../../src/engine/index.ts';
+} from 'e2e-core/lib/engine/index';
 
 function node(id: string, fields: Omit<SemanticNode, 'ref'>): SemanticNode {
   return { ref: { id, revision: '' }, ...fields };

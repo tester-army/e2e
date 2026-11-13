@@ -1,5 +1,5 @@
 import { afterEach, describe, expect as vexpect, it } from 'vitest';
-import { EngineError, type SemanticNode } from '../../src/engine/index.ts';
+import { EngineError, type SemanticNode } from 'e2e-core/lib/engine/index';
 import { expect } from '../../src/expect/index.ts';
 import { screenOver } from '../helpers/screen-over.ts';
 import { snapshot } from '../helpers/snapshot.ts';

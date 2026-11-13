@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { defineEngine, LOCATOR_ACTION_KINDS } from '../../src/engine/index.ts';
+import { defineEngine, LOCATOR_ACTION_KINDS } from 'e2e-core/lib/engine/index';
 import { createProject, runExisting } from '../helpers/run-project.ts';
 import { snapshot } from '../helpers/snapshot.ts';
 

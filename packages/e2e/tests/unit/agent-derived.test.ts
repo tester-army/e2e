@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { derivedReason } from '../../src/agent/derived.ts';
+import { derivedReason } from 'e2e-core/lib/agent/derived';
 
 describe('derivedReason', () => {
   it('treats values spelled out by the instruction or the params as literal', () => {

@@ -1,6 +1,6 @@
 /** A hosted worker owns its engine instance from before prepare until clean teardown. */
 import { describe, expect, it } from 'vitest';
-import type { EngineFinishInfo, EngineHandle } from '../../src/engine/index.ts';
+import type { EngineFinishInfo, EngineHandle } from 'e2e-core/lib/engine/index';
 import { createFakeEngine } from '../helpers/fake-engine.ts';
 import { gate, hostHarness, provisioned, sdkExpect } from '../helpers/open-host.ts';
 

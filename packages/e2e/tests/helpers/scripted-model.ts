@@ -6,7 +6,7 @@
  */
 
 import type { FinishReason } from 'ai';
-import type { ModelInstance } from '../../src/types.ts';
+import type { ModelInstance } from 'e2e-core/lib/types';
 
 /** Builds a V4-shaped scripted model instance around one doGenerate body. */
 export function createScriptedInstance<Options>(

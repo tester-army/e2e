@@ -1,14 +1,14 @@
 /** Zero-turn replay: typed dispatch, relocation backoff, divergence. */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { AgentError } from '../../src/agent/error.ts';
-import type { ExecutorActions } from '../../src/agent/executor.ts';
-import { replayTrace, verifyEndState, type ObservedScreen, type ReplayHost } from '../../src/agent/replay.ts';
-import { deltaMismatch } from '../../src/cache/anchors.ts';
-import type { TraceTargetDescriptor } from '../../src/cache/trace.ts';
-import type { SettleMode } from '../../src/agent/settle-policy.ts';
-import type { ActionTrace, RecordedAction } from '../../src/cache/trace.ts';
-import type { SemanticNode } from '../../src/engine/surface.ts';
+import { AgentError } from 'e2e-core/lib/agent/error';
+import type { ExecutorActions } from 'e2e-core/lib/agent/executor';
+import { replayTrace, verifyEndState, type ObservedScreen, type ReplayHost } from 'e2e-core/lib/agent/replay';
+import { deltaMismatch } from 'e2e-core/lib/cache/anchors';
+import type { TraceTargetDescriptor } from 'e2e-core/lib/cache/trace';
+import type { SettleMode } from 'e2e-core/lib/agent/settle-policy';
+import type { ActionTrace, RecordedAction } from 'e2e-core/lib/cache/trace';
+import type { SemanticNode } from 'e2e-core/lib/engine/surface';
 import { redactedNodes } from '../helpers/redacted.ts';
 
 beforeEach(() => {

@@ -4,7 +4,7 @@
  * without spawning processes or browsers.
  */
 
-import { protocolEngine } from '../../src/engine/protocol/client.ts';
+import { protocolEngine } from 'e2e-core/lib/engine/protocol/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { CollectedFile, CollectedTest, Collection } from '../../src/collect/collect.ts';
 import type {
@@ -12,11 +12,11 @@ import type {
   Selection,
   TestTargetPair,
 } from '../../src/collect/select.ts';
-import type { SkipInfo } from '../../src/run/records.ts';
-import type { ResolvedTarget } from '../../src/config/resolve.ts';
-import { defineEngine, type EngineHandle } from '../../src/engine/index.ts';
-import { classifyError, serializeError } from '../../src/internal/errors.ts';
-import type { AttemptRecord, ResultRecord, RunError, SerialAttemptRecord, SerialGroupRecord, SerialMemberRecord } from '../../src/run/records.ts';
+import type { SkipInfo } from 'e2e-core/lib/run/records';
+import type { ResolvedTarget } from 'e2e-core/lib/config/resolve';
+import { defineEngine, type EngineHandle } from 'e2e-core/lib/engine/index';
+import { classifyError, serializeError } from 'e2e-core/lib/internal/errors';
+import type { AttemptRecord, ResultRecord, RunError, SerialAttemptRecord, SerialGroupRecord, SerialMemberRecord } from 'e2e-core/lib/run/records';
 import { runUnits, type RunUnitsOptions, type TargetFailure } from '../../src/run/scheduler.ts';
 import { serialGroupId } from '../../src/run/serial.ts';
 import { buildWorkPlans, type TargetWorkPlan, type TimeLimit } from '../../src/run/units.ts';

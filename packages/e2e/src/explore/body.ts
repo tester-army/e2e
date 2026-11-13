@@ -11,11 +11,11 @@
  * ends `skipped` and passes.
  */
 
-import { AgentError, isAgentError } from '../agent/error.ts';
-import { BLOCKABLE_CODES } from '../agent/executor.ts';
-import { credentials } from '../secrets.ts';
+import { AgentError, isAgentError } from 'e2e-core/lib/agent/error';
+import { BLOCKABLE_CODES } from 'e2e-core/lib/agent/executor';
+import { credentials } from 'e2e-core/lib/secrets';
 import type { ReportExplore, ReportExploreStep } from '../report/build.ts';
-import type { Agent, AgentErrorCode, AgentParams, TestFn } from '../types.ts';
+import type { Agent, AgentErrorCode, AgentParams, TestFn } from 'e2e-core/lib/types';
 import { planNext, type PlanAccount, type PlanDecision } from './plan.ts';
 import type { ExploreState } from './state.ts';
 

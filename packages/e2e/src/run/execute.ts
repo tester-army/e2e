@@ -1,31 +1,31 @@
 /** Test-target execution engine. */
 
 import path from 'node:path';
-import type { TargetSession } from '../engine/surface.ts';
-import type { ResolvedConfig } from '../config/resolve.ts';
-import { classifyError, ConfigurationError, E2EError, serializeError, sanitizeText, truncateUtf8, TestError, TestTimeoutError, type SerializedError } from '../internal/errors.ts';
+import type { TargetSession } from 'e2e-core/lib/engine/surface';
+import type { ResolvedConfig } from 'e2e-core/lib/config/resolve';
+import { classifyError, ConfigurationError, E2EError, serializeError, sanitizeText, truncateUtf8, TestError, TestTimeoutError, type SerializedError } from 'e2e-core/lib/internal/errors';
 import { isRuntimeSkip, type RuntimeSkip } from '../internal/skip.ts';
-import { lateExpectedFailureError } from '../internal/expected-failure.ts';
+import { lateExpectedFailureError } from 'e2e-core/lib/internal/expected-failure';
 import { settleExpectedFailure } from './expected-failure.ts';
-import type { ExecutorAttempt } from '../agent/executor.ts';
-import { isModelUnreachable } from '../agent/error.ts';
-import { withAiTraceScope } from '../internal/ai-trace.ts';
-import { resultId, timestamp, uuidv7 } from '../internal/ids.ts';
-import { Deadline, withAbort, withTimeout } from '../internal/time.ts';
-import { createAgentCacheContext, settleStagedTraces } from '../cache/context.ts';
-import { storedRecordingsFor, type StoredRecordings } from '../cache/rekeyed.ts';
+import type { ExecutorAttempt } from 'e2e-core/lib/agent/executor';
+import { isModelUnreachable } from 'e2e-core/lib/agent/error';
+import { withAiTraceScope } from 'e2e-core/lib/internal/ai-trace';
+import { resultId, timestamp, uuidv7 } from 'e2e-core/lib/internal/ids';
+import { Deadline, withAbort, withTimeout } from 'e2e-core/lib/internal/time';
+import { createAgentCacheContext, settleStagedTraces } from 'e2e-core/lib/cache/context';
+import { storedRecordingsFor, type StoredRecordings } from 'e2e-core/lib/cache/rekeyed';
 import type { ModuleRegistration, RegisteredTest } from '../collect/registry.ts';
 import { pairRecordings, type TestTargetPair } from '../collect/select.ts';
-import type { ArtifactStore } from '../types.ts';
-import { attemptSegments, createAttemptArtifacts, resultSegment } from './artifacts.ts';
-import { AttemptBudget } from './budget.ts';
+import type { ArtifactStore } from 'e2e-core/lib/types';
+import { attemptSegments, createAttemptArtifacts, resultSegment } from 'e2e-core/lib/run/artifacts';
+import { AttemptBudget } from 'e2e-core/lib/run/budget';
 import { createExtendedFixtures } from './extended-fixtures.ts';
 import { captureFailureEvidence } from './failure-evidence.ts';
-import { createFixtures } from './fixtures.ts';
-import { WrittenScreenshots } from './screenshots.ts';
-import { publishAttempt } from '../expect/attempt.ts';
-import { PollScope, runInPollScope } from '../expect/poll-scope.ts';
-import { SoftFailures } from '../expect/soft.ts';
+import { createFixtures } from 'e2e-core/lib/run/fixtures';
+import { WrittenScreenshots } from 'e2e-core/lib/run/screenshots';
+import { publishAttempt } from 'e2e-core/lib/expect/attempt';
+import { PollScope, runInPollScope } from 'e2e-core/lib/expect/poll-scope';
+import { SoftFailures } from 'e2e-core/lib/expect/soft';
 import { findRegistered, RealmManager, runHook, type FileRef, type Realm } from './realm.ts';
 import type {
   AttemptRecord,
@@ -34,19 +34,19 @@ import type {
   RunError,
   SerialGroupRecord,
   SerialMemberRecord,
-} from './records.ts';
-import { isFailedStatus, type SerialAttemptRecord } from './records.ts';
-import { traceScreen } from './step-screens.ts';
+} from 'e2e-core/lib/run/records';
+import { isFailedStatus, type SerialAttemptRecord } from 'e2e-core/lib/run/records';
+import { traceScreen } from 'e2e-core/lib/run/step-screens';
 import { runWithRetries } from './retry.ts';
 import { runSerialUnit, type SerialAttemptStart, type SerialHost, type SharedSerialSession } from './serial.ts';
 import { interruptedInPhase, interruptedSkip, pairKey, pairResult, unstartedResult } from './units.ts';
-import { carriedSecrets, processSecrets, redactForSession, sessionLedger, staticSecretLedger } from './secrecy.ts';
-import { SessionStaging } from './sessions.ts';
-import { StepRecorder, type StepHoldRequest, type StepProgress } from './steps.ts';
+import { carriedSecrets, processSecrets, redactForSession, sessionLedger, staticSecretLedger } from 'e2e-core/lib/run/secrecy';
+import { SessionStaging } from 'e2e-core/lib/run/sessions';
+import { StepRecorder, type StepHoldRequest, type StepProgress } from 'e2e-core/lib/run/steps';
 import { AttemptHolds, type HeldStep } from './step-hold.ts';
-import { WorkerModels } from './worker-models.ts';
-import { classifyAttemptStatus, EngineSessions, type EngineSessionsOptions } from './engine-sessions.ts';
-import type { SetupFn } from '../types.ts';
+import { WorkerModels } from 'e2e-core/lib/run/worker-models';
+import { classifyAttemptStatus, EngineSessions, type EngineSessionsOptions } from 'e2e-core/lib/run/engine-sessions';
+import type { SetupFn } from 'e2e-core/lib/types';
 
 export interface ExecutionEvents {
   onResult?(result: ResultRecord): void;

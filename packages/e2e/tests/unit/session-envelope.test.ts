@@ -4,9 +4,9 @@ import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { uuidv7 } from '../../src/internal/ids.ts';
-import type { SavedSecrets } from '../../src/run/secrecy.ts';
-import { SessionStore, type SavedSession, type SessionIdentity } from '../../src/run/sessions.ts';
+import { uuidv7 } from 'e2e-core/lib/internal/ids';
+import type { SavedSecrets } from 'e2e-core/lib/run/secrecy';
+import { SessionStore, type SavedSession, type SessionIdentity } from 'e2e-core/lib/run/sessions';
 import { assertValidSessionEnvelope } from '../helpers/session-schema.ts';
 
 const identity: SessionIdentity = {

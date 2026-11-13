@@ -6,7 +6,7 @@
  * the deterministic-tier suites share.
  */
 
-import type { LocatorActionKind, PointerActionKind } from '../../src/engine/index.ts';
+import type { LocatorActionKind, PointerActionKind } from 'e2e-core/lib/engine/index';
 import { LOCATOR_ACTION_KINDS, POINTER_ACTION_KINDS } from './engine-runtime.ts';
 import { createFakeEngine, type FakeEngineHandle } from './fake-engine.ts';
 import type { ScriptedNode, Stage } from './scripted-scene.ts';

@@ -6,10 +6,10 @@
 
 import { stripVTControlCharacters } from 'node:util';
 import picocolors from 'picocolors';
-import type { CacheWrite } from '../cache/context.ts';
-import { sanitizeText, truncateUtf8 } from '../internal/errors.ts';
-import type { ResultStatus } from '../run/records.ts';
-import type { StepModelInfo, StepRecord } from '../run/steps.ts';
+import type { CacheWrite } from 'e2e-core/lib/cache/context';
+import { sanitizeText, truncateUtf8 } from 'e2e-core/lib/internal/errors';
+import type { ResultStatus } from 'e2e-core/lib/run/records';
+import type { StepModelInfo, StepRecord } from 'e2e-core/lib/run/steps';
 
 /** A picocolors instance; the reporter decides whether it emits color. */
 export type Colors = ReturnType<typeof picocolors.createColors>;

@@ -7,7 +7,7 @@ import {
   stringify,
   withAiTraceScope,
   withAiTraceStep,
-} from '../../src/internal/ai-trace.ts';
+} from 'e2e-core/lib/internal/ai-trace';
 import { gate } from '../helpers/gate.ts';
 
 const SCOPE = { test: 'todos › adds one', testId: 't1', target: 'web', agent: 'default', attempt: 0 };

@@ -289,8 +289,9 @@ committed.
 The following are the public contract. A change that breaks any of them is a
 breaking change and follows the rules below:
 
-- Public types exported from `e2e` and `e2e/engine`, as
-  emitted in `dist/index.d.ts` and `dist/engine/index.d.ts`. Removing an
+- Public types exported from `e2e`, `e2e/engine`, and `e2e-core/engine`,
+  as emitted in `dist/index.d.ts` and `dist/engine/index.d.ts` of `e2e`,
+  and `dist/engine/index.d.ts` of `e2e-core`. Removing an
   export, narrowing an accepted input, widening a returned type, or changing a
   fixture's runtime behavior all count.
 - Config keys in `e2e.config.ts`, their types, and their defaults.
@@ -300,7 +301,8 @@ breaking change and follows the rules below:
   Adding an optional field is compatible; renaming, removing, or changing the
   meaning of one is not.
 
-Not covered: anything under `internal`, the testbed, the exact text of error
+Not covered: anything under `internal`, `e2e-core/lib/*` (the modules `e2e`
+reaches at the exact `e2e-core` version it depends on), the testbed, the exact text of error
 messages and reporter output (error *codes* are covered), and the agent's
 prompts and tool descriptions.
 
@@ -326,12 +328,15 @@ prompts and tool descriptions.
 
 ### Engine contract
 
-`e2e/engine` is what `@e2e-dev/web` and `@e2e-dev/mobile`
-build against, and what a third-party engine builds against too. A change to
-that contract bumps all three packages together in one release, with a
-changeset for each, so an engine and a runner from the same release always
-match. Engines declare a peer range on `e2e` that points one way only
-(engine to runner, `>=x <1`), and each integration (`@e2e-dev/kernel`, `@e2e-dev/lightpanda`, `@e2e-dev/eas`, `@e2e-dev/smol`, `@e2e-dev/testmu`, `@e2e-dev/browserstack`, `@e2e-dev/e2b`) does
+`e2e-core/engine` (re-exported as `e2e/engine`) is what `@e2e-dev/web` and
+`@e2e-dev/mobile` build against, and what a third-party engine builds against
+too. A change to that contract bumps `e2e-core`, `e2e`, and both engines
+together in one release, with a changeset for each, so an engine and a runner
+from the same release always match. `e2e` and `e2e-core` are a changesets
+`fixed` group: they always share a version, and `e2e` depends on that exact
+`e2e-core`. Engines declare a peer range on `e2e-core` that points one way
+only (engine to core, `>=x <1`), plus one on `e2e` for the main entry that
+adds the engine's fixture to `test`, and each integration (`@e2e-dev/kernel`, `@e2e-dev/lightpanda`, `@e2e-dev/eas`, `@e2e-dev/smol`, `@e2e-dev/testmu`, `@e2e-dev/browserstack`, `@e2e-dev/e2b`) does
 the same on the engines it plugs into; do not make it mutual or narrow it.
 
 ### Driver nightly compatibility

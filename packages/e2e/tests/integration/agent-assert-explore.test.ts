@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, expect, it } from 'vitest';
-import { AgentError } from '../../src/agent/error.ts';
-import type { StepExecutor } from '../../src/agent/executor.ts';
+import { AgentError } from 'e2e-core/lib/agent/error';
+import type { StepExecutor } from 'e2e-core/lib/agent/executor';
 import { installFakeLoopModel, loopCalls, nodeIdFor } from '../helpers/fake-loop-model.ts';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 import { resultByTitle, runProject } from '../helpers/run-project.ts';

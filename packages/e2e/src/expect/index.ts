@@ -1,14 +1,14 @@
 /** Public expect() dispatcher (spec api/e2e.d.ts). */
 
 import { Any, Anything, ArrayContaining, ObjectContaining, StringContaining, StringMatching } from '@vitest/expect';
-import type { AsymmetricMatcher, AsyncExpectation, Class, Expect, Expectable, Locator, Screen, ScreenExpectation, SoftValueExpectation, ValueExpectation } from '../types.ts';
-import { expectationBrand } from '../internal/brands.ts';
-import { realmSlot } from '../internal/realm-slot.ts';
-import { locatorInternals, screenInternals } from '../locator/screen.ts';
+import type { AsymmetricMatcher, AsyncExpectation, Class, Expect, Expectable, Locator, Screen, ScreenExpectation, SoftValueExpectation, ValueExpectation } from 'e2e-core/lib/types';
+import { expectationBrand } from 'e2e-core/lib/internal/brands';
+import { realmSlot } from 'e2e-core/lib/internal/realm-slot';
+import { locatorInternals, screenInternals } from 'e2e-core/lib/locator/screen';
 import { createAsyncExpectation } from './async.ts';
 import { createPollExpectation } from './poll.ts';
 import { createScreenExpectation } from './screenshot.ts';
-import { soften } from './soft.ts';
+import { soften } from 'e2e-core/lib/expect/soft';
 import { createValueExpectation } from './values.ts';
 
 /**

@@ -9,17 +9,17 @@
  */
 
 import type { TestTargetPair } from '../collect/select.ts';
-import type { SkipInfo } from './records.ts';
-import type { ResolvedTarget } from '../config/resolve.ts';
-import type { AiTraceSnapshot } from '../internal/ai-trace.ts';
-import type { DebugSnapshot } from '../internal/debug.ts';
-import { classifyError, InfrastructureError, type SerializedError, TestError, TestTimeoutError, serializeError } from '../internal/errors.ts';
-import { timestamp, uuidv7 } from '../internal/ids.ts';
-import type { AttemptRecord, ResultRecord, RunError, SerialGroupRecord } from './records.ts';
+import type { SkipInfo } from 'e2e-core/lib/run/records';
+import type { ResolvedTarget } from 'e2e-core/lib/config/resolve';
+import type { AiTraceSnapshot } from 'e2e-core/lib/internal/ai-trace';
+import type { DebugSnapshot } from 'e2e-core/lib/internal/debug';
+import { classifyError, InfrastructureError, type SerializedError, TestError, TestTimeoutError, serializeError } from 'e2e-core/lib/internal/errors';
+import { timestamp, uuidv7 } from 'e2e-core/lib/internal/ids';
+import type { AttemptRecord, ResultRecord, RunError, SerialGroupRecord } from 'e2e-core/lib/run/records';
 import { retryVerdict } from './retry.ts';
 import { SerialGroupProgress, serialGroupId } from './serial.ts';
 import type { HeldStep } from './step-hold.ts';
-import type { StepProgress } from './steps.ts';
+import type { StepProgress } from 'e2e-core/lib/run/steps';
 import type { SpawnUnitRunner, UnitRunner } from './unit-runner.ts';
 import {
   INTERRUPTED_BEFORE_START,

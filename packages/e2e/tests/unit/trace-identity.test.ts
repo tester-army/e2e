@@ -11,7 +11,7 @@ import {
   traceCacheKeyHash,
   traceCallSignature,
   type CacheTargetIdentity,
-} from '../../src/cache/identity.ts';
+} from 'e2e-core/lib/cache/identity';
 
 const target: CacheTargetIdentity = {
   targetId: 'web',

@@ -2,13 +2,13 @@
 
 import { realpathSync, statSync } from 'node:fs';
 import path from 'node:path';
-import { compileGlob, compileGlobList, discoverFiles, GLOB_SYNTAX, literalPrefix, matchesGlob } from '../internal/globs.ts';
-import { CollectionError, isE2EError } from '../internal/errors.ts';
-import { setupTestId, testId } from '../internal/ids.ts';
+import { compileGlob, compileGlobList, discoverFiles, GLOB_SYNTAX, literalPrefix, matchesGlob } from 'e2e-core/lib/internal/globs';
+import { CollectionError, isE2EError } from 'e2e-core/lib/internal/errors';
+import { setupTestId, testId } from 'e2e-core/lib/internal/ids';
 import { explainModuleError } from '../config/diagnose.ts';
 import { importModule } from '../config/load.ts';
-import type { ResolvedConfig } from '../config/resolve.ts';
-import { staticSecretLedger } from '../run/secrecy.ts';
+import type { ResolvedConfig } from 'e2e-core/lib/config/resolve';
+import { staticSecretLedger } from 'e2e-core/lib/run/secrecy';
 import {
   collectModule,
   groupTitles,
@@ -17,8 +17,8 @@ import {
   type ModuleRegistration,
   type RegisteredTest,
 } from './registry.ts';
-import type { SourceLocation } from '../internal/source.ts';
-import type { TestIdentity } from '../run/records.ts';
+import type { SourceLocation } from 'e2e-core/lib/internal/source';
+import type { TestIdentity } from 'e2e-core/lib/run/records';
 
 export interface CollectedTest extends RegisteredTest, TestIdentity {
   /** Outermost serial group, when the test is a serial-group member. */

@@ -3,8 +3,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { describe, expect, it } from 'vitest';
-import { InfrastructureError } from '../../src/internal/errors.ts';
-import { ManagedProcess } from '../../src/run/managed-process.ts';
+import { InfrastructureError } from 'e2e-core/lib/internal/errors';
+import { ManagedProcess } from 'e2e-core/lib/run/managed-process';
 import { freePort } from '../helpers/free-port.ts';
 
 const SERVER_SCRIPT = `

@@ -6,8 +6,8 @@
  */
 
 import net from 'node:net';
-import { assignPorts, type ResolvedConfig, type ResolvedTarget } from '../config/resolve.ts';
-import { ConfigurationError, errorMessage } from '../internal/errors.ts';
+import { assignPorts, type ResolvedConfig, type ResolvedTarget } from 'e2e-core/lib/config/resolve';
+import { ConfigurationError, errorMessage } from 'e2e-core/lib/internal/errors';
 
 /**
  * The config with a free port assigned to every target whose URL asked for

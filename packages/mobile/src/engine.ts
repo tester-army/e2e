@@ -8,7 +8,7 @@
 
 import { createRequire } from 'node:module';
 import { createAgentDeviceClient } from 'agent-device';
-import { ConfigurationError, defineEngine, obj, type EngineAppCheckInfo, type EngineAppDeclaration, type EngineHandle } from 'e2e/engine';
+import { ConfigurationError, defineEngine, obj, type EngineAppCheckInfo, type EngineAppDeclaration, type EngineHandle } from 'e2e-core/engine';
 import { createDeviceFixture } from './device.ts';
 import type { ClientFactory, MobileOptions, MobilePlatform } from './options.ts';
 import { isLink } from './links.ts';

@@ -15,8 +15,8 @@ import {
   translateEngineError,
   translateProvisioningError,
   truncateUtf8,
-} from '../../src/internal/errors.ts';
-import { EngineError } from '../../src/engine/surface.ts';
+} from 'e2e-core/lib/internal/errors';
+import { EngineError } from 'e2e-core/lib/engine/surface';
 
 describe('translateProvisioningError', () => {
   it('never yields a test error: an engine error of any code is infrastructure', () => {

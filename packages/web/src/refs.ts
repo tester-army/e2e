@@ -10,7 +10,7 @@
  * an in-flight observation still references.
  */
 
-import { EngineError, type EngineSnapshot, type NodeRef } from 'e2e/engine';
+import { EngineError, type EngineSnapshot, type NodeRef } from 'e2e-core/engine';
 import type { ElementList } from './element-list.ts';
 import type { ActionTarget } from './support.ts';
 

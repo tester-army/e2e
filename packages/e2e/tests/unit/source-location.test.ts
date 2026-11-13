@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { projectRelativePath, sourceLocation } from '../../src/internal/source.ts';
+import { projectRelativePath, sourceLocation } from 'e2e-core/lib/internal/source';
 
 function stackThrough(file: string): string {
   return ['Error: boom', `    at Object.<anonymous> (${file}:14:3)`, '    at run (/repo/app/node_modules/e2e/dist/run/steps.js:9:1)'].join('\n');

@@ -4,7 +4,7 @@
  * so both treat what a test wrote the same way.
  */
 
-import { collapseText } from '../internal/text.ts';
+import { collapseText } from 'e2e-core/lib/internal/text';
 import { ellipsize, formatMinutes } from './format.ts';
 
 /** Text widths, in code points. */

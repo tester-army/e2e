@@ -1,9 +1,9 @@
 /** Pixel-only evidence survives the cache handoff and every default-agent screen update, a secret filled or not. */
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { defineEngine, EngineError, type EngineObserveOptions, type EngineSnapshot } from '../../src/engine/index.ts';
-import { buildTraceEntry, type RecordedAction } from '../../src/cache/trace.ts';
-import type { StepExecutor } from '../../src/agent/executor.ts';
+import { defineEngine, EngineError, type EngineObserveOptions, type EngineSnapshot } from 'e2e-core/lib/engine/index';
+import { buildTraceEntry, type RecordedAction } from 'e2e-core/lib/cache/trace';
+import type { StepExecutor } from 'e2e-core/lib/agent/executor';
 import { installFakeLoopModel, loopCalls } from '../helpers/fake-loop-model.ts';
 import { fakeCalls, installFakeModel, judgment } from '../helpers/fake-model.ts';
 import { resultByTitle, runProject, type FixtureProject, type RunOutcome } from '../helpers/run-project.ts';

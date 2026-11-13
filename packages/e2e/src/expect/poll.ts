@@ -1,10 +1,10 @@
 /** expect.poll: re-reads a value until a synchronous matcher passes. */
 
-import { ConfigurationError, isE2EError, TestError } from '../internal/errors.ts';
-import { abortError, cancelledError, Deadline, POLL_INTERVAL_MS, sleep, withAbort, withTimeout } from '../internal/time.ts';
-import type { PollExpectation, PollOptions, ValueExpectation, ValueMatcherName } from '../types.ts';
-import { currentAttempt } from './attempt.ts';
-import { currentPollScope, pollRead } from './poll-scope.ts';
+import { ConfigurationError, isE2EError, TestError } from 'e2e-core/lib/internal/errors';
+import { abortError, cancelledError, Deadline, POLL_INTERVAL_MS, sleep, withAbort, withTimeout } from 'e2e-core/lib/internal/time';
+import type { PollExpectation, PollOptions, ValueExpectation, ValueMatcherName } from 'e2e-core/lib/types';
+import { currentAttempt } from 'e2e-core/lib/expect/attempt';
+import { currentPollScope, pollRead } from 'e2e-core/lib/expect/poll-scope';
 import { createValueExpectation } from './values.ts';
 
 /** Outside an attempt (a standalone script) there is no config to read `assertionTimeout` from. */

@@ -5,9 +5,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { stripVTControlCharacters } from 'node:util';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { FileCacheStore, MAX_CACHE_WIRE_BYTES } from '../../src/cache/store.ts';
+import { FileCacheStore, MAX_CACHE_WIRE_BYTES } from 'e2e-core/lib/cache/store';
 import { main } from '../../src/cli/index.ts';
-import type { ActionTrace, TraceProvenance } from '../../src/cache/trace.ts';
+import type { ActionTrace, TraceProvenance } from 'e2e-core/lib/cache/trace';
 
 let root: string;
 let stdoutSpy: ReturnType<typeof vi.spyOn>;

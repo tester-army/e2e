@@ -23,13 +23,13 @@ import {
   type EngineInitInfo,
   type OperationContext,
   type SemanticNode,
-} from '../../src/engine/index.ts';
+} from 'e2e-core/lib/engine/index';
 import { resolveConfig } from '../../src/config/resolve-run.ts';
-import { ConfigurationError, TestTimeoutError } from '../../src/internal/errors.ts';
-import { protocolEngine } from '../../src/engine/protocol/client.ts';
-import { Connection } from '../../src/engine/protocol/connection.ts';
-import type { EngineTransport } from '../../src/engine/protocol/transport.ts';
-import { secretHandle } from '../../src/secrets.ts';
+import { ConfigurationError, TestTimeoutError } from 'e2e-core/lib/internal/errors';
+import { protocolEngine } from 'e2e-core/lib/engine/protocol/client';
+import { Connection } from 'e2e-core/lib/engine/protocol/connection';
+import type { EngineTransport } from 'e2e-core/lib/engine/protocol/transport';
+import { secretHandle } from 'e2e-core/lib/secrets';
 
 const node = (id: string, name: string, role = 'button'): SemanticNode => ({ ref: { id, revision: '' }, role, name });
 

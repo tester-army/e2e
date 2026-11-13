@@ -2,7 +2,7 @@
 
 import { chromium, type Browser, type Page } from 'playwright-core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { SemanticNode } from 'e2e/engine';
+import type { SemanticNode } from 'e2e-core/engine';
 import { captureDocument } from '../../src/observation.ts';
 import { Published } from '../helpers/published.ts';
 

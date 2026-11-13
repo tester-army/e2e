@@ -28,7 +28,9 @@ describe('the built declarations', () => {
   });
 
   it('export nothing outside the runner consumed from e2e/agent', () => {
-    const agent = declaration('agent/public.d.ts');
+    // `e2e/agent` re-exports the module `e2e-core` builds it in, so that module is what ships.
+    expect(declaration('agent/public.d.ts')).toMatch(/export \* from 'e2e-core\/lib\/agent\/public';/u);
+    const agent = readFileSync(new URL(import.meta.resolve('e2e-core/lib/agent/public').replace(/\.js$/u, '.d.ts')), 'utf8');
     expect(mentions(agent, 'defineTool')).toBe(true);
     for (const name of ['isDefinedTool', 'toolAppliesTo', 'createAgent', 'CreateAgentOptions', 'DefaultAgent']) {
       expect(mentions(agent, name), name).toBe(false);

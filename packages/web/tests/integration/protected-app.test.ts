@@ -14,7 +14,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { secrets } from 'e2e';
-import type { EngineCleanupContext, EngineHandle, OperationContext, Secret } from 'e2e/engine';
+import type { EngineCleanupContext, EngineHandle, OperationContext, Secret } from 'e2e-core/engine';
 import { web, surfaceOf } from '../../src/index.ts';
 import { PROTECTED_CREDENTIAL, startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 import { ignoreTrace, noSecrets } from '../helpers/secrets.ts';

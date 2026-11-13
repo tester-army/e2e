@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it, vi } from 'vitest';
-import type { EngineInitInfo } from 'e2e/engine';
+import type { EngineInitInfo } from 'e2e-core/engine';
 import { web, type WebConnectOptions } from '../../src/index.ts';
 import { PlaywrightSurface } from '../../src/surface.ts';
 

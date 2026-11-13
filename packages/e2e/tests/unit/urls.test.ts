@@ -9,7 +9,7 @@ import {
   sameSite,
   siteOf,
   urlMatches,
-} from '../../src/internal/urls.ts';
+} from 'e2e-core/lib/internal/urls';
 
 describe('base URL ports', () => {
   it('tells a free-port request from a fixed or default port', () => {

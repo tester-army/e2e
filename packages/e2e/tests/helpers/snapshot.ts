@@ -4,7 +4,7 @@
  * `root` node, and the viewport is the fake engine's.
  */
 
-import type { EngineSnapshot, SemanticNode } from '../../src/engine/index.ts';
+import type { EngineSnapshot, SemanticNode } from 'e2e-core/lib/engine/index';
 
 const SNAPSHOT_VIEWPORT = { width: 1280, height: 720 } as const;
 

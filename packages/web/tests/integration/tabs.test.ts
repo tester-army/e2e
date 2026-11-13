@@ -11,7 +11,7 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { EngineCleanupContext, EngineFixtureContext, EngineHandle, EngineSnapshot, OperationContext, SemanticNode } from 'e2e/engine';
+import type { EngineCleanupContext, EngineFixtureContext, EngineHandle, EngineSnapshot, OperationContext, SemanticNode } from 'e2e-core/engine';
 import { web, type Browser } from '../../src/index.ts';
 import { ignoreTrace, noSecrets } from '../helpers/secrets.ts';
 

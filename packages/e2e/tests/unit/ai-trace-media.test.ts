@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AiTraceRecorder } from '../../src/internal/ai-trace.ts';
+import { AiTraceRecorder } from 'e2e-core/lib/internal/ai-trace';
 
 /** Records SDK message parts at both telemetry boundaries without making a model call. */
 async function recordMessages(messages: unknown[], rawOutput: unknown = undefined) {

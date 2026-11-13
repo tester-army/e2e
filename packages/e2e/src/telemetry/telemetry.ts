@@ -29,8 +29,8 @@
 import { randomBytes } from 'node:crypto';
 import picocolors from 'picocolors';
 import { DOCS_URL } from '../cli/docs-url.ts';
-import { envFlag } from '../internal/env.ts';
-import { timestamp } from '../internal/ids.ts';
+import { envFlag } from 'e2e-core/lib/internal/env';
+import { timestamp } from 'e2e-core/lib/internal/ids';
 import { collectEnvironment, statedIdentity } from './environment.ts';
 import { cliSessionEvent, type TelemetryEvent } from './events.ts';
 import { postBatch, type PostHogEvent } from './posthog.ts';

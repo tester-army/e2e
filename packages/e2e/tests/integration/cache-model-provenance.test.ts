@@ -1,8 +1,8 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { expect, it } from 'vitest';
-import type { ModelInstance } from '../../src/types.ts';
-import type { StepExecutor } from '../../src/agent/executor.ts';
+import type { ModelInstance } from 'e2e-core/lib/types';
+import type { StepExecutor } from 'e2e-core/lib/agent/executor';
 import { installFakeLoopModel, loopCalls, nodeIdFor } from '../helpers/fake-loop-model.ts';
 import { startFixtureApp } from '../helpers/fixture-app.ts';
 import { assertValidReport } from '../helpers/report-schema.ts';

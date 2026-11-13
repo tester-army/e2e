@@ -1,7 +1,7 @@
 /** trace-1 entry format and the replay decision. */
 
 import { describe, expect, it } from 'vitest';
-import { decideTraceReplay } from '../../src/cache/decide.ts';
+import { decideTraceReplay } from 'e2e-core/lib/cache/decide';
 import {
   buildTraceEntry,
   MAX_TRACE_ACTIONS,
@@ -10,8 +10,8 @@ import {
   type ActionTrace,
   type RecordedAction,
   type TraceEntry,
-} from '../../src/cache/trace.ts';
-import { readTraceEntry } from '../../src/cache/trace-read.ts';
+} from 'e2e-core/lib/cache/trace';
+import { readTraceEntry } from 'e2e-core/lib/cache/trace-read';
 
 const tap: RecordedAction = {
   name: 'tap',

@@ -8,12 +8,12 @@
  */
 
 import { Writable } from 'node:stream';
-import { isAbandonedRejection } from '../internal/abandoned.ts';
-import { errorMessage, exitCodeForCategory, classifyError } from '../internal/errors.ts';
+import { isAbandonedRejection } from 'e2e-core/lib/internal/abandoned';
+import { errorMessage, exitCodeForCategory, classifyError } from 'e2e-core/lib/internal/errors';
 import { onBun } from '../internal/runtime.ts';
 import { McpOutput } from '../mcp/output.ts';
 import { serveMcp, type ServeOptions } from '../mcp/server.ts';
-import { processSecrets } from '../run/secrecy.ts';
+import { processSecrets } from 'e2e-core/lib/run/secrecy';
 import { claimStrayRejection } from '../run/standalone-test.ts';
 import { mcpSessionEvent } from '../telemetry/events.ts';
 import type { Telemetry } from '../telemetry/telemetry.ts';

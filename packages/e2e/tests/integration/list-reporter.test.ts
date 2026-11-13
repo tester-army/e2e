@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { stripVTControlCharacters } from 'node:util';
 import { describe, expect, it, vi } from 'vitest';
-import { defineEngine } from '../../src/engine/index.ts';
+import { defineEngine } from 'e2e-core/lib/engine/index';
 import { createFakeEngine } from '../helpers/fake-engine.ts';
 import { engineConfig } from '../helpers/fixture-config.ts';
 import { runProject, type FixtureProject } from '../helpers/run-project.ts';

@@ -1,6 +1,6 @@
 import { AppError } from 'agent-device';
 import { describe, expect, it } from 'vitest';
-import { defineEngine } from 'e2e/engine';
+import { defineEngine } from 'e2e-core/engine';
 import { buildEngine } from '../../src/engine.ts';
 import { AgentDeviceSurface } from '../../src/surface.ts';
 import { unstable_deviceSession, mobileTools } from '../../src/tools.ts';

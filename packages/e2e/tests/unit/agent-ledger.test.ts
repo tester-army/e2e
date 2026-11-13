@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { MAX_HANDOFF_BYTES, projectPriorSteps, serializeLedger } from '../../src/agent/ledger.ts';
-import type { StepRecord } from '../../src/run/steps.ts';
+import { MAX_HANDOFF_BYTES, projectPriorSteps, serializeLedger } from 'e2e-core/lib/agent/ledger';
+import type { StepRecord } from 'e2e-core/lib/run/steps';
 
 function step(overrides: Partial<StepRecord> & Pick<StepRecord, 'api' | 'label'>): StepRecord {
   return {

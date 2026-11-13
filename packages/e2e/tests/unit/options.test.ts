@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { TestError } from '../../src/internal/errors.ts';
-import { rejectUnknownOptions } from '../../src/internal/options.ts';
+import { TestError } from 'e2e-core/lib/internal/errors';
+import { rejectUnknownOptions } from 'e2e-core/lib/internal/options';
 
 const KNOWN = ['timeout', 'interval', 'maxModelCalls', 'vision'];
 

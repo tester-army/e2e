@@ -5,8 +5,8 @@ The browser engine for [`e2e`](https://www.npmjs.com/package/e2e), built on
 
 `e2e` ships no engine of its own: every target names the engine that drives
 it, and this package is the one for browsers. It implements the public
-`e2e/engine` contract, so a device or desktop engine plugs into the same
-seam with no privilege either way.
+`e2e-core/engine` contract (`e2e/engine` to the runner), so a device or
+desktop engine plugs into the same seam with no privilege either way.
 
 ## Install
 

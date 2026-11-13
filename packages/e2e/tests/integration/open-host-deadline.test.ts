@@ -2,7 +2,7 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import type { EngineHandle } from '../../src/engine/index.ts';
+import type { EngineHandle } from 'e2e-core/lib/engine/index';
 import { createFakeEngine } from '../helpers/fake-engine.ts';
 import { gate, hostHarness, sdkExpect } from '../helpers/open-host.ts';
 

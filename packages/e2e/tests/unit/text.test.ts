@@ -1,6 +1,6 @@
 import { runInNewContext } from 'node:vm';
 import { describe, expect, it } from 'vitest';
-import { bound, compareText, matchesText, normalizeRegexpFlags, normalizeText, toTextPattern } from '../../src/internal/text.ts';
+import { bound, compareText, matchesText, normalizeRegexpFlags, normalizeText, toTextPattern } from 'e2e-core/lib/internal/text';
 
 describe('normalizeText', () => {
   it('trims and collapses unicode whitespace runs to one ASCII space', () => {

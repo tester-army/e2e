@@ -5,14 +5,14 @@
  * painted over.
  */
 
-import type { LocatorExpression } from '../engine/surface.ts';
-import { ConfigurationError, isE2EError } from '../internal/errors.ts';
-import { clipBox, cropImage, decodePng, fillBoxes, resampleImage, type ImageBox, type RgbaImage } from '../internal/image.ts';
-import type { ReadWindow } from '../internal/time.ts';
-import { isNodeVisible } from '../locator/engine.ts';
-import { describeExpression } from '../locator/expression.ts';
-import type { ScreenContext } from '../locator/screen.ts';
-import { pixelsProvenMasked } from '../run/secrecy.ts';
+import type { LocatorExpression } from 'e2e-core/lib/engine/surface';
+import { ConfigurationError, isE2EError } from 'e2e-core/lib/internal/errors';
+import { clipBox, cropImage, decodePng, fillBoxes, resampleImage, type ImageBox, type RgbaImage } from 'e2e-core/lib/internal/image';
+import type { ReadWindow } from 'e2e-core/lib/internal/time';
+import { isNodeVisible } from 'e2e-core/lib/locator/engine';
+import { describeExpression } from 'e2e-core/lib/locator/expression';
+import type { ScreenContext } from 'e2e-core/lib/locator/screen';
+import { pixelsProvenMasked } from 'e2e-core/lib/run/secrecy';
 
 /** What one call captures. */
 export interface CaptureRequest {

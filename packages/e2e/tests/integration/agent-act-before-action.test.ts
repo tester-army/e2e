@@ -6,7 +6,7 @@ import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 import { installFakeLoopModel, loopCalls, nodeIdFor } from '../helpers/fake-loop-model.ts';
 import { createProject, resultByTitle, runExisting, runProject, type RunOutcome } from '../helpers/run-project.ts';
 import { readEntries } from '../helpers/trace-cache.ts';
-import type { StepExecutor } from '../../src/agent/executor.ts';
+import type { StepExecutor } from 'e2e-core/lib/agent/executor';
 
 const TITLE = 'captures before incrementing';
 const SUITE = `import { test, expect } from 'e2e';

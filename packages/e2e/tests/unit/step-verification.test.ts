@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { StepRecorder } from '../../src/run/steps.ts';
+import { StepRecorder } from 'e2e-core/lib/run/steps';
 
 const pass = async (): Promise<void> => undefined;
 

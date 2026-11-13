@@ -4,8 +4,8 @@
  * states only what it is about.
  */
 
-import type { ResolvedLimits } from '../../src/config/agent.ts';
-import { ENGINE_SPI_VERSION } from '../../src/engine/contract.ts';
+import type { ResolvedLimits } from 'e2e-core/lib/config/agent';
+import { ENGINE_SPI_VERSION } from 'e2e-core/lib/engine/contract';
 import type {
   Report1Document,
   ReportAttempt,

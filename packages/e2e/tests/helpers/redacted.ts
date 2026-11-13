@@ -1,7 +1,7 @@
 /** Fixture nodes in the redacted shape descriptors, anchors, and relocation read. */
 
-import { redactNode, type NodeRedaction, type RedactedNode } from '../../src/agent/observation.ts';
-import type { SemanticNode } from '../../src/engine/surface.ts';
+import { redactNode, type NodeRedaction, type RedactedNode } from 'e2e-core/lib/agent/observation';
+import type { SemanticNode } from 'e2e-core/lib/engine/surface';
 
 /** Redaction that changes nothing: the fixture holds no registered secret. */
 const NO_SECRETS: NodeRedaction = { redact: (text) => text, redactCut: (text) => text };

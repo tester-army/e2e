@@ -6,7 +6,7 @@
 
 import type { Browser, BrowserContext, Page, Route } from 'playwright-core';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
-import type { OperationContext } from 'e2e/engine';
+import type { OperationContext } from 'e2e-core/engine';
 import { BrowserConnection } from '../../src/browser-connection.ts';
 import { CLOSED_SHADOW_ROOTS_INIT_SCRIPT } from '../../src/closed-shadow.ts';
 import { captureObservation } from '../../src/observation-capture.ts';

@@ -6,9 +6,9 @@
  * (JUnit, markdown) share this one reading.
  */
 
-import type { SkipInfo } from '../run/records.ts';
-import type { FailureEvidence } from '../run/records.ts';
-import type { AppLogRecord } from '../run/steps.ts';
+import type { SkipInfo } from 'e2e-core/lib/run/records';
+import type { FailureEvidence } from 'e2e-core/lib/run/records';
+import type { AppLogRecord } from 'e2e-core/lib/run/steps';
 import { isCutSerialRetry } from '../run/retry.ts';
 import type { ReportError, ReportResult, ReportSerialGroup, ReportStep } from './build.ts';
 

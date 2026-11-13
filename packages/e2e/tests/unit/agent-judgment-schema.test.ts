@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { Ajv2020, type SchemaObject } from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
 import { describe, expect, it } from 'vitest';
-import { JUDGMENT_SCHEMA, validateJudgmentResponse } from '../../src/agent/protocol.ts';
+import { JUDGMENT_SCHEMA, validateJudgmentResponse } from 'e2e-core/lib/agent/protocol';
 
 const SCHEMA_ROOT = path.resolve(fileURLToPath(import.meta.url), '..', '..', '..', 'schema');
 

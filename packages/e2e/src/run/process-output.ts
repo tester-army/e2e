@@ -8,9 +8,9 @@
  * fails.
  */
 
-import { StreamRedactor, type SecretLedger } from '../internal/redact.ts';
+import { StreamRedactor, type SecretLedger } from 'e2e-core/lib/internal/redact';
 import { AsyncLocalStorage, AsyncResource } from 'node:async_hooks';
-import { realmSlot } from '../internal/realm-slot.ts';
+import { realmSlot } from 'e2e-core/lib/internal/realm-slot';
 import type { ListReporterOutput } from '../report/list.ts';
 
 export type OutputStream = 'stdout' | 'stderr';

@@ -2,13 +2,13 @@
 
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
+import type { ResolvedConfig, ResolvedTarget } from 'e2e-core/lib/config/resolve';
 import type { Report } from '../run-types.ts';
 import { buildReport } from '../report/build.ts';
 import { renderTracePage } from '../report/failure-text.ts';
 import { outcome } from '../report/outcome.ts';
 import { toPosixPath, writeTextReport } from '../report/write.ts';
-import type { AttemptRecord, ResultRecord } from './records.ts';
+import type { AttemptRecord, ResultRecord } from 'e2e-core/lib/run/records';
 
 export interface HostTraceOptions {
   readonly config: ResolvedConfig;

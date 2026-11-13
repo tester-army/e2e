@@ -1,4 +1,4 @@
-import { packageVersion } from '../../internal/package-version.ts';
+import { packageVersion } from 'e2e-core/lib/internal/package-version';
 import { getEnginePreset, type EngineId, type EnginePreset } from './engines.ts';
 import { dependencyRange } from './versions.ts';
 import { getGatewayPreset, type GatewayId } from './gateways.ts';

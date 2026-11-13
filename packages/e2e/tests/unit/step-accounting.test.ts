@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import type { OperationContext } from '../../src/engine/surface.ts';
-import { Deadline } from '../../src/internal/time.ts';
-import type { AgentContext } from '../../src/agent/invocation.ts';
-import { StepAccounting } from '../../src/agent/step-accounting.ts';
-import { StepRecorder } from '../../src/run/steps.ts';
-import { MAX_REASONING_CHARS } from '../../src/agent/usage.ts';
+import type { OperationContext } from 'e2e-core/lib/engine/surface';
+import { Deadline } from 'e2e-core/lib/internal/time';
+import type { AgentContext } from 'e2e-core/lib/agent/invocation';
+import { StepAccounting } from 'e2e-core/lib/agent/step-accounting';
+import { StepRecorder } from 'e2e-core/lib/run/steps';
+import { MAX_REASONING_CHARS } from 'e2e-core/lib/agent/usage';
 
 /** The slice of a runtime accounting reads: an engine that mints operation contexts and a config with an action timeout. */
 function runtime(): AgentContext & { steps: StepRecorder } {

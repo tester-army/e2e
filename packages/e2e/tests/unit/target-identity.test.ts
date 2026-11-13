@@ -9,11 +9,11 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { assignPorts } from '../../src/config/resolve.ts';
+import { assignPorts } from 'e2e-core/lib/config/resolve';
 import { resolveConfig } from '../../src/config/resolve-run.ts';
-import { defineEngine } from '../../src/engine/index.ts';
-import { targetIdentity } from '../../src/run/sessions.ts';
-import type { Target } from '../../src/types.ts';
+import { defineEngine } from 'e2e-core/lib/engine/index';
+import { targetIdentity } from 'e2e-core/lib/run/sessions';
+import type { Target } from 'e2e-core/lib/types';
 
 const ROOT = '/tmp/e2e-target-identity';
 

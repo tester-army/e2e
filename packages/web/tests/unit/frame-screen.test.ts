@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import type { EngineFixtureContext, LocatorExpression } from 'e2e/engine';
+import type { EngineFixtureContext, LocatorExpression } from 'e2e-core/engine';
 import type { Locator, Screen } from 'e2e';
 import type { PlaywrightSurface } from '../../src/surface.ts';
 import { createBrowserFixture } from '../../src/browser.ts';

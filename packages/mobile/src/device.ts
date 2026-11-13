@@ -6,7 +6,7 @@
  */
 
 import type { AgentDeviceClient as DeviceSessionClient } from 'agent-device';
-import type { EngineFixtureContext, Locator } from 'e2e/engine';
+import type { EngineFixtureContext, Locator } from 'e2e-core/engine';
 import { linkLabel, linkTarget } from './links.ts';
 import type { DevicePermission, MobilePlatform, PermissionState } from './options.ts';
 import type { DeviceSelection } from './pool.ts';

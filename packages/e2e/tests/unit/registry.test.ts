@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { collectFromRegistration } from '../../src/collect/collect.ts';
 import * as registry from '../../src/collect/registry.ts';
 import { collectModule, test } from '../../src/collect/registry.ts';
-import { CollectionError } from '../../src/internal/errors.ts';
+import { CollectionError } from 'e2e-core/lib/internal/errors';
 
 const noop = async () => {};
 

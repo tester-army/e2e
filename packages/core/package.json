@@ -1,0 +1,78 @@
+{
+  "name": "e2e-core",
+  "version": "0.0.0",
+  "description": "The engine contract, locators, agent, and replay cache the e2e test runner is built on",
+  "keywords": [
+    "e2e",
+    "automation",
+    "browser-automation",
+    "mobile-automation",
+    "ios",
+    "android",
+    "agent",
+    "playwright"
+  ],
+  "license": "Apache-2.0",
+  "contributors": [
+    "Oskar Kwaśniewski <oskar@tester.army>",
+    "Szymon Rybczak <szymon@tester.army>"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/e2e-inc/e2e.git",
+    "directory": "packages/core"
+  },
+  "bugs": {
+    "url": "https://github.com/e2e-inc/e2e/issues"
+  },
+  "homepage": "https://github.com/e2e-inc/e2e/tree/main/packages/core#readme",
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "public",
+    "tag": "latest"
+  },
+  "type": "module",
+  "exports": {
+    "./engine": {
+      "types": "./dist/engine/index.d.ts",
+      "default": "./dist/engine/index.js"
+    },
+    "./lib/*": {
+      "types": "./dist/*.d.ts",
+      "default": "./dist/*.js"
+    }
+  },
+  "files": [
+    "dist",
+    "NOTICE"
+  ],
+  "scripts": {
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc --project tsconfig.build.json && node ../../scripts/stamp-dist.ts",
+    "prepublishOnly": "node ../../scripts/check-dist.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:unit": "vitest run tests/unit"
+  },
+  "dependencies": {
+    "@napi-rs/image": "1.16.0",
+    "pixelmatch": "8.0.0",
+    "zod": "4.6.7"
+  },
+  "peerDependencies": {
+    "ai": "^7.0.0"
+  },
+  "peerDependenciesMeta": {
+    "ai": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "26.6.6",
+    "ai": "7.0.170",
+    "typescript": "7.0.2",
+    "vitest": "5.1.0"
+  },
+  "engines": {
+    "node": "^22.22.3 || >=24.8.0"
+  }
+}

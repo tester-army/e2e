@@ -2,8 +2,8 @@
 
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { isAbandonedRejection } from '../../src/internal/abandoned.ts';
-import { StepRecorder, type StepProgress } from '../../src/run/steps.ts';
+import { isAbandonedRejection } from 'e2e-core/lib/internal/abandoned';
+import { StepRecorder, type StepProgress } from 'e2e-core/lib/run/steps';
 
 function recorder(): { steps: StepRecorder; heard: StepProgress[] } {
   const heard: StepProgress[] = [];

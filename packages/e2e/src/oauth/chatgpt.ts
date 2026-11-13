@@ -9,7 +9,7 @@ import { createOpenAI } from '@ai-sdk/openai';
 import type { LanguageModelV4 } from '@ai-sdk/provider';
 import { createOAuthFetch } from './fetch.ts';
 import { withLogin } from './login-model.ts';
-import { USER_AGENT } from '../internal/client-identity.ts';
+import { USER_AGENT } from 'e2e-core/lib/internal/client-identity';
 import { loginHint } from './providers.ts';
 import { createCodexProvider } from './providers/openai.ts';
 import { withoutServerStorage } from './responses.ts';

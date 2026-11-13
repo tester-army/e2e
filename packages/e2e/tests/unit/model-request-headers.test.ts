@@ -1,17 +1,17 @@
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import { z } from 'zod';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { createModelAdapter } from '../../src/agent/model/sdk.ts';
-import { defineTool } from '../../src/agent/tool.ts';
+import { createModelAdapter } from 'e2e-core/lib/agent/model/sdk';
+import { defineTool } from 'e2e-core/lib/agent/tool';
 import { resolveConfig } from '../../src/config/resolve-run.ts';
-import { defineEngine } from '../../src/engine/index.ts';
-import { createEngineSession } from '../../src/engine/session.ts';
-import { USER_AGENT } from '../../src/internal/client-identity.ts';
-import { Deadline } from '../../src/internal/time.ts';
-import { AttemptBudget } from '../../src/run/budget.ts';
-import { createFixtures } from '../../src/run/fixtures.ts';
-import { StepRecorder } from '../../src/run/steps.ts';
-import { WorkerModels } from '../../src/run/worker-models.ts';
+import { defineEngine } from 'e2e-core/lib/engine/index';
+import { createEngineSession } from 'e2e-core/lib/engine/session';
+import { USER_AGENT } from 'e2e-core/lib/internal/client-identity';
+import { Deadline } from 'e2e-core/lib/internal/time';
+import { AttemptBudget } from 'e2e-core/lib/run/budget';
+import { createFixtures } from 'e2e-core/lib/run/fixtures';
+import { StepRecorder } from 'e2e-core/lib/run/steps';
+import { WorkerModels } from 'e2e-core/lib/run/worker-models';
 import { json, startServer } from '../helpers/recording-server.ts';
 import { snapshot } from '../helpers/snapshot.ts';
 

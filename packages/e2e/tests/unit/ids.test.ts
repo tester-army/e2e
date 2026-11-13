@@ -8,7 +8,7 @@ import {
   testId,
   uuidv7,
   validateTitle,
-} from '../../src/internal/ids.ts';
+} from 'e2e-core/lib/internal/ids';
 
 describe('encodeTitle', () => {
   it('percent-encodes every other byte as uppercase %HH', () => {

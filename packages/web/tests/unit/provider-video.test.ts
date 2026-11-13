@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { Page } from 'playwright-core';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { ProviderRecording } from 'e2e/engine';
+import type { ProviderRecording } from 'e2e-core/engine';
 import { ProviderVideo } from '../../src/provider-video.ts';
 import type { LeaseRecording } from '../../src/provider.ts';
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { realmSlot } from '../../src/internal/realm-slot.ts';
+import { realmSlot } from 'e2e-core/lib/internal/realm-slot';
 
 describe('realmSlot', () => {
   it('shares values across slot instances created with the same key (cross-realm contract)', () => {

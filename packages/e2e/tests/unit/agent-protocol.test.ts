@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { deriveJsonSchema } from '../../src/agent/model/schema.ts';
-import { extractSchema, validateExtractResponse } from '../../src/agent/protocol.ts';
+import { deriveJsonSchema } from 'e2e-core/lib/agent/model/schema';
+import { extractSchema, validateExtractResponse } from 'e2e-core/lib/agent/protocol';
 
 describe('agent-extract-2', () => {
   it('passes any found value through: the caller schema is the only authority over it', () => {

@@ -7,7 +7,7 @@
 import { spawn } from 'node:child_process';
 import * as clack from '@clack/prompts';
 import pc from 'picocolors';
-import { sanitizeText } from '../internal/errors.ts';
+import { sanitizeText } from 'e2e-core/lib/internal/errors';
 import { browserCommand } from './browser.ts';
 import { OAuthError } from './errors.ts';
 import { login, logout } from './login.ts';

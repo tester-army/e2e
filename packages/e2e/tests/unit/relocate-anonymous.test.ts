@@ -1,11 +1,11 @@
 /** Anonymous targets: a control with only a role relocates by its place among the unnamed controls of its kind. */
 
 import { describe, expect, it } from 'vitest';
-import { describePosition, relocateDescriptor } from '../../src/cache/relocate.ts';
-import { buildTraceEntry } from '../../src/cache/trace.ts';
-import { readTraceEntry } from '../../src/cache/trace-read.ts';
-import type { SemanticNode } from '../../src/engine/surface.ts';
-import type { RedactedNode } from '../../src/agent/observation.ts';
+import { describePosition, relocateDescriptor } from 'e2e-core/lib/cache/relocate';
+import { buildTraceEntry } from 'e2e-core/lib/cache/trace';
+import { readTraceEntry } from 'e2e-core/lib/cache/trace-read';
+import type { SemanticNode } from 'e2e-core/lib/engine/surface';
+import type { RedactedNode } from 'e2e-core/lib/agent/observation';
 import { redactedNodes } from '../helpers/redacted.ts';
 
 function textbox(id: string, name?: string): SemanticNode {

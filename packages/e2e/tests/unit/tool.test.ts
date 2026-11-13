@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { defineTool, toolAppliesTo } from '../../src/agent/tool.ts';
+import { defineTool, toolAppliesTo } from 'e2e-core/lib/agent/tool';
 
 const tool = {
   description: 'noop',

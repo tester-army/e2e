@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach } from 'vitest';
-import type { EngineHandle, EnginePrepareInfo, EngineFinishInfo } from '../../src/engine/index.ts';
+import type { EngineHandle, EnginePrepareInfo, EngineFinishInfo } from 'e2e-core/lib/engine/index';
 import type { E2EConfig } from '../../src/index.ts';
 import type { OpenHostOptions } from '../../src/runner.ts';
 import { FAKE_APP, type FakeEngineHandle } from './fake-engine.ts';

@@ -6,10 +6,10 @@
  */
 
 import { afterEach, describe, expect, it } from 'vitest';
-import { EngineError, resolveExpression, type SemanticNode } from '../../src/engine/index.ts';
+import { EngineError, resolveExpression, type SemanticNode } from 'e2e-core/lib/engine/index';
 import { expect as expectFixture } from '../../src/expect/index.ts';
-import { sleep, withTimeout } from '../../src/internal/time.ts';
-import type { Locator } from '../../src/types.ts';
+import { sleep, withTimeout } from 'e2e-core/lib/internal/time';
+import type { Locator } from 'e2e-core/lib/types';
 import { invalid } from '../helpers/invalid.ts';
 import { screenOver } from '../helpers/screen-over.ts';
 import { snapshot } from '../helpers/snapshot.ts';

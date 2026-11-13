@@ -1,10 +1,10 @@
 import type { Tool, ToolSet } from 'ai';
 import { z } from 'zod';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
-import { loadAiSdk } from '../../src/agent/ai-sdk.ts';
-import { createGrammarTools } from '../../src/agent/primitives.ts';
-import { ScreenPresenter } from '../../src/agent/screen-update.ts';
-import { TestError } from '../../src/internal/errors.ts';
+import { loadAiSdk } from 'e2e-core/lib/agent/ai-sdk';
+import { createGrammarTools } from 'e2e-core/lib/agent/primitives';
+import { ScreenPresenter } from 'e2e-core/lib/agent/screen-update';
+import { TestError } from 'e2e-core/lib/internal/errors';
 import { createSessionCatalog } from '../../src/mcp/catalog.ts';
 import { catalogLine, describeToolDetail, errorResult, invokeTool, resultFromOutput, toolJsonSchema } from '../../src/mcp/tools.ts';
 import { fakeExecutorContext } from '../helpers/fake-executor-context.ts';

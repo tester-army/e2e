@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { expect, it } from 'vitest';
-import type { SemanticNode } from 'e2e/engine';
+import type { SemanticNode } from 'e2e-core/engine';
 import { web, surfaceOf } from '../../src/index.ts';
 import { ignoreTrace, noSecrets } from '../helpers/secrets.ts';
 

@@ -8,7 +8,7 @@
 
 import { createHash } from 'node:crypto';
 import type { createAgentDeviceClient } from 'agent-device';
-import { EngineError, obj, type EngineAppInfo, type EngineFinishInfo, type EnginePrepareInfo } from 'e2e/engine';
+import { EngineError, obj, type EngineAppInfo, type EngineFinishInfo, type EnginePrepareInfo } from 'e2e-core/engine';
 
 type AgentDeviceClientConfig = NonNullable<Parameters<typeof createAgentDeviceClient>[0]>;
 

@@ -17,7 +17,7 @@ import {
   type FixtureProject,
   type RunOutcome,
 } from '../helpers/run-project.ts';
-import type { StepExecutor } from '../../src/agent/executor.ts';
+import type { StepExecutor } from 'e2e-core/lib/agent/executor';
 import type { RunEvent } from '../../src/run/events.ts';
 
 const SUITE = `import { test, expect } from 'e2e';

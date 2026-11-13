@@ -10,7 +10,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 import { installFakeLoopModel, loopCalls, nodeIdFor } from '../helpers/fake-loop-model.ts';
 import { resultByTitle, runProject, runProjectWithConfigFile } from '../helpers/run-project.ts';
-import type { StepExecutor, StepExecutorContext } from '../../src/agent/executor.ts';
+import type { StepExecutor, StepExecutorContext } from 'e2e-core/lib/agent/executor';
 
 const CREDS = { admin: { username: 'admin', password: 'admin-pass' } };
 

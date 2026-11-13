@@ -7,7 +7,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { EngineDoctorInfo } from 'e2e/engine';
+import type { EngineDoctorInfo } from 'e2e-core/engine';
 import { harness, PROJECT_ROOT, type Harness, type HarnessOptions } from '../helpers/harness.ts';
 
 const MACHINE = [

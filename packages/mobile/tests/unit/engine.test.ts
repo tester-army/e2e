@@ -12,7 +12,7 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppError } from 'agent-device';
 import { decodePng, encodePng } from '../helpers/png.ts';
-import type { EngineFixtureContext, EngineSnapshot, FixtureOperations, LocatorExpression, OperationContext, SemanticNode } from 'e2e/engine';
+import type { EngineFixtureContext, EngineSnapshot, FixtureOperations, LocatorExpression, OperationContext, SemanticNode } from 'e2e-core/engine';
 import type { Device } from '../../src/device.ts';
 import type { RawNode } from '../../src/nodes.ts';
 import { mobile } from '../../src/engine.ts';

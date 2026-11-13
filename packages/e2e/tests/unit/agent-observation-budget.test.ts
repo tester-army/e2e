@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { imageTokenUpperBound } from '../../src/agent/model/adapter.ts';
-import { observationByteBudget } from '../../src/agent/observation-budget.ts';
+import { imageTokenUpperBound } from 'e2e-core/lib/agent/model/adapter';
+import { observationByteBudget } from 'e2e-core/lib/agent/observation-budget';
 
 const LIMITS = { maxObservationBytes: 262_144, maxInputTokens: 200_000 };
 const INSTRUCTION_RESERVE = 4_096;

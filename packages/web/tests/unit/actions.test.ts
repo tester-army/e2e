@@ -7,7 +7,7 @@
 
 import type { Locator as PwLocator, Page } from 'playwright-core';
 import { describe, expect, it, vi } from 'vitest';
-import { EngineError, TestError, type LocatorAction } from 'e2e/engine';
+import { EngineError, TestError, type LocatorAction } from 'e2e-core/engine';
 import { classifyActionError, dispatchLocatorAction, dispatchPointerAction } from '../../src/actions.ts';
 import { dispatchedInput, type ActionTarget } from '../../src/support.ts';
 

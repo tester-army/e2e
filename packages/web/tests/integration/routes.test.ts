@@ -17,7 +17,7 @@ import path from 'node:path';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { EventEmitter } from 'node:events';
 import type { Download, Page } from 'playwright-core';
-import { TestError, type EngineFixtureContext } from 'e2e/engine';
+import { TestError, type EngineFixtureContext } from 'e2e-core/engine';
 import { PlaywrightSurface } from '../../src/surface.ts';
 import { createBrowserFixture, type Browser, type WebRoute } from '../../src/browser.ts';
 import { ignoreTrace, noSecrets } from '../helpers/secrets.ts';

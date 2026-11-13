@@ -8,9 +8,9 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { EngineError, resolveExpression, type NodeRef, type SemanticNode } from '../../src/engine/index.ts';
-import { sleep } from '../../src/internal/time.ts';
-import type { Locator, Screen } from '../../src/types.ts';
+import { EngineError, resolveExpression, type NodeRef, type SemanticNode } from 'e2e-core/lib/engine/index';
+import { sleep } from 'e2e-core/lib/internal/time';
+import type { Locator, Screen } from 'e2e-core/lib/types';
 import { invalid } from '../helpers/invalid.ts';
 import { screenOver } from '../helpers/screen-over.ts';
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { overlapShare, viewportShare } from '../../src/internal/geometry.ts';
+import { overlapShare, viewportShare } from 'e2e-core/lib/internal/geometry';
 
 const viewport = { width: 400, height: 800 };
 

@@ -8,22 +8,22 @@
  * rides along as `run.explore`.
  */
 
-import { MAX_PARAMS_BYTES } from '../agent/act-validation.ts';
+import { MAX_PARAMS_BYTES } from 'e2e-core/lib/agent/act-validation';
 import type { ModuleRegistration, RegisteredTest } from '../collect/registry.ts';
 import { selectTargets } from '../collect/select.ts';
 import { discoverConfig, loadConfigModule, missingConfigError } from '../config/load.ts';
-import { missingModelError, resolveAgentConfig } from '../config/agent.ts';
-import { type ResolvedConfig, type ResolvedCredential, type ResolvedTarget } from '../config/resolve.ts';
+import { missingModelError, resolveAgentConfig } from 'e2e-core/lib/config/agent';
+import { type ResolvedConfig, type ResolvedCredential, type ResolvedTarget } from 'e2e-core/lib/config/resolve';
 import { resolveConfig } from '../config/resolve-run.ts';
-import { launchesPinnedApp } from '../config/targets.ts';
-import { ConfigurationError } from '../internal/errors.ts';
+import { launchesPinnedApp } from 'e2e-core/lib/config/targets';
+import { ConfigurationError } from 'e2e-core/lib/internal/errors';
 import type { ReportExplore } from '../report/build.ts';
 import { validateChangedSince } from '../run/changes.ts';
 import type { RunEventSink } from '../run/events.ts';
 import type { RunnerOutput } from '../run/process-output.ts';
 import { run, type RunOutcome } from '../run/runner.ts';
-import { registerStaticSecrets, staticSecretLedger } from '../run/secrecy.ts';
-import type { AgentConfig, RecordingMode } from '../types.ts';
+import { registerStaticSecrets, staticSecretLedger } from 'e2e-core/lib/run/secrecy';
+import type { AgentConfig, RecordingMode } from 'e2e-core/lib/types';
 import type { BuiltinReporter, E2EConfig } from '../run-types.ts';
 import { createExploreBody } from './body.ts';
 import { STEP_BOUNDS, TIMEOUT_BOUNDS } from './bounds.ts';

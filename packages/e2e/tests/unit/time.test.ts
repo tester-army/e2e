@@ -12,9 +12,9 @@ import {
   ReadWindow,
   sleep,
   withTimeout,
-} from '../../src/internal/time.ts';
-import { E2EError } from '../../src/internal/errors.ts';
-import { EngineError } from '../../src/engine/contract.ts';
+} from 'e2e-core/lib/internal/time';
+import { E2EError } from 'e2e-core/lib/internal/errors';
+import { EngineError } from 'e2e-core/lib/engine/contract';
 
 afterEach(() => {
   vi.useRealTimers();

@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import type { ResolvedConfig } from '../../src/config/resolve.ts';
-import type { TargetSession } from '../../src/engine/surface.ts';
-import { serializeError, TestError } from '../../src/internal/errors.ts';
-import { adoptSecrets, carriedSecrets, processSecrets, redactForSession, registerStaticSecrets, redactsDownloads, sessionLedger, staticSecretLedger } from '../../src/run/secrecy.ts';
+import type { ResolvedConfig } from 'e2e-core/lib/config/resolve';
+import type { TargetSession } from 'e2e-core/lib/engine/surface';
+import { serializeError, TestError } from 'e2e-core/lib/internal/errors';
+import { adoptSecrets, carriedSecrets, processSecrets, redactForSession, registerStaticSecrets, redactsDownloads, sessionLedger, staticSecretLedger } from 'e2e-core/lib/run/secrecy';
 
 const STATIC_VALUE = 'static-config-password-5521';
 const PROVIDER_VALUE = 'provider-minted-token-8804';

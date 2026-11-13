@@ -2,17 +2,17 @@ import { generateText } from 'ai';
 import * as ai from 'ai';
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-import { withStallGuard } from '../../src/agent/model/stall.ts';
-import { asSdkLanguageModel } from '../../src/agent/ai-sdk.ts';
-import { defineTool } from '../../src/agent/tool.ts';
+import { withStallGuard } from 'e2e-core/lib/agent/model/stall';
+import { asSdkLanguageModel } from 'e2e-core/lib/agent/ai-sdk';
+import { defineTool } from 'e2e-core/lib/agent/tool';
 import { resolveConfig } from '../../src/config/resolve-run.ts';
-import { defineEngine } from '../../src/engine/index.ts';
-import { createEngineSession } from '../../src/engine/session.ts';
-import { Deadline } from '../../src/internal/time.ts';
-import { AttemptBudget } from '../../src/run/budget.ts';
-import { createFixtures } from '../../src/run/fixtures.ts';
-import { StepRecorder } from '../../src/run/steps.ts';
-import { WorkerModels } from '../../src/run/worker-models.ts';
+import { defineEngine } from 'e2e-core/lib/engine/index';
+import { createEngineSession } from 'e2e-core/lib/engine/session';
+import { Deadline } from 'e2e-core/lib/internal/time';
+import { AttemptBudget } from 'e2e-core/lib/run/budget';
+import { createFixtures } from 'e2e-core/lib/run/fixtures';
+import { StepRecorder } from 'e2e-core/lib/run/steps';
+import { WorkerModels } from 'e2e-core/lib/run/worker-models';
 import type { E2EConfig } from '../../src/run-types.ts';
 import { runAgentStepsOnFakeTime } from '../helpers/agent-fake-time.ts';
 import { installFakeLoopModel } from '../helpers/fake-loop-model.ts';
@@ -21,7 +21,7 @@ import { createScriptedInstance, scriptedResult } from '../helpers/scripted-mode
 import { snapshot } from '../helpers/snapshot.ts';
 
 // The loop and the judgment adapter take the production bound; a test waits 50 ms for a stall, not 120 s.
-vi.mock(import('../../src/agent/model/stall.ts'), async (importOriginal) => {
+vi.mock(import('e2e-core/lib/agent/model/stall'), async (importOriginal) => {
   const stall = await importOriginal();
   return { withStallGuard: (sdk, model, onStall, stallMs = 50) => stall.withStallGuard(sdk, model, onStall, stallMs) };
 });

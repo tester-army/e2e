@@ -8,7 +8,7 @@
  */
 
 import { StringDecoder } from 'node:string_decoder';
-import { StreamRedactor, type SecretLedger } from '../internal/redact.ts';
+import { StreamRedactor, type SecretLedger } from 'e2e-core/lib/internal/redact';
 
 export type OutputStream = 'stdout' | 'stderr';
 

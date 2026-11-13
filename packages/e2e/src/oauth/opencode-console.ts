@@ -10,11 +10,11 @@
 import { randomUUID } from 'node:crypto';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import type { LanguageModelV4, LanguageModelV4CallOptions, LanguageModelV4Message } from '@ai-sdk/provider';
-import { promptCacheKey } from '../agent/model/provider-hints.ts';
+import { promptCacheKey } from 'e2e-core/lib/agent/model/provider-hints';
 import { OAuthError } from './errors.ts';
 import { createOAuthFetch } from './fetch.ts';
 import { withLogin } from './login-model.ts';
-import { USER_AGENT } from '../internal/client-identity.ts';
+import { USER_AGENT } from 'e2e-core/lib/internal/client-identity';
 import { credentialSource } from './providers.ts';
 import { createOpencodeConsoleProvider, opencodeConsoleChatRoute, opencodeConsoleRouteFor, type OpencodeConsoleRoute } from './providers/opencode-console.ts';
 import type { FetchFunction } from './types.ts';

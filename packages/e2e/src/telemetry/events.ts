@@ -12,15 +12,15 @@
  * hold the payload to that promise.
  */
 
-import { GRAMMAR_ACTION_NAMES, GRAMMAR_TOOL_NAMES, HARNESS_TOOL_NAMES, MCP_SESSION_SURFACE, PROJECT_TOOL_EVENT_PREFIX } from '../agent/action-names.ts';
-import { modelLabel } from '../config/agent.ts';
+import { GRAMMAR_ACTION_NAMES, GRAMMAR_TOOL_NAMES, HARNESS_TOOL_NAMES, MCP_SESSION_SURFACE, PROJECT_TOOL_EVENT_PREFIX } from 'e2e-core/lib/agent/action-names';
+import { modelLabel } from 'e2e-core/lib/config/agent';
 import type { ResolvedRunConfig } from '../config/resolve-run.ts';
 import type { McpClient } from '../mcp/server.ts';
 import type { McpSessionSummary } from '../mcp/usage.ts';
 import type { Report1Document, ReportError, ReportExplore, ReportStep, ReportUsage } from '../report/build.ts';
-import { memberRan } from '../run/records.ts';
-import { STEP_KINDS } from '../run/steps.ts';
-import type { JsonValue } from '../types.ts';
+import { memberRan } from 'e2e-core/lib/run/records';
+import { STEP_KINDS } from 'e2e-core/lib/run/steps';
+import type { JsonValue } from 'e2e-core/lib/types';
 import { failureKind } from './failure-kind.ts';
 import { errorCodeToken, plainToken } from './token.ts';
 
