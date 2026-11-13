@@ -1,6 +1,6 @@
 {
   "name": "e2e",
-  "owner": { "name": "TesterArmy", "url": "https://tester.army" },
+  "owner": { "name": "e2e", "url": "https://e2e.com" },
   "metadata": {
     "description": "Skills for writing, running, and debugging e2e tests with Cursor."
   },
