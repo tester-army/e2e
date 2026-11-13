@@ -85,18 +85,14 @@ export interface RunUnitMessage {
   readonly absolutePath: string;
   readonly pairs: readonly WirePair[];
   /**
-   * The run's `--max-failures` and the failures it had counted when the unit
-   * was dispatched. The worker stops starting the unit's tests once its own
-   * failures reach the limit, without waiting for the runner's interrupt to
-   * arrive: by then it could have started the next test in the file.
+   * Set when the run has a `--max-failures` limit. Only the runner counts
+   * failures toward it, so after each result that counts the worker starts
+   * no further test until the runner answers: `continue` while the run is
+   * below the limit, `interrupt` once a failure reached it. One round-trip
+   * per failure: with several workers, two failures can land faster than any
+   * count the runner could send ahead.
    */
-  readonly failureLimit?: FailureLimit;
-}
-
-/** A run's failure limit and the failures counted toward it so far. */
-export interface FailureLimit {
-  readonly limit: number;
-  readonly failures: number;
+  readonly failureLimit?: true;
 }
 
 export interface InterruptMessage {
@@ -133,13 +129,29 @@ export interface PingMessage {
   readonly type: 'ping';
 }
 
+/**
+ * The runner counted a failure the worker reported, and the run is still
+ * below its failure limit. Handled at once, like `ping`; see
+ * `RunUnitMessage.failureLimit`.
+ */
+export interface ContinueMessage {
+  readonly type: 'continue';
+}
+
 /** The held step `holdId` names may run. Handled at once, like `ping`; an id the worker no longer holds is ignored. */
 export interface StepReleaseMessage {
   readonly type: 'step-release';
   readonly holdId: string;
 }
 
-export type MainToWorker = RunUnitMessage | InterruptMessage | ShutdownMessage | TerminateMessage | PingMessage | StepReleaseMessage;
+export type MainToWorker =
+  | RunUnitMessage
+  | InterruptMessage
+  | ShutdownMessage
+  | TerminateMessage
+  | PingMessage
+  | StepReleaseMessage
+  | ContinueMessage;
 
 export interface ReadyMessage {
   readonly type: 'ready';

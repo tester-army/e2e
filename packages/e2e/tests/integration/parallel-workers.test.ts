@@ -803,6 +803,49 @@ test('would run last', async () => {});
   );
 
   it(
+    'stops at --max-failures across workers: the worker whose failure reaches the limit starts no further test',
+    async () => {
+      // Each file fails first, then holds its worker in a long test. The file
+      // that fails later reaches the limit; its worker must wait for the
+      // runner's answer instead of starting its next test on a stale count.
+      const file = (name: string, failAfterMs: number) => `import { test } from 'e2e';
+
+test('${name} fails', async ({ app }) => {
+  await app.open();
+  await new Promise((resolve) => setTimeout(resolve, ${failAfterMs}));
+  throw new Error('${name}');
+});
+test('${name} next', async ({ app }) => {
+  await app.open();
+  await new Promise((resolve) => setTimeout(resolve, 2_000));
+});
+test('${name} last', async () => {});
+`;
+      const { outcome, project } = await runProjectWithConfigFile(
+        { 'tests/a.e2e.ts': file('a', 0), 'tests/b.e2e.ts': file('b', 500) },
+        { configSource: workerFakeConfigSource(2), runOptions: { maxFailures: 2 } },
+      );
+      expect(outcome.exitCode).toBe(1);
+      const failed = outcome.results.filter((result) => result.status === 'failed');
+      expect(failed.map((result) => result.test.title).toSorted()).toEqual(['a fails', 'b fails']);
+      const endOf = (result: (typeof failed)[number]): number => {
+        const last = result.attempts.at(-1)!;
+        return Date.parse(last.startedAt) + last.durationMs;
+      };
+      const tripping = failed.toSorted((a, b) => endOf(a) - endOf(b))[1]!.test.file;
+      const trippingRest = outcome.results.filter((result) => result.test.file === tripping && result.status !== 'failed');
+      expect(trippingRest.map((result) => [result.status, result.skip?.cause, result.attempts.length])).toEqual([
+        ['skipped', 'failure-limit', 0],
+        ['skipped', 'failure-limit', 0],
+      ]);
+      expect(outcome.results.filter((result) => result.status === 'interrupted').length).toBeLessThanOrEqual(1);
+      assertValidReport(outcome.report);
+      project.cleanup();
+    },
+    120_000,
+  );
+
+  it(
     'reports a target whose workers cannot boot once, whatever the worker count',
     async () => {
       const testFile = (name: string) => `import { test } from 'e2e';

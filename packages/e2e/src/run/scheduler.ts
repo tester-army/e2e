@@ -36,7 +36,6 @@ import {
 } from './units.ts';
 import {
   type AttemptDeadlineMessage,
-  type FailureLimit,
   type OutputMessage,
   type PairStart,
   type WirePair,
@@ -232,8 +231,8 @@ class SchedulerWorker {
     });
   }
 
-  /** Sends a unit, with the run's failure limit when it has one, and starts tracking it. */
-  dispatch(unit: WorkUnit, failureLimit: FailureLimit | undefined): void {
+  /** Sends a unit, saying whether the run has a failure limit, and starts tracking it. */
+  dispatch(unit: WorkUnit, failureLimit: boolean): void {
     this.state = 'busy';
     this.unit = unit;
     this.reported.clear();
@@ -254,7 +253,7 @@ class SchedulerWorker {
       file: unit.file,
       absolutePath: unit.absolutePath,
       pairs,
-      ...(failureLimit === undefined ? {} : { failureLimit }),
+      ...(failureLimit ? { failureLimit: true as const } : {}),
     });
   }
 
@@ -433,10 +432,9 @@ class Scheduler {
     this.wakeUp();
   }
 
-  /** The failure limit a unit dispatched now carries, when the run has one. */
-  private get failureLimit(): FailureLimit | undefined {
-    const limit = this.options.maxFailures;
-    return limit === undefined ? undefined : { limit, failures: this.failures };
+  /** Whether the run has a failure limit, so its workers wait for an answer to each failure they report. */
+  private get failureLimit(): boolean {
+    return this.options.maxFailures !== undefined;
   }
 
   /** Empties a target's queues, reporting every pair they held as skipped for `skip`. */
@@ -927,6 +925,12 @@ class Scheduler {
         }
         if (result.test.kind === 'setup') this.recordSetupOutcome(state, result);
         this.report(result);
+        // The worker waits for an answer to every failure it reports while
+        // the run has a limit. Below the limit it may go on; at the limit
+        // the interrupt the run is stopping with is its answer.
+        if (this.failureLimit && countsTowardFailureLimit(result.status) && !this.interrupting) {
+          worker.runner.send({ type: 'continue' });
+        }
         break;
       }
       case 'serial-group': {

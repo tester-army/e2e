@@ -137,6 +137,12 @@ export interface TargetExecutorOptions {
    * and retries never wait.
    */
   readonly holdStep?: ((step: HeldStep, signal: AbortSignal) => Promise<void>) | undefined;
+  /**
+   * Awaited before each pair of a file unit, ahead of the interrupt check:
+   * a worker holds its next test here until the runner has answered the
+   * failures it reported (see `RunUnitMessage.failureLimit`).
+   */
+  readonly beforePair?: (() => Promise<void>) | undefined;
   readonly debug?: DebugTrace;
   readonly events?: ExecutionEvents;
   /** The virtual file of tests registered in memory, and the agents they run as; see `InMemoryAttempts`. */
@@ -412,6 +418,7 @@ export class TargetExecutor implements SerialHost {
       const serialUnitKey =
         pair.test.serialId === undefined ? undefined : pairKey(pair.test.serialId, pair.agent, pair.repeat);
       if (serialUnitKey !== undefined && executedSerialUnits.has(serialUnitKey)) continue;
+      await this.options.beforePair?.();
       if (this.interruptSignal.aborted) {
         this.emit(unstartedResult(pair, interruptedSkip(this.interruptSignal)));
         continue;
