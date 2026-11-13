@@ -20,7 +20,7 @@ import type { Report1Document } from '../../src/report/build.ts';
 import { renderMarkdownReport } from '../../src/report/markdown.ts';
 import type { ListedPair, ListOptions } from '../../src/run/runner.ts';
 import type { RunEvent } from '../../src/run/events.ts';
-import type { E2EConfig, TestFilter, TestFilterCandidate, TestFilterContext } from '../../src/types.ts';
+import type { E2EConfig, TestFilter, TestFilterCandidate, TestFilterContext } from '../../src/run-types.ts';
 import { createFakeEngine, FAKE_APP } from '../helpers/fake-engine.ts';
 import { freePort } from '../helpers/free-port.ts';
 import { commitFiles, initRepo, runGit } from '../helpers/git-repo.ts';

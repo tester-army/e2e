@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createModelAdapter } from '../../src/agent/model/sdk.ts';
 import { defineEngine } from '../../src/engine/index.ts';
 import { createEngineSession } from '../../src/engine/session.ts';
-import { resolveConfig } from '../../src/config/resolve.ts';
+import { resolveConfig } from '../../src/config/resolve-run.ts';
 import { Deadline } from '../../src/internal/time.ts';
 import { AttemptBudget } from '../../src/run/budget.ts';
 import { createFixtures } from '../../src/run/fixtures.ts';

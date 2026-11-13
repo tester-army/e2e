@@ -5,7 +5,7 @@ import path from 'node:path';
 import { ConfigurationError, InfrastructureError, isE2EError } from '../internal/errors.ts';
 import { onBun } from '../internal/runtime.ts';
 import { withConfigSecretReferences } from '../secrets.ts';
-import type { E2EConfig } from '../types.ts';
+import type { E2EConfig } from '../run-types.ts';
 import { explainModuleError } from './diagnose.ts';
 import { freshModuleURL, registerLoader } from './esm-hooks.ts';
 import { CONFIG_NAMES, JS_CONFIG_NAMES, TS_CONFIG_NAMES } from './names.ts';

@@ -3,7 +3,7 @@
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { writeFileAtomic } from '../internal/atomic-write.ts';
-import type { FinishedRun, Reporter } from '../types.ts';
+import type { FinishedRun, Reporter } from '../run-types.ts';
 
 /** Atomically writes one text document, creating the parent directory when it is missing. */
 export async function writeTextReport(filePath: string, content: string): Promise<void> {

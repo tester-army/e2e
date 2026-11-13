@@ -2,7 +2,6 @@
 
 import os from 'node:os';
 import path from 'node:path';
-import { ENGINE_SPI_VERSION, type EngineSpiVersion } from '../engine/contract.ts';
 import { BLOCKABLE_CODES } from '../agent/executor.ts';
 import { DEFAULT_LIMITS } from '../config/agent.ts';
 import type { ResolvedConfig, ResolvedLimits, ResolvedTarget } from '../config/resolve.ts';
@@ -14,8 +13,10 @@ import { packageVersion } from '../internal/package-version.ts';
 import { onBun } from '../internal/runtime.ts';
 import { projectRelativePath } from '../internal/source.ts';
 import type { VcsInfo } from '../internal/vcs.ts';
-import type { SkipInfo } from '../collect/select.ts';
+import type { SkipInfo } from '../run/records.ts';
 import { expectedFailureOf, memberRan, someSkippedAfterFailure } from '../run/records.ts';
+import { describeTarget, type TargetProvenance } from '../run/provision.ts';
+import type { EngineSpiVersion } from '../engine/contract.ts';
 import type {
   ArtifactRecord,
   AttemptRecord,
@@ -41,38 +42,6 @@ export interface ReportSource {
   file: string;
   line: number;
   column: number;
-}
-
-export interface TargetProvenance {
-  engine: { name: string; version: string; spiVersion: EngineSpiVersion };
-  capabilities: string[];
-  /** What the engine can capture: screenshots (a failure's among them), a video. */
-  artifactCapabilities: ('screenshot' | 'video')[];
-  stateCapability: boolean;
-}
-
-/**
- * What a target's engine declaration says about it: the one description the
- * runner grades against and the report records. A target without an engine is
- * agent-tools-only and honestly reports no capabilities.
- */
-export function describeTarget(target: ResolvedTarget): TargetProvenance {
-  const engine = target.engine;
-  const artifactCapabilities: TargetProvenance['artifactCapabilities'] = [];
-  if (engine?.artifacts !== undefined) {
-    artifactCapabilities.push('screenshot');
-    if (engine.artifacts.startVideo !== undefined) artifactCapabilities.push('video');
-  }
-  return {
-    engine: {
-      name: engine?.name ?? 'none',
-      version: engine?.version ?? 'unversioned',
-      spiVersion: engine?.spiVersion ?? ENGINE_SPI_VERSION,
-    },
-    capabilities: [...(engine?.capabilities ?? [])].toSorted(),
-    artifactCapabilities,
-    stateCapability: engine?.state !== undefined,
-  };
 }
 
 export interface BuildReportOptions {

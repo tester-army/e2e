@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { collect, excludingEntry, relativeToRoot, selectPositionals } from '../../src/collect/collect.ts';
-import { resolveConfig } from '../../src/config/resolve.ts';
+import { resolveConfig } from '../../src/config/resolve-run.ts';
 
 // What the config globs discovered, in discovery order. `tests/agent/notes.md`
 // exists on disk but is not in this list: positionals only narrow it.

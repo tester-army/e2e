@@ -4,11 +4,12 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { collectFromRegistration, type Collection } from '../../src/collect/collect.ts';
 import { collectModule, test } from '../../src/collect/registry.ts';
-import { pairRecording, pairRecordings, repeatEach, resolveOptions, select, type SelectionFilters } from '../../src/collect/select.ts';
-import { resolveConfig } from '../../src/config/resolve.ts';
+import { pairRecordings, repeatEach, resolveOptions, select, type SelectionFilters } from '../../src/collect/select.ts';
+import { pairRecording } from '../../src/run/provision.ts';
+import { resolveConfig } from '../../src/config/resolve-run.ts';
 import { defineEngine } from '../../src/engine/index.ts';
 import { resultId } from '../../src/internal/ids.ts';
-import type { E2EConfig } from '../../src/types.ts';
+import type { E2EConfig } from '../../src/run-types.ts';
 
 const noop = async () => {};
 /** A project root that does not exist, so the diagnostics that stat a positional find nothing, on every host. */

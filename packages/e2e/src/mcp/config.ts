@@ -2,7 +2,8 @@
 
 import path from 'node:path';
 import { discoverConfig, loadConfigModule, missingConfigError } from '../config/load.ts';
-import { resolveConfig, type ResolvedConfig } from '../config/resolve.ts';
+import { type ResolvedConfig } from '../config/resolve.ts';
+import { resolveConfig } from '../config/resolve-run.ts';
 import { ConfigurationError } from '../internal/errors.ts';
 import type { TargetApp } from '../types.ts';
 import { loadEngine, type EngineLookup, type FactoryRef } from './default-engine.ts';

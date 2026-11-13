@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { engineAppInfo } from '../../src/config/app.ts';
-import { assignPorts, resolveConfig, type PortAssignments } from '../../src/config/resolve.ts';
+import { assignPorts, type PortAssignments } from '../../src/config/resolve.ts';
+import { resolveConfig } from '../../src/config/resolve-run.ts';
 import { defineEngine } from '../../src/engine/index.ts';
 import type { TargetApp } from '../../src/types.ts';
 import { allocateAppPorts, allocateTargetPorts } from '../../src/run/app-ports.ts';

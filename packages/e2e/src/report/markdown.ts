@@ -45,7 +45,7 @@ import { cell, code, formatDuration, link, MAX_ID_CHARS, MAX_PATH_CHARS, MAX_TIT
 import { outcome, type Outcome } from './outcome.ts';
 import { isExploreVerdict } from './traces.ts';
 import { posixRelative, writeTextReport } from './write.ts';
-import type { Reporter, ReporterSummary } from '../types.ts';
+import type { Reporter, ReporterSummary } from '../run-types.ts';
 
 type ReportRun = Report1Document['run'];
 type ReportArtifact = ReportResult['attempts'][number]['artifacts'][number];

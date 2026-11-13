@@ -18,26 +18,7 @@ import {
   type RegisteredTest,
 } from './registry.ts';
 import type { SourceLocation } from '../internal/source.ts';
-
-/**
- * Everything needed to name and report a test, with no executable or realm
- * state attached. Fully JSON-serializable, so it is what result records carry
- * and what crosses the runner<->worker IPC channel.
- */
-export interface TestIdentity {
-  readonly kind: 'test' | 'setup';
-  readonly title: string;
-  readonly titlePath: readonly string[];
-  readonly declarationIndex: number;
-  readonly sessions: readonly string[];
-  /** The tags the test declares, outermost describe first, each once; what `--tag` selects on. */
-  readonly tags: readonly string[];
-  readonly source: SourceLocation | undefined;
-  /** Normalized project-root-relative file path with `/` separators. */
-  readonly file: string;
-  readonly id: string;
-  readonly serialId: string | undefined;
-}
+import type { TestIdentity } from '../run/records.ts';
 
 export interface CollectedTest extends RegisteredTest, TestIdentity {
   /** Outermost serial group, when the test is a serial-group member. */

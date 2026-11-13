@@ -17,7 +17,7 @@ import type { Command } from 'commander';
 import picocolors from 'picocolors';
 import { FileCacheStore, MAX_CACHE_WIRE_BYTES } from '../cache/store.ts';
 import { discoverConfig, loadConfigModule, missingConfigError } from '../config/load.ts';
-import { resolveConfig } from '../config/resolve.ts';
+import { resolveConfig } from '../config/resolve-run.ts';
 import { errorMessage } from '../internal/errors.ts';
 import { visibleWidth } from '../report/format.ts';
 import { docsLine, examples } from './help.ts';

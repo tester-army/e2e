@@ -1,6 +1,6 @@
 /** The built-in `json` reporter: the report document to stdout, and nothing else there. */
 
-import type { Reporter } from '../types.ts';
+import type { Reporter } from '../run-types.ts';
 import { writeTerminal } from '../run/process-output.ts';
 
 export const jsonReporter: Reporter = {

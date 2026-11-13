@@ -6,7 +6,7 @@
  * drift apart on what the ids are.
  */
 
-import type { BuiltinReporter, Reporter } from '../types.ts';
+import type { BuiltinReporter, Reporter } from '../run-types.ts';
 import { jsonReporter } from './json.ts';
 import { junitReporter } from './junit.ts';
 import { markdownReporter } from './markdown.ts';

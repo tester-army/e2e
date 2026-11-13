@@ -21,8 +21,8 @@ const provisionModule = new URL('../../dist/run/provision.js', import.meta.url).
 const { startDeclaredProcesses } = (await import(provisionModule)) as typeof import('../../src/run/provision.ts');
 const poolModule = new URL('../../dist/run/process-pool.js', import.meta.url).href;
 const { SharedAppProcesses } = (await import(poolModule)) as typeof import('../../src/run/process-pool.ts');
-const resolveModule = new URL('../../dist/config/resolve.js', import.meta.url).href;
-const { resolveConfig } = (await import(resolveModule)) as typeof import('../../src/config/resolve.ts');
+const resolveModule = new URL('../../dist/config/resolve-run.js', import.meta.url).href;
+const { resolveConfig } = (await import(resolveModule)) as typeof import('../../src/config/resolve-run.ts');
 const debugModule = new URL('../../dist/internal/debug.js', import.meta.url).href;
 const { DebugTrace } = (await import(debugModule)) as typeof import('../../src/internal/debug.ts');
 

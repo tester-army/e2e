@@ -24,7 +24,7 @@ import {
   type OperationContext,
   type SemanticNode,
 } from '../../src/engine/index.ts';
-import { resolveConfig } from '../../src/config/resolve.ts';
+import { resolveConfig } from '../../src/config/resolve-run.ts';
 import { ConfigurationError, TestTimeoutError } from '../../src/internal/errors.ts';
 import { protocolEngine } from '../../src/engine/protocol/client.ts';
 import { Connection } from '../../src/engine/protocol/connection.ts';

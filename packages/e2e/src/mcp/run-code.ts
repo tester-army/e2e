@@ -33,7 +33,7 @@ import { isPlainObject, rejectUnknownOptions } from '../internal/options.ts';
 import { describeExpression } from '../locator/expression.ts';
 import { createScreen, locatorInternals, type LocatorInternals } from '../locator/screen.ts';
 import { createScreenContext } from '../run/fixtures.ts';
-import type { StandaloneAttempt } from '../run/standalone.ts';
+import type { StandaloneAttempt } from '../run/standalone-attempt.ts';
 import { secretHandle } from '../secrets.ts';
 import type { App, Screen, Secret } from '../types.ts';
 import { parseCode, type Call, type Chain, type Statement, type Value } from './code-parse.ts';

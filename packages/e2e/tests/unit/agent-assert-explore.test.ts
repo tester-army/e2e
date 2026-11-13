@@ -1,7 +1,7 @@
 /** The built-in agent's exploring assertion loop: its rules, its evidence policy, and its verdict vocabulary. */
 
 import { expect, it } from 'vitest';
-import { resolveConfig } from '../../src/config/resolve.ts';
+import { resolveConfig } from '../../src/config/resolve-run.ts';
 import { defineEngine, type EngineHandle } from '../../src/engine/index.ts';
 import { createEngineSession } from '../../src/engine/session.ts';
 import { Deadline } from '../../src/internal/time.ts';
@@ -9,7 +9,7 @@ import { AttemptBudget } from '../../src/run/budget.ts';
 import { createFixtures } from '../../src/run/fixtures.ts';
 import { StepRecorder } from '../../src/run/steps.ts';
 import { WorkerModels } from '../../src/run/worker-models.ts';
-import type { E2EConfig } from '../../src/types.ts';
+import type { E2EConfig } from '../../src/run-types.ts';
 import { runAgentStepsOnFakeTime } from '../helpers/agent-fake-time.ts';
 import { installFakeLoopModel, loopCalls } from '../helpers/fake-loop-model.ts';
 import { snapshot } from '../helpers/snapshot.ts';

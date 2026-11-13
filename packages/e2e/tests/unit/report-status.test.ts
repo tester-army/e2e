@@ -5,7 +5,8 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { resolveConfig, type ResolvedConfig, type ResolvedTarget } from '../../src/config/resolve.ts';
+import { type ResolvedConfig, type ResolvedTarget } from '../../src/config/resolve.ts';
+import { resolveConfig } from '../../src/config/resolve-run.ts';
 import type { SerializedError } from '../../src/internal/errors.ts';
 import { uuidv7 } from '../../src/internal/ids.ts';
 import { buildReport, type BuildReportOptions } from '../../src/report/build.ts';

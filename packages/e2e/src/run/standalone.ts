@@ -1,4 +1,8 @@
-/** The worker a hosted test runner or the one-shot MCP path keeps alive between attempts. */
+/**
+ * The worker a hosted test runner or the one-shot MCP path keeps alive
+ * between attempts. What differs by kind is a `WorkerPolicy`; the runner's
+ * kinds are in `standalone-kinds.ts`.
+ */
 
 import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
 import { DebugTrace } from '../internal/debug.ts';
@@ -6,7 +10,7 @@ import { classifyError, InfrastructureError, serializeError, type SerializedErro
 import { realmSlot } from '../internal/realm-slot.ts';
 import { uuidv7 } from '../internal/ids.ts';
 import { holdSecretRegistry } from '../secrets.ts';
-import { TargetExecutor } from './execute.ts';
+import type { EngineSessions, EngineSessionsOptions } from './engine-sessions.ts';
 import type { AppProcesses } from './managed-process.ts';
 import { outputLayout } from './output.ts';
 import type { ProcessPool } from './process-pool.ts';
@@ -14,10 +18,8 @@ import { PreparedEngines, recordingNotices, startDeclaredProcesses, validateEngi
 import { processSecrets } from './secrecy.ts';
 import { SessionStore } from './sessions.ts';
 import {
-  launchAttempt, reserveAttempt, type AttemptKind, type AttemptReservation, type StandaloneAttempt, type StandaloneSessionOptions,
+  launchAttempt, reserveAttempt, type AttemptPolicy, type AttemptReservation, type StandaloneAttempt, type StandaloneSessionOptions,
 } from './standalone-attempt.ts';
-
-export type { StandaloneAttempt, StandaloneSessionOptions } from './standalone-attempt.ts';
 
 export interface StandaloneHostOptions {
   readonly config: ResolvedConfig;
@@ -30,13 +32,19 @@ export interface StandaloneHostOptions {
   readonly debug?: DebugTrace;
 }
 
-export interface StandaloneAttemptOptions extends StandaloneHostOptions, StandaloneSessionOptions {}
-
-export interface StandaloneHost {
+export interface StandaloneHost<Extra = unknown> {
   readonly runId: string;
   /** One attempt at a time: the next may open once the previous close settled. */
-  openAttempt(options: StandaloneSessionOptions): Promise<StandaloneAttempt>;
+  openAttempt(options: StandaloneSessionOptions): Promise<StandaloneAttempt<Extra>>;
   close(): Promise<readonly SerializedError[]>;
+}
+
+/** What a kind of worker adds: who owns the engine, and what runs its sessions. */
+export interface WorkerPolicy<Sessions extends EngineSessions = EngineSessions, Extra = undefined> extends AttemptPolicy<Sessions, Extra> {
+  /** Whether the worker claims its engine instance against other hosts until a clean teardown. */
+  readonly claimsEngine: boolean;
+  /** The worker's engine sessions, given where its results go. */
+  sessions(options: EngineSessionsOptions & { readonly artifactsRoot: string }): Sessions;
 }
 
 /**
@@ -44,10 +52,10 @@ export interface StandaloneHost {
  * engine cleanup failed: its isolation is uncertain, so no later attempt may
  * reuse the worker.
  */
-type WorkerState =
+type WorkerState<Extra> =
   | { readonly phase: 'idle' }
-  | { readonly phase: 'opening'; readonly pending: Promise<StandaloneAttempt> }
-  | { readonly phase: 'live'; readonly attempt: StandaloneAttempt }
+  | { readonly phase: 'opening'; readonly pending: Promise<StandaloneAttempt<Extra>> }
+  | { readonly phase: 'live'; readonly attempt: StandaloneAttempt<Extra> }
   | { readonly phase: 'retired' };
 
 const engineOwners = realmSlot<WeakSet<object>>('e2e.standalone.engines.v1');
@@ -73,34 +81,11 @@ function claimEngine(engine: object | undefined): () => void {
   return () => owners().delete(engine);
 }
 
-/** Prepares, starts app processes, and initializes one worker for a hosted test runner. */
-export function openStandaloneHost(options: StandaloneHostOptions): Promise<StandaloneHost> {
-  return openWorker(options, 'hosted');
-}
-
-/**
- * MCP's one attempt on a worker of its own, closed together. MCP keeps its own
- * engine ownership. The teardown of a test the attempt ran drives the app, so
- * it runs before the host's close cancels the attempt's operations.
- */
-export async function openStandaloneAttempt(options: StandaloneAttemptOptions): Promise<StandaloneAttempt> {
-  const host = await openWorker(options, 'one-shot');
-  try {
-    const attempt = await host.openAttempt(options);
-    const close = async (): Promise<readonly SerializedError[]> => {
-      const torn = (await attempt.test?.teardown()) ?? [];
-      // A test's `beforeAll` failure is a run error too, and was its outcome when the session opened.
-      const closed = (await host.close()).filter((error) => attempt.test === undefined || error.phase !== 'beforeAll');
-      return [...torn, ...closed];
-    };
-    return { ...attempt, close };
-  } catch (cause) {
-    await host.close();
-    throw cause;
-  }
-}
-
-async function openWorker(options: StandaloneHostOptions, kind: AttemptKind): Promise<StandaloneHost> {
+/** Prepares, starts app processes, and initializes one worker of the policy's kind. */
+export async function openWorker<Sessions extends EngineSessions, Extra>(
+  options: StandaloneHostOptions,
+  policy: WorkerPolicy<Sessions, Extra>,
+): Promise<StandaloneHost<Extra>> {
   const { config, target } = options;
   const hostEnd = new AbortController();
   const signal = AbortSignal.any([options.signal, hostEnd.signal]);
@@ -112,7 +97,7 @@ async function openWorker(options: StandaloneHostOptions, kind: AttemptKind): Pr
   const grade = validateEngine(target);
   for (const message of recordingNotices([{ target, pairs: [] }], new Map([[target.name, grade]]))) notice(target.name, message);
   refuseOwnedEngine(target.engine);
-  const releaseEngine = kind === 'hosted' ? claimEngine(target.engine) : () => undefined;
+  const releaseEngine = policy.claimsEngine ? claimEngine(target.engine) : () => undefined;
   const releaseRegistry = holdSecretRegistry(config);
   const engines = new PreparedEngines();
   const layout = outputLayout(config.output);
@@ -122,7 +107,7 @@ async function openWorker(options: StandaloneHostOptions, kind: AttemptKind): Pr
     errors.push(serializeError(classifyError(cause), { phase: 'cleanup', projectRoot: config.projectRoot, redact: processSecrets.redact }));
   };
   let processes: AppProcesses | undefined;
-  let executor: TargetExecutor | undefined;
+  let executor: Sessions | undefined;
   let tearingDown: Promise<void> | undefined;
   /** Releases every owner once, whichever of host close or a retiring attempt gets there first. */
   const teardown = (): Promise<void> => {
@@ -151,10 +136,10 @@ async function openWorker(options: StandaloneHostOptions, kind: AttemptKind): Pr
     const hooks = { ci: config.ci, env: options.env, notice: (message: string) => notice('app', message) };
     processes = await startDeclaredProcesses([target], config.projectRoot, hooks, signal, debug, options.processes);
     if (signal.aborted) throw new InfrastructureError('CANCELLED', `opening a host on target "${target.name}" was cancelled`);
-    executor = new TargetExecutor({
+    executor = policy.sessions({
       config, target, runId, artifactsRoot: layout.results, sessionStore,
       headed: options.headed, workerSlot: 0, env: { ...prepared?.env, ...options.env },
-      isolated: false, interruptSignal: signal, debug,
+      interruptSignal: signal, debug,
       events: { onNotice: (message) => notice(target.name, message) },
     });
     await executor.initEngineOnce();
@@ -165,8 +150,8 @@ async function openWorker(options: StandaloneHostOptions, kind: AttemptKind): Pr
     for (const error of errors) notice(target.name, error.message);
     throw cause;
   }
-  const worker = { kind, config, target, runId, executor, resultsDir: layout.results, debug, signal };
-  let state: WorkerState = { phase: 'idle' };
+  const worker = { config, target, runId, executor, resultsDir: layout.results, debug, signal };
+  let state: WorkerState<Extra> = { phase: 'idle' };
   let closing: Promise<readonly SerializedError[]> | undefined;
 
   /** Cancels a launch before awaiting it, then ends the attempt before disposing its worker. */
@@ -186,14 +171,14 @@ async function openWorker(options: StandaloneHostOptions, kind: AttemptKind): Pr
   };
 
   /** Reserves the attempt synchronously, before any engine work can run. */
-  const openAttempt = (sessionOptions: StandaloneSessionOptions): Promise<StandaloneAttempt> => {
+  const openAttempt = (sessionOptions: StandaloneSessionOptions): Promise<StandaloneAttempt<Extra>> => {
     if (closing !== undefined || state.phase === 'retired') return Promise.reject(new InfrastructureError('WORKER_PROTOCOL', 'the e2e host is closed'));
     if (state.phase !== 'idle') return Promise.reject(new InfrastructureError('WORKER_PROTOCOL', 'the e2e host already has an opening, live, or closing session'));
     let reservation: AttemptReservation;
     try {
-      reservation = reserveAttempt(worker, sessionOptions);
+      reservation = reserveAttempt(worker, policy, sessionOptions);
     } catch (cause) { return Promise.reject(cause); }
-    const pending = launchAttempt(worker, reservation, async ({ cleanup }) => {
+    const pending = launchAttempt(worker, policy, reservation, async ({ cleanup }) => {
       if (cleanup === 'complete') {
         state = { phase: 'idle' };
         return;
@@ -207,7 +192,7 @@ async function openWorker(options: StandaloneHostOptions, kind: AttemptKind): Pr
         return attempt;
       },
       (cause: unknown) => {
-        reservation.release();
+        reservation.publication?.release();
         state = { phase: 'idle' };
         throw cause;
       },

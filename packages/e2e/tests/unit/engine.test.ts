@@ -9,7 +9,7 @@ import {
   type EngineSnapshot,
 } from '../../src/engine/index.ts';
 import { createEngineSession } from '../../src/engine/session.ts';
-import { resolveConfig } from '../../src/config/resolve.ts';
+import { resolveConfig } from '../../src/config/resolve-run.ts';
 import { secrets } from '../../src/secrets.ts';
 import { snapshot } from '../helpers/snapshot.ts';
 import type { OperationContext, SemanticNode } from '../../src/engine/surface.ts';

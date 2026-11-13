@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { defineEngine } from '../../src/engine/index.ts';
-import { assignPorts, resolveConfig } from '../../src/config/resolve.ts';
+import { assignPorts } from '../../src/config/resolve.ts';
+import { resolveConfig } from '../../src/config/resolve-run.ts';
 import { declaredCommands } from '../../src/run/declared-processes.ts';
 import type { TargetApp } from '../../src/types.ts';
 import { snapshot } from '../helpers/snapshot.ts';

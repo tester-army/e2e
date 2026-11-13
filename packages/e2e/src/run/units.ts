@@ -8,7 +8,8 @@
 import path from 'node:path';
 import type { Collection } from '../collect/collect.ts';
 import { testIdentity } from '../collect/collect.ts';
-import type { Selection, SkipInfo, TestTargetPair } from '../collect/select.ts';
+import type { Selection, TestTargetPair } from '../collect/select.ts';
+import type { SkipInfo } from './records.ts';
 import type { ResolvedTarget } from '../config/resolve.ts';
 import type { ResultRecord } from './records.ts';
 import type { WirePair } from './worker/protocol.ts';

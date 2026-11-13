@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { resolveConfig } from '../../src/config/resolve.ts';
+import { resolveConfig } from '../../src/config/resolve-run.ts';
 import { defineEngine } from '../../src/engine/index.ts';
 import type { McpSessionSummary } from '../../src/mcp/usage.ts';
 import type { ReportExplore } from '../../src/report/build.ts';
