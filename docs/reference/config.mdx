@@ -61,6 +61,8 @@ The full declaration is [`E2EConfig`](#e2econfig).
 - An unknown key at any level is `INVALID_CONFIG`. There is no top-level
   `app` key: each target declares [the app it tests](#the-app-under-test).
 - Every numeric value must be a safe integer.
+- Every timeout in milliseconds, here and in `app.command` and `agents`, is at
+  most 2147483647 (about 24 days). A larger one is `INVALID_CONFIG`.
 - An optional key takes a value or is left out. Under
   `exactOptionalPropertyTypes`, `undefined` is a type error, so
   `store: process.env.CACHE_URL && createStore(...)` fails to compile. At

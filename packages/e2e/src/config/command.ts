@@ -11,7 +11,7 @@ import { rejectUnknownKeys } from '../internal/options.ts';
 import { insideProjectRoot } from '../internal/paths.ts';
 import { isSecret } from '../secrets.ts';
 import type { CommandConfig } from '../types.ts';
-import { describeValue, positiveInt } from './validate.ts';
+import { describeValue, timerMs } from './validate.ts';
 
 /**
  * How a spawned process counts as ready: a URL that answers, or the process
@@ -111,8 +111,8 @@ export function normalizeCommand(command: CommandConfig, label: string): Command
   }
   const inherit = inheritEnv?.map((entry: unknown, index) => inheritPattern(entry, `${label}.inheritEnv[${index}]`));
   if (cwd !== undefined && typeof cwd !== 'string') throw new ConfigurationError('INVALID_CONFIG', `${label}.cwd must be a string`);
-  positiveInt(startupTimeout, `${label}.startupTimeout`, 'milliseconds');
-  positiveInt(shutdownTimeout, `${label}.shutdownTimeout`, 'milliseconds');
+  timerMs(startupTimeout, `${label}.startupTimeout`);
+  timerMs(shutdownTimeout, `${label}.shutdownTimeout`);
   if (log !== undefined && (typeof log !== 'string' || log.trim() === '')) {
     throw new ConfigurationError('INVALID_CONFIG', `${label}.log must be a non-empty path`);
   }

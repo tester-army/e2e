@@ -7,6 +7,7 @@ import { testCaseBrand } from '../internal/brands.ts';
 import { describeValue } from '../config/validate.ts';
 import { isRecordingMode, legacyTraceSpelling, RECORDING_MODES } from '../internal/recording-modes.ts';
 import { CollectionError } from '../internal/errors.ts';
+import { MAX_TIMER_MS } from '../internal/time.ts';
 import { validateTitle } from '../internal/ids.ts';
 import { realmSlot } from '../internal/realm-slot.ts';
 import { markRunningTestExpectedToFail } from '../internal/expected-failure.ts';
@@ -319,6 +320,9 @@ function validateCommonOptions(options: TestOptions | DescribeOptions, label: st
   if (options.timeout !== undefined) {
     if (!Number.isSafeInteger(options.timeout) || options.timeout <= 0) {
       throw new CollectionError(`${label}: timeout must be a positive safe integer`);
+    }
+    if (options.timeout > MAX_TIMER_MS) {
+      throw new CollectionError(`${label}: timeout must be at most ${MAX_TIMER_MS} milliseconds, got ${options.timeout}`);
     }
   }
   if (options.retries !== undefined) {
