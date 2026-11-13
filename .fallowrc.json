@@ -24,6 +24,7 @@
     "packages/web/tests/types/downloads.ts",
     "packages/web/tests/types/app.ts",
     "packages/mobile/tests/types/options.ts",
+    "packages/browser-run/tests/types/options.ts",
     "packages/decision/tests/types/options.ts",
     "packages/acp/tests/fixtures/scripted-agent.ts",
     "packages/acp/tests/live/*.ts",

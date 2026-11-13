@@ -83,6 +83,28 @@ pnpm --filter @e2e-dev/testbed test:stress                            # reporter
 The local suite runs in CI on every push. Reports land in `.e2e/report.json`;
 artifacts and trace pages under `.e2e/results/`.
 
+## Browser Run live checks
+
+`e2e.browser-run.config.ts` runs against a public HTTPS deployment of the
+playground pages. Set `BROWSER_RUN_TEST_URL`, `CLOUDFLARE_ACCOUNT_ID`, and
+`CLOUDFLARE_API_TOKEN` with Browser Rendering - Edit permission, then build
+the workspace packages and run from this directory:
+
+```bash
+node ../../packages/e2e/dist/cli/bin.js run --config e2e.browser-run.config.ts
+BROWSER_RUN_SCOPE=attempt node ../../packages/e2e/dist/cli/bin.js run --config e2e.browser-run.config.ts
+```
+
+Both scopes exercise forms, browser operations, cookie and storage isolation,
+network routes, dialogs, and frames, with traces and WebM video enabled.
+Worker scope also runs the todos suite, including session persistence.
+These checks use a real Cloudflare account and run by hand.
+
+History navigation currently fails on Browser Run while waiting for `load`
+after `browser.back()`. To check the supported flows separately, add
+`--grep-invert 'navigation verbs'`; keep the unfiltered result when reporting
+compatibility.
+
 ## Agentic suites
 
 `test:agent` and `test:dogfood` spend real model calls, so they never gate a

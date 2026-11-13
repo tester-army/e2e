@@ -147,10 +147,12 @@ web({ connect: { cdpEndpoint: async () => 'ws://127.0.0.1:9222' } });
 `reconnectEndpoint` opts into a persistent context; see
 [Recovering a CDP transport](#recovering-a-cdp-transport).
 
+Either resolver can return `{ endpoint, headers }` as a `CdpTarget` to authenticate the CDP handshake. These headers are separate from `web({ headers })`, which sends headers to the app.
+
 ```ts
 interface WebConnectOptions {
-  cdpEndpoint(signal: AbortSignal): string | Promise<string>;
-  reconnectEndpoint?(signal: AbortSignal): string | Promise<string>;
+  cdpEndpoint(signal: AbortSignal): string | CdpTarget | Promise<string | CdpTarget>;
+  reconnectEndpoint?(signal: AbortSignal): string | CdpTarget | Promise<string | CdpTarget>;
 }
 ```
 
@@ -517,7 +519,8 @@ await browser.goto('/dashboard', { waitUntil: 'networkidle' }); // default: 'loa
 #### `reload`, `back`, `forward`
 
 `reload` reloads the current document. `back` and `forward` navigate browser
-history once.
+history once. All three wait for the document load. A back/forward-cache restore can reuse an already-loaded document.
+Use locators and assertions to wait for app content.
 
 ```ts
 await browser.reload();
