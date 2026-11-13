@@ -69,6 +69,8 @@ Validates an engine spec, freezes it, computes its
 import { defineEngine, isEngineHandle, type EngineHandle } from 'e2e/engine';
 
 export function defineEngine<Fixtures extends object = {}>(spec: Engine): EngineHandle<Fixtures>;
+// With a fixture beside screen, app, and platform, `spec.fixtures` must hold
+// a factory returning each one Fixtures names.
 export function isEngineHandle(value: unknown): value is EngineHandle;
 
 /** A validated engine: branded, frozen, capabilities computed. */
@@ -81,8 +83,9 @@ Every function on the handle is bound to the spec it came from, so a class
 instance is as valid a body as an object literal.
 
 `Fixtures` types what the engine's [`fixtures`](#contributed-fixtures) contribute, such as
-`{ browser: Browser }`. It is a type only, never checked against `fixtures` at
-runtime. With it, `launch` from [`e2e-core`](/core) types a session's fixtures
+`{ browser: Browser }`. The compiler requires a factory in `fixtures` for each
+fixture it names, returning that fixture; `screen`, `app`, and `platform` need
+none, since every session holds them. Nothing checks it at runtime. With it, `launch` from [`e2e-core`](/core) types a session's fixtures
 without a hand-written argument: return `defineEngine<{ device: Device }>(...)`
 from the factory.
 

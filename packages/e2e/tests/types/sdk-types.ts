@@ -57,7 +57,7 @@ import {
   beforeEach,
   describe,
 } from '../../src/index.ts';
-import type { Engine, EngineAttemptContext, EngineCleanupContext, EngineDisposeContext, EngineHandle, EngineObserveOptions, EngineSnapshot } from '../../src/engine/index.ts';
+import type { Engine, EngineAttemptContext, EngineCleanupContext, EngineDisposeContext, EngineFixtureContext, EngineHandle, EngineObserveOptions, EngineSnapshot } from '../../src/engine/index.ts';
 import {
   BASE_RULES,
   createGrammarTools,
@@ -1044,7 +1044,17 @@ await agent.assert('all settings are reachable', { explore: true, maxSteps: 10, 
 
 // e2e-core: an engine handle types the fixtures its sessions hold.
 interface Gadget { poke(label: string): Promise<void> }
-const gadgetEngine = defineEngine<{ readonly gadget: Gadget }>({ name: 'gadget', version: '1.0.0', spiVersion: 1 });
+declare function createGadget(context: EngineFixtureContext): Gadget;
+const gadgetEngine = defineEngine<{ readonly gadget: Gadget }>({ name: 'gadget', version: '1.0.0', spiVersion: 1, fixtures: { gadget: createGadget } });
+// @ts-expect-error a fixture the engine names needs a factory in its fixtures
+defineEngine<{ readonly gadget: Gadget }>({ name: 'gadget', version: '1.0.0', spiVersion: 1 });
+// @ts-expect-error each factory returns the fixture the engine names
+defineEngine<{ readonly gadget: Gadget }>({ name: 'gadget', version: '1.0.0', spiVersion: 1, fixtures: { gadget: () => ({ poke: 'no' }) } });
+// @ts-expect-error a union of fixture sets needs the factories of one of them
+defineEngine<{ readonly gadget: Gadget } | { readonly widget: Gadget }>({ name: 'gadget', version: '1.0.0', spiVersion: 1 });
+void defineEngine<{ readonly gadget: Gadget } | { readonly widget: Gadget }>({ name: 'gadget', version: '1.0.0', spiVersion: 1, fixtures: { gadget: createGadget } });
+// Narrowing a fixture every session holds needs no factory.
+void defineEngine<{ readonly app: App & { readonly baseUrl: string } }>({ name: 'site', version: '1.0.0', spiVersion: 1 });
 void (gadgetEngine satisfies EngineHandle);
 const gadgetHost = await launch(gadgetEngine);
 void (gadgetHost satisfies Host<{ readonly gadget: Gadget }>);

@@ -11,7 +11,7 @@ import { obj } from '../internal/objects.ts';
 import { isSecret } from '../secrets.ts';
 import { ENGINE_SPI_VERSION, LOCATOR_ACTION_KINDS, POINTER_ACTION_KINDS } from './contract.ts';
 import type { Secret } from '../types.ts';
-import type { Engine, EngineCapability, EngineHandle } from './index.ts';
+import type { Engine, EngineCapability, EngineFixtureContext, EngineHandle } from './index.ts';
 
 /** Every key an engine may declare; anything else is rejected at config load. */
 const KNOWN_KEYS = [
@@ -158,16 +158,36 @@ function declaredKinds<Kind extends string>(
   return Object.freeze([...(value as Kind[])]);
 }
 
+/** The fixtures every session holds whatever its engine: an engine's `Fixtures` may narrow them, and contributes no factory for them. */
+type CoreFixtureName = 'screen' | 'app' | 'platform';
+
+/**
+ * The spec `defineEngine<Fixtures>` takes: with a fixture beside the core
+ * ones, `fixtures` must hold a factory for each, returning that fixture. A
+ * union of fixture sets distributes, so the spec must satisfy one member.
+ */
+type EngineSpec<Fixtures extends object> = Fixtures extends object
+  ? [Exclude<keyof Fixtures, CoreFixtureName>] extends [never]
+    ? Engine
+    : Omit<Engine, 'fixtures'> & {
+      readonly fixtures: {
+        readonly [Name in Exclude<keyof Fixtures, CoreFixtureName>]: (context: EngineFixtureContext) => Fixtures[Name];
+      };
+    }
+  : never;
+
 /**
  * Validates an engine and computes its capability set.
  *
  * The handle is assembled member by member from the known keys, reading
  * through the prototype chain and binding every function to the spec, so a
  * class instance (own state fields included) is as valid a body as a literal.
- * `Fixtures` types what the engine's `fixtures` contribute; it is not checked
- * against them at runtime.
+ * `Fixtures` types what the engine's `fixtures` contribute; the compiler
+ * requires a factory returning each one it names beside `screen`, `app`, and
+ * `platform`, and nothing checks them at runtime.
  */
-export function defineEngine<Fixtures extends object = {}>(spec: Engine): EngineHandle<Fixtures> {
+export function defineEngine<Fixtures extends object = {}>(declared: EngineSpec<Fixtures>): EngineHandle<Fixtures> {
+  const spec = declared as Engine;
   if (typeof spec !== 'object' || spec === null) {
     throw new ConfigurationError('INVALID_CONFIG', 'defineEngine requires an engine object');
   }
