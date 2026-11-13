@@ -155,18 +155,16 @@ function resolveEntry(name: string, lookup: EngineLookup, role: 'engine' | 'opti
   for (const root of [lookup.cwd, path.dirname(fileURLToPath(import.meta.url)), lookup.enginesDir]) {
     const directory = installedAt(installable, root);
     if (directory === undefined) continue;
+    let entry: string;
     try {
       // The entry is loaded with `import()`, so the `import` entry wins over the one `require` conditions pick.
-      const imported = importEntry(directory, name.slice(installable.length));
-      if (imported === undefined) {
-        // The file need not exist: it only says which node_modules directories to walk.
-        return createRequire(path.join(root, 'package.json')).resolve(name);
-      }
-      if (!existsSync(imported)) throw new Error(`Cannot find module '${imported}'`);
-      return imported;
+      // The file need not exist: it only says which node_modules directories to walk.
+      entry = importEntry(directory, name.slice(installable.length)) ?? createRequire(path.join(root, 'package.json')).resolve(name);
     } catch (cause) {
-      throw new ConfigurationError('INVALID_CONFIG', `package ${name} is installed at ${directory} but its entry cannot be resolved: ${errorMessage(cause)}`, { cause });
+      throw unresolvable(name, directory, errorMessage(cause), cause);
     }
+    if (!existsSync(entry)) throw unresolvable(name, directory, `Cannot find module '${entry}'`);
+    return entry;
   }
   // An option is only read as a call by its shape, so the message says how it was read before it names a command.
   const read = role === 'engine' ? '' : `an option value with only package, export, and options keys is read as a factory call, and `;
@@ -174,6 +172,10 @@ function resolveEntry(name: string, lookup: EngineLookup, role: 'engine' | 'opti
     'ENGINE_NOT_INSTALLED',
     `${read}package ${name} is not installed in ${lookup.cwd}, beside e2e, or in ${lookup.enginesDir}. Install it once for every project with: npm install --prefix ${JSON.stringify(lookup.enginesDir)} ${installable}; then call open_session again. If you cannot run it, for example without network access, ask the user to run it`,
   );
+}
+
+function unresolvable(name: string, directory: string, reason: string, cause?: unknown): ConfigurationError {
+  return new ConfigurationError('INVALID_CONFIG', `package ${name} is installed at ${directory} but its entry cannot be resolved: ${reason}`, { cause });
 }
 
 /** The directory of `name` in the nearest `node_modules` from `root` upward, as Node.js looks a package up. */
@@ -185,44 +187,94 @@ function installedAt(name: string, root: string): string | undefined {
   }
 }
 
-/** The file `subpath` (`''` for the main entry) of the package at `directory` exports to `import`, when its `exports` names one. */
+/** Conditions Node.js matches for `import()`, besides `default`. */
+const IMPORT_CONDITIONS = new Set(['node', 'import', 'module-sync', 'default']);
+
+/** A target Node.js refuses: it does not start with `./`, or a segment is empty, `.`, `..` or `node_modules`. */
+class InvalidTarget extends Error {}
+
+/**
+ * The file `subpath` (`''` for the main entry) of the package at `directory` exports to `import`, as Node.js resolves it,
+ * or undefined when `exports` does not name the subpath for `import`, so `require` resolution decides as before.
+ */
 function importEntry(directory: string, subpath: string): string | undefined {
   const manifest: unknown = JSON.parse(readFileSync(path.join(directory, 'package.json'), 'utf8'));
   const exports = typeof manifest === 'object' && manifest !== null && 'exports' in manifest ? manifest.exports : undefined;
+  if (exports === undefined) return undefined;
   const key = `.${subpath}`;
   const keyed = typeof exports === 'object' && exports !== null && !Array.isArray(exports) && Object.keys(exports).some((entry) => entry.startsWith('.'));
+  let resolved: string | null | undefined;
   if (!keyed) {
-    const target = key === '.' ? importTarget(exports) : undefined;
-    return target === undefined ? undefined : path.join(directory, target);
+    resolved = key === '.' ? exportTarget(directory, exports) : undefined;
+  } else {
+    const entries = exports as Record<string, unknown>;
+    const pattern = Object.hasOwn(entries, key) && !key.includes('*') ? undefined : bestPattern(Object.keys(entries), key);
+    if (pattern === undefined && !Object.hasOwn(entries, key)) return undefined;
+    resolved = pattern === undefined ? exportTarget(directory, entries[key]) : exportTarget(directory, entries[pattern.key], pattern.match);
   }
-  const entries = exports as Record<string, unknown>;
-  if (Object.hasOwn(entries, key) && !key.includes('*')) {
-    const target = importTarget(entries[key]);
-    return target === undefined ? undefined : path.join(directory, target);
-  }
-  // A `./*` style pattern: Node.js picks the matching key with the longest part before `*`, then the longest key, and puts the matched text in place of every `*` in the target.
-  let best: { pattern: string; match: string } | undefined;
-  for (const pattern of Object.keys(entries)) {
+  if (resolved === null) throw new Error(`${key} is not exported to import by ${path.join(directory, 'package.json')}`);
+  return resolved;
+}
+
+/** The `./*` style key that matches `key`: the one with the longest part before `*`, then the longest key. */
+function bestPattern(keys: readonly string[], key: string): { key: string; match: string } | undefined {
+  let best: { key: string; match: string } | undefined;
+  for (const pattern of keys) {
     const star = pattern.indexOf('*');
     if (star === -1 || star !== pattern.lastIndexOf('*')) continue;
     const prefix = pattern.slice(0, star);
     const suffix = pattern.slice(star + 1);
     if (key.length < pattern.length || !key.startsWith(prefix) || !key.endsWith(suffix)) continue;
-    if (best !== undefined && (prefix.length < best.pattern.indexOf('*') || (prefix.length === best.pattern.indexOf('*') && pattern.length <= best.pattern.length))) continue;
-    best = { pattern, match: key.slice(star, key.length - suffix.length) };
+    if (best !== undefined && (prefix.length < best.key.indexOf('*') || (prefix.length === best.key.indexOf('*') && pattern.length <= best.key.length))) continue;
+    best = { key: pattern, match: key.slice(star, key.length - suffix.length) };
   }
-  if (best === undefined) return undefined;
-  const target = importTarget(entries[best.pattern]);
-  return target === undefined ? undefined : path.join(directory, target.replaceAll('*', best.match));
+  return best;
 }
 
-/** The first target an `import` of this `exports` value selects: a path, or the first matching condition's, in the order written. */
-function importTarget(value: unknown): string | undefined {
-  if (typeof value === 'string') return value;
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined;
-  for (const [condition, target] of Object.entries(value)) {
-    const selected = condition === 'import' || condition === 'node' || condition === 'default' ? importTarget(target) : undefined;
-    if (selected !== undefined) return selected;
+/**
+ * The file an `import` of this `exports` value selects, following Node.js's PACKAGE_TARGET_RESOLVE: null when the
+ * package excludes it, undefined when no condition matches. `match` replaces every `*` of a pattern's target.
+ */
+function exportTarget(directory: string, target: unknown, match?: string): string | null | undefined {
+  if (typeof target === 'string') {
+    if (!target.startsWith('./') || hasInvalidSegment(target.slice(2)) || (match !== undefined && hasInvalidSegment(match))) {
+      throw new InvalidTarget(`invalid exports target ${JSON.stringify(target)}${match === undefined ? '' : ` for ${JSON.stringify(match)}`}: it must start with ./ and stay inside the package`);
+    }
+    return path.join(directory, match === undefined ? target : target.replaceAll('*', match));
+  }
+  if (Array.isArray(target)) {
+    if (target.length === 0) return null;
+    // Like Node.js: an invalid item or a null one moves on to the next, and the last of them is the answer when none resolves.
+    let last: InvalidTarget | null | undefined;
+    for (const item of target) {
+      let resolved: string | null | undefined;
+      try {
+        resolved = exportTarget(directory, item, match);
+      } catch (error) {
+        if (!(error instanceof InvalidTarget)) throw error;
+        last = error;
+        continue;
+      }
+      if (resolved === undefined) continue;
+      if (resolved === null) {
+        last = null;
+        continue;
+      }
+      return resolved;
+    }
+    if (last instanceof InvalidTarget) throw last;
+    return last;
+  }
+  if (target === null) return null;
+  if (typeof target !== 'object') throw new InvalidTarget(`invalid exports target ${JSON.stringify(target)}`);
+  for (const [condition, value] of Object.entries(target)) {
+    if (!IMPORT_CONDITIONS.has(condition)) continue;
+    const resolved = exportTarget(directory, value, match);
+    if (resolved !== undefined) return resolved;
   }
   return undefined;
+}
+
+function hasInvalidSegment(relative: string): boolean {
+  return relative.split(/[\\/]/).some((segment) => segment === '' || segment === '.' || segment === '..' || segment.toLowerCase() === 'node_modules');
 }

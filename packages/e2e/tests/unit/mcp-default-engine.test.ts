@@ -79,6 +79,43 @@ describe('loadEngine', () => {
     expect(await loadEngine({ package: 'patterned/engines/kiosk' }, lookup)).toMatchObject({ name: 'from-longest-pattern' });
   });
 
+  /** Installs `shaped` with `exports`: index.js and sync.js are ESM factories, index.cjs a CommonJS one. */
+  function installShaped(exports: unknown): void {
+    install(lookup.cwd, 'shaped', FACTORY.replace("'fake'", "'from-import'"));
+    const packageDir = path.join(lookup.cwd, 'node_modules', 'shaped');
+    writeFileSync(path.join(packageDir, 'package.json'), JSON.stringify({ name: 'shaped', type: 'module', exports }));
+    writeFileSync(path.join(packageDir, 'sync.js'), FACTORY.replace("'fake'", "'from-module-sync'"));
+    writeFileSync(path.join(packageDir, 'index.cjs'), `module.exports = () => ({ [Symbol.for('e2e.engine.v1')]: true, spiVersion: 1, name: 'from-require' });\n`);
+  }
+
+  it.each<[string, unknown, string]>([
+    ['an array of condition objects', { '.': [{ import: './index.js', require: './index.cjs' }] }, 'from-import'],
+    ['a top-level array that skips an invalid target', ['index.cjs', { import: './index.js' }], 'from-import'],
+    ['an array item excluded with null', { '.': [null, { import: './index.js' }] }, 'from-import'],
+    ['module-sync before require', { '.': { 'module-sync': './sync.js', require: './index.cjs' } }, 'from-module-sync'],
+    ['require before module-sync', { '.': { require: './index.cjs', 'module-sync': './sync.js' } }, 'from-module-sync'],
+    ['require alone, read as before', { '.': { require: './index.cjs' } }, 'from-require'],
+  ])('loads the entry import() loads for %s', async (_shape, exports, name) => {
+    installShaped(exports);
+    expect(await loadEngine({ package: 'shaped' }, lookup)).toMatchObject({ name });
+  });
+
+  it.each<[string, unknown, string]>([
+    ['an import excluded with null', { '.': { import: null, require: './index.cjs' } }, '. is not exported to import'],
+    ['an import array whose first file is missing', { '.': { import: ['./missing.js', './index.js'], require: './index.cjs' } }, 'missing.js'],
+    ['a target outside the package', { '.': { import: '../other/index.js', require: './index.cjs' } }, 'invalid exports target "../other/index.js"'],
+    ['a target without ./', { '.': { import: 'index.js', require: './index.cjs' } }, 'invalid exports target "index.js"'],
+    ['a target through node_modules', { '.': { import: './node_modules/other/index.js' } }, 'invalid exports target'],
+  ])('refuses %s, as import() does, instead of loading the require entry', async (_shape, exports, message) => {
+    installShaped(exports);
+    await expect(loadEngine({ package: 'shaped' }, lookup)).rejects.toMatchObject({ code: 'INVALID_CONFIG', message: expect.stringContaining(message) });
+  });
+
+  it('refuses a wildcard match that runs through node_modules', async () => {
+    installShaped({ '.': './index.js', './*': { import: './*.js' } });
+    await expect(loadEngine({ package: 'shaped/node_modules/other' }, lookup)).rejects.toMatchObject({ code: 'INVALID_CONFIG', message: expect.stringContaining('invalid exports target') });
+  });
+
   it('makes the factory calls among the options first, so an engine gets a provider JSON cannot carry', async () => {
     install(lookup.cwd, 'engine', FACTORY);
     install(lookup.enginesDir, 'cloud', `export const devices = (options) => ({ name: 'cloud', region: options?.region, acquire: () => 'leased' });\n`);
