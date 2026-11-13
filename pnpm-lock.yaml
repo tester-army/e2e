@@ -448,8 +448,8 @@ importers:
   packages/e2b:
     dependencies:
       agent-device:
-        specifier: 0.21.36
-        version: 0.21.36(ai@7.0.164(zod@4.6.7))
+        specifier: 0.21.37
+        version: 0.21.37(ai@7.0.164(zod@4.6.7))
     devDependencies:
       '@e2e-dev/mobile':
         specifier: workspace:*
@@ -684,8 +684,8 @@ importers:
   packages/limrun:
     dependencies:
       agent-device:
-        specifier: 0.21.36
-        version: 0.21.36(ai@7.0.134(zod@4.6.7))
+        specifier: 0.21.37
+        version: 0.21.37(ai@7.0.134(zod@4.6.7))
     devDependencies:
       '@e2e-dev/mobile':
         specifier: workspace:*
@@ -712,8 +712,8 @@ importers:
         specifier: 1.16.0
         version: 1.16.0
       agent-device:
-        specifier: 0.21.36
-        version: 0.21.36(ai@7.0.170(zod@4.6.7))
+        specifier: 0.21.37
+        version: 0.21.37(ai@7.0.170(zod@4.6.7))
       zod:
         specifier: 4.6.7
         version: 4.6.7
@@ -758,8 +758,8 @@ importers:
   packages/testmu:
     dependencies:
       '@agent-device/testmu':
-        specifier: 0.21.36
-        version: 0.21.36
+        specifier: 0.21.37
+        version: 0.21.37
     devDependencies:
       '@e2e-dev/mobile':
         specifier: workspace:*
@@ -804,8 +804,8 @@ importers:
 
 packages:
 
-  '@agent-device/testmu@0.21.36':
-    resolution: {integrity: sha512-Pa0QJPpZw0A0M/Q228qbr2NHMXONo0n/w4FHqJ4gRL+d74FYtRbo2GJQ+2SmTLT1nPsJGM8dW/b4Z6LyDCtAhA==}
+  '@agent-device/testmu@0.21.37':
+    resolution: {integrity: sha512-kEtEC16tbtle/E7vB/MLZVcIPVwwYzi/VaoHTaMLPUKpvWUZ1IJzIFWZlLswrcxwDfKs/lvNdztVmi59ErpXOA==}
 
   '@agentclientprotocol/sdk@2.6.0':
     resolution: {integrity: sha512-3FtL6MkAV5F9qxg0FQV8wmBszIm2xuVPoDWOILIFSDQ+Vq3Twdh7Cw6Hk2GOPUbevgrTUpUAqZXQy7Geaj79mw==}
@@ -3104,8 +3104,8 @@ packages:
     engines: {node: '>=18.18'}
     hasBin: true
 
-  agent-device@0.21.36:
-    resolution: {integrity: sha512-aG88WlEHjFc/OEBQC7AJg+2LfNoVT/ogxnnzIUYUEgafdiTvBaA+X6uQ2wNmpp2ZrHLy8QIXoEOyc3NEZgJCpQ==}
+  agent-device@0.21.37:
+    resolution: {integrity: sha512-IepPH4OtF3rrf51bxAACGCCaHX4Uj7xt5vlbG3sQyNAVzYnSJpOXpn3INQ1gZhZV/tiCIxI3Z+KAIGeiULKc1A==}
     engines: {node: '>=22.12'}
     hasBin: true
     peerDependencies:
@@ -5519,7 +5519,7 @@ packages:
 
 snapshots:
 
-  '@agent-device/testmu@0.21.36': {}
+  '@agent-device/testmu@0.21.37': {}
 
   '@agentclientprotocol/sdk@2.6.0(@modelcontextprotocol/server@2.4.0)(zod@4.6.7)':
     dependencies:
@@ -7713,15 +7713,15 @@ snapshots:
 
   agent-cli-detector@0.1.7: {}
 
-  agent-device@0.21.36(ai@7.0.134(zod@4.6.7)):
+  agent-device@0.21.37(ai@7.0.134(zod@4.6.7)):
     optionalDependencies:
       ai: 7.0.134(zod@4.6.7)
 
-  agent-device@0.21.36(ai@7.0.164(zod@4.6.7)):
+  agent-device@0.21.37(ai@7.0.164(zod@4.6.7)):
     optionalDependencies:
       ai: 7.0.164(zod@4.6.7)
 
-  agent-device@0.21.36(ai@7.0.170(zod@4.6.7)):
+  agent-device@0.21.37(ai@7.0.170(zod@4.6.7)):
     optionalDependencies:
       ai: 7.0.170(zod@4.6.7)
 
