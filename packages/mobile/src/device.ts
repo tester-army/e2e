@@ -175,7 +175,7 @@ export interface Device {
   foregroundApp(): Promise<ForegroundApp>;
   /** Sends the device to its home screen. */
   home(): Promise<void>;
-  /** Navigates back once (in-app back). */
+  /** Navigates back once (in-app back). On iOS it swipes from the left edge and fails when the screen does not change, as at a stack's root or on a modal; tap the close control there. */
   back(): Promise<void>;
   /** Accepts or dismisses the visible system alert. */
   alert(action: 'accept' | 'dismiss'): Promise<void>;
