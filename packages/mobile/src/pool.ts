@@ -148,7 +148,7 @@ class BootedDevices implements DeviceSource {
       );
     }
     if (chosen.length === 0) {
-      info.log(`no booted ${this.platform} device; agent-device boots a shut-down one (newest OS, then name)`);
+      info.log(`no booted ${this.platform} device; agent-device boots a shut-down one (iPhone over iPad over Apple TV on iOS, phone or tablet over TV on Android, then newest OS, then name)`);
       return [{}];
     }
     const skipped = held.length === 0 ? '' : `, skipping ${held.length} held by another agent-device session (${heldBy})`;
