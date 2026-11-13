@@ -55,10 +55,9 @@ gates, and limits.
 A coding agent the user already signs in to runs agent steps over the Agent Client Protocol:
 install `@e2e-dev/acp` and its adapter, and put
 `claudeCode({ model: 'sonnet' })` or `codex()` under
-`executor`; no model provider is needed. See the shipped `docs/subscriptions.mdx` or
+`executor`; no model provider is needed. When a step ends or is cancelled,
+it stops waiting for the previous ACP turn. See the shipped `docs/subscriptions.mdx` or
 [the online guide](https://e2e.com/docs/subscriptions#use-your-coding-agent).
-
-A step's timeout also cancels its wait for the previous ACP turn to stop.
 
 - Pass a model instance, not a string (`INVALID_CONFIG`).
 - An agents entry is one plain object of `model`, `judge`, `system`,
