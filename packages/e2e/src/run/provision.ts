@@ -13,7 +13,7 @@ import { ENGINE_SPI_VERSION, type EngineSpiVersion } from '../engine/contract.ts
 import type { DebugTrace } from '../internal/debug.ts';
 import { ConfigurationError, InfrastructureError, translateProvisioningError } from '../internal/errors.ts';
 import { Deadline, NEVER_ABORTS, withScopedBudget } from '../internal/time.ts';
-import { isRetryMode, recordsOnSomeAttempt, type RecordingKind, type ResolvedRecording } from '../internal/recording-modes.ts';
+import { isRetryMode, pairRecording, recordsOnSomeAttempt, type RecordingKind, type ResolvedRecording } from '../internal/recording-modes.ts';
 import type { RecordingMode } from '../types.ts';
 import { declaredCommands } from './declared-processes.ts';
 import { ManagedProcess, type AppProcesses, type ManagedProcessHooks } from './managed-process.ts';
@@ -57,17 +57,6 @@ export function describeTarget(target: ResolvedTarget): TargetProvenance {
     artifactCapabilities,
     stateCapability: engine?.state !== undefined,
   };
-}
-
-/**
- * Which attempts of a pair record `kind`, and where the mode came from: the
- * test's own, else its target's (which the flag and the config already
- * decided). One resolver for both recordings, so `trace` and `video` can
- * never disagree about precedence.
- */
-export function pairRecording(pair: Pick<GradedPair, 'options' | 'target'>, kind: RecordingKind): ResolvedRecording {
-  const own = pair.options[kind];
-  return own === undefined ? pair.target[kind] : { mode: own, source: 'test' };
 }
 
 /** A target graded against its engine declaration, before any test starts. */

@@ -6,11 +6,10 @@ import { resultId } from '../internal/ids.ts';
 import { expectedFailureOption } from '../internal/expected-failure.ts';
 import { didYouMean, suggestionNote } from '../internal/suggest.ts';
 import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
-import { attemptKeep, attemptVideo, type AttemptRecordings } from '../internal/recording-modes.ts';
+import { attemptKeep, attemptVideo, pairRecording, type AttemptRecordings } from '../internal/recording-modes.ts';
 import type { Capability, RecordingMode, TestOptions } from '../types.ts';
 import { excludingEntry, type Collection, type CollectedTest, type UncollectedFile } from './collect.ts';
 import { groupChain } from './registry.ts';
-import { pairRecording } from '../run/provision.ts';
 import type { SkipInfo } from '../run/records.ts';
 
 export interface ResolvedTestOptions {
