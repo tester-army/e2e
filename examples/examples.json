@@ -1820,6 +1820,30 @@
           "web"
         ]
       }
+    },
+    {
+      "slug": "mandu-public-service",
+      "title": "e2e with Mandu: synthetic public service",
+      "shortTitle": "Mandu",
+      "description": "A Portuguese synthetic service form with locators, agent.act and local contract fixtures for an explicit OpenAI-compatible endpoint.",
+      "source": "community",
+      "repository": "https://github.com/jxnxts/e2e-mandu-example/tree/6a0b18f4801862c1a52a13c22aa33b1f7a030ee1",
+      "author": {
+        "name": "Jonatas Soares",
+        "github": "jxnxts"
+      },
+      "license": "Apache-2.0",
+      "tags": {
+        "framework": [
+          "nodejs"
+        ],
+        "useCase": [
+          "api-testing"
+        ],
+        "platform": [
+          "web"
+        ]
+      }
     }
   ]
 }
