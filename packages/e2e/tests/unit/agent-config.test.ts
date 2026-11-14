@@ -1,12 +1,13 @@
 import { APICallError, createGateway } from 'ai';
 import { describe, expect, it, vi } from 'vitest';
-import { resolveConfig, type CliOverrides } from '../../src/config/resolve.ts';
+import { type CliOverrides } from '../../src/config/resolve.ts';
+import { resolveConfig } from '../../src/config/resolve-run.ts';
 import { z } from 'zod';
 import { defineTool } from '../../src/agent/tool.ts';
 import { createToolLoopExecutor } from '../../src/agent/tool-loop.ts';
 import { TRANSPORT_RETRIES } from '../../src/agent/model/sdk.ts';
 import type { SdkLanguageModel } from '../../src/agent/ai-sdk.ts';
-import type { E2EConfig } from '../../src/types.ts';
+import type { E2EConfig } from '../../src/run-types.ts';
 import { HARNESS_TOOL_NAMES } from '../../src/agent/action-names.ts';
 import { FINDING_TOOL_NAME } from '../../src/explore/executor.ts';
 import { recordingTools } from '../../src/mcp/recording.ts';

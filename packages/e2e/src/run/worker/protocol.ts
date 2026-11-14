@@ -7,8 +7,8 @@
  * each identity with a locally resolved test function.
  */
 
-import type { TestIdentity } from '../../collect/collect.ts';
-import type { ResolvedTestOptions, SkipInfo } from '../../collect/select.ts';
+import type { ResolvedTestOptions } from '../../collect/select.ts';
+import type { SkipInfo, TestIdentity } from '../records.ts';
 import type { CliOverrides, PortAssignments, ResolvedTarget } from '../../config/resolve.ts';
 import type { AiTraceSnapshot } from '../../internal/ai-trace.ts';
 import type { DebugSnapshot } from '../../internal/debug.ts';

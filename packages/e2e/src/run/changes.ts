@@ -12,7 +12,7 @@ import { compareCodePoints } from '../internal/globs.ts';
 import { onDiskPath } from '../internal/paths.ts';
 import { budgetText } from '../internal/time.ts';
 import { ellipsize } from '../report/format.ts';
-import type { TestFilterChanges } from '../types.ts';
+import type { TestFilterChanges } from '../run-types.ts';
 
 /**
  * A `changedSince` that is not a string, is empty, or reads as a git option

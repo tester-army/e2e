@@ -27,6 +27,23 @@ export interface ResolvedRecording {
   readonly source: RecordingSource;
 }
 
+/**
+ * Which attempts of a pair record `kind`, and where the mode came from: the
+ * test's own, else its target's (which the flag and the config already
+ * decided). One resolver for both recordings, so `trace` and `video` can
+ * never disagree about precedence.
+ */
+export function pairRecording(
+  pair: {
+    readonly options: { readonly [Kind in RecordingKind]: RecordingMode | undefined };
+    readonly target: { readonly [Kind in RecordingKind]: ResolvedRecording };
+  },
+  kind: RecordingKind,
+): ResolvedRecording {
+  const own = pair.options[kind];
+  return own === undefined ? pair.target[kind] : { mode: own, source: 'test' };
+}
+
 /** Which attempts keep what they captured: every one, or only one that ran and did not pass. */
 export type Keep = 'always' | 'on-failure';
 

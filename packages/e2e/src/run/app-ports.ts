@@ -16,7 +16,7 @@ import { ConfigurationError, errorMessage } from '../internal/errors.ts';
  * loopback host this machine cannot bind is a bad app URL, reported before
  * anything starts.
  */
-export async function allocateAppPorts(config: ResolvedConfig): Promise<ResolvedConfig> {
+export async function allocateAppPorts<Config extends ResolvedConfig>(config: Config): Promise<Config> {
   return allocatePorts(config, config.targets);
 }
 
@@ -24,12 +24,12 @@ export async function allocateAppPorts(config: ResolvedConfig): Promise<Resolved
  * A port for one target alone, for a session that opens it and must not
  * fail on another target's URL. Returns the config and the target as it now reads.
  */
-export async function allocateTargetPorts(config: ResolvedConfig, target: ResolvedTarget): Promise<{ config: ResolvedConfig; target: ResolvedTarget }> {
+export async function allocateTargetPorts<Config extends ResolvedConfig>(config: Config, target: ResolvedTarget): Promise<{ config: Config; target: ResolvedTarget }> {
   const allocated = await allocatePorts(config, [target]);
   return { config: allocated, target: allocated.targets.find((candidate) => candidate.name === target.name)! };
 }
 
-async function allocatePorts(config: ResolvedConfig, among: readonly ResolvedTarget[]): Promise<ResolvedConfig> {
+async function allocatePorts<Config extends ResolvedConfig>(config: Config, among: readonly ResolvedTarget[]): Promise<Config> {
   const pending = among.filter((target) => target.app.portRequest !== undefined && !Object.hasOwn(config.ports, target.name));
   if (pending.length === 0) return config;
 

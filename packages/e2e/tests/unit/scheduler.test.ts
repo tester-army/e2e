@@ -10,9 +10,9 @@ import type { CollectedFile, CollectedTest, Collection } from '../../src/collect
 import type {
   ResolvedTestOptions,
   Selection,
-  SkipInfo,
   TestTargetPair,
 } from '../../src/collect/select.ts';
+import type { SkipInfo } from '../../src/run/records.ts';
 import type { ResolvedTarget } from '../../src/config/resolve.ts';
 import { defineEngine, type EngineHandle } from '../../src/engine/index.ts';
 import { classifyError, serializeError } from '../../src/internal/errors.ts';

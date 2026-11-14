@@ -6,10 +6,11 @@ import { resultId } from '../internal/ids.ts';
 import { expectedFailureOption } from '../internal/expected-failure.ts';
 import { didYouMean, suggestionNote } from '../internal/suggest.ts';
 import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
-import { attemptKeep, attemptVideo, type AttemptRecordings, type RecordingKind, type ResolvedRecording } from '../internal/recording-modes.ts';
+import { attemptKeep, attemptVideo, pairRecording, type AttemptRecordings } from '../internal/recording-modes.ts';
 import type { Capability, RecordingMode, TestOptions } from '../types.ts';
 import { excludingEntry, type Collection, type CollectedTest, type UncollectedFile } from './collect.ts';
 import { groupChain } from './registry.ts';
+import type { SkipInfo } from '../run/records.ts';
 
 export interface ResolvedTestOptions {
   readonly timeout: number;
@@ -37,33 +38,6 @@ export interface ResolvedTestOptions {
   readonly trace: RecordingMode | undefined;
   /** The test's own `video`, on the same terms as `trace`. */
   readonly video: RecordingMode | undefined;
-}
-
-/** Why a pair did not run; only a `filtered` one can name the test filter that left it out. */
-export type SkipInfo =
-  | (SkipDetail & {
-      readonly cause: 'filtered';
-      /** The name of the test filter that left the test out; absent when the selection did, as with `--tag`. */
-      readonly filter?: string;
-    })
-  | (SkipDetail & {
-      readonly cause:
-        | 'explicit'
-        | 'platform-unavailable'
-        | 'capability-unavailable'
-        | 'setup-failed'
-        | 'serial-predecessor-failed'
-        | 'hook-failed'
-        | 'infrastructure-unavailable'
-        | 'failure-limit'
-        | 'time-limit';
-      readonly filter?: never;
-    });
-
-/** What a skip says whatever its cause: why, and the id of a related test, such as the setup that failed. */
-interface SkipDetail {
-  readonly reason: string;
-  readonly relatedId?: string;
 }
 
 export interface TestTargetPair {
@@ -228,17 +202,6 @@ export function resolveOptions(test: CollectedTest, config: ResolvedConfig): Res
     trace,
     video,
   };
-}
-
-/**
- * Which attempts of a pair record `kind`, and where the mode came from: the
- * test's own, else its target's (which the flag and the config already
- * decided). One resolver for both recordings, so `trace` and `video` can
- * never disagree about precedence.
- */
-export function pairRecording(pair: Pick<TestTargetPair, 'options' | 'target'>, kind: RecordingKind): ResolvedRecording {
-  const own = pair.options[kind];
-  return own === undefined ? pair.target[kind] : { mode: own, source: 'test' };
 }
 
 /** What an attempt of a pair at `attemptIndex` captures: one keep decision for the trace and the video alike. */

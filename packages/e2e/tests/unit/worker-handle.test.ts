@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { afterAll, describe, expect, it, vi } from 'vitest';
-import { resolveConfig } from '../../src/config/resolve.ts';
+import { resolveConfig } from '../../src/config/resolve-run.ts';
 import { defineEngine, type EngineCleanupContext, type EngineHandle } from '../../src/engine/index.ts';
 import { SessionStore } from '../../src/run/sessions.ts';
 import { TargetWorker } from '../../src/run/worker/session.ts';

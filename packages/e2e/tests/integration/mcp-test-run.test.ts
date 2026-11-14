@@ -31,8 +31,8 @@ import { cacheConfig, entriesFor, expectReplayed, FLOWS, flowsModel, flowsSuite,
 
 const sessionModule = new URL('../../dist/mcp/session.js', import.meta.url).href;
 const { SessionHost } = (await import(sessionModule)) as typeof import('../../src/mcp/session.ts');
-const resolveModule = new URL('../../dist/config/resolve.js', import.meta.url).href;
-const { resolveConfig } = (await import(resolveModule)) as typeof import('../../src/config/resolve.ts');
+const resolveModule = new URL('../../dist/config/resolve-run.js', import.meta.url).href;
+const { resolveConfig } = (await import(resolveModule)) as typeof import('../../src/config/resolve-run.ts');
 
 const CLI = fileURLToPath(new URL('../../dist/cli/bin.js', import.meta.url));
 

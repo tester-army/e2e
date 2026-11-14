@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createModelAdapter } from '../../src/agent/model/sdk.ts';
 import { defineTool } from '../../src/agent/tool.ts';
-import { resolveConfig } from '../../src/config/resolve.ts';
+import { resolveConfig } from '../../src/config/resolve-run.ts';
 import { defineEngine } from '../../src/engine/index.ts';
 import { createEngineSession } from '../../src/engine/session.ts';
 import { USER_AGENT } from '../../src/internal/client-identity.ts';

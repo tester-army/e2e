@@ -14,7 +14,7 @@
 
 import { GRAMMAR_ACTION_NAMES, GRAMMAR_TOOL_NAMES, HARNESS_TOOL_NAMES, MCP_SESSION_SURFACE, PROJECT_TOOL_EVENT_PREFIX } from '../agent/action-names.ts';
 import { modelLabel } from '../config/agent.ts';
-import type { ResolvedConfig } from '../config/resolve.ts';
+import type { ResolvedRunConfig } from '../config/resolve-run.ts';
 import type { McpClient } from '../mcp/server.ts';
 import type { McpSessionSummary } from '../mcp/usage.ts';
 import type { Report1Document, ReportError, ReportExplore, ReportStep, ReportUsage } from '../report/build.ts';
@@ -369,14 +369,14 @@ export interface RunContext {
   /** The flag names given, never their values. */
   readonly flags: readonly string[];
   /** The config the run resolved; undefined when it failed to load. */
-  readonly config: ResolvedConfig | undefined;
+  readonly config: ResolvedRunConfig | undefined;
 }
 
 /**
  * Which config features a run used: counts, booleans, and the runner's own
  * option ids, never a name, a path, or a value the project wrote.
  */
-function configFeatures(config: ResolvedConfig): Record<string, JsonValue> {
+function configFeatures(config: ResolvedRunConfig): Record<string, JsonValue> {
   const agents = [...config.agents.values()];
   return {
     config_workers: config.workers,

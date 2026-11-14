@@ -3,7 +3,7 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
-import type { Report } from '../types.ts';
+import type { Report } from '../run-types.ts';
 import { buildReport } from '../report/build.ts';
 import { renderTracePage } from '../report/failure-text.ts';
 import { outcome } from '../report/outcome.ts';

@@ -14,8 +14,8 @@ import { dependencyRange } from '../../src/cli/init/versions.ts';
 // Use the built modules, just as config and test imports use the installed packages.
 const loaderModule = '../../dist/config/load.js';
 const { loadConfigModule } = await import(loaderModule) as typeof import('../../src/config/load.ts');
-const resolveModule = '../../dist/config/resolve.js';
-const { resolveConfig } = await import(resolveModule) as typeof import('../../src/config/resolve.ts');
+const resolveModule = '../../dist/config/resolve-run.js';
+const { resolveConfig } = await import(resolveModule) as typeof import('../../src/config/resolve-run.ts');
 const collectModule = '../../dist/collect/collect.js';
 const { collect } = await import(collectModule) as typeof import('../../src/collect/collect.ts');
 const scaffoldModule = '../../dist/cli/init/scaffold.js';

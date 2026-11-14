@@ -15,7 +15,8 @@ import { AgentError } from '../../src/agent/error.ts';
 import { collectFromRegistration, type Collection } from '../../src/collect/collect.ts';
 import { collectModule, test } from '../../src/collect/registry.ts';
 import { select } from '../../src/collect/select.ts';
-import { resolveConfig, type ResolvedConfig } from '../../src/config/resolve.ts';
+import type { ResolvedRunConfig as ResolvedConfig } from '../../src/config/resolve-run.ts';
+import { resolveConfig } from '../../src/config/resolve-run.ts';
 import { defineEngine } from '../../src/engine/index.ts';
 import { ConfigurationError, type E2EError } from '../../src/internal/errors.ts';
 import {
@@ -29,7 +30,7 @@ import {
   type FilterSelectionOptions,
   type TestFilterScope,
 } from '../../src/run/test-filters.ts';
-import type { E2EConfig, TestFilter, TestFilterCandidate, TestFilterContext, TestFilterResult } from '../../src/types.ts';
+import type { E2EConfig, TestFilter, TestFilterCandidate, TestFilterContext, TestFilterResult } from '../../src/run-types.ts';
 import { invalid } from '../helpers/invalid.ts';
 
 /** What `leaveWorkBehind` was told: a timeout records the work it left behind, for the CLI to exit on. */
