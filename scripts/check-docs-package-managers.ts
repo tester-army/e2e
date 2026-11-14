@@ -10,9 +10,10 @@
  * Exits 1 listing every offending block.
  */
 
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { pages } from './docs-pages.ts';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const DOCS = join(ROOT, 'docs');
@@ -20,15 +21,6 @@ const TITLES = ['npm', 'pnpm', 'bun'];
 const FENCE = /^( *)```(\S*)(?: (\S+))?\s*$/;
 const RUNS_PACKAGE_MANAGER = /(^|[\s=]|-- )(npx |npm (install|ci)\b)/m;
 const SHELL = new Set(['bash', 'sh', 'shell']);
-
-/** Every `.mdx` page under `dir`, skipping `node_modules`. */
-function pages(dir: string): string[] {
-  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
-    const path = join(dir, entry.name);
-    if (entry.isDirectory()) return entry.name === 'node_modules' ? [] : pages(path);
-    return entry.name.endsWith('.mdx') ? [path] : [];
-  });
-}
 
 /** Problems on one page: a package manager block outside a group, or a group without the three titles. */
 function check(path: string): string[] {
