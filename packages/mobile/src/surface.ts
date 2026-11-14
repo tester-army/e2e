@@ -15,6 +15,7 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { inspect } from 'node:util';
 import type { AppDeployResult, CaptureSnapshotResult } from 'agent-device';
 import {
   EngineError,
@@ -354,6 +355,11 @@ const MOBILE_OPTION_KEYS: readonly string[] = Object.keys({
 /** Every `snapshot` value, kept equal to `MobileOptions['snapshot']` by the compiler. */
 const SNAPSHOT_MODES: readonly string[] = Object.keys({ full: true, interactive: true } satisfies Record<NonNullable<MobileOptions['snapshot']>, true>);
 
+/** Formats a refused option value for an error message; never throws, whatever the value (BigInt, circular, NaN). */
+function received(value: unknown): string {
+  return inspect(value, { depth: 0, breakLength: Infinity });
+}
+
 /**
  * Refuses a `snapshot` or `videoTouches` value the engine would otherwise
  * read as its default: `snapshot: 'Interactive'` captured the full tree and
@@ -362,10 +368,10 @@ const SNAPSHOT_MODES: readonly string[] = Object.keys({ full: true, interactive:
 function assertChoices(options: MobileOptions): void {
   const { snapshot, videoTouches } = options as { readonly snapshot?: unknown; readonly videoTouches?: unknown };
   if (snapshot !== undefined && !SNAPSHOT_MODES.includes(snapshot as string)) {
-    throw new ConfigurationError('INVALID_CONFIG', `mobile: \`snapshot\` must be ${SNAPSHOT_MODES.map((mode) => `'${mode}'`).join(' or ')}, got ${JSON.stringify(snapshot) ?? String(snapshot)}`);
+    throw new ConfigurationError('INVALID_CONFIG', `mobile: \`snapshot\` must be ${SNAPSHOT_MODES.map((mode) => `'${mode}'`).join(' or ')}, got ${received(snapshot)}`);
   }
   if (videoTouches !== undefined && typeof videoTouches !== 'boolean') {
-    throw new ConfigurationError('INVALID_CONFIG', `mobile: \`videoTouches\` must be true or false, got ${JSON.stringify(videoTouches) ?? String(videoTouches)}`);
+    throw new ConfigurationError('INVALID_CONFIG', `mobile: \`videoTouches\` must be true or false, got ${received(videoTouches)}`);
   }
 }
 
