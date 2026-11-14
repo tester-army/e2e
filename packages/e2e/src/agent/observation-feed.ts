@@ -201,15 +201,30 @@ export class ObservationFeed {
     };
   }
 
+  /** The node that had the focus on the newest screen, when the screen lists nodes and exactly one has it. */
+  focusedNode(): RedactedNode | undefined {
+    const latest = this.newest;
+    if (latest === undefined || latest.kind === 'pixels') return undefined;
+    const focused = [...latest.nodes.values()].filter((node) => node.states?.focused === true);
+    return focused.length === 1 ? focused[0] : undefined;
+  }
+
   /**
    * Gives the screen `waitMs` from this completed action to leave the newest
    * observation's shape. Captures and time before the next observation count
-   * toward the window. Nothing is armed without a comparable shape.
+   * toward the window. Nothing is armed without a comparable shape. A window
+   * still pending, because actions batched in one turn had no look between
+   * them, is never shortened: the later action keeps the earlier one's deadline.
    */
   armChange(waitMs: number): void {
     if (this.newest === undefined) return;
     const shape = changeShape(this.newest);
-    this.pendingChange = shape === undefined ? undefined : { shape, deadlineMs: Date.now() + waitMs };
+    if (shape === undefined) {
+      this.pendingChange = undefined;
+      return;
+    }
+    const deadlineMs = Math.max(Date.now() + waitMs, this.pendingChange?.deadlineMs ?? 0);
+    this.pendingChange = { shape, deadlineMs };
   }
 
   /**

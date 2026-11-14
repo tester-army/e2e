@@ -65,7 +65,7 @@ export interface Scene {
   perform(id: string, action: LocatorAction): void;
   /** `keyboard.type` into the focused field. */
   type(text: string, replace: boolean): void;
-  /** `keyboard.press` on the focused field. */
+  /** `keyboard.press` on the focused field, which sees it as a `press` on itself. */
   press(key: string): void;
 }
 
@@ -238,7 +238,9 @@ export function createScene(build: (stage: Stage) => ScriptedNode[], initialLoca
       node.value = replace ? text : `${node.value ?? ''}${text}`;
     },
     press(key) {
-      applyKey(focused(), key);
+      const node = focused();
+      applyKey(node, key);
+      node.on?.({ kind: 'press', key }, node);
     },
   };
 }
