@@ -15,7 +15,7 @@ function App({ model }: { model: ReportModel }) {
   const result = useMemo(() => (testId === null ? undefined : model.results.find((candidate) => candidate.id === testId)), [model, testId]);
   const status = route.get('status');
   return result === undefined ? (
-    <ListView model={model} status={isStatusFilter(status) ? status : 'all'} search={route.get('q') ?? ''} />
+    <ListView model={model} status={isStatusFilter(status) ? status : 'all'} search={route.get('q') ?? ''} target={route.get('target') ?? undefined} />
   ) : (
     <TestView model={model} result={result} attemptParam={route.get('attempt')} />
   );

@@ -6,6 +6,7 @@ import {
   formatDuration,
   formatTokens,
   matchesSearch,
+  onTarget,
   repeatSuffix,
   type ReportModel,
   type Result,
@@ -14,25 +15,47 @@ import {
 import { replaceRoute, routeHref } from './route.ts';
 import { Icon, StatusIcon, StatusTag, Tag } from './ui.tsx';
 
-/** The run page: what ran, the status tabs, the search box, and the tests as a tree of files and describe blocks. */
-export function ListView({ model, status, search }: { model: ReportModel; status: StatusFilter; search: string }) {
+/** The run page: what ran, the target and status tabs, the search box, and the tests as a tree of files and describe blocks. */
+export function ListView({ model, status, search, target }: { model: ReportModel; status: StatusFilter; search: string; target: string | undefined }) {
   const counts = useMemo(
     () =>
       Object.fromEntries(
-        Object.entries(STATUS_FILTERS).map(([name, matches]) => [name, model.results.filter((result) => matches(result.status)).length]),
+        Object.entries(STATUS_FILTERS).map(([name, matches]) => [
+          name,
+          onTarget(model.results, target).filter((result) => matches(result.status)).length,
+        ]),
       ) as Record<StatusFilter, number>,
-    [model],
+    [model, target],
   );
   const files = useMemo(() => {
-    const shown = model.results.filter((result) => STATUS_FILTERS[status](result.status) && matchesSearch(result, search));
+    const shown = onTarget(model.results, target).filter((result) => STATUS_FILTERS[status](result.status) && matchesSearch(result, search));
     return [...Map.groupBy(shown, (result) => result.file)].map(([file, results]) => suiteTree(file, results)).toSorted((a, b) => byStatus(a.worst, b.worst));
-  }, [model, status, search]);
-  const params = { status: status === 'all' ? undefined : status, q: search };
+  }, [model, status, search, target]);
+  const params = { status: status === 'all' ? undefined : status, q: search, target };
+  /** The targets the results ran on, each with how many of them it carries. */
+  const targets = model.run.targets
+    .filter((runTarget) => model.targetIds.has(runTarget.id))
+    .map((runTarget) => ({ id: runTarget.id, count: model.results.filter((result) => result.targetId === runTarget.id).length }));
 
   return (
     <div className="flex flex-col gap-e2e-4">
-      <RunHeader model={model} counts={counts} />
+      <RunHeader model={model} counts={counts} target={target} />
       <div className="flex flex-wrap items-center gap-x-e2e-4 gap-y-e2e-2 border-b border-shade-700 pb-e2e-2">
+        {targets.length > 1 ? (
+          <nav aria-label="Target" className="flex flex-wrap gap-x-e2e-4 gap-y-e2e-2">
+            {[{ id: undefined as string | undefined, count: model.results.length }, ...targets].map(({ id, count }) => (
+              <a
+                key={id ?? 'all-targets'}
+                href={routeHref({ ...params, target: id })}
+                aria-current={id === target ? 'page' : undefined}
+                className="e2e-action group flex items-baseline gap-e2e-1"
+              >
+                <span>{id ?? 'all targets'}</span>
+                <span className="text-shade-500 group-aria-[current=page]:text-shade-100">{count}</span>
+              </a>
+            ))}
+          </nav>
+        ) : null}
         <nav aria-label="Status" className="flex flex-wrap gap-x-e2e-4 gap-y-e2e-2">
           {(Object.keys(STATUS_FILTERS) as StatusFilter[]).map((name) =>
             name !== 'all' && counts[name] === 0 ? null : (
@@ -69,21 +92,25 @@ export function ListView({ model, status, search }: { model: ReportModel; status
 }
 
 /** `counts` are the listed tests', so the headline matches the tabs: filtered-out tests count as skipped there. */
-function RunHeader({ model, counts }: { model: ReportModel; counts: Record<StatusFilter, number> }) {
+function RunHeader({ model, counts, target }: { model: ReportModel; counts: Record<StatusFilter, number>; target: string | undefined }) {
   const { run } = model;
   const { usage } = run;
   const duration = Date.parse(run.finishedAt) - Date.parse(run.startedAt);
-  const facts = [
+  const scope = run.targets
+    .filter((runTarget) => model.targetIds.has(runTarget.id) && (target === undefined || runTarget.id === target))
+    .map((runTarget) => `${runTarget.id} (${runTarget.engine.name})`)
+    .join(', ');
+  const runFacts = [
     new Date(run.startedAt).toLocaleString(),
     formatDuration(duration),
-    run.targets
-      .filter((target) => model.targetIds.has(target.id))
-      .map((target) => `${target.id} (${target.engine.name})`)
-      .join(', '),
     usage.modelTokens > 0 ? `${formatTokens(usage.modelTokens)} tokens` : undefined,
     usage.estimatedCostUsd === undefined ? undefined : formatCost(usage.estimatedCostUsd),
     `e2e ${run.runner.version}`,
-  ].filter((fact) => fact !== undefined && fact !== '');
+  ];
+  // One target picked: its fact leads and the run-wide ones follow a label, so none of them reads as the target's own.
+  const facts = (target === undefined ? [runFacts[0], runFacts[1], scope, ...runFacts.slice(2)] : [scope, 'run totals:', ...runFacts]).filter(
+    (fact) => fact !== undefined && fact !== '',
+  );
   // The bar's segments, best first; each grows with its count.
   const segments = [
     { label: 'passed', value: counts.passed, color: 'bg-status-passed' },
@@ -97,7 +124,7 @@ function RunHeader({ model, counts }: { model: ReportModel; counts: Record<Statu
   return (
     <header className="flex flex-col gap-e2e-3">
       <div className="flex items-end justify-between gap-e2e-3">
-        <h1 className="type-h3 lowercase">tests {run.status === 'error' ? 'errored' : run.status}</h1>
+        <h1 className="type-h3 lowercase">{target === undefined ? `tests ${run.status === 'error' ? 'errored' : run.status}` : `tests on ${target}`}</h1>
         <p className="flex shrink-0 flex-col items-end gap-e2e-half">
           <span className="type-caption text-shade-500">passed</span>
           <span className="type-number-l">

@@ -154,6 +154,11 @@ export function matchesSearch(result: Result, search: string): boolean {
   return words.every((word) => new RegExp(`(?:^|[^\\p{L}\\p{N}])${word.replaceAll(/[\\^$.*+?()[\]{}|/]/gu, '\\$&')}`, 'u').test(haystack));
 }
 
+/** The results that ran on `target`, or every result when it names none; an unknown target answers none. */
+export function onTarget(results: readonly Result[], target: string | undefined): readonly Result[] {
+  return target === undefined ? results : results.filter((result) => result.targetId === target);
+}
+
 /**
  * The URL an artifact opens at, by the payload's media mode: its file under
  * the link base, each segment encoded, or its embedded bytes. A hosted

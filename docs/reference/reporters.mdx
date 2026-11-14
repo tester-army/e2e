@@ -172,6 +172,12 @@ const reporter = htmlReporter({ media: 'embed' });
   `e2e explore`, the exploration without its findings.
 - The tests list as a tree: each file, its describe blocks, then their tests,
   failures first. Selecting a file's path folds its tests away.
+- A run that selected more than one target gets target tabs above the status
+  tabs. Picking one shows only its tests: the headline reads `tests on
+  <target>` instead of the run's verdict, the counts narrow to it, and the
+  run-wide facts follow a `run totals` label so none of them reads as the
+  target's own. The URL carries the choice, so a filtered view keeps
+  working as a link.
 - Each step shows where it starts in the attempt's video; selecting the time
   plays the video from there, and the step the video is on stays
   highlighted. The video's timeline marks each step's start, and its speed
