@@ -1,6 +1,6 @@
 import type { Report } from 'e2e';
 import { describe, expect, it } from 'vitest';
-import { buildModel } from '../../app/data.ts';
+import { buildModel, onTarget } from '../../app/data.ts';
 import fixture from '../../../e2e/schema/fixtures/report-v1.valid.json' with { type: 'json' };
 
 // The page's own tsconfig checks this file: the model it tests reads the DOM.
@@ -39,5 +39,27 @@ describe('serial members', () => {
       ['skipped', failure.message],
       ['failed in afterAll', failure.message],
     ]);
+  });
+});
+
+describe('onTarget', () => {
+  const [first, second] = REPORT.run.results;
+  const split = [
+    { ...first!, targetId: 'web' },
+    { ...second!, targetId: 'mobile' },
+    { ...first!, targetId: 'web' },
+  ];
+
+  it('answers every result when no target is named, as the same list', () => {
+    expect(onTarget(split, undefined)).toBe(split);
+  });
+
+  it('keeps only the results that ran on the named target', () => {
+    expect(onTarget(split, 'mobile').map((result) => result.targetId)).toEqual(['mobile']);
+    expect(onTarget(split, 'web')).toHaveLength(2);
+  });
+
+  it('answers none for a target the run did not select', () => {
+    expect(onTarget(split, 'tablet')).toEqual([]);
   });
 });
