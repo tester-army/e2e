@@ -24,7 +24,7 @@ from the directory it runs in.
   `description`, and optional `platform` / `screenOptions`. One component
   per scenario in `src/Examples/`; the home list renders one row per
   scenario, its test id the scenario name, and pushes each as its own stack
-  screen. The deep link `e2e-benchmark://<name in kebab case>`
+  screen. The deep link `e2e-benchmark://<name lowercased, spaces replaced by hyphens>`
   (`e2e-benchmark://login-form`) opens a scenario directly.
 - `modules/apple-pay-lab`: the local Expo module (PassKit, iOS only) behind
   the two Apple Pay scenarios.
