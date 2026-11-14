@@ -85,7 +85,7 @@ The app under test is the target's `app`, not an engine option; see
 | [`session`](#session) | `string` | `e2e-<target name>` |
 | [`snapshot`](#snapshot) | `'full' \| 'interactive'` | `'full'` |
 | [`settle`](#settle) | `number \| false` | `150` |
-| [`transition`](#transition) | `number` | `500` |
+| [`transition`](#transition) | `number \| TransitionBudgets` | `500` |
 | [`videoTouches`](#videotouches) | `boolean` | `true` |
 
 Every optional value also accepts `undefined`, so values read straight from
@@ -97,7 +97,8 @@ declaration.
 | `INVALID_CONFIG` | An empty `device` list, a blank `device` name, or a blank or non-string list entry. |
 | `INVALID_CONFIG` | A `device` value that is neither a string, a list, nor a valid provider: a provider without a non-empty `name`, without `acquire()` or `release()`, or with a `record` that is not a function. |
 | `INVALID_CONFIG` | An option `mobile()` does not take, such as `mobile({ app })` and the other old app options. The message names the nearest known option for a likely typo, else every option. |
-| `INVALID_CONFIG` | `settle` or `transition` is not a non-negative integer of milliseconds (`settle` may also be `false`). |
+| `INVALID_CONFIG` | `settle` or `transition` is not a non-negative integer of milliseconds. `settle` may also be `false`, and `transition` an object of budgets. |
+| `INVALID_CONFIG` | A budget in a `transition` object is not a non-negative integer of milliseconds, or the object has a key other than `default`, `gesture`, and `launch`. The message names the budget, or the nearest known key for a likely typo, else every key. |
 
 #### `platform`
 
@@ -230,31 +231,74 @@ mobile({ platform: 'ios', settle: 300 }); // default: 150
 
 ```ts
 /**
- * Wait before acting on a control that just appeared or moved, in
- * milliseconds. Default 500. Accessibility bounds cannot tell a sliding
- * control from a landed one (iOS reports the final frame at once, Android
- * the frame in flight), so the control is found again in a fresh snapshot
- * once the wait is over and acted on where it landed. Unmoved controls are
- * acted on immediately only when keyboard visibility is unchanged. Opening
- * or closing the keyboard also uses the remaining budget. Screen swipes in
- * tests wait out the remaining budget before scrolling. Raise it for slower
- * transitions.
+ * How long a control that appeared or moved with the last action is given
+ * to finish arriving before a test acts on it, in milliseconds. Default
+ * 500, the length of a modal or screen transition. Accessibility bounds
+ * cannot tell a sliding control from a landed one (iOS reports the final
+ * frame at once, Android the frame in flight), so the control is found
+ * again in a fresh snapshot once the wait is over and acted on where it
+ * landed. Unmoved controls are acted on immediately only when keyboard
+ * visibility is unchanged. Opening or closing the keyboard also uses the
+ * remaining budget. Screen swipes in tests wait out the remaining budget
+ * before scrolling. Raise it for slower transitions. A number is that
+ * budget after every action. An object sets it by the kind of the last
+ * action: `default` for any action except a gesture or a launch, `gesture`
+ * after a scroll or swipe, `launch` after the app launches, relaunches, or
+ * closes, or a link opens into it. A `gesture` or `launch` budget left out
+ * takes the `default` one. A scroll or swipe can return while its content
+ * still moves, and the tree shows that content in flight, so the `gesture`
+ * budget is only the least wait. A control that arrived or moved with the
+ * gesture is then read until it stops moving, which is two reads that
+ * agree on where it and any control that looks like it sit, at most 4 s
+ * after the gesture, or at the budget when that is larger, or sooner when
+ * the action's own timeout cannot fit another read. A plain number sets the
+ * `gesture` budget too. A budget of 0 is no wait at all. After any other
+ * action the budget is the whole wait.
  */
-readonly transition?: number | undefined;
+readonly transition?: number | TransitionBudgets | undefined;
 ```
 
 ```ts
 mobile({ platform: 'ios', transition: 800 }); // default: 500
+mobile({ platform: 'ios', transition: { default: 750, gesture: 1_500, launch: 500 } });
 ```
+
+An object sets the wait by what the last action was. `gesture` is the wait
+after a scroll or swipe, `launch` after the app launches, relaunches, or
+closes, or a link opens into it, and `default` after any other action.
+`default` is 500 unless set, and `gesture` and `launch` take the `default`
+budget when left out, so `{ gesture: 1_500 }` waits 1.5 s after a scroll or
+swipe and 500 ms after everything else. Every budget is a non-negative integer
+of milliseconds, and a key other than these three is `INVALID_CONFIG`.
+
+The `gesture` budget is the least wait, not the whole of it. A scroll or swipe
+can return while its content is still moving, and the tree shows that content
+in flight, so the wait goes on until the control stops. After any other action
+the budget is the whole wait, since the tree cannot tell a control that slides
+in from one that landed. A plain number sets the `gesture` budget too. A
+budget of 0 is no wait at all, so `transition: 0` and `{ gesture: 0 }` act at
+once.
+
+After the `gesture` budget, the engine reads the screen until a read agrees
+with the one before it, or with the one that found the control. Two reads agree
+when the control and its look-alikes are the same in number and sit at the same
+places. A look-alike has the same role, test ID, name, and text. The wait ends
+at most 4 s after the gesture, or at the budget when that is larger, and the
+action then goes ahead where the control was last read. A control that never
+stops moving costs the cap, 4 s or the `gesture` budget when that is larger, or
+what the action's own timeout leaves: the wait ends once the timeout cannot fit
+another read, and the action goes ahead where the control was last read.
 
 If the control changes during the wait, the action finds it again within its timeout before acting.
 
 `back`, `home`, `alert`, `dismissKeyboard`, `setOrientation`, and `fold` on
 [`device`](#device) change the screen, so they count as actions for this
-budget the way a tap does. A control that arrives with the screen they reveal
-waits out the budget before the next action lands on it.
+budget the way a tap does, and the `default` budget applies after them. A
+control that arrives with the screen they reveal waits out the budget before
+the next action lands on it.
 
-`fill` and `clear` re-read the field before typing. Missing fields, changed
+`fill` and `clear` re-read the field before typing; after a scroll or swipe, the
+read that found the field at rest is that re-read. Missing fields, changed
 security state, or incomplete captures return `NODE_STALE` before mutation,
 then retry after a fresh observation. Non-input targets return
 `UNSUPPORTED_CAPABILITY`. An iOS `other`, the type of an element the platform
@@ -1187,6 +1231,26 @@ export type PermissionState = 'grant' | 'deny' | 'reset';
 
 /** Permissions an app holds when it launches, by name. */
 export type LaunchPermissions = Readonly<Partial<Record<DevicePermission, PermissionState>>>;
+
+/**
+ * The `transition` budgets by the kind of the last action, in milliseconds,
+ * each a non-negative integer. A `gesture` or `launch` budget left out takes
+ * the `default` one.
+ */
+export interface TransitionBudgets {
+  /** After any action except a gesture or a launch: a tap, fill, key, back, and the rest. Default 500. */
+  readonly default?: number | undefined;
+  /**
+   * After a scroll or swipe, which can return while the content is still
+   * moving. The least wait. The wait then goes on until the control stops
+   * moving, two reads agreeing, at most 4 s after the gesture. A budget above
+   * 4 s ends the wait at that budget, and 0 is no wait at all. Default: the
+   * `default` budget.
+   */
+  readonly gesture?: number | undefined;
+  /** After the app launches, relaunches, or closes, or a link opens into it. Default: the `default` budget. */
+  readonly launch?: number | undefined;
+}
 ```
 
 ### Device fixture
@@ -1286,7 +1350,7 @@ export interface DeviceSelection {
 ### Exported types
 
 `MobileOptions`, `MobilePlatform`, `DevicePermission`, `LaunchPermissions`,
-`PermissionState`, `DeviceClientConfig`, `DeviceConnection`, `DeviceDaemon`,
+`PermissionState`, `TransitionBudgets`, `DeviceClientConfig`, `DeviceConnection`, `DeviceDaemon`,
 `DeviceProvider`, `DeviceLease`, `DeviceReleaseContext`, `DeviceRequest`,
 `Device`, `DeviceSession`, `DeviceSessionClient`, `DeviceSelection`, `DeviceOrientation`, `BiometricSensor`, `ForegroundApp`,
 `FoldPose`, `InstallAppOptions`, `InstalledApp`, and `OpenAppOptions` are exported from

@@ -44,6 +44,26 @@ export type PermissionState = 'grant' | 'deny' | 'reset';
 export type LaunchPermissions = Readonly<Partial<Record<DevicePermission, PermissionState>>>;
 
 /**
+ * The `transition` budgets by the kind of the last action, in milliseconds,
+ * each a non-negative integer. A `gesture` or `launch` budget left out takes
+ * the `default` one.
+ */
+export interface TransitionBudgets {
+  /** After any action except a gesture or a launch: a tap, fill, key, back, and the rest. Default 500. */
+  readonly default?: number | undefined;
+  /**
+   * After a scroll or swipe, which can return while the content is still
+   * moving. The least wait. The wait then goes on until the control stops
+   * moving, two reads agreeing, at most 4 s after the gesture. A budget above
+   * 4 s ends the wait at that budget, and 0 is no wait at all. Default: the
+   * `default` budget.
+   */
+  readonly gesture?: number | undefined;
+  /** After the app launches, relaunches, or closes, or a link opens into it. Default: the `default` budget. */
+  readonly launch?: number | undefined;
+}
+
+/**
  * Options of the device engine: which devices it drives and how. The app
  * under test is the target's `app` (`bundleId`, `appPath`,
  * `launchArguments`, `permissions`). Every optional value also accepts
@@ -107,15 +127,29 @@ export interface MobileOptions {
   /**
    * How long a control that appeared or moved with the last action is given
    * to finish arriving before a test acts on it, in milliseconds. Default
-   * 500, the length of a modal or screen transition. Accessibility frames
-   * report a control's final position from the first frame of a transition,
-   * so this budget is the only thing that keeps a test from tapping a point
-   * the control has not reached. Unmoved controls are acted on immediately
-   * only when keyboard visibility is unchanged. Opening or closing the
-   * keyboard also uses the remaining budget. Screen swipes in tests wait out
-   * the remaining budget before scrolling. Raise it for slower transitions.
+   * 500, the length of a modal or screen transition. Accessibility bounds
+   * cannot tell a sliding control from a landed one (iOS reports the final
+   * frame at once, Android the frame in flight), so the control is found
+   * again in a fresh snapshot once the wait is over and acted on where it
+   * landed. Unmoved controls are acted on immediately only when keyboard
+   * visibility is unchanged. Opening or closing the keyboard also uses the
+   * remaining budget. Screen swipes in tests wait out the remaining budget
+   * before scrolling. Raise it for slower transitions. A number is that
+   * budget after every action. An object sets it by the kind of the last
+   * action: `default` for any action except a gesture or a launch, `gesture`
+   * after a scroll or swipe, `launch` after the app launches, relaunches, or
+   * closes, or a link opens into it. A `gesture` or `launch` budget left out
+   * takes the `default` one. A scroll or swipe can return while its content
+   * still moves, and the tree shows that content in flight, so the `gesture`
+   * budget is only the least wait. A control that arrived or moved with the
+   * gesture is then read until it stops moving, which is two reads that
+   * agree on where it and any control that looks like it sit, at most 4 s
+   * after the gesture, or at the budget when that is larger, or sooner when
+   * the action's own timeout cannot fit another read. A plain number sets the
+   * `gesture` budget too. A budget of 0 is no wait at all. After any other
+   * action the budget is the whole wait.
    */
-  readonly transition?: number | undefined;
+  readonly transition?: number | TransitionBudgets | undefined;
   /**
    * Whether a video recording draws agent-device's touch indicator where a
    * test tapped. Default `true`. `false` records the plain screen, and skips

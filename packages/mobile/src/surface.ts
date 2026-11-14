@@ -63,7 +63,16 @@ import {
   type ProjectedSnapshot,
 } from './nodes.ts';
 import { keyboardDragStart } from './keyboard.ts';
-import { DEVICE_PERMISSIONS, type AgentDeviceClient, type ClientFactory, type DevicePermission, type LaunchPermissions, type MobileOptions, type PermissionState } from './options.ts';
+import {
+  DEVICE_PERMISSIONS,
+  type AgentDeviceClient,
+  type ClientFactory,
+  type DevicePermission,
+  type LaunchPermissions,
+  type MobileOptions,
+  type PermissionState,
+  type TransitionBudgets,
+} from './options.ts';
 import { maskPng } from './png.ts';
 import { mobileDoctor } from './doctor.ts';
 import { deviceLabel, pinnedApp, type SlotBinding } from './bindings.ts';
@@ -220,20 +229,52 @@ interface NodeBinding {
  * a tap aimed from either frame lands on whatever is behind the control.
  * Once the budget has passed the control is found again in a fresh
  * snapshot. Unmoved controls are immediate only when keyboard state also
- * stayed the same; a visible keyboard can precede the app's relayout.
+ * stayed the same; a visible keyboard can precede the app's relayout. This is
+ * the budget after every action when the `transition` option sets none; the
+ * option can give a gesture or a launch a budget of its own, see
+ * {@link TransitionBudgets}. A scroll or swipe is a different case from a
+ * control that slides in. It can return while its content still moves, and the
+ * tree shows that content in flight. After a gesture the budget is only the
+ * least wait, and the wait goes on until the control is seen at rest, see
+ * GESTURE_REST_CAP_MS.
  */
 const DEFAULT_TRANSITION_MS = 500;
 
 /**
- * How long after a test's swipe or scroll skipped agent-device's stabilization
- * wait the next action on a control first confirms the control stopped moving.
- * A list still coasting swallows a tap to stop itself, so the press would
- * report success and change nothing.
+ * The longest a control that came with a gesture is waited for to stop
+ * moving, counted from when the gesture returned. A `gesture` budget above it
+ * is the cap instead. A scroll can return while its fling goes on, and the
+ * tree shows the content in flight. On an iOS simulator with agent-device
+ * 0.21.36, 3 of 120 scrolls of a long list left it moving 1.66 to 1.84 s after
+ * `scroll` returned, and the reads taken meanwhile saw 2 to 3 different
+ * positions. Past the cap the action goes ahead where the control was last
+ * read, as it would after a blind sleep. A screen that never stops moving
+ * costs the cap and no more.
  */
-const GESTURE_STEADY_MS = 2_000;
+const GESTURE_REST_CAP_MS = 4_000;
 
-/** Pause between the reads that confirm a control stopped moving after a gesture. */
-const GESTURE_STEADY_POLL_MS = 100;
+/**
+ * The pause between two reads of a control that has not come to rest. A read
+ * takes time of its own on a device. The pause keeps a daemon that answers at
+ * once from being read in a tight loop until the cap.
+ */
+const REST_READ_GAP_MS = 50;
+
+/** The kind of an action, which picks the transition budget after it: `gesture` for a scroll or swipe, `launch` for the app starting or closing, `default` for the rest. */
+type ActionKind = keyof TransitionBudgets;
+
+/** The transition budget after each kind of action, in milliseconds. */
+type TransitionWaits = Readonly<Record<ActionKind, number>>;
+
+/**
+ * What a transition wait leaves its caller: `false` when it waited for
+ * nothing, `true` after a sleep that the control must be read again from, or
+ * the control itself, as the read that found it at rest saw it.
+ */
+type TransitionWait = boolean | NodeBinding;
+
+/** Where a control and every node that looks like it sat in one capture, top to bottom, then left to right. */
+type Sighting = readonly Rect[];
 
 /** How one screenshot is taken. */
 interface ScreenshotCapture {
@@ -256,6 +297,37 @@ function centreOf(rect: Rect): { x: number; y: number } {
 function sameRect(a: Rect | undefined, b: Rect | undefined): boolean {
   if (a === undefined || b === undefined) return false;
   return Math.abs(a.x - b.x) < 1 && Math.abs(a.y - b.y) < 1 && Math.abs(a.width - b.width) < 1 && Math.abs(a.height - b.height) < 1;
+}
+
+/** The nodes of a capture that look like a binding: the same role, test id, name, and text. The binding's own node is one of them. */
+function lookalikes(entry: NodeBinding, index: readonly ProjectedNode[]): ProjectedNode[] {
+  return index.filter(
+    (candidate) =>
+      candidate.node.role === entry.node.role &&
+      candidate.node.testId === entry.node.testId &&
+      candidate.node.name === entry.node.name &&
+      candidate.node.text === entry.node.text,
+  );
+}
+
+/**
+ * Where a binding's control and its look-alikes sit in one capture; undefined
+ * when one has no bounds, since nothing can be said to hold still then. The
+ * look-alikes count so that a row of a repeated list, moved by exactly one row
+ * between two reads, does not pass for one that stood still.
+ */
+function sighting(entry: NodeBinding, index: readonly ProjectedNode[]): Sighting | undefined {
+  const rects: Rect[] = [];
+  for (const candidate of lookalikes(entry, index)) {
+    if (candidate.node.rect === undefined) return undefined;
+    rects.push(candidate.node.rect);
+  }
+  return rects.toSorted((a, b) => a.y - b.y || a.x - b.x);
+}
+
+/** Whether two sightings are one: as many nodes, each in the same place as its counterpart in position order. */
+function sameSighting(a: Sighting | undefined, b: Sighting | undefined): boolean {
+  return a !== undefined && b !== undefined && a.length === b.length && a.every((rect, position) => sameRect(rect, b[position]));
 }
 
 const MAX_LOCATED_REFS = 2048;
@@ -395,11 +467,13 @@ function permissionError(code: 'INVALID_CONFIG' | 'INVALID_ARGUMENT', message: s
   throw code === 'INVALID_CONFIG' ? new ConfigurationError(code, message) : new TestError(code, message);
 }
 
-/** Resolves the `transition` option: the default budget or a custom one. */
-function transitionMs(transition: MobileOptions['transition']): number {
-  const budget = transition ?? DEFAULT_TRANSITION_MS;
+/** Every budget `transition` takes by kind of action, kept equal to `TransitionBudgets` by the compiler. */
+const TRANSITION_BUDGET_KEYS: readonly string[] = Object.keys({ default: true, gesture: true, launch: true } satisfies Record<ActionKind, true>);
+
+/** Refuses a budget that is not a non-negative integer of milliseconds; `option` is how the message names it. */
+function budgetMs(budget: number, option: string): number {
   if (!Number.isInteger(budget) || budget < 0) {
-    throw new ConfigurationError('INVALID_CONFIG', 'mobile: `transition` must be a non-negative integer of milliseconds');
+    throw new ConfigurationError('INVALID_CONFIG', `mobile: \`${option}\` must be a non-negative integer of milliseconds`);
   }
   return budget;
 }
@@ -409,10 +483,33 @@ function gestureStabilization(operation: OperationContext): GestureStabilization
   return operation.origin === 'test' ? { postGestureStabilization: false } : {};
 }
 
-/** True when two bounds are the same; a control without bounds has nothing to compare, so it counts as unmoved. */
-function sameBounds(a: NodeBinding['node']['rect'], b: NodeBinding['node']['rect']): boolean {
-  if (a === undefined || b === undefined) return true;
-  return a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height;
+/**
+ * Resolves the `transition` option into the budget after each kind of action.
+ * A number, or no option, is one budget for all of them. An object sets a
+ * budget per kind, and `gesture` and `launch` take the `default` one when
+ * left out.
+ */
+function transitionWaits(transition: MobileOptions['transition']): TransitionWaits {
+  const budgets = transition ?? DEFAULT_TRANSITION_MS;
+  if (typeof budgets === 'number') {
+    const budget = budgetMs(budgets, 'transition');
+    return { default: budget, gesture: budget, launch: budget };
+  }
+  // A string, array, or class instance holds no budgets, so it would run on the default instead of failing.
+  const prototype: unknown = Object.getPrototypeOf(budgets);
+  if (prototype !== Object.prototype && prototype !== null) {
+    throw new ConfigurationError(
+      'INVALID_CONFIG',
+      `mobile: \`transition\` must be a non-negative integer of milliseconds, or an object of them by kind of action (${TRANSITION_BUDGET_KEYS.join(', ')})`,
+    );
+  }
+  rejectUnknownKeys('mobile: `transition`', budgets, TRANSITION_BUDGET_KEYS);
+  const base = budgetMs(budgets.default ?? DEFAULT_TRANSITION_MS, 'transition.default');
+  return {
+    default: base,
+    gesture: budgetMs(budgets.gesture ?? base, 'transition.gesture'),
+    launch: budgetMs(budgets.launch ?? base, 'transition.launch'),
+  };
 }
 
 /** Resolves the `settle` option: the default window, a custom one, or no wait at all. */
@@ -481,14 +578,14 @@ export class AgentDeviceSurface {
   readonly settleOptions: SettleOptions;
   /** When this surface last acted on the device (an input or an app launch); the screen may be in transition for a while after. */
   private lastActionAt = 0;
-  /** When a test's swipe or scroll last went out without agent-device's stabilization wait; 0 when nothing is pending. */
-  private skippedStabilizationAt = 0;
+  /** The kind of that action, which picks the budget the screen gets to come to rest. */
+  private lastActionKind: ActionKind = 'default';
   /** The screen as last projected before that action, to tell controls that were already there from ones that came with it. */
   private screenBeforeAction: ProjectedScreen | undefined;
   /** The most recent projection of the screen, from any observe or locate. */
   private latestScreen: ProjectedScreen | undefined;
-  /** Budget a control that came with the last action gets to finish arriving; see DEFAULT_TRANSITION_MS. */
-  private readonly transitionMs: number;
+  /** Budget a control that came with the last action gets to finish arriving, by the kind of that action; see DEFAULT_TRANSITION_MS. */
+  private readonly transitionWaits: TransitionWaits;
   /**
    * The screen's logical size as last learned from a snapshot with geometry
    * or from the device itself, so a snapshot without geometry (an empty
@@ -506,7 +603,7 @@ export class AgentDeviceSurface {
     rejectUnknownKeys('mobile()', options, MOBILE_OPTION_KEYS);
     this.pool = new DevicePool(options, createClient);
     this.settleOptions = settleOptions(options.settle);
-    this.transitionMs = transitionMs(options.transition);
+    this.transitionWaits = transitionWaits(options.transition);
   }
 
   /** Whether the target pins an app for `app.open()`, `app.restart()`, and `app.clearState()` to launch. */
@@ -945,7 +1042,7 @@ export class AgentDeviceSurface {
    * bindings names a node that still exists.
    */
   private screenReplaced(): void {
-    this.markAction(undefined);
+    this.markAction(undefined, 'launch');
     this.generation = new Map();
     this.located.clear();
   }
@@ -1274,13 +1371,7 @@ export class AgentDeviceSurface {
    * id, same name and text, and of those the one closest to where it was.
    */
   private refind(entry: NodeBinding, index: readonly ProjectedNode[]): ProjectedNode | undefined {
-    const candidates = index.filter(
-      (candidate) =>
-        candidate.node.role === entry.node.role &&
-        candidate.node.testId === entry.node.testId &&
-        candidate.node.name === entry.node.name &&
-        candidate.node.text === entry.node.text,
-    );
+    const candidates = lookalikes(entry, index);
     if (candidates.length <= 1 || entry.node.rect === undefined) return candidates[0];
     const was = centreOf(entry.node.rect);
     let best = candidates[0];
@@ -1297,10 +1388,13 @@ export class AgentDeviceSurface {
     return best;
   }
 
-  /** Waits for the transition without exceeding the action's remaining budget. */
+  /**
+   * Waits out what is left of the last action's budget, by the kind of that
+   * action, without exceeding the action's own remaining budget.
+   */
   private async waitOutTransition(operation: OperationContext, budget: InputBudget): Promise<void> {
     await raceAbort(async () => {
-      const remaining = this.transitionMs - (Date.now() - this.lastActionAt);
+      const remaining = this.transitionWaits[this.lastActionKind] - (Date.now() - this.lastActionAt);
       if (remaining <= 0) return;
       const available = budget.remainingMs();
       if (available > 0) await sleep(Math.min(remaining, available), operation.signal);
@@ -1313,57 +1407,110 @@ export class AgentDeviceSurface {
   }
 
   /**
-   * Waits for a control that arrived or moved with the last action, returning
-   * whether it needs a fresh capture. Controls already present at the same
-   * place need no wait, unless keyboard state changed: a keyboard change can
-   * precede the app's relayout.
+   * Waits for a control that arrived or moved with the last action until the
+   * budget of that action's kind has passed. Controls already present at the
+   * same place need no wait, unless keyboard state changed: a keyboard change
+   * can precede the app's relayout.
+   *
+   * After a gesture the budget is only the least wait. The control is then
+   * read until it is seen at rest, see {@link atRest}. After any other action
+   * the wait is a sleep, and a read after it finds the control again. No read
+   * can end that sleep early, since the tree cannot tell a control that is
+   * still sliding in from one that landed, see DEFAULT_TRANSITION_MS. A budget
+   * of 0 is no wait at all, after a gesture too: no sleep and no read. With
+   * `input`, the read that finds the control at rest also passes the checks
+   * `relocated` makes for an input, so a fill or clear needs no read of its own
+   * after it. `holdMs` is how long the action then holds, a long press, which
+   * `InputBudget.send` refuses unsent when less than that is left.
    */
-  private async waitForTransition(entry: NodeBinding, operation: OperationContext, budget: InputBudget): Promise<boolean> {
+  private async waitForTransition(entry: NodeBinding, operation: OperationContext, budget: InputBudget, input = false, holdMs = 0): Promise<TransitionWait> {
     const since = Date.now() - this.lastActionAt;
-    const remaining = this.transitionMs - since;
-    if (remaining <= 0) return false;
+    const kind = this.lastActionKind;
+    const floor = this.transitionWaits[kind];
+    const until = kind === 'gesture' && floor > 0 ? Math.max(floor, GESTURE_REST_CAP_MS) : floor;
+    if (since >= until) return false;
     const before = this.screenBeforeAction;
     if (before !== undefined && before.keyboardVisible === entry.keyboardVisible && this.samePlace(entry, before.index) !== undefined) return false;
-    await this.waitOutTransition(operation, budget);
-    return true;
-  }
-
-  /** Records that a test's gesture skipped the stabilization wait, so the next action on a control checks it stopped moving. */
-  private noteGesture(operation: OperationContext): void {
-    if (operation.origin === 'test') this.skippedStabilizationAt = Date.now();
+    if (since < floor) await this.waitOutTransition(operation, budget);
+    if (kind !== 'gesture') return true;
+    return this.atRest(entry, operation, budget, this.lastActionAt + until, input, holdMs);
   }
 
   /**
-   * After a gesture that skipped the stabilization wait, re-reads the control
-   * until two reads agree on where it is, so an action does not land on a list
-   * still coasting. Costs one extra snapshot when the screen already rests,
-   * and nothing once GESTURE_STEADY_MS has passed. An input action keeps the
-   * checks `relocated` makes on every read, and the poll never outlasts the
-   * action's budget.
+   * Reads the screen until the control is seen at rest, and returns it as that
+   * read saw it, so the caller needs no read of its own. Two sightings that
+   * agree are a rest. A sighting is the control and its look-alikes, and two
+   * agree when they are as many and sit at the same places. The pair is the
+   * read `entry` came from and the first read here, or two reads here in a
+   * row. The control is tracked through the reads as `refind` does. A read
+   * that no longer lists it is a retryable NODE_STALE, as in `relocated`, and
+   * not a wait for the cap. At `capAt` the latest read stands, agreeing or not.
+   * So does it when the action's own budget cannot fit another read and the
+   * pause before it, and the `holdMs` the action holds after them, as
+   * `snapshot` returns a sparse capture rather than time out on a retry it
+   * cannot fit. With `input`, the read it returns must also pass the checks of
+   * an input mutation, see {@link refuseChangedInput}.
    */
-  private async steadied(entry: NodeBinding, operation: OperationContext, budget: InputBudget, input: boolean): Promise<NodeBinding> {
-    const deadline = this.skippedStabilizationAt + GESTURE_STEADY_MS;
-    if (this.skippedStabilizationAt === 0 || Date.now() >= deadline) return entry;
-    let current = entry;
+  private async atRest(entry: NodeBinding, operation: OperationContext, budget: InputBudget, capAt: number, input: boolean, holdMs: number): Promise<NodeBinding> {
+    let tracked = entry;
+    let previous = this.sightingAt(entry);
     for (;;) {
-      const next = await this.relocated(current, operation, budget, input);
-      const steady = sameBounds(current.node.rect, next.node.rect);
-      current = next;
-      if (steady || Date.now() >= deadline) break;
-      if (budget.remainingMs() <= GESTURE_STEADY_POLL_MS) {
-        throw new EngineError('OPERATION_TIMEOUT', 'the control kept moving until the action budget ran out', { retryable: false });
+      const startedAt = Date.now();
+      const raw = await this.snapshotOrEmpty(operation, false, budget);
+      const readMs = Date.now() - startedAt;
+      const projected = this.project(raw);
+      const found = this.refind(tracked, projected.index);
+      if (found === undefined) {
+        throw new EngineError('NODE_STALE', `node ${entry.id} changed during transition; re-resolve`, { retryable: true });
       }
-      await sleep(GESTURE_STEADY_POLL_MS, operation.signal);
-      if (operation.signal.aborted) throw new EngineError('CANCELLED', 'gesture wait cancelled', { retryable: false });
+      tracked = this.bind(found, projected);
+      const seen = sighting(tracked, projected.index);
+      const left = capAt - Date.now();
+      if (sameSighting(previous, seen) || left <= 0 || budget.remainingMs() <= REST_READ_GAP_MS + readMs + holdMs) {
+        if (input) this.refuseChangedInput(entry, found, raw);
+        return tracked;
+      }
+      previous = seen;
+      await sleep(Math.min(REST_READ_GAP_MS, left), operation.signal);
+      if (operation.signal.aborted) {
+        throw new EngineError('CANCELLED', 'transition wait cancelled', { retryable: false });
+      }
     }
-    this.skippedStabilizationAt = 0;
-    return current;
   }
 
-  /** Refreshes a control after a transition wait, keeping the binding when no wait was needed. */
-  private async settled(entry: NodeBinding, operation: OperationContext, budget: InputBudget): Promise<NodeBinding> {
-    if (await this.waitForTransition(entry, operation, budget)) return this.relocated(entry, operation, budget);
-    return entry;
+  /**
+   * Where the control and its look-alikes sat in the read an action resolved
+   * on. That read is the newest projection when `entry` is one of its nodes.
+   * After a newer read only the control's own place is left of it, which a read
+   * with a look-alike never matches.
+   */
+  private sightingAt(entry: NodeBinding): Sighting | undefined {
+    const latest = this.latestScreen;
+    if (latest?.index.some((node) => node.id === entry.id) === true) return sighting(entry, latest.index);
+    return entry.node.rect === undefined ? undefined : [entry.node.rect];
+  }
+
+  /** Refreshes a control after a transition wait. That is the control as the wait read it at rest, else found again after a sleep, else the binding itself when no wait was needed. */
+  private async settled(entry: NodeBinding, operation: OperationContext, budget: InputBudget, holdMs = 0): Promise<NodeBinding> {
+    const waited = await this.waitForTransition(entry, operation, budget, false, holdMs);
+    if (waited === true) return this.relocated(entry, operation, budget);
+    return waited === false ? entry : waited;
+  }
+
+  /**
+   * Refuses an input mutation when a fresh read shows the control changed from
+   * the binding the action resolved on: a truncated read, the control gone, or
+   * its input purpose, disabled, secure, or hidden state different. A retryable
+   * NODE_STALE, so the locator resolves and authorizes it again.
+   */
+  private refuseChangedInput(entry: NodeBinding, found: ProjectedNode | undefined, raw: RawSnapshot): void {
+    if (isTruncated(raw) || found === undefined ||
+      entry.node.inputPurpose !== found.node.inputPurpose ||
+      entry.node.states?.disabled !== found.node.states?.disabled ||
+      entry.node.states?.secure !== found.node.states?.secure ||
+      entry.node.states?.hidden !== found.node.states?.hidden) {
+      throw new EngineError('NODE_STALE', `input node ${entry.id} changed before mutation; observe and authorize it again`, { retryable: true });
+    }
   }
 
   /**
@@ -1375,13 +1522,7 @@ export class AgentDeviceSurface {
     const raw = await this.snapshotOrEmpty(operation, false, budget);
     const projected = this.project(raw);
     const found = this.refind(entry, projected.index);
-    if (input && (isTruncated(raw) || found === undefined ||
-      entry.node.inputPurpose !== found.node.inputPurpose ||
-      entry.node.states?.disabled !== found.node.states?.disabled ||
-      entry.node.states?.secure !== found.node.states?.secure ||
-      entry.node.states?.hidden !== found.node.states?.hidden)) {
-      throw new EngineError('NODE_STALE', `input node ${entry.id} changed before mutation; observe and authorize it again`, { retryable: true });
-    }
+    if (input) this.refuseChangedInput(entry, found, raw);
     if (found === undefined) {
       throw new EngineError('NODE_STALE', `node ${entry.id} changed during transition; re-resolve`, { retryable: true });
     }
@@ -1390,11 +1531,13 @@ export class AgentDeviceSurface {
 
   /**
    * Records an action the device received: the screen as it was projected
-   * before it, and when it returned. The transition budget counts from the
-   * return, since the input lands late in the command's own round trip.
+   * before it, what kind of action it was, and when it returned. The
+   * transition budget of that kind counts from the return, since the input
+   * lands late in the command's own round trip.
    */
-  private markAction(before: ProjectedScreen | undefined): void {
+  private markAction(before: ProjectedScreen | undefined, kind: ActionKind = 'default'): void {
     this.screenBeforeAction = before;
+    this.lastActionKind = kind;
     this.lastActionAt = Date.now();
   }
 
@@ -1423,8 +1566,7 @@ export class AgentDeviceSurface {
         (client) => input.send(() => client.interactions.scroll({ direction: action.direction, ...settle, ...stabilization })),
         operation.signal,
       );
-      this.noteGesture(operation);
-      this.markAction(before);
+      this.markAction(before, 'gesture');
       return;
     }
     const entry = this.resolveRef(ref);
@@ -1434,6 +1576,7 @@ export class AgentDeviceSurface {
     if (filling && !entry.takesText) throw refuseFill(entry);
     const label = `perform ${action.kind}`;
     const client = this.requireClient();
+    const holdMs = action.kind === 'longPress' ? (action.durationMs ?? DEFAULT_LONG_PRESS_MS) : 0;
     // A toggle already in the wanted state sends nothing, so it neither waits
     // for a transition nor counts as an action the next control must wait on.
     if ((action.kind === 'check' || action.kind === 'uncheck') && entry.node.states?.checked === (action.kind === 'check')) {
@@ -1443,15 +1586,11 @@ export class AgentDeviceSurface {
     const run = async (): Promise<unknown> => {
       let target = entry;
       if (filling) {
-        if (deterministic) await this.waitForTransition(entry, operation, input);
-        target = await this.relocated(entry, operation, input, true);
+        const waited = deterministic ? await this.waitForTransition(entry, operation, input, true) : false;
+        target = typeof waited === 'object' ? waited : await this.relocated(entry, operation, input, true);
         if (!target.takesText) throw refuseFill(target);
       } else if (deterministic) {
-        target = await this.settled(entry, operation, input);
-      }
-      if (deterministic) {
-        target = await this.steadied(target, operation, input, filling);
-        if (filling && !target.takesText) throw refuseFill(target);
+        target = await this.settled(entry, operation, input, holdMs);
       }
       switch (action.kind) {
         case 'tap':
@@ -1467,8 +1606,8 @@ export class AgentDeviceSurface {
           return input.press(client, { ...this.actionTarget(target), count: 2, ...settle });
         case 'longPress':
           return input.send(
-            () => client.interactions.longPress({ ...this.actionTarget(target), ...settle, durationMs: action.durationMs ?? DEFAULT_LONG_PRESS_MS }),
-            action.durationMs ?? DEFAULT_LONG_PRESS_MS,
+            () => client.interactions.longPress({ ...this.actionTarget(target), ...settle, durationMs: holdMs }),
+            holdMs,
           );
         case 'hover':
           return input.send(() => client.interactions.hover(this.actionTarget(target)));
@@ -1497,9 +1636,7 @@ export class AgentDeviceSurface {
           const rect = target.node.rect;
           if (rect === undefined) throw notActionable(`node ${target.id} has no bounds to swipe within`);
           const stabilization = gestureStabilization(operation);
-          const sent = await input.send(() => client.interactions.swipe({ ...swipeWithin(rect, action.direction, action.momentum), ...stabilization }));
-          this.noteGesture(operation);
-          return sent;
+          return input.send(() => client.interactions.swipe({ ...swipeWithin(rect, action.direction, action.momentum), ...stabilization }));
         }
         case 'dragTo': {
           // A test locates the drop target in a capture of its own, after the
@@ -1525,7 +1662,7 @@ export class AgentDeviceSurface {
     } catch (cause) {
       throw staleOr(cause, label, this.where);
     }
-    this.markAction(before);
+    this.markAction(before, action.kind === 'swipe' ? 'gesture' : 'default');
   }
 
   /**
@@ -1567,8 +1704,7 @@ export class AgentDeviceSurface {
     const settle = operation.origin === 'test' ? {} : this.settleOptions;
     const before = this.latestScreen;
     await this.command(`${action.kind} at point`, (client) => pointerInteraction(client, point, action, settle, gestureStabilization(operation), input), operation.signal);
-    if (action.kind === 'swipeTo') this.noteGesture(operation);
-    this.markAction(before);
+    this.markAction(before, action.kind === 'swipeTo' ? 'gesture' : 'default');
   }
 
   /**
