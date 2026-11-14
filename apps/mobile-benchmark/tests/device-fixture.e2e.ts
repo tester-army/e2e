@@ -98,6 +98,26 @@ test.describe('device fixture', () => {
     expect(lost?.code).toBe('APP_NOT_OPEN');
   });
 
+  // The app routes `e2e-benchmark://<scenario-slug>` to that scenario
+  // (`linking` in src/App.tsx), so the link lands on Login Form's own fields
+  // and Control Inventory is no longer on screen. The iOS simulator can stop
+  // a custom-scheme link at an "Open in “e2e Benchmark”?" prompt (it did on
+  // a freshly booted one, not on the runs after), so the prompt is answered
+  // only while it shows.
+  test('openLink opens the scenario a deep link names', async ({ device, screen }) => {
+    await device.openLink('e2e-benchmark://login-form');
+    const prompt = screen.getByRole('button', 'Open');
+    const email = screen.getByTestId('email-input');
+    await expect
+      .poll(async () => {
+        if (await prompt.isVisible()) await prompt.tap();
+        return email.isVisible();
+      }, { timeout: 10_000 })
+      .toBe(true);
+    expect((await device.foregroundApp()).bundleId).toBe(APP_ID);
+    await expect(screen.getByTestId('inventory-header')).toBeHidden();
+  });
+
   test('device.back pops the scenario', async ({ device, screen }) => {
     await device.back();
     await expect(screen.getByTestId('Control Inventory')).toBeVisible();

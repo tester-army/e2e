@@ -1,4 +1,4 @@
-import { NavigationContainer, useNavigation } from "@react-navigation/native";
+import { type LinkingOptions, NavigationContainer, useNavigation } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -42,10 +42,25 @@ function ExampleList() {
 
 const Stack = createNativeStackNavigator();
 
+/**
+ * Deep links for the `e2e-benchmark` scheme in app.json: `e2e-benchmark://<slug>`
+ * opens the scenario whose name the slug spells in kebab case
+ * (`e2e-benchmark://login-form`), with the home list beneath it.
+ */
+const linking: LinkingOptions<Record<string, undefined>> = {
+  prefixes: ["e2e-benchmark://"],
+  config: {
+    initialRouteName: "Benchmark Examples",
+    screens: Object.fromEntries(
+      visibleExamples.map((example) => [example.name, example.name.toLowerCase().replace(/\s+/g, "-")]),
+    ),
+  },
+};
+
 export default function App() {
   return (
     <SafeAreaProvider>
-      <NavigationContainer>
+      <NavigationContainer linking={linking}>
         <Stack.Navigator initialRouteName="Benchmark Examples">
           <Stack.Screen name="Benchmark Examples" component={ExampleList} />
           {visibleExamples.map((example) => (
