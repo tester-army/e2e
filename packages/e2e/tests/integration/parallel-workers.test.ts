@@ -182,6 +182,71 @@ test('parallel neighbor', async ({ app }) => {
   );
 
   it(
+    'runs two serial groups each on one worker in order beside a parallel neighbor',
+    async () => {
+      const pidDir = mkdtempSync(path.join(tmpdir(), 'e2e-two-groups-'));
+      const groupFile = (group: string, other: string) => `import { existsSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
+import { test } from 'e2e';
+
+test.describe('${group}', { serial: true }, () => {
+  let shared = 0;
+
+  test('${group} first', async ({ app }) => {
+    await app.open();
+    shared += 1;
+    writeFileSync(path.join(${JSON.stringify(pidDir)}, '${group}-first-' + process.pid), 'ok');
+    // Each group starts only while the other also runs: a scheduler that queues the groups one after the other deadlocks here instead of passing.
+    writeFileSync(path.join(${JSON.stringify(pidDir)}, 'started-${group}'), 'ok');
+    const otherStarted = path.join(${JSON.stringify(pidDir)}, 'started-${other}');
+    const deadline = Date.now() + 10_000;
+    while (!existsSync(otherStarted)) {
+      if (Date.now() > deadline) throw new Error('${group} waited 10s for ${other} to start; the two serial groups never ran at the same time');
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+  });
+
+  test('${group} second shares state', async ({ app }) => {
+    if (shared !== 1) throw new Error('${group} module state was not preserved: ' + shared);
+    await app.open();
+    writeFileSync(path.join(${JSON.stringify(pidDir)}, '${group}-second-' + process.pid), 'ok');
+  });
+});
+`;
+      const neighborFile = `import { test } from 'e2e';
+
+test('parallel neighbor', async ({ app }) => {
+  await app.open();
+});
+`;
+      const { outcome, project } = await runProjectWithConfigFile(
+        { 'tests/alpha.e2e.ts': groupFile('alpha', 'beta'), 'tests/beta.e2e.ts': groupFile('beta', 'alpha'), 'tests/other.e2e.ts': neighborFile },
+        { configSource: workerFakeConfigSource(2) },
+      );
+      for (const title of ['alpha first', 'alpha second shares state', 'beta first', 'beta second shares state', 'parallel neighbor']) {
+        expect(resultByTitle(outcome, title).status, title).toBe('passed');
+      }
+      expect(outcome.exitCode).toBe(0);
+
+      assertValidReport(outcome.report);
+      const run = outcome.report['run'] as unknown as Record<string, unknown>;
+      const groups = run['serialGroups'] as Record<string, unknown>[];
+      expect(groups).toHaveLength(2);
+      expect(groups.map((group) => group['status'])).toEqual(['passed', 'passed']);
+
+      // Each group's two steps ran on one worker, in order: the module counter above only holds when they did, and the pid files say which. The started markers above are what proves the two groups overlapped in time.
+      const written = readdirSync(pidDir);
+      for (const group of ['alpha', 'beta']) {
+        const pids = new Set(written.filter((entry) => entry.startsWith(`${group}-`)).map((entry) => entry.slice(entry.lastIndexOf('-') + 1)));
+        expect(pids.size, `${group} ran on ${pids.size} workers`).toBe(1);
+      }
+      rmSync(pidDir, { recursive: true, force: true });
+      project.cleanup();
+    },
+    120_000,
+  );
+
+  it(
     'reports a worker crash as infrastructure failure and finishes the run',
     async () => {
       const crashFile = `import { test } from 'e2e';
