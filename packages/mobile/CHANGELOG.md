@@ -1,5 +1,15 @@
 # @e2e-dev/mobile
 
+## 0.12.8
+
+### Patch Changes
+
+- [#1787](https://github.com/e2e-inc/e2e/pull/1787) [`74435e2`](https://github.com/e2e-inc/e2e/commit/74435e23b68a103ce21f25947c3b7a8a4015cb2a) Thanks [@karolkulesza](https://github.com/karolkulesza)! - The step label for `device.openLink` drops a link's userinfo, query, and fragment, and shows `<link>` for a string that does not parse as a URL. `device.openApp` labels an app id as it is, or `<link>` when it is shaped like a link.
+
+- [#1784](https://github.com/e2e-inc/e2e/pull/1784) [`dd39974`](https://github.com/e2e-inc/e2e/commit/dd39974acedee5b68042dd219f99249f781dfaf0) Thanks [@karolkulesza](https://github.com/karolkulesza)! - `mobile()` now refuses a `snapshot` value other than `'full'` or `'interactive'` and a `videoTouches` value that is not a boolean, instead of quietly using the default.
+
+- [#1728](https://github.com/e2e-inc/e2e/pull/1728) [`e167149`](https://github.com/e2e-inc/e2e/commit/e167149af1d390492af09e5fe28bb64072e9df64) Thanks [@karolkulesza](https://github.com/karolkulesza)! - The `device` option's documentation now says a paired iPhone or iPad that is reachable counts as booted, and that a shut-down device boots in tiers: on iOS an iPhone, then an iPad, then an Apple TV; on Android a phone or tablet, then a TV.
+
 ## 0.12.7
 
 ### Patch Changes
