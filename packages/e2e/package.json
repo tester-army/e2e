@@ -1,6 +1,6 @@
 {
   "name": "e2e",
-  "version": "0.23.1",
+  "version": "0.23.2",
   "description": "SDK, runner, and CLI for agentic end-to-end testing",
   "mcpName": "io.github.e2e-inc/e2e",
   "keywords": [

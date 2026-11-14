@@ -1,5 +1,11 @@
 # @e2e-dev/acp
 
+## 0.1.3
+
+### Patch Changes
+
+- [#1761](https://github.com/e2e-inc/e2e/pull/1761) [`f64e7db`](https://github.com/e2e-inc/e2e/commit/f64e7dba8d617a8804cba96cd8c885658db8aca5) Thanks [@jxnxts](https://github.com/jxnxts)! - A step that times out while the agent is still finishing the previous step's turn now fails with its timeout instead of `MODEL_PROVIDER_FAILED`.
+
 ## 0.1.2
 
 ### Patch Changes
