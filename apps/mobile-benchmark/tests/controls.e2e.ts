@@ -8,15 +8,7 @@
 import { existsSync } from 'node:fs';
 import { isAbsolute } from 'node:path';
 import type { Screen } from 'e2e';
-import { expect, openScenario, test } from './fixtures.ts';
-
-/** What a rejected promise carried, for asserting on its error code. */
-async function rejection(promise: Promise<unknown>): Promise<{ code?: string; message?: string } | undefined> {
-  return promise.then(
-    () => undefined,
-    (error: unknown) => error as { code?: string; message?: string },
-  );
-}
+import { expect, openScenario, rejection, test } from './fixtures.ts';
 
 /** Shows one of the scenario's three sections; every control of it fits on screen. */
 async function showSection(screen: Screen, name: 'Fields' | 'Toggles' | 'Gestures'): Promise<void> {

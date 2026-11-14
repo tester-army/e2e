@@ -7,6 +7,7 @@ import BottomTabs from "./Examples/BottomTabs";
 import BrokenAccessibility from "./Examples/BrokenAccessibility";
 import ChoiceControls from "./Examples/ChoiceControls";
 import ControlInventory from "./Examples/ControlInventory";
+import CoveredField from "./Examples/CoveredField";
 import DebouncedSearch from "./Examples/DebouncedSearch";
 import ErrorRecovery from "./Examples/ErrorRecovery";
 import FlattenedForm from "./Examples/FlattenedForm";
@@ -118,6 +119,12 @@ export const examples: Example[] = [
     name: "Sticky Chrome Target",
     description:
       "Accept button ~3 screens down in a non-virtualized scroll (present as an off-screen ref) under a sticky footer — tapping it must scroll it clear of the footer.",
+  },
+  {
+    component: CoveredField,
+    name: "Covered Field",
+    description:
+      "Product form whose sticky Back/Next footer sits over the Brand field, keyboard up or down — a tap at Brand presses Next; scroll the form to bring it clear, fill both, then Next.",
   },
   {
     component: WebViewAccessibility,

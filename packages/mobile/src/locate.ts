@@ -121,7 +121,9 @@ const STATE_KEYS = ['checked', 'disabled', 'selected', 'expanded', 'pressed'] as
 
 /**
  * One node against one semantic query. Role queries skip hidden nodes, as a
- * browser's role query does; the other kinds
+ * browser's role query does, but keep one hidden only by agent-device's
+ * covered mark: it is on screen, and an action on it fails with
+ * agent-device's refusal rather than finding nothing. The other kinds
  * answer with every node and leave visibility to the action or assertion,
  * unless the query says `visible`, which drops hidden nodes for every kind.
  * `withoutPackage` matches a test id by its short form (`ANDROID_RESOURCE_ID`).
@@ -136,7 +138,7 @@ function matchesQuery(entry: ProjectedNode, query: SemanticQuery, withoutPackage
       }
       if ((node.role ?? '') !== query.value.value) return false;
       if (query.name !== undefined && !matchesText(node.name ?? '', query.name)) return false;
-      if (node.states?.hidden === true) return false;
+      if (entry.platformHidden) return false;
       const wanted = query.states ?? {};
       for (const key of STATE_KEYS) {
         const expected = wanted[key];

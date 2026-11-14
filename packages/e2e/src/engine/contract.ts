@@ -65,8 +65,11 @@ export interface SemanticQuery {
   readonly name?: TextPattern;
   /**
    * States a role query requires. A role query never matches a node whose
-   * `states.hidden` is true, as a browser's role selector never does; there is
-   * no state that widens it to hidden nodes.
+   * `states.hidden` is true, as a browser's role selector never does. The one
+   * exception an engine may make is a node hidden only because its driver
+   * marks another element drawn over it, so an action on it can fail naming
+   * the cover. A node the platform reports not shown, or one the soft keyboard
+   * hides, stays out; no state widens a role query to other hidden nodes.
    */
   readonly states?: Readonly<
     Partial<Record<'checked' | 'disabled' | 'selected' | 'expanded' | 'pressed', boolean>>

@@ -8,8 +8,10 @@
  */
 
 import type { CaptureSnapshotResult, SnapshotNode } from 'agent-device';
+import { centerOfRect } from 'agent-device/contracts';
 import type { SemanticNode, ViewportSize } from 'e2e/engine';
-import type { Rect } from './support.ts';
+import type { MobilePlatform } from './options.ts';
+import type { Point, Rect } from './support.ts';
 
 /**
  * One agent-device snapshot node as this engine reads it: agent-device's own
@@ -28,6 +30,14 @@ export interface ProjectedNode {
   readonly raw: RawNode;
   readonly node: SemanticNode;
   readonly parent: ProjectedNode | undefined;
+  /**
+   * Whether the platform hides the node: it reports it not shown, or the soft
+   * keyboard draws over it. A node agent-device marks covered outside the
+   * keyboard reads as hidden too, but is not platform-hidden: it is still on
+   * screen, so a role query still finds it, for an action on it to get
+   * agent-device's refusal, and a drag start still steers clear of it.
+   */
+  readonly platformHidden: boolean;
 }
 
 export interface ProjectedSnapshot {
@@ -160,6 +170,22 @@ export function keyboardBand(
   const top = Math.min(...boards.map((rect) => rect.y));
   const bottom = Math.max((viewport ?? viewportOf(nodes))?.height ?? 0, ...boards.map((rect) => rect.y + rect.height));
   return { x: left, y: top, width: right - left, height: bottom - top };
+}
+
+/**
+ * Whether an Android keyboard may be up where `keyboardBand` placed none:
+ * agent-device could not measure it (`unmeasurable`, an input-method window
+ * whose bounds or region it could not read, or a window list or tree it could
+ * not read whole), saw one without a frame, or found keyboard nodes whose
+ * geometry it rejected. Only on Android does agent-device count the keyboard
+ * as a cover, so only there can its covered mark come from a keyboard e2e
+ * cannot place.
+ */
+export function keyboardUnplaced(fact: CaptureSnapshotResult['keyboard'], band: Rect | undefined, platform: MobilePlatform): boolean {
+  if (platform !== 'android' || band !== undefined || fact === undefined) return false;
+  if (fact.kind === 'visibility-only') return fact.visible;
+  if (fact.kind === 'tree-rejected') return fact.visible !== false;
+  return fact.kind === 'unmeasurable';
 }
 
 /** Kinds that span the screen and hold everything else. */
@@ -492,10 +518,18 @@ function isSystemBar(node: RawNode, screen: ViewportSize | undefined, displayOnl
  * lands on a key, and the user sees the keyboard, not the node.
  */
 function underKeyboard(rect: Rect | undefined, keyboard: Rect | undefined): boolean {
-  if (rect === undefined || keyboard === undefined) return false;
-  const x = rect.x + rect.width / 2;
-  const y = rect.y + rect.height / 2;
-  return x >= keyboard.x && x <= keyboard.x + keyboard.width && y >= keyboard.y && y <= keyboard.y + keyboard.height;
+  return rect !== undefined && inKeyboard({ x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 }, keyboard);
+}
+
+/** Whether `point` lies in the keyboard band, edges included. */
+function inKeyboard(point: Point, keyboard: Rect | undefined): boolean {
+  return (
+    keyboard !== undefined &&
+    point.x >= keyboard.x &&
+    point.x <= keyboard.x + keyboard.width &&
+    point.y >= keyboard.y &&
+    point.y <= keyboard.y + keyboard.height
+  );
 }
 
 /**
@@ -511,6 +545,12 @@ function underKeyboard(rect: Rect | undefined, keyboard: Rect | undefined): bool
  * `keyboardSide`) and the focused node, the field the keyboard types into:
  * the platform keeps it above the keyboard, and on iOS its reported frame can
  * lag behind where it moved to.
+ *
+ * A node agent-device marks covered is hidden too, except under the keyboard,
+ * where the rules above decide, and while `keyboardUnplaced` says an Android
+ * keyboard may be up with no band: agent-device counts the Android keyboard as
+ * a cover. Under the keyboard means agent-device's own cover point, the
+ * rounded centre (`centerOfRect`), is in the band.
  */
 export function projectSnapshot(
   raw: readonly RawNode[],
@@ -519,6 +559,7 @@ export function projectSnapshot(
     readonly viewport?: ViewportSize | undefined;
     readonly refsGeneration?: number | undefined;
     readonly keyboard?: Rect | undefined;
+    readonly keyboardUnplaced?: boolean | undefined;
   },
 ): ProjectedSnapshot {
   const viewport = options.viewport ?? viewportOf(raw);
@@ -537,7 +578,7 @@ export function projectSnapshot(
 
   const keyboard = options.keyboard === undefined ? new Set<number>() : keyboardSide(raw, parents, roots, children, options.keyboard);
   const index: ProjectedNode[] = [];
-  const build = (position: number, parent: ProjectedNode | undefined, parentOnKeyboard: boolean): SemanticNode => {
+  const build = (position: number, parent: ProjectedNode | undefined, parentOnKeyboard: boolean): ProjectedNode => {
     const source = raw[position] as RawNode;
     const id = options.mintId();
     const kind = kindOf(source);
@@ -562,7 +603,7 @@ export function projectSnapshot(
     const label = folded === undefined ? nonEmpty(source.label) : folded.label;
     const name = nonEmpty(source.contentDescription) ?? label;
     const placeholder = folded?.placeholder ?? nonEmpty(source.placeholder);
-    const projected: { node: SemanticNode | undefined } = { node: undefined };
+    const projected: { node: SemanticNode | undefined; platformHidden: boolean } = { node: undefined, platformHidden: false };
     const entry: ProjectedNode = {
       id,
       ref: stripRef(source.ref),
@@ -572,15 +613,32 @@ export function projectSnapshot(
       get node(): SemanticNode {
         return projected.node as SemanticNode;
       },
+      get platformHidden(): boolean {
+        return projected.platformHidden;
+      },
     };
     index.push(entry);
-    const childNodes = kids.filter((child) => child !== folded?.child).map((child) => build(child, entry, onKeyboard));
-    const covered = !onKeyboard && source.focused !== true && underKeyboard(source.rect, options.keyboard) && childNodes.every((child) => child.states?.hidden === true);
+    const childEntries = kids.filter((child) => child !== folded?.child).map((child) => build(child, entry, onKeyboard));
+    const childNodes = childEntries.map((child) => child.node);
+    // A child hidden only by agent-device's covered mark sits above the
+    // keyboard (the mark is ignored under it), so only platform-hidden
+    // children leave their container under it.
+    const keyboardHidden =
+      !onKeyboard && source.focused !== true && underKeyboard(source.rect, options.keyboard) && childEntries.every((child) => child.platformHidden);
+    projected.platformHidden = source.visibleToUser === false || keyboardHidden;
+    // Outside the keyboard, a node agent-device marks covered reads as hidden,
+    // so `toBeVisible` waits and `scrollUntilVisible` scrolls until it is clear
+    // (tester-army/e2e#1324). Under it, or while it may be up unplaced, the
+    // keyboard's rules decide: agent-device counts the Android keyboard as a cover.
+    const coverHides =
+      source.interactionBlocked === 'covered' &&
+      options.keyboardUnplaced !== true &&
+      !(source.rect !== undefined && inKeyboard(centerOfRect(source.rect), options.keyboard));
     const states = {
       ...(source.enabled === false ? { disabled: true } : {}),
       ...(source.selected === true ? { selected: true } : {}),
       ...(source.focused === true ? { focused: true } : {}),
-      ...(source.visibleToUser === false || covered ? { hidden: true } : {}),
+      ...(projected.platformHidden || coverHides ? { hidden: true } : {}),
       ...(secure ? { secure: true } : {}),
       ...(checked === undefined ? {} : { checked }),
       ...(spelled?.states.expanded === undefined ? {} : { expanded: spelled.states.expanded }),
@@ -615,7 +673,7 @@ export function projectSnapshot(
       ...(childNodes.length === 0 ? {} : { children: childNodes }),
     };
     projected.node = node;
-    return node;
+    return entry;
   };
   /** Whether every node from `position` down is a class that only shows (`STATUS_ICON_KINDS`). */
   const displayOnly = (position: number): boolean => {
@@ -625,7 +683,7 @@ export function projectSnapshot(
   };
   const rootNodes = roots
     .filter((position) => !isSystemBar(raw[position] as RawNode, viewport, () => displayOnly(position)))
-    .map((position) => build(position, undefined, false));
+    .map((position) => build(position, undefined, false).node);
   return { roots: rootNodes, index, viewport, refsGeneration: options.refsGeneration };
 }
 

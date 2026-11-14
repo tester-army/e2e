@@ -219,3 +219,63 @@ describe('Android resource ids without their package', () => {
     expect(testIds(query('testId', 'greet'), { platform: 'ios' })).toEqual([]);
   });
 });
+
+describe('covered nodes in locator queries (tester-army/e2e#1324)', () => {
+  const NODES: RawNode[] = [
+    { index: 0, depth: 0, type: 'Application', label: 'Form', rect: { x: 0, y: 0, width: 390, height: 844 } },
+    {
+      index: 1, parentIndex: 0, type: 'Button', label: 'Save', rect: { x: 16, y: 380, width: 100, height: 40 },
+      hittable: false, interactionBlocked: 'covered', coveredBy: { kind: 'button', label: 'Next' },
+    },
+    { index: 2, parentIndex: 0, type: 'Button', label: 'Gone', visibleToUser: false, rect: { x: 16, y: 500, width: 100, height: 40 } },
+    {
+      index: 3, parentIndex: 0, type: 'Button', label: 'Both', visibleToUser: false, rect: { x: 16, y: 600, width: 100, height: 40 },
+      interactionBlocked: 'covered',
+    },
+    { index: 4, parentIndex: 0, type: 'Button', label: 'Next', rect: { x: 0, y: 360, width: 390, height: 112 } },
+  ];
+
+  function found(expression: LocatorExpression): string[] {
+    let counter = 0;
+    const { index } = projectSnapshot(NODES, { mintId: () => `n${++counter}` });
+    return resolveExpression(expression, index, 'ios').map((entry) => entry.node.name ?? '');
+  }
+
+  it('keeps a covered node in role queries, hidden, while a node the platform hides stays out', () => {
+    expect(found(query('role', 'button'))).toEqual(['Save', 'Next']);
+    expect(found(query('role', 'button', { name: exact('Save') }))).toEqual(['Save']);
+    expect(found(query('role', 'button', { visible: true }))).toEqual(['Next']);
+    expect(found(query('text', 'Save', { visible: true }))).toEqual([]);
+  });
+
+  it('keeps a node under the soft keyboard out of role queries, though agent-device marks it covered too', () => {
+    // agent-device counts the Android keyboard as a cover, so a node under it carries both.
+    let counter = 0;
+    const { index } = projectSnapshot(
+      [
+        { index: 0, depth: 0, type: 'Application', label: 'Form', rect: { x: 0, y: 0, width: 390, height: 844 } },
+        { index: 1, parentIndex: 0, type: 'Button', label: 'Save', interactionBlocked: 'covered', rect: { x: 16, y: 380, width: 100, height: 40 } },
+        { index: 2, parentIndex: 0, type: 'Button', label: 'Continue', interactionBlocked: 'covered', rect: { x: 16, y: 700, width: 100, height: 40 } },
+      ],
+      { mintId: () => `n${++counter}`, keyboard: { x: 0, y: 566, width: 390, height: 278 } },
+    );
+    expect(index.find((entry) => entry.node.name === 'Continue')?.node.states?.hidden).toBe(true);
+    expect(resolveExpression(query('role', 'button'), index, 'ios').map((entry) => entry.node.name)).toEqual(['Save']);
+  });
+
+  it("leaves a covered button under the keyboard to the keyboard's rules, its covered label above the keyboard keeping it visible", () => {
+    // Pay's centre is under the keyboard; its label sits above it, under a toolbar.
+    let counter = 0;
+    const { index } = projectSnapshot(
+      [
+        { index: 0, depth: 0, type: 'Application', label: 'Checkout', rect: { x: 0, y: 0, width: 390, height: 844 } },
+        { index: 1, parentIndex: 0, type: 'Button', label: 'Pay', interactionBlocked: 'covered', rect: { x: 16, y: 450, width: 358, height: 300 } },
+        { index: 2, parentIndex: 1, type: 'StaticText', label: 'Pay now', interactionBlocked: 'covered', rect: { x: 32, y: 460, width: 200, height: 40 } },
+      ],
+      { mintId: () => `n${++counter}`, keyboard: { x: 0, y: 566, width: 390, height: 278 } },
+    );
+    expect(index.find((entry) => entry.node.name === 'Pay')?.node.states).toBeUndefined();
+    expect(index.find((entry) => entry.node.name === 'Pay now')?.node.states).toEqual({ hidden: true });
+    expect(resolveExpression(query('role', 'button'), index, 'ios').map((entry) => entry.node.name)).toEqual(['Pay']);
+  });
+});

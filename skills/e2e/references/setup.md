@@ -416,11 +416,14 @@ export default {
   Non-input targets return `UNSUPPORTED_CAPABILITY`; an iOS `other` that holds
   a value or only text is typed into, since a custom-drawn field (Compose
   Multiplatform, Flutter) can read that way.
-- A node whose centre the soft keyboard covers is hidden, so
-  `scrollUntilVisible` keeps scrolling and `toBeVisible()` fails. The
-  keyboard's own keys and dock, the focused field, and a container with a
-  child still showing stay visible. A tap on a
-  node agent-device finds covered (by an overlay or the keyboard) fails
+- A node whose centre the soft keyboard covers is hidden, and so is a node
+  agent-device marks covered outside the keyboard (not on Android while a
+  keyboard it cannot measure may be up), so `scrollUntilVisible` keeps
+  scrolling and `toBeVisible()` fails. Under the keyboard, its own keys
+  and dock, the focused field, and a container with a child still above it
+  stay visible, whatever agent-device marks. `getByRole` still finds a node
+  agent-device marks covered, but not one the keyboard hides. A tap on a node
+  agent-device finds covered (by an overlay or the keyboard) fails
   `ACTION_FAILED` naming the cover; dismiss it or scroll the target clear.
 - `screen`, `expect`, `app`, `agent` work unchanged; `test` from
   `@e2e-dev/mobile` types the `device` fixture (`installApp`, `openLink`,
