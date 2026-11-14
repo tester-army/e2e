@@ -21,7 +21,7 @@ const ENGINE_CONDITIONS = [
   'node',
   'import',
   ...(process.features.require_module ? ['module-sync'] : []),
-  'node-addons',
+  ...(import.meta.resolve('#e2e-node-addons') === 'node:fs' ? ['node-addons'] : []),
 ];
 
 /** npm's package name grammar with an optional subpath, so a path, a URL, or a `..` segment is never resolved. */

@@ -73,6 +73,12 @@
       "default": "./dist/oauth/opencode-console.js"
     }
   },
+  "imports": {
+    "#e2e-node-addons": {
+      "node-addons": "fs",
+      "default": "path"
+    }
+  },
   "bin": {
     "e2e": "./dist/cli/bin.js"
   },

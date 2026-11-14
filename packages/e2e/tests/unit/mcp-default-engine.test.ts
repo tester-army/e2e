@@ -159,12 +159,14 @@ describe('loadEngine', () => {
 
 describe('loadEngine runtime export conditions', () => {
   it.each([
-    { label: 'the defaults', flags: [], expected: process.features.require_module ? 'native' : 'fallback' },
-    { label: '--no-experimental-require-module', flags: ['--no-experimental-require-module'], expected: 'fallback' },
-  ])('loads what native import resolves under $label', ({ flags, expected }) => {
+    { label: 'the defaults', condition: 'module-sync', flags: [], env: {}, expected: 'native' },
+    { label: '--no-experimental-require-module', condition: 'module-sync', flags: ['--no-experimental-require-module'], env: {}, expected: 'fallback' },
+    { label: '--no-addons', condition: 'node-addons', flags: ['--no-addons'], env: {}, expected: 'fallback' },
+    { label: 'NODE_OPTIONS=--no-addons', condition: 'node-addons', flags: [], env: { NODE_OPTIONS: '--no-addons' }, expected: 'fallback' },
+  ])('loads what native import resolves under $label', ({ condition, flags, env, expected }) => {
     const dir = path.join(lookup.cwd, 'node_modules', 'cond');
     mkdirSync(dir, { recursive: true });
-    writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ name: 'cond', type: 'module', exports: { 'module-sync': './native.js', default: './fallback.js' } }));
+    writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ name: 'cond', type: 'module', exports: { [condition]: './native.js', default: './fallback.js' } }));
     for (const name of ['native', 'fallback']) writeFileSync(path.join(dir, name + '.js'), FACTORY.replace('fake', name));
     const program = [
       'const { loadEngine } = await import(process.argv[1]);',
@@ -173,7 +175,7 @@ describe('loadEngine runtime export conditions', () => {
       'console.log(JSON.stringify({ native, loaded }));',
     ].join('\n');
     const loader = new URL('../../src/mcp/default-engine.ts', import.meta.url).href;
-    const child = spawnSync(process.execPath, [...flags, '--input-type=module', '-e', program, '--', loader], { cwd: lookup.cwd, encoding: 'utf8' });
+    const child = spawnSync(process.execPath, [...flags, '--input-type=module', '-e', program, '--', loader], { cwd: lookup.cwd, encoding: 'utf8', env: { ...process.env, NODE_OPTIONS: '', ...env } });
     expect(child.status, child.stderr).toBe(0);
     expect(JSON.parse(child.stdout.trim())).toEqual({ native: expected, loaded: expected });
   });
@@ -212,7 +214,7 @@ describe('loadEngine nested export conditions', () => {
     writeFileSync(path.join(dir, 'other.js'), FACTORY.replace('fake', 'other'));
     writeFileSync(path.join(dir, 'inner.cjs'), FACTORY.replace('export default', 'module.exports =').replace('fake', 'inner'));
     const loader = new URL('../../src/mcp/default-engine.ts', import.meta.url).href;
-    const child = spawnSync(process.execPath, ['--input-type=module', '-e', PROGRAM, '--', loader, spec], { cwd: lookup.cwd, encoding: 'utf8' });
+    const child = spawnSync(process.execPath, ['--input-type=module', '-e', PROGRAM, '--', loader, spec], { cwd: lookup.cwd, encoding: 'utf8', env: { ...process.env, NODE_OPTIONS: '' } });
     expect(child.status, child.stderr).toBe(0);
     const { native, loaded } = JSON.parse(child.stdout.trim()) as { native: unknown; loaded: unknown };
     if (expected !== null) {
