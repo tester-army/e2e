@@ -72,6 +72,17 @@ const toy = (extra: Partial<Engine> = {}): Engine => ({
 });
 
 describe('engine protocol', () => {
+  it('carries a read request and computed values through JSON-RPC', async () => {
+    const read = vi.fn(async () => ({ color: 'rgb(255, 0, 0)' }));
+    const { remote } = overLoopback(toy({ readStyle: read }));
+    expect(remote.capabilities.has('computed-style')).toBe(true);
+    await remote.init!(initInfo());
+    const ref = { id: 'n1', revision: '1' };
+    await expect(remote.readStyle!(ref, ['color'], operation())).resolves.toEqual({ color: 'rgb(255, 0, 0)' });
+    expect(read).toHaveBeenCalledExactlyOnceWith(ref, ['color'], expect.objectContaining({ origin: 'test' }));
+    await remote.dispose!(cleanup);
+    expect(() => defineEngine({ name: 'bad', version: '1', spiVersion: 1, readStyle: read })).toThrow(/readStyle without observe/);
+  });
   it('declares the same capabilities over the protocol as the engine itself', () => {
     const { local, remote } = overLoopback(
       toy({
@@ -522,6 +533,8 @@ describe('engine protocol', () => {
     expect(validate(describeEngine(local))).toBe(true);
     const base = { name: 'x', version: '1', spiVersion: 1 };
     for (const refused of [
+      { ...base, methods: ['engine/observe', 'engine/teleport'] },
+      { ...base, methods: ['engine/readStyle'] },
       { ...base, methods: ['engine/observe'], actions: ['tap'] },
       { ...base, methods: ['engine/observe'], tapModifiers: true },
       { ...base, methods: ['engine/observe'], pointerActions: ['tap'] },

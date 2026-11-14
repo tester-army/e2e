@@ -89,9 +89,9 @@ rules:
 | `spiVersion` | Anything but `1`. |
 | `platform` | Empty. |
 | `workers` | Not a positive safe integer. |
-| `observe`, `locate`, `perform`, `performAt`, `prepare`, `finish`, `doctor`, `init`, `startAttempt`, `settleAttempt`, `endAttempt`, `dispose`, `validateApp` | Not a function. |
+| `observe`, `readStyle`, `locate`, `perform`, `performAt`, `prepare`, `finish`, `doctor`, `init`, `startAttempt`, `settleAttempt`, `endAttempt`, `dispose`, `validateApp` | Not a function. |
 | any other top-level key | On an object literal, `app` included: declare the app on the target and check it in `validateApp`. A class instance's own fields are not checked. |
-| `perform`, `locate`, `performAt`, `keyboard` | Declared without `observe`. |
+| `readStyle`, `perform`, `locate`, `performAt`, `keyboard` | Declared without `observe`. |
 | `perform`, `actions` | One without the other. An `actions` list that is empty, repeats a kind, or names one outside `LOCATOR_ACTION_KINDS`. |
 | `performAt`, `pointerActions` | One without the other. A `pointerActions` list that is empty, repeats a kind, or names one outside `POINTER_ACTION_KINDS`. |
 | `tapModifiers` | Not a boolean, or `true` without `perform`. |
@@ -119,6 +119,7 @@ The body of one target. Every member but `name`, `version`, and
 | `platform` | `string` |
 | `workers` | `number` |
 | [`observe`](#observation) | method |
+| [`readStyle`](#rendered-node-properties) | method |
 | [`perform`, `actions`](#actions) | method, kinds |
 | [`locate`](#capabilities) | method |
 | [`performAt`, `pointerActions`](#pointer-actions) | method, kinds |
@@ -163,6 +164,8 @@ export interface Engine {
   readonly workers?: number;
   /** capability: observation. */
   observe?(context: OperationContext, options?: EngineObserveOptions): Promise<EngineSnapshot>;
+  /** capability: computed-style, requires observation. Read-only rendered properties of an observation ref. */
+  readStyle?(ref: NodeRef, properties: readonly ComputedStyleProperty[], context: OperationContext): Promise<ComputedStyleValues>;
   /**
    * Performs one action on a ref from the newest observation or `locate`,
    * with the platform's actionability checks. Both agent tools and locator
@@ -361,6 +364,7 @@ member. Three gaps end differently:
 | Member | Capability | Requires | Unlocks |
 | --- | --- | --- | --- |
 | `observe` | `observation` | - | The judgment tier, prompt snapshots, trace replay, the viewport swipe's root. |
+| `readStyle` | `computed-style` | `observe` | Allow-listed rendered properties for read-only project tools. |
 | `perform` + `actions` | `actions` | `observe` | Node actions of the declared kinds, with platform actionability checks. |
 | `locate` | `location` | `observe` | `screen`, `Locator`, `expect(locator)`. |
 | `tapModifiers: true` | - | `perform` | `modifiers` on `tap`, `doubleTap`, and `secondaryTap`. |
@@ -371,6 +375,28 @@ member. Three gaps end differently:
 | `artifacts` | `artifacts` | - | Screenshots and videos. |
 | `validateApp` | - | - | A config-load check of the target's `app`. |
 | `session` | - | - | The `app` steering methods and the agent's `navigate`, `back`, `resize_viewport`, `switch_tab`, and `close_tab` verbs. |
+
+#### Rendered node properties
+
+`readStyle(ref, properties, context)` returns computed CSS strings for the requested
+properties without changing app state. Its `computed-style` capability requires
+`observe`, and `ref` comes from the newest observation. Return a string for
+every requested property. Throw retryable `NODE_STALE` if the node no longer
+binds. The harness redacts values before returning them to tools.
+
+```ts
+export type ComputedStyleProperty =
+  | 'color' | 'background-color' | 'font-size' | 'font-weight' | 'font-style'
+  | 'text-align' | 'text-decoration-line' | 'display' | 'visibility' | 'opacity';
+
+export type ComputedStyleValues = Readonly<Partial<Record<ComputedStyleProperty, string>>>;
+```
+
+`COMPUTED_STYLE_PROPERTIES` exports the allow-list as a frozen array.
+`validateComputedStyleProperties(properties)` returns a deduplicated copy and
+throws `INVALID_ARGUMENT` for an empty list or a property outside the
+allow-list. Call it before page access.
+See [Project tools](/tools#read-a-nodes-computed-style) for `ToolContext.read`.
 
 #### Agent verbs
 
@@ -467,6 +493,7 @@ engine. A target with `app.url` has `browser`, and one with `app.bundleId` or
  */
 export type EngineCapability =
   | 'observation'
+  | 'computed-style'
   | 'actions'
   | 'location'
   | 'pointer'

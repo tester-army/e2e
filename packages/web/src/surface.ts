@@ -33,6 +33,9 @@ import {
   type LocatorAction,
   type LocatorExpression,
   type NodeRef,
+  type ComputedStyleProperty,
+  type ComputedStyleValues,
+  validateComputedStyleProperties,
   type OperationContext,
   type PointerAction,
   type Secret,
@@ -868,6 +871,26 @@ export class PlaywrightSurface {
       await session.replace(undefined, currentOperation);
       await session.ensurePage();
     });
+  }
+
+  /** Reads computed styles from the element an observation ref names, without input or actionability waits. */
+  async readStyle(ref: NodeRef, properties: readonly ComputedStyleProperty[], operation: OperationContext): Promise<ComputedStyleValues> {
+    const requested = validateComputedStyleProperties(properties);
+    return this.guard(operation, 'read computed style', async (currentOperation) => {
+      const target = await this.requireSession().refs.lookup(ref);
+      if (target.kind !== 'element') {
+        throw new EngineError('NODE_STALE', `node reference ${ref.id} is not from an observation`, { retryable: false });
+      }
+      currentOperation.signal.throwIfAborted();
+      const style = await target.element.evaluate((element, names) => {
+        const view = element.ownerDocument.defaultView;
+        if (!element.isConnected || view === null) return null;
+        const computed = view.getComputedStyle(element);
+        return Object.fromEntries(names.map((name) => [name, computed.getPropertyValue(name)]));
+      }, requested);
+      if (style === null) throw new EngineError('NODE_STALE', 'node is detached; observe again before reading', { retryable: true });
+      return style;
+    }, navigationStaleOr);
   }
 
   // --- location tier ---

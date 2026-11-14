@@ -8,14 +8,16 @@
  * the engine; the dispatcher and the pixel tier ask the feed.
  */
 
-import type { SemanticNode } from '../engine/surface.ts';
+import { EngineError, type SemanticNode } from '../engine/surface.ts';
+import { validateComputedStyleProperties, type ComputedStyleProperty } from '../engine/computed-style.ts';
 import { relocateDescriptor } from '../cache/relocate.ts';
-import { TestError } from '../internal/errors.ts';
+import { asEngineError, TestError } from '../internal/errors.ts';
+import { rejectUnknownOptions } from '../internal/options.ts';
 import { isEditable } from '../internal/roles.ts';
 import type { StepAgentDetails, VisionDegradation } from '../run/steps.ts';
 import { describeTarget } from './actions.ts';
 import { AgentError } from './error.ts';
-import type { ExecutorObservation, ExecutorObserveOptions, ExecutorTarget } from './executor.ts';
+import type { ExecutorObservation, ExecutorObserveOptions, ExecutorReadOptions, ExecutorReadResult, ExecutorTarget } from './executor.ts';
 import type { AgentContext } from './invocation.ts';
 import {
   changeShape,
@@ -179,6 +181,46 @@ export class ObservationFeed {
     });
   }
 
+  /**
+   * Reads a currently listed node in queue order, under the step deadline and
+   * secret redactor. The id is never relocated: a read measures the element
+   * the newest observation listed, or fails.
+   */
+  async read(target: ExecutorTarget, options: ExecutorReadOptions): Promise<ExecutorReadResult> {
+    rejectUnknownOptions('read', options, ['style']);
+    const properties = validateComputedStyleProperties(options?.style);
+    return this.queue.run(async () => {
+      this.accounting.checkpoint();
+      return instrumentPhase(
+        this.runtime,
+        { api: this.accounting.api, kind: 'observation', phase: 'agent.observe', name: 'readStyle' },
+        async () => {
+          const { id, observation } = this.currentTarget(target);
+          const node = observation.nodes.get(id);
+          if (node === undefined) throw nodeGone(id, observation);
+          const result = await this.runtime.engine.session.readStyle(node.ref, properties, this.accounting.operation()).catch((cause: unknown) => {
+            this.accounting.checkpoint(cause);
+            if (asEngineError(cause)?.code === 'NODE_STALE') {
+              throw new AgentError('LOCATOR_NOT_FOUND', `node #${id} left the screen before it was read; observe again`, { cause });
+            }
+            throw cause;
+          });
+          this.accounting.checkpoint();
+          const style: Partial<Record<ComputedStyleProperty, string>> = {};
+          for (const property of properties) {
+            const value = result?.[property];
+            if (typeof value !== 'string') {
+              throw new EngineError('ENGINE_FAILURE', `engine readStyle returned no string for "${property}"`, { retryable: false });
+            }
+            style[property] = this.runtime.redact(value);
+          }
+          return { style };
+        },
+        () => ({ detail: `style: ${properties.join(', ')}` }),
+      );
+    });
+  }
+
   /** Projects one capture, including its permitted screenshot whenever semantic evidence is unavailable. */
   private view(observation: AgentObservation, options: ExecutorObserveOptions): ExecutorObservation {
     const metadata = {
@@ -234,6 +276,12 @@ export class ObservationFeed {
    * (`scroll-target.ts`) starts here.
    */
   lookup(target: ExecutorTarget): Lookup {
+    const { id, observation } = this.currentTarget(target);
+    return { id, node: observation.nodes.get(id) ?? this.refound(id, observation), observation };
+  }
+
+  /** Normalizes a target against the current semantic screen, without relocating its id. */
+  private currentTarget(target: ExecutorTarget): Pick<Lookup, 'id' | 'observation'> {
     if (typeof target?.id !== 'string' || target.id === '') {
       throw new TestError('INVALID_ARGUMENT', 'action target must be { id: string }');
     }
@@ -242,7 +290,7 @@ export class ObservationFeed {
     if (latest.kind === 'pixels') {
       throw new AgentError('LOCATOR_NOT_FOUND', 'semantic capture is unavailable; previous node ids are no longer valid, so use the current screenshot');
     }
-    return { id, node: latest.nodes.get(id) ?? this.refound(id, latest), observation: latest };
+    return { id, observation: latest };
   }
 
   /** What `id` named in the most recent observation that carried it. */

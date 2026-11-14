@@ -3,6 +3,7 @@
 import type { Tool, ToolExecutionOptions } from 'ai';
 import type { StepExecutorContext } from './executor.ts';
 import { TestError } from '../internal/errors.ts';
+import { AgentError } from './error.ts';
 
 /** Cross-realm identity marker for defined tools. */
 const DEFINED_TOOL_MARKER = Symbol.for('e2e.defined-tool.v1');
@@ -72,10 +73,10 @@ export function isDefinedTool(value: unknown): value is DefinedTool {
 
 /**
  * The harness capabilities a project tool reaches through `getToolContext`:
- * observing the screen (read-only tools only) and keeping what it saw as a
- * screenshot artifact of the step.
+ * observing the screen and reading rendered node properties (read-only
+ * tools only), and keeping a screenshot artifact of the step.
  */
-export type ToolContext = Pick<StepExecutorContext, 'observe' | 'attachScreenshot'>;
+export type ToolContext = Pick<StepExecutorContext, 'observe' | 'read' | 'attachScreenshot'>;
 
 /** The capabilities the built-in agent supplied to the running tool. */
 export function getToolContext(options: object): ToolContext {
@@ -83,7 +84,13 @@ export function getToolContext(options: object): ToolContext {
   if (context === undefined || typeof context.observe !== 'function') {
     throw new TestError('INVALID_ARGUMENT', 'this tool needs the observation context the built-in agent supplies');
   }
-  return { observe: context.observe, attachScreenshot: context.attachScreenshot };
+  return {
+    observe: context.observe,
+    read: typeof context.read === 'function' ? context.read : async () => {
+      throw new AgentError('POLICY_DENIED', 'this tool host cannot read node properties');
+    },
+    attachScreenshot: context.attachScreenshot,
+  };
 }
 
 const TOOL_CONTEXT = Symbol.for('e2e.tool-context.v1');

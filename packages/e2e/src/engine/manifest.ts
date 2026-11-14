@@ -21,6 +21,7 @@ const KNOWN_KEYS = [
   'platform',
   'workers',
   'observe',
+  'readStyle',
   'locate',
   'perform',
   'actions',
@@ -63,6 +64,7 @@ const RETIRED_HOOKS: Readonly<Partial<Record<keyof typeof NESTED_HOOKS, readonly
 
 const FUNCTION_MEMBERS = [
   'observe',
+  'readStyle',
   'locate',
   'perform',
   'performAt',
@@ -206,6 +208,10 @@ export function defineEngine(spec: Engine): EngineHandle {
 
   const capabilities = new Set<EngineCapability>();
   if (spec.observe !== undefined) capabilities.add('observation');
+  if (spec.readStyle !== undefined) {
+    if (!capabilities.has('observation')) throw invalid(name, 'declares readStyle without observe: style targets are observation refs');
+    capabilities.add('computed-style');
+  }
   if (spec.perform !== undefined) {
     if (!capabilities.has('observation')) {
       throw invalid(name, 'declares perform without observe: action targets are observation refs');

@@ -6,6 +6,7 @@
   "workers": 1,
   "methods": [
     "engine/observe",
+    "engine/readStyle",
     "engine/perform",
     "engine/performAt",
     "keyboard/type",

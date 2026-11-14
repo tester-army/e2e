@@ -24,6 +24,7 @@ import type {
   ViewportSize,
 } from './contract.ts';
 import type { AppLogEntry, EngineObserveOptions, EngineSnapshot, EngineState, EngineTabs, VideoSegment } from './index.ts';
+import type { ComputedStyleProperty, ComputedStyleValues } from './computed-style.ts';
 
 export type * from './contract.ts';
 export { EngineError } from './contract.ts';
@@ -190,6 +191,8 @@ export interface TargetSession {
   locate(expression: LocatorExpression, operation: OperationContext): Promise<readonly NodeRef[]>;
   /** Reads one node from the resolution that minted its ref. */
   read(ref: NodeRef, operation: OperationContext): Promise<SemanticNode>;
+  /** Reads requested rendered properties without changing app state. */
+  readStyle(ref: NodeRef, properties: readonly ComputedStyleProperty[], operation: OperationContext): Promise<ComputedStyleValues>;
   /** Performs exactly one action on a located or observed node. */
   perform(ref: NodeRef, action: LocatorAction, operation: OperationContext): Promise<void>;
   /**

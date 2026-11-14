@@ -498,6 +498,203 @@ describe('project tool dispatch', () => {
     expect(path).toBe('/settings/general');
   });
 
+  it('reads only requested style values, redacts secrets, and uses no action slot', async () => {
+    const sentinel = 'style-secret-2718';
+    const read = vi.fn(async () => ({ color: sentinel, opacity: '0.5', content: sentinel }));
+    const engine = defineEngine({ name: 'fake', version: '1', spiVersion: 1,
+      observe: async () => snapshot([{ ref: { id: 'message', revision: '' }, role: 'status', text: 'Error' }]),
+      readStyle: read,
+    });
+    let result: unknown;
+    const model = installFakeLoopModel(({ turn }) => turn === 1
+      ? [{ toolName: 'inspect', input: {} }]
+      : [{ toolName: 'complete_step', input: { status: 'passed', summary: 'looked' } }]);
+    const tools = { inspect: defineTool({ inputSchema: z.object({}), execute: async (_input, options) => {
+      const context = getToolContext(options);
+      await context.observe();
+      result = await context.read({ id: '#message' }, { style: ['color', 'opacity'] });
+      return result;
+    } }, { mutates: false }) };
+    const { fixtures, steps, config } = runtime(engine, {
+      credentials: { member: { username: 'ada', password: sentinel } }, agents: { default: { tools, model } },
+    });
+    setSecretRegistry(config);
+    try {
+      await fixtures.agent.act('inspect');
+      expect(result).toEqual({ style: { color: '<secret:member.password>', opacity: '0.5' } });
+      expect(read).toHaveBeenCalledExactlyOnceWith(
+        { id: 'message', revision: expect.any(String) }, ['color', 'opacity'], expect.objectContaining({ origin: 'agent' }),
+      );
+      expect(steps.all()[0]?.metrics?.actionSteps).toBe(0);
+      expect(steps.all()[0]?.events.find((event) => event.name === 'readStyle')).toMatchObject({
+        kind: 'observation', status: 'passed', detail: 'style: color, opacity',
+      });
+      expect(JSON.stringify(steps.all())).not.toContain(sentinel);
+    } finally {
+      setSecretRegistry(undefined);
+    }
+  });
+
+  it('denies property reads inside a mutating project tool before reaching the engine', async () => {
+    const read = vi.fn(async () => ({ color: 'red' }));
+    const engine = defineEngine({ name: 'fake', version: '1', spiVersion: 1, observe: async () => snapshot([]), readStyle: read });
+    let failure: unknown;
+    const model = installFakeLoopModel(({ turn }) => turn === 1
+      ? [{ toolName: 'inspect', input: {} }]
+      : [{ toolName: 'complete_step', input: { status: 'passed', summary: 'denied' } }]);
+    const tools = { inspect: defineTool({ inputSchema: z.object({}), execute: async (_input, options) => {
+      try { await getToolContext(options).read({ id: 'message' }, { style: ['color'] }); }
+      catch (cause) { failure = cause; }
+      return 'done';
+    } }, { mutates: true }) };
+    await runtime(engine, { agents: { default: { tools, model } } }).fixtures.agent.act('inspect');
+    expect(failure).toMatchObject({ code: 'POLICY_DENIED' });
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  it('refuses missing and old observation ids and reads behind queued observations', async () => {
+    let generation = 0;
+    const read = vi.fn(async () => ({ color: 'red' }));
+    const engine = defineEngine({ name: 'fake', version: '1', spiVersion: 1,
+      observe: async () => snapshot([{ ref: { id: `message-${++generation}`, revision: '' }, role: 'status', text: 'Error' }]), readStyle: read,
+    });
+    const failures: unknown[] = [];
+    const executor: StepExecutor = { name: 'test', async runStep(context) {
+      const first = await context.observe({ tree: true });
+      const old = first.tree!.id;
+      const fresh = context.observe({ tree: true });
+      const pending = context.read({ id: old }, { style: ['color'] }).catch((cause: unknown) => failures.push(cause));
+      const latest = await fresh;
+      await pending;
+      await context.read({ id: 'absent' }, { style: ['color'] }).catch((cause: unknown) => failures.push(cause));
+      await context.read({ id: latest.tree!.id }, { style: ['color'] });
+      return { status: 'passed', summary: 'looked' };
+    } };
+    await runtime(engine, { agents: { default: { executor } } }).fixtures.agent.act('inspect');
+    expect(failures).toEqual([expect.objectContaining({ code: 'LOCATOR_NOT_FOUND' }), expect.objectContaining({ code: 'LOCATOR_NOT_FOUND' })]);
+    expect(read).toHaveBeenCalledOnce();
+  });
+
+  it('denies reads on an engine without readStyle', async () => {
+    let failure: unknown;
+    const engine = defineEngine({ name: 'fake', version: '1', spiVersion: 1,
+      observe: async () => snapshot([{ ref: { id: 'message', revision: '' }, role: 'status' }]),
+    });
+    const executor: StepExecutor = { name: 'test', async runStep(context) {
+      await context.observe();
+      await context.read({ id: 'message' }, { style: ['color'] }).catch((cause: unknown) => { failure = cause; });
+      return { status: 'passed', summary: 'looked' };
+    } };
+    await runtime(engine, { agents: { default: { executor } } }).fixtures.agent.act('inspect');
+    expect(failure).toMatchObject({ code: 'POLICY_DENIED', message: expect.stringContaining('computed styles') });
+  });
+
+  it.each(['before', 'after'] as const)('refuses a value when the step deadline expires %s the engine read', async (expires) => {
+    const past = Date.now() + 5_000;
+    const clock = vi.spyOn(Date, 'now');
+    let failure: unknown;
+    let value: unknown;
+    const readStyle = vi.fn(async () => {
+      if (expires === 'after') clock.mockReturnValue(past);
+      return { color: 'rgb(255, 0, 0)' };
+    });
+    const engine = defineEngine({ name: 'fake', version: '1', spiVersion: 1,
+      observe: async () => snapshot([{ ref: { id: 'message', revision: '' }, role: 'status' }]), readStyle,
+    });
+    const executor: StepExecutor = { name: 'test', async runStep(context) {
+      await context.observe();
+      if (expires === 'before') clock.mockReturnValue(past);
+      try { value = await context.read({ id: 'message' }, { style: ['color'] }); }
+      catch (cause) { failure = cause; }
+      return { status: 'passed', summary: 'looked' };
+    } };
+    try {
+      const { fixtures, steps } = runtime(engine, { agents: { default: { executor } } });
+      await expect(fixtures.agent.act('read within the deadline', { timeout: 1_000 })).rejects.toMatchObject({ code: 'STEP_TIMEOUT' });
+      expect(failure).toMatchObject({ code: 'STEP_TIMEOUT' });
+      expect(value).toBeUndefined();
+      expect(readStyle).toHaveBeenCalledTimes(expires === 'before' ? 0 : 1);
+      if (expires === 'after') {
+        expect(steps.all()[0]?.events.find((event) => event.name === 'readStyle')).toMatchObject({ status: 'failed', code: 'STEP_TIMEOUT' });
+      }
+    } finally { clock.mockRestore(); }
+  });
+
+  it.each([
+    { label: 'operation timeout near the deadline', remainingMs: 50, code: 'OPERATION_TIMEOUT', expected: 'STEP_TIMEOUT', event: 'STEP_TIMEOUT' },
+    { label: 'stale node after the deadline', remainingMs: -50, code: 'NODE_STALE', expected: 'STEP_TIMEOUT', event: 'STEP_TIMEOUT' },
+    { label: 'operation timeout with time remaining', remainingMs: 1_000, code: 'OPERATION_TIMEOUT', expected: 'ACTION_FAILED', event: 'OPERATION_TIMEOUT' },
+    { label: 'stale node with time remaining', remainingMs: 1_000, code: 'NODE_STALE', expected: 'LOCATOR_NOT_FOUND', event: 'LOCATOR_NOT_FOUND' },
+  ] as const)('accounts for a rejected style read: $label', async ({ remainingMs, code, expected, event }) => {
+    const clock = vi.spyOn(Date, 'now');
+    let rejectsAt = 0;
+    let failure: unknown;
+    const engine = defineEngine({ name: 'fake', version: '1', spiVersion: 1,
+      observe: async () => snapshot([{ ref: { id: 'message', revision: '' }, role: 'status' }]),
+      readStyle: async () => {
+        clock.mockReturnValue(rejectsAt);
+        throw new EngineError(code, 'style read failed', { retryable: false });
+      },
+    });
+    const executor: StepExecutor = { name: 'test', async runStep(context) {
+      await context.observe();
+      rejectsAt = Date.now() + context.budgets.remainingMs() - remainingMs;
+      try { await context.read({ id: 'message' }, { style: ['color'] }); }
+      catch (cause) { failure = cause; }
+      return { status: 'passed', summary: 'caught the read failure' };
+    } };
+    try {
+      const { fixtures, steps } = runtime(engine, { agents: { default: { executor } } });
+      const act = fixtures.agent.act('handle a rejected style read', { timeout: 5_000 });
+      if (expected === 'STEP_TIMEOUT') await expect(act).rejects.toMatchObject({ code: expected });
+      else await act;
+      expect(failure).toMatchObject({ code: expected });
+      expect(steps.all()[0]?.events.find((entry) => entry.name === 'readStyle')).toMatchObject({ status: 'failed', code: event });
+    } finally { clock.mockRestore(); }
+  });
+
+  it('fails closed when the engine omits a requested property', async () => {
+    let failure: unknown;
+    const engine = defineEngine({ name: 'fake', version: '1', spiVersion: 1,
+      observe: async () => snapshot([{ ref: { id: 'message', revision: '' }, role: 'status' }]),
+      readStyle: async () => ({}),
+    });
+    const executor: StepExecutor = { name: 'test', async runStep(context) {
+      await context.observe();
+      await context.read({ id: 'message' }, { style: ['color'] }).catch((cause: unknown) => { failure = cause; });
+      return { status: 'passed', summary: 'looked' };
+    } };
+    const { fixtures, steps } = runtime(engine, { agents: { default: { executor } } });
+    await fixtures.agent.act('inspect');
+    expect(failure).toMatchObject({ code: 'APP_UNREACHABLE', message: expect.stringContaining('returned no string for "color"') });
+    expect(steps.all()[0]?.events.find((event) => event.name === 'readStyle')).toMatchObject({ status: 'failed', code: 'ENGINE_FAILURE' });
+  });
+
+  it('preserves complete style values that resemble a secret prefix', async () => {
+    let value: unknown;
+    let failure: unknown;
+    const read = vi.fn(async () => ({ opacity: '0.5' }));
+    const engine = defineEngine({ name: 'fake', version: '1', spiVersion: 1,
+      observe: async () => snapshot([{ ref: { id: 'message', revision: '' }, role: 'status' }]), readStyle: read,
+    });
+    const executor: StepExecutor = { name: 'test', async runStep(context) {
+      await context.observe();
+      await context.read({ id: 'message' }, { style: ['content'] } as never).catch((cause: unknown) => { failure = cause; });
+      value = await context.read({ id: 'message' }, { style: ['opacity'] });
+      return { status: 'passed', summary: 'looked' };
+    } };
+    const { fixtures, config } = runtime(engine, {
+      secrets: { prefix: '0.5abc' }, agents: { default: { executor } },
+    });
+    setSecretRegistry(config);
+    try {
+      await fixtures.agent.act('inspect');
+      expect(failure).toMatchObject({ code: 'INVALID_ARGUMENT' });
+      expect(read).toHaveBeenCalledOnce();
+      expect(value).toEqual({ style: { opacity: '0.5' } });
+    } finally { setSecretRegistry(undefined); }
+  });
+
   it("hands an executor the engine's measured keyboard state, and nothing when the engine measured none", async () => {
     const measured: (boolean | undefined)[] = [];
     let reported: boolean | undefined;
