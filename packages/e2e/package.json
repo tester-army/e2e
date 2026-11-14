@@ -92,7 +92,7 @@
     "test:unit": "vitest run tests/unit"
   },
   "dependencies": {
-    "@ai-sdk/provider": "4.0.37",
+    "@ai-sdk/provider": "4.0.38",
     "@clack/prompts": "1.9.0",
     "@jridgewell/remapping": "2.3.5",
     "@modelcontextprotocol/server": "2.4.0",
@@ -137,16 +137,16 @@
     }
   },
   "devDependencies": {
-    "@ai-sdk/anthropic": "4.0.102",
-    "@ai-sdk/google": "4.0.118",
-    "@ai-sdk/openai": "4.0.115",
-    "@ai-sdk/openai-compatible": "3.0.90",
-    "@ai-sdk/xai": "5.0.43",
+    "@ai-sdk/anthropic": "4.0.105",
+    "@ai-sdk/google": "4.0.121",
+    "@ai-sdk/openai": "4.0.118",
+    "@ai-sdk/openai-compatible": "3.0.92",
+    "@ai-sdk/xai": "5.0.46",
     "@e2e-dev/web": "workspace:*",
     "@modelcontextprotocol/client": "2.4.0",
     "@openrouter/ai-sdk-provider": "3.1.0",
     "@types/node": "26.6.6",
-    "ai": "7.0.170",
+    "ai": "7.0.173",
     "ajv": "8.20.0",
     "ajv-formats": "3.0.1",
     "typescript": "7.0.2",
