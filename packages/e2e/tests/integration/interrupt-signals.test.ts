@@ -289,6 +289,39 @@ describe('interrupt signals against the CLI', () => {
   );
 
   it(
+    'one Ctrl-C still runs afterEach when timeout plus cleanupTimeout is longer than a timer can wait',
+    () =>
+      withRunningCli({
+        files: {
+          'e2e.config.ts': config().replace('timeout: 60_000', 'timeout: 2_147_483_647'),
+          'tests/sleep.e2e.ts': `import { appendFileSync } from 'node:fs';
+import { test } from 'e2e';
+
+${LOG_HELPER}
+
+test.afterEach(async () => {
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  log('afterEach.end');
+});
+
+test('sleeps until interrupted', async () => {
+  log('test.start');
+  await new Promise((resolve) => setTimeout(resolve, 600_000));
+});
+`,
+        },
+        until: 'test.start',
+      }, async (run) => {
+        run.signalGroup('SIGINT');
+
+        expect(await run.exit, run.output()).toBe(130);
+        expect(run.events()).toEqual(['prepare', 'init', 'startAttempt', 'test.start', 'afterEach.end', 'endAttempt', 'dispose', 'dispose.final', 'dispose.end', 'finish']);
+        expect(run.output()).not.toContain('TimeoutOverflowWarning');
+      }),
+    60_000,
+  );
+
+  it(
     'Ctrl-C still exits 130 when the managed app exits during graceful attempt teardown',
     async () => {
       const port = await freePort();
