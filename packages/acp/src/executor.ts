@@ -122,7 +122,7 @@ async function ready(ctx: StepExecutorContext, launch: () => Promise<AgentLaunch
     if (error instanceof ConfigurationError) throw error;
     throw new AgentError('MODEL_PROVIDER_FAILED', `The ACP agent did not start: ${message(error)}`, { cause: error });
   }
-  if (!(await settled(held.turn, LAST_TURN_GRACE_MS))) {
+  if (!(await settled(held.turn, LAST_TURN_GRACE_MS, ctx.signal))) {
     session.close();
     ctx.attempt.memory.delete(memoryKey);
     throw new AgentError('MODEL_PROVIDER_FAILED', 'The ACP agent did not stop the turn of a step that already ended');
@@ -264,8 +264,8 @@ function inputTokens(usage: Usage): number {
   return cacheApart ? usage.inputTokens + cached : usage.inputTokens;
 }
 
-/** Whether `promise` settles within `ms`; no promise has nothing to wait for. */
-async function settled(promise: Promise<unknown> | undefined, ms: number): Promise<boolean> {
+/** Whether `promise` settles within `ms`; rejects with the step's reason if the step ends first. */
+async function settled(promise: Promise<unknown> | undefined, ms: number, signal: AbortSignal): Promise<boolean> {
   if (promise === undefined) return true;
   let timer: NodeJS.Timeout | undefined;
   const timeout = new Promise<false>((resolve) => {
@@ -275,7 +275,7 @@ async function settled(promise: Promise<unknown> | undefined, ms: number): Promi
     () => true,
     () => true,
   );
-  return Promise.race([done, timeout]).finally(() => clearTimeout(timer));
+  return untilAborted(Promise.race([done, timeout]), signal).finally(() => clearTimeout(timer));
 }
 
 /** The verdict of a step where the agent acted with a tool of its own, which the runner neither saw nor recorded. */
