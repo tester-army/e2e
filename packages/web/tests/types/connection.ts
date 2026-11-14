@@ -84,3 +84,7 @@ import type { BrowserLease, BrowserProvider, CdpTarget, WebConnectOptions, WebIn
 ({ endpoint: 'wss://browser.example', headers: { Authorization: 42 } }) satisfies CdpTarget;
 // @ts-expect-error a CDP target must name its endpoint.
 ({ cdpEndpoint: () => ({ headers: {} }) }) satisfies WebConnectOptions;
+// Chromium launches with its OS sandbox on; the opt-out is a boolean.
+({ chromiumSandbox: false }) satisfies WebOptions;
+// @ts-expect-error chromiumSandbox is a boolean.
+({ chromiumSandbox: 'yes' }) satisfies WebOptions;

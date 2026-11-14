@@ -7,6 +7,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest
 import { chromium } from 'playwright-core';
 import type { EngineFixtureContext, EngineHandle, OperationContext } from 'e2e/engine';
 import { web as webEngine, surfaceOf, type WebConnectOptions, type WebOptions, type Browser } from '../../src/index.ts';
+import { browserTestEnv } from '../helpers/environment.ts';
 import { closeRemoteChrome, launchRemoteChrome, type RemoteChrome } from '../helpers/cdp-host.ts';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 import { decodePng } from '../helpers/png.ts';
@@ -71,7 +72,7 @@ describe('CDP session recovery', () => {
     activeEngines.add(engine);
     await engine.init!({
       runId: 'run-recovery', targetName: 'web', projectRoot: process.cwd(),
-      app: { site: new URL(app.url).hostname }, env: {}, headed: false,
+      app: { site: new URL(app.url).hostname }, env: browserTestEnv(), headed: false,
       workerSlot: 0, signal: new AbortController().signal, log: () => undefined,
     });
     await engine.startAttempt!({ attemptId: 'a1', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets, ...ignoreTrace });

@@ -12,6 +12,7 @@ import type { Page } from 'playwright-core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { LocatorExpression } from 'e2e/engine';
 import { surfaceOf, web } from '../../src/index.ts';
+import { browserTestEnv } from '../helpers/environment.ts';
 import { ignoreTrace, noSecrets } from '../helpers/secrets.ts';
 
 /** Wraps `source` in `frame` scopes, outermost first, as a `browser.frameLocator` chain does. */
@@ -50,7 +51,7 @@ describe('a node inside a hidden frame', () => {
   let page: Page;
 
   beforeAll(async () => {
-    await engine.init!({ runId: 'frames', targetName: 'fixture', projectRoot: process.cwd(), app: {}, env: {}, headed: false, workerSlot: 0, signal, log: () => undefined });
+    await engine.init!({ runId: 'frames', targetName: 'fixture', projectRoot: process.cwd(), app: {}, env: browserTestEnv(), headed: false, workerSlot: 0, signal, log: () => undefined });
     await engine.startAttempt!({ attemptId: 'attempt', artifactsDir, signal, resolveSecret: noSecrets, ...ignoreTrace });
     await engine.session!.open!('about:blank', operation);
     page = surfaceOf(engine)!.page();

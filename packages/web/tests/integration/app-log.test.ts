@@ -17,6 +17,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { AppLogEntry, EngineCleanupContext, EngineFixtureContext, EngineSnapshot, OperationContext } from 'e2e/engine';
 import { createBrowserFixture } from '../../src/browser.ts';
 import { PlaywrightSurface } from '../../src/surface.ts';
+import { browserTestEnv } from '../helpers/environment.ts';
 import { ignoreTrace, noSecrets } from '../helpers/secrets.ts';
 
 const PAGE = `<!doctype html><html><body><h1>Todos</h1><script>
@@ -88,7 +89,7 @@ describe('app log', () => {
     const entries: AppLogEntry[] = [];
     try {
       await surface.init({ runId: 'app-log', targetName: 'web', projectRoot: artifactsDir, app: { site: '127.0.0.1' },
-        env: {}, headed: false, workerSlot: 0, signal, log: () => undefined });
+        env: browserTestEnv(), headed: false, workerSlot: 0, signal, log: () => undefined });
       await surface.startAttempt({ attemptId: 'a', artifactsDir, signal, resolveSecret: noSecrets, ...ignoreTrace, appLog: (entry) => entries.push(entry) });
       const browser = createBrowserFixture(surface, {
         operation,
@@ -126,7 +127,7 @@ describe('app log', () => {
     const facts: Record<string, string>[] = [];
     try {
       await surface.init({ runId: 'app-log', targetName: 'web', projectRoot: artifactsDir, app: { site: '127.0.0.1' },
-        env: {}, headed: false, workerSlot: 0, signal, log: () => undefined });
+        env: browserTestEnv(), headed: false, workerSlot: 0, signal, log: () => undefined });
       await surface.startAttempt({
         attemptId: 'a', artifactsDir, signal, resolveSecret: noSecrets,
         appLog: (entry) => entries.push(entry),

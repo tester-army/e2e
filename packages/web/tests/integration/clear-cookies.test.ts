@@ -14,6 +14,7 @@ import type { Page } from 'playwright-core';
 import type { EngineFixtureContext } from 'e2e/engine';
 import { PlaywrightSurface } from '../../src/surface.ts';
 import { createBrowserFixture, type Browser, type CookieFilter } from '../../src/browser.ts';
+import { browserTestEnv } from '../helpers/environment.ts';
 import { ignoreTrace, noSecrets } from '../helpers/secrets.ts';
 
 /** Answers every path with an empty page. */
@@ -41,7 +42,7 @@ describe('browser.clearCookies', () => {
     server = started.server;
     origin = `http://127.0.0.1:${started.port}`;
     await surface.init({ runId: 'cookies', targetName: 'web', projectRoot, app: { site: '127.0.0.1' },
-      env: {}, headed: false, workerSlot: 0, signal, log: () => undefined });
+      env: browserTestEnv(), headed: false, workerSlot: 0, signal, log: () => undefined });
   });
 
   beforeEach(async () => {

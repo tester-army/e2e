@@ -6,6 +6,7 @@ import path from 'node:path';
 import { expect, it } from 'vitest';
 import type { SemanticNode } from 'e2e/engine';
 import { web, surfaceOf } from '../../src/index.ts';
+import { browserTestEnv } from '../helpers/environment.ts';
 import { ignoreTrace, noSecrets } from '../helpers/secrets.ts';
 
 /** Every node of a tree, including nested documents. */
@@ -20,7 +21,7 @@ it('captures both of two concurrent observations, and the refs of the last stay 
   const operation = { signal, timeoutMs: 5_000, runId: 'concurrent', attemptId: 'attempt', origin: 'test' as const };
   const cleanup = { signal, timeoutMs: 30_000 };
   try {
-    await engine.init!({ runId: 'concurrent', targetName: 'fixture', projectRoot: process.cwd(), app: {}, env: {}, headed: false, workerSlot: 0, signal, log: () => undefined });
+    await engine.init!({ runId: 'concurrent', targetName: 'fixture', projectRoot: process.cwd(), app: {}, env: browserTestEnv(), headed: false, workerSlot: 0, signal, log: () => undefined });
     await engine.startAttempt!({ attemptId: 'attempt', artifactsDir, signal, resolveSecret: noSecrets, ...ignoreTrace });
     await engine.session!.open!('about:blank', operation);
     const page = surfaceOf(engine)!.page();

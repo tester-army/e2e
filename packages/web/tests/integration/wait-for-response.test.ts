@@ -8,6 +8,7 @@ import type { Page } from 'playwright-core';
 import { withTimeout, type EngineFixtureContext } from 'e2e/engine';
 import { PlaywrightSurface } from '../../src/surface.ts';
 import { createBrowserFixture, type Browser } from '../../src/browser.ts';
+import { browserTestEnv } from '../helpers/environment.ts';
 import { ignoreTrace, noSecrets } from '../helpers/secrets.ts';
 
 /**
@@ -83,7 +84,7 @@ describe('browser.waitForResponse bodies', () => {
   beforeAll(async () => {
     ({ server, url: origin } = await startBodyServer());
     await surface.init({ runId: 'responses', targetName: 'web', projectRoot: process.cwd(),
-      app: {}, env: {}, headed: false, workerSlot: 0, signal, log: () => undefined });
+      app: {}, env: browserTestEnv(), headed: false, workerSlot: 0, signal, log: () => undefined });
   });
 
   beforeEach(async () => {

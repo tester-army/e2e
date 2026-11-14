@@ -68,7 +68,10 @@ bunx e2e run --update-snapshots
 
 Take the screenshots on the machine that renders them in CI: a Linux
 runner for the web and Android, a macOS runner with the same simulator for
-iOS.
+iOS. Chromium launches with its sandbox on by default, and the `ubuntu-latest`
+runners block the user namespaces it needs, so the job opts out with
+`E2E_CHROMIUM_SANDBOX: '0'`. On a runner where the sandbox starts, leave it
+out; see [Security](/security) for why it defaults on.
 
 Without `--update-snapshots`, a CI run never writes into the project. A
 missing screenshot fails the test, and the run saves it in the test's
@@ -85,6 +88,8 @@ jobs:
     steps:
       # the same checkout, setup, and install steps as the test job
       - run: npx e2e run --update-snapshots
+        env:
+          E2E_CHROMIUM_SANDBOX: '0'
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: screenshots

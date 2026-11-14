@@ -14,6 +14,7 @@ import path from 'node:path';
 import { afterEach, beforeAll, afterAll, describe, expect, it } from 'vitest';
 import type { EngineFixtureContext, EngineHandle, OperationContext } from 'e2e/engine';
 import { web as webEngine, surfaceOf, type BrowserProvider, type BrowserProviderScope, type Browser } from '../../src/index.ts';
+import { browserTestEnv } from '../helpers/environment.ts';
 import { closeRemoteChrome, launchRemoteChrome, type RemoteChrome } from '../helpers/cdp-host.ts';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 import { ignoreTrace, noSecrets } from '../helpers/secrets.ts';
@@ -46,7 +47,7 @@ describe.each<BrowserProviderScope>(['worker', 'attempt'])('downloads through a 
   afterEach(async () => {
     await engine?.endAttempt!(cleanup());
     await engine?.dispose!(cleanup());
-    await engine?.finish!({ runId: 'run-downloads', targetName: 'web', env: {}, log: () => undefined, ...cleanup() });
+    await engine?.finish!({ runId: 'run-downloads', targetName: 'web', env: browserTestEnv(), log: () => undefined, ...cleanup() });
     if (chrome !== undefined) await closeRemoteChrome(chrome);
     if (artifactsDir !== undefined) rmSync(artifactsDir, { recursive: true, force: true });
     if (remoteDisk !== undefined) rmSync(remoteDisk, { recursive: true, force: true });
@@ -71,7 +72,7 @@ describe.each<BrowserProviderScope>(['worker', 'attempt'])('downloads through a 
       },
     };
     engine = webEngine({ browser: provider });
-    const prepared = await engine.prepare!({ runId: 'run-downloads', targetName: 'web', projectRoot: process.cwd(), app: { site: new URL(app.url).hostname }, slots: 1, env: {}, signal: signal(), headed: false, log: () => undefined });
+    const prepared = await engine.prepare!({ runId: 'run-downloads', targetName: 'web', projectRoot: process.cwd(), app: { site: new URL(app.url).hostname }, slots: 1, env: browserTestEnv(), signal: signal(), headed: false, log: () => undefined });
     await engine.init!({
       runId: 'run-downloads', targetName: 'web', projectRoot: process.cwd(),
       app: { site: new URL(app.url).hostname }, env: { ...prepared?.env }, headed: false,
@@ -145,7 +146,7 @@ describe.each<BrowserProviderScope>(['worker', 'attempt'])('downloads through a 
       },
     };
     engine = webEngine({ browser: provider });
-    const prepared = await engine.prepare!({ runId: 'run-downloads', targetName: 'web', projectRoot: process.cwd(), app: { site: new URL(app.url).hostname }, slots: 1, env: {}, signal: signal(), headed: false, log: () => undefined });
+    const prepared = await engine.prepare!({ runId: 'run-downloads', targetName: 'web', projectRoot: process.cwd(), app: { site: new URL(app.url).hostname }, slots: 1, env: browserTestEnv(), signal: signal(), headed: false, log: () => undefined });
     await engine.init!({ runId: 'run-downloads', targetName: 'web', projectRoot: process.cwd(), app: { site: new URL(app.url).hostname }, env: { ...prepared?.env }, headed: false, workerSlot: 0, signal: signal(), log: () => undefined });
     await engine.startAttempt!({ attemptId: 'a1', artifactsDir, signal: signal(), resolveSecret: noSecrets, ...ignoreTrace });
     await engine.session!.open!(app.url, operation());
