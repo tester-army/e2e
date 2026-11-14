@@ -14,7 +14,7 @@ import type { AiTraceSnapshot } from '../internal/ai-trace.ts';
 import type { DebugSnapshot } from '../internal/debug.ts';
 import { classifyError, InfrastructureError, type SerializedError, TestError, TestTimeoutError, serializeError } from '../internal/errors.ts';
 import { timestamp, uuidv7 } from '../internal/ids.ts';
-import { MAX_TIMER_MS } from '../internal/time.ts';
+import { Deadline, MAX_TIMER_MS } from '../internal/time.ts';
 import type { AttemptRecord, ResultRecord, RunError, SerialGroupRecord } from './records.ts';
 import { retryVerdict } from './retry.ts';
 import { SerialGroupProgress, serialGroupId } from './serial.ts';
@@ -278,16 +278,26 @@ class SchedulerWorker {
 
   /**
    * Kills the worker once `graceMs` has passed. Grace budgets are sums of
-   * configured timeouts, so the delay is capped at what a timer can wait:
-   * `setTimeout` fires a longer one at once.
+   * configured timeouts and can exceed what one timer can wait (`setTimeout`
+   * fires a longer delay at once), so the wait is re-armed in chunks until
+   * the whole grace has elapsed.
    */
   killAfter(graceMs: number): void {
     if (this.killTimer !== undefined || !this.runner.alive) return;
-    this.killTimer = setTimeout(() => {
-      this.killed = true;
-      this.runner.kill();
-    }, Math.min(graceMs, MAX_TIMER_MS));
-    this.killTimer.unref();
+    const deadline = new Deadline(graceMs);
+    const arm = (): void => {
+      const remaining = deadline.remaining();
+      this.killTimer = setTimeout(() => {
+        if (!deadline.expired()) {
+          arm();
+          return;
+        }
+        this.killed = true;
+        this.runner.kill();
+      }, Math.min(remaining, MAX_TIMER_MS));
+      this.killTimer.unref();
+    };
+    arm();
   }
 
   /** The attempts heard of one of `unit`'s pairs, started on first word of them. */
