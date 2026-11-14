@@ -111,13 +111,14 @@ bunx e2e init --yes --gateway openrouter --skills .agents/skills --mcp .mcp.json
 | Option | Description |
 | --- | --- |
 | `[directory]` | Where to scaffold; created when missing. Default: the working directory. |
-| `-y`, `--yes` | Skips the prompts. Each answer not given as a flag takes its default: Web engine, Vercel AI Gateway, skill and MCP config in both locations, no install. |
+| `-y`, `--yes` | Skips the prompts. Each answer not given as a flag takes its default: Web engine, Vercel AI Gateway, skill and MCP config in both locations, no CI pipeline, no install. |
 | `--example <name>` | Starts from an example app: `with-vite`, `with-next`, `with-astro`, `with-angular`, `with-expo`, `with-swiftui`, `with-compose`, `with-kotlin-multiplatform`, `with-flutter`, or `with-maui`. The `with-` prefix is optional. See [Starting from an example](#starting-from-an-example). |
 | `--engine <ids>` | The engines for a new config: `web`, `mobile`, or `none`. Comma-separated or repeated; `web,mobile` writes a target for each. Default: asked. |
 | `--gateway <id>` | The model gateway for agent steps in a new config: `vercel`, `openrouter`, `openai-compatible`, `chatgpt`, `copilot`, `opencode-console`, `grok`, or `none`. Default: asked. |
 | `--endpoint <url>` | Base URL for `--gateway openai-compatible`, and implies it. HTTPS, or HTTP on a loopback host. Default: asked; `http://127.0.0.1:11434/v1` with `--yes`. |
 | `--skills <dirs>` | Where to install the agent skill: `.agents/skills`, `.claude/skills`, or `none`. Comma-separated or repeated. Default: asked. |
 | `--mcp <files>` | Where to register the MCP server: `.mcp.json`, `.cursor/mcp.json`, `.codex/config.toml`, or `none`. Comma-separated or repeated. Default: asked. |
+| `--ci <id>` | The CI pipeline for the tests, one job per platform: `github-actions`, `gitlab`, or `none`. See [CI pipeline](#ci-pipeline). Default: asked; `none` with `--yes`. |
 | `--install`, `--no-install` | Whether to install dependencies. Default: asked; `--no-install` with `--yes`. |
 
 - A flag answers its question and skips that prompt.
@@ -160,6 +161,10 @@ For a new project, the wizard asks for:
   Claude Code, `.cursor/mcp.json` for Cursor, `.codex/config.toml` for Codex.
   All are preselected. Codex loads the config in trusted projects; start a new
   session after installing dependencies.
+- **A CI pipeline** for a project with the web or mobile engine: GitHub
+  Actions or GitLab CI/CD, with a job for each platform. The wizard
+  preselects the service the repository's remote, `.github/` folder, or
+  `.gitlab-ci.yml` points to. See [CI pipeline](#ci-pipeline).
 
 After you confirm the file changes, the wizard asks whether to install the
 selected dependencies. The installer follows the project's `packageManager`
@@ -175,6 +180,87 @@ field or lockfile, then the invoking package manager, then npm.
 | `.gitignore` | Appends `node_modules/`, `.e2e/results/`, `.e2e/cache/`, `.e2e/sessions/`, `.e2e/report.json`, `.e2e/ai-trace.json`, `.e2e/timings.json`, `.e2e/junit.xml`, `.e2e/summary.md`, `.e2e/logs/`, and `.e2e/videos/`. Committing the cache is opt-in; see [commit the replay cache](/cache#commit-the-replay-cache) |
 | `.agents/skills/e2e/`, `.claude/skills/e2e/` | `SKILL.md` and one `references/<topic>.md` per `e2e guide` topic. With both chosen, the Claude Code directory is a relative symlink (`../../.agents/skills/e2e`) to the copy, the layout `npx skills add` produces |
 | `.mcp.json`, `.cursor/mcp.json`, `.codex/config.toml` | Registers `e2e mcp` without changing other servers |
+| `.github/workflows/e2e.yml`, `.gitlab-ci.yml` | With `--ci`: a job for each platform the targets run on. At the repository root, also for a project in a subfolder. See [CI pipeline](#ci-pipeline) |
+
+<a id="ci-pipeline" />
+##### CI pipeline
+
+`--ci github-actions` or `--ci gitlab` writes a pipeline with one job for
+each platform the config's targets run on: web, iOS, and Android. A config
+with web and mobile targets gets all of its jobs in one file. Each job
+installs the dependencies, runs `e2e run --target <its targets> --reporter
+list,junit`, and keeps `.e2e/report.json`, `.e2e/junit.xml`, and
+`.e2e/results/`.
+
+<CodeGroup>
+```bash npm
+npx e2e init --yes --ci gitlab
+```
+
+```bash pnpm
+pnpm dlx e2e init --yes --ci gitlab
+```
+
+```bash bun
+bunx e2e init --yes --ci gitlab
+```
+</CodeGroup>
+
+| Job | GitHub Actions | GitLab CI/CD |
+| --- | --- | --- |
+| Web | `ubuntu-latest`, with Chromium | The `node` image on GitLab's runners, with Chromium |
+| iOS | `macos-26`: builds the app, boots the image's iPhone 17 Pro on a pinned iOS runtime, installs the app | A self-managed Mac: creates a simulator of its own on a pinned runtime |
+| Android | `ubuntu-latest` with KVM: builds a release APK, runs it on an API 36 emulator | A self-managed Linux runner with KVM: boots an AVD named `e2e` |
+
+| Service | File | Runs | Model key |
+| --- | --- | --- | --- |
+| GitHub Actions | `.github/workflows/e2e.yml` | On pull requests and pushes to `main` | A repository secret, passed in the run step's `env` |
+| GitLab CI/CD | `.gitlab-ci.yml` | In merge request pipelines and on the default branch. The JUnit report shows in the merge request | A CI/CD variable, which GitLab gives the job |
+
+- `init` reads the targets from the new config it writes, or loads an
+  existing one the way `e2e run` does, after you confirm the changes and
+  after the install. When an existing config still doesn't load, `init` says
+  why and falls back to `package.json`: with only the web engine, one web job
+  runs every target; with the mobile engine, there's no pipeline.
+- The web job runs every target that isn't iOS or Android, HTTP tests
+  included, and all of them when the config has no mobile target.
+- The mobile jobs build the app. An Expo app builds with `expo run:ios` and
+  `expo prebuild` and Gradle. A bare React Native app builds its
+  `ios/*.xcworkspace` with `xcodebuild` (through Bundler with a `Gemfile`)
+  and runs `android/gradlew`. Any other app gets a build step that fails
+  until you replace it, and `init` names the file to edit.
+- The mobile jobs name the device they booted in `E2E_DEVICE`. A target
+  that names a device reads it with `device: process.env.E2E_DEVICE` in
+  `mobile()`, so the run drives that device. A target that names none drives
+  the booted one.
+- GitLab's hosted runners can't run a simulator or an emulator, so its
+  mobile jobs need self-managed runners: set their `tags`. See
+  [GitLab CI/CD](/ci/gitlab#ios-and-android).
+- The file starts from a template the package ships in `templates/ci/`, a
+  complete pipeline for npm at the repository root and an Expo app. `init`
+  fills it in for your project and keeps its comments.
+- The jobs use the project's package manager, and the Node version in
+  `.nvmrc` or `.node-version` (24 without one). GitHub reads the file, so it
+  gets the exact version. GitLab runs the web job in the `node` image of the
+  file's major version: `node:22` for `22.22.3`. GitHub actions are pinned by
+  commit.
+- `init` names the secret or variable to add, such as `AI_GATEWAY_API_KEY`,
+  with the `gh` or `glab` command that adds it.
+- For a project in a subfolder, the file goes to the repository root and the
+  jobs run in the subfolder.
+- `init` warns when the config has no `app.command`, since nothing else
+  starts the app on the runner. It also warns about a subscription gateway,
+  whose sign-in stays on your machine, and an OpenAI-compatible `baseURL` on
+  your machine: agent steps fail in CI with either.
+- An existing pipeline file stays unchanged. Beside an existing
+  `.gitlab-ci.yml`, `init` writes `.gitlab/e2e.gitlab-ci.yml` and prints the
+  `include:` lines to add. The jobs run in the `test` stage, and `init` says
+  when your `stages:` leave it out. Beside a job named like one of them
+  (`e2e-web`, `e2e-ios`, `e2e-android`), every job's name gets `-run`.
+- `init` never writes through a symlinked `.github` or `.gitlab` folder. It
+  warns and writes nothing.
+- A workflow or `.gitlab-ci.yml` that already runs `e2e run` gets nothing,
+  and neither does a project without the web or mobile engine.
 
 <a id="starting-from-an-example" />
 ##### Starting from an example

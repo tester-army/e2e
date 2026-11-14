@@ -79,7 +79,7 @@ function readDocument(absolute: string): McpConfigDocument | undefined {
  * every existing component is a plain entry. A component past the link is not
  * inspected: it lives wherever the link points.
  */
-function linkOnPath(cwd: string, target: string): McpLink | undefined {
+export function linkOnPath(cwd: string, target: string): McpLink | undefined {
   let current = cwd;
   for (const segment of path.relative(cwd, target).split(path.sep)) {
     current = path.join(current, segment);

@@ -82,6 +82,8 @@ export interface InitOutcome {
   /** Whether the agent skill, the MCP registration, and the install were chosen. */
   readonly skill: boolean;
   readonly mcp: boolean;
+  /** The CI pipeline chosen (`github-actions`, `gitlab`, `none`), null when not asked. */
+  readonly ci: string | null;
   readonly install: boolean;
 }
 
@@ -159,6 +161,7 @@ export function initCompletedEvent(outcome: InitOutcome): TelemetryEvent {
       gateway: outcome.gateway,
       skill: outcome.skill,
       mcp: outcome.mcp,
+      ci: outcome.ci,
       install: outcome.install,
     },
   };

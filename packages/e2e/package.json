@@ -80,6 +80,7 @@
     "dist",
     "docs",
     "schema/*.schema.json",
+    "templates",
     "skills",
     "NOTICE"
   ],
@@ -106,6 +107,7 @@
     "picocolors": "1.1.1",
     "pixelmatch": "8.0.0",
     "toml-eslint-parser": "1.0.3",
+    "yaml": "^2.9.0",
     "zod": "4.6.7"
   },
   "peerDependencies": {

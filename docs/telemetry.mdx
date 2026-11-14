@@ -120,6 +120,7 @@ own tools count together as `tool`, and any other name as `other`.
 | `example` | The `--example` name (`with-vite`, `with-expo`, ...), `null` without the flag |
 | `engine`, `gateway` | The ids of the engines and the model gateway chosen for a new config (`web`, `mobile`, `web,mobile`, `none`; `vercel`, `openrouter`, `openai-compatible`, `chatgpt`, `copilot`, `opencode-console`, `grok`, `none`), `null` when not asked. Never the endpoint typed for an OpenAI-compatible gateway |
 | `skill`, `mcp`, `install` | Whether the agent skill, the MCP registration, and the dependency install were chosen |
+| `ci` | The CI pipeline chosen (`github-actions`, `gitlab`, or `none`), `null` when not asked |
 
 </Accordion>
 <Accordion title="e2e_upgrade_completed, once per e2e upgrade">

@@ -5,7 +5,13 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { detectPackageManager, execCommand, runScriptCommand } from '../internal/package-manager.ts';
+import {
+  detectPackageManager,
+  detectWorkspacePackageManager,
+  execCommand,
+  readPackageManifest,
+  runScriptCommand,
+} from '../internal/package-manager.ts';
 import { CONFIG_NAMES, JS_CONFIG_NAMES } from '../config/names.ts';
 import { DOCS_URL } from './docs-url.ts';
 import {
@@ -20,11 +26,34 @@ import {
   splitSkillDirs,
   type SkillInstall,
 } from './init/agent-skill.ts';
-import { getEnginePresets, DEFAULT_ENGINE_IDS, type EngineId } from './init/engines.ts';
+import {
+  CI_SERVICES,
+  ciJobs,
+  configStartsApp,
+  configTargets,
+  configUsesLocalModel,
+  detectCiService,
+  detectMobileBuilds,
+  findNodeVersionFile,
+  findRepositoryRoot,
+  gatewaysInConfig,
+  getCiService,
+  GITLAB_PIPELINE,
+  posixRelative,
+  readNodeMajor,
+  type CiChoice,
+  type CiFile,
+  type CiJobs,
+  type CiService,
+  type CiTarget,
+} from './init/ci.ts';
+import { loadConfigModule } from '../config/load.ts';
+import { getEnginePreset, getEnginePresets, DEFAULT_ENGINE_IDS, type EngineId } from './init/engines.ts';
 import { copyExample, ExampleCopyCancelled, ExampleDownloadError, findExample, isEmptyDirectory, type ExampleCopy } from './init/examples.ts';
 import { DEFAULT_ENDPOINT, GATEWAYS, getGatewayPreset, validateEndpoint, type GatewayId } from './init/gateways.ts';
-import { findRegisteredMcpFiles, MCP_LOCATIONS, planMcpRegistration } from './init/mcp-config.ts';
-import { addDependencies, addScripts, describeManifestError, readPackage, serializePackage } from './init/package.ts';
+import { isLoopbackHost } from '../internal/urls.ts';
+import { findRegisteredMcpFiles, linkOnPath, MCP_LOCATIONS, planMcpRegistration } from './init/mcp-config.ts';
+import { addDependencies, addScripts, declaresDependency, describeManifestError, readPackage, serializePackage } from './init/package.ts';
 import { createScaffold, type ScaffoldModel } from './init/scaffold.ts';
 import { MISSING_SKILL_MESSAGE, readSkillFiles } from './skill.ts';
 import { playWordmark } from './wordmark.ts';
@@ -59,6 +88,12 @@ export interface InitOptions {
   skills?: readonly string[];
   mcp?: readonly string[];
   install?: boolean;
+  /**
+   * The CI pipeline to write for the web targets; `none` writes none. Not
+   * asked when the project has no web engine or e2e already runs in CI, and
+   * `--yes` alone writes none, since a pipeline runs on the next push.
+   */
+  ci?: CiChoice;
   /**
    * The e2e command the caller runs once init has scaffolded, as words, such
    * as `['e2e', 'explore', 'Check the cart']`. The closing `Next:` line ends
@@ -97,7 +132,7 @@ const DEFAULT_GATEWAY: GatewayId = 'vercel';
 export type GatewayChoice = GatewayId | 'none';
 
 /** The wizard's answers, each from a flag, an earlier run, or `--yes`; a missing one is asked. */
-type Answers = Pick<InitOptions, 'engines' | 'gateway' | 'endpoint' | 'skills' | 'mcp' | 'install'>;
+type Answers = Pick<InitOptions, 'engines' | 'gateway' | 'endpoint' | 'skills' | 'mcp' | 'install' | 'ci'>;
 
 /**
  * Runs `e2e init`. Every prompt happens before the first write, existing
@@ -122,6 +157,7 @@ export async function init(root: string, options: InitOptions = {}): Promise<Ini
     gateway: null,
     skill: false,
     mcp: false,
+    ci: null,
     install: false,
   };
   let exampleCopy: ExampleCopy | undefined;
@@ -216,6 +252,7 @@ export async function init(root: string, options: InitOptions = {}): Promise<Ini
         skills: SKILL_LOCATIONS.map(({ dir }) => dir),
         mcp: MCP_LOCATIONS.map(({ file }) => file),
         install: false,
+        ci: 'none',
       }
     : {};
   const foundSkillDirs = findInstalledSkillDirs(cwd);
@@ -227,6 +264,7 @@ export async function init(root: string, options: InitOptions = {}): Promise<Ini
     skills: options.skills ?? (foundSkillDirs.length > 0 ? foundSkillDirs : defaults.skills),
     mcp: options.mcp ?? (foundMcpFiles.length > 0 ? foundMcpFiles : defaults.mcp),
     install: options.install ?? defaults.install,
+    ci: options.ci ?? defaults.ci,
   };
 
   // Engine and model gateway are choices for a new config only; an existing config keeps its own dependencies.
@@ -338,6 +376,40 @@ export async function init(root: string, options: InitOptions = {}): Promise<Ini
     clack.log.info(`Add scripts: ${scripts.map(([name, command]) => `${name} (${command})`).join(', ')}`);
   }
 
+  const repositoryRoot = findRepositoryRoot(cwd, root);
+  // A new config's engines are the ones just chosen; an existing config's are the ones its package.json declares.
+  const engineInstalled = existingConfig === undefined
+    ? engines.length > 0
+    : declaresDependency(manifest, '@e2e-dev/web') || declaresDependency(manifest, '@e2e-dev/mobile');
+  // Asked once: a later run finds e2e already running in some service's pipeline and leaves the question out.
+  const setUp = CI_SERVICES.some((service) => service.locate(repositoryRoot).existing);
+  let ci: CiChoice = 'none';
+  if (engineInstalled && (given.ci !== undefined || !setUp)) {
+    const chosen = given.ci ?? await clack.select<CiChoice>({
+      message: 'Add a CI pipeline that runs the tests?',
+      initialValue: detectCiService(repositoryRoot) ?? 'none',
+      options: [
+        ...CI_SERVICES.map(({ id, label, hint }) => ({ value: id, label, hint })),
+        { value: 'none', label: 'None', hint: `another CI service: ${DOCS_URL}/ci` },
+      ],
+    });
+    if (isCancelled(chosen)) return cancel();
+    ci = chosen;
+    facts.ci = ci;
+  } else if (!engineInstalled && options.ci !== undefined && options.ci !== 'none') {
+    clack.log.warn(`Ignoring --ci: init writes a pipeline for web, iOS, and Android targets, and the project has none; see ${DOCS_URL}${getCiService(options.ci).docs}`);
+  }
+  const ciService = ci === 'none' ? undefined : getCiService(ci);
+  const ciFile = ciService?.locate(repositoryRoot);
+  const ciRelative = ciFile === undefined ? '' : posixRelative(cwd, path.join(repositoryRoot, ciFile.file));
+  if (ciFile?.existing === true) clack.log.warn(`Exists, not touching: ${ciRelative}`);
+  // Nothing is written through a symlink: a linked .github or .gitlab could put the file outside the repository.
+  const ciLink = ciFile === undefined || ciFile.existing ? undefined : linkOnPath(repositoryRoot, path.join(repositoryRoot, ciFile.file));
+  if (ciLink !== undefined) clack.log.warn(`Symlink, not touching: ${ciLink.relative} -> ${ciLink.target} (${ciRelative})`);
+  const existingConfigText = existingConfig === undefined ? undefined : readFileSync(path.join(cwd, existingConfig), 'utf8');
+  // Where the pipeline goes is known now; its jobs come from the config's targets, read once the dependencies are in.
+  const writesCi = ciService !== undefined && ciFile !== undefined && !ciFile.existing && ciLink === undefined;
+
   // An example's package.json, config, and tests stay as the example has them.
   const files = example !== undefined ? [] : [
     ...(pkg.original === undefined || dependencies.additions.length > 0 || scripts.length > 0
@@ -347,7 +419,10 @@ export async function init(root: string, options: InitOptions = {}): Promise<Ini
     ...newTests.map((test) => ({ ...test, existing: false })),
   ];
 
-  if (example === undefined && files.length === 0 && skillInstalls.length === 0 && mcpRegistrations.length === 0 && missingIgnore.length === 0) {
+  if (
+    example === undefined && files.length === 0 && skillInstalls.length === 0 && mcpRegistrations.length === 0 && missingIgnore.length === 0
+    && !writesCi
+  ) {
     clack.outro('Nothing to create; project already initialized');
     return done('already-initialized', 0);
   }
@@ -361,6 +436,7 @@ export async function init(root: string, options: InitOptions = {}): Promise<Ini
         : `${install.links.length > 0 ? 'Replace' : install.existing ? 'Update' : 'Create'} ${install.relative}/`),
       ...mcpRegistrations.map((registration) => `${registration.existing ? 'Update' : 'Create'} ${registration.relative}`),
       ...(missingIgnore.length > 0 ? ['Update .gitignore'] : []),
+      ...(writesCi ? [`Create ${ciRelative}`] : []),
     ];
     // One change per line: a dozen paths in one sentence is unreadable.
     clack.log.info(['Changes:', ...actions.map((action) => `  - ${action}`)].join('\n'));
@@ -419,15 +495,27 @@ export async function init(root: string, options: InitOptions = {}): Promise<Ini
       clack.log.info(`${CACHE_IGNORE_ENTRY} is ignored; committing agent.act replays is opt-in, see ${DOCS_URL}/cache#commit-the-replay-cache`);
     }
   }
-
-  if (install) {
-    const result = spawnSync(manager, ['install'], { cwd, stdio: 'inherit', shell: process.platform === 'win32' });
-    if (result.error !== undefined || result.status !== 0) {
-      const reason = result.error?.message ?? `exit ${result.status ?? result.signal}`;
-      clack.log.error(`Installation failed (${reason}); retry with ${manager} install`);
-      clack.outro('Scaffold saved');
-      return done('install-failed', result.signal === 'SIGINT' ? 130 : 2);
-    }
+  const installed = install ? spawnSync(manager, ['install'], { cwd, stdio: 'inherit', shell: process.platform === 'win32' }) : undefined;
+  // After the install, so an existing config's engines load; the user's config runs only once they agreed to the changes.
+  if (writesCi) {
+    await writePipeline({
+      service: ciService,
+      file: ciFile,
+      relative: ciRelative,
+      repositoryRoot,
+      cwd,
+      model,
+      existingConfig,
+      existingConfigText,
+      newTargets: engines.map((id) => getEnginePreset(id).platform).map((platform) => ({ name: platform, platform })),
+      dependsOn: (name) => declaresDependency(manifest, name),
+    });
+  }
+  if (installed !== undefined && (installed.error !== undefined || installed.status !== 0)) {
+    const reason = installed.error?.message ?? `exit ${installed.status ?? installed.signal}`;
+    clack.log.error(`Installation failed (${reason}); retry with ${manager} install`);
+    clack.outro('Scaffold saved');
+    return done('install-failed', installed.signal === 'SIGINT' ? 130 : 2);
   }
   if (!javascript && !existsSync(path.join(cwd, 'tsconfig.json'))) {
     clack.log.info('No tsconfig.json; add one for editor completions on e2e.config.ts and tests/');
@@ -464,6 +552,166 @@ export async function init(root: string, options: InitOptions = {}): Promise<Ini
   const appUrl = example === undefined && scaffold.needsAppUrl ? 'APP_URL=http://localhost:3000 ' : '';
   clack.outro(`Next: ${[...before, `${appUrl}${last}`].join(', then ')}`);
   return done('scaffolded', 0);
+}
+
+/** The pipeline init writes, and what the user still has to do for it to pass. */
+interface PlannedWorkflow {
+  readonly content: string;
+  /** Model keys the run reads, which the user adds as secrets or CI/CD variables. */
+  readonly secrets: readonly string[];
+  /** Gateways in the config that sign in on this machine and have no key to give CI. */
+  readonly logins: readonly string[];
+  /** Whether the config starts the app, which a fresh runner needs. */
+  readonly startsApp: boolean;
+  /** A model served on this machine, which the runner cannot reach. */
+  readonly localModel: boolean;
+}
+
+/**
+ * Plans the CI pipeline from what init knows: the jobs for the config's
+ * targets, the package manager and where it installs, the Node version file,
+ * and the model the new config writes or the gateways the existing one imports.
+ */
+function planWorkflow(input: {
+  readonly service: CiService;
+  readonly cwd: string;
+  readonly repositoryRoot: string;
+  readonly model: ScaffoldModel | undefined;
+  readonly existingConfigText: string | undefined;
+  readonly jobs: CiJobs;
+  readonly jobSuffix: string | undefined;
+}): PlannedWorkflow {
+  const { cwd, repositoryRoot } = input;
+  // A workspace member installs and caches at the workspace root, with the root's manager.
+  const { manager, root: installRoot } = detectWorkspacePackageManager(cwd);
+  const packageManagerField = readPackageManifest(installRoot)?.['packageManager'];
+  const packageManager = typeof packageManagerField === 'string' ? packageManagerField : '';
+  const gateways = input.existingConfigText === undefined
+    ? input.model === undefined ? [] : [getGatewayPreset(input.model.gateway)]
+    : gatewaysInConfig(input.existingConfigText);
+  const secrets = gateways.flatMap((gateway) => gateway.keys?.slice(0, 1) ?? []);
+  const nodeVersionFile = findNodeVersionFile(cwd, repositoryRoot);
+  const nodeMajor = nodeVersionFile === undefined ? undefined : readNodeMajor(nodeVersionFile);
+  const content = input.service.render({
+    manager,
+    projectDir: posixRelative(repositoryRoot, cwd),
+    installDir: posixRelative(repositoryRoot, installRoot),
+    ...(nodeVersionFile === undefined ? {} : { nodeVersionFile: posixRelative(repositoryRoot, nodeVersionFile) }),
+    ...(nodeMajor === undefined ? {} : { nodeMajor }),
+    ...(manager === 'pnpm' && !packageManager.startsWith('pnpm@') ? { pnpmVersion: localPnpmMajor() } : {}),
+    yarnBerry: existsSync(path.join(installRoot, '.yarnrc.yml')) || /^yarn@[2-9]/u.test(packageManager),
+    // Bun before 1.2 writes the binary bun.lockb.
+    ...(manager === 'bun' && !existsSync(path.join(installRoot, 'bun.lock')) && existsSync(path.join(installRoot, 'bun.lockb')) ? { lockfile: 'bun.lockb' } : {}),
+    secrets,
+    jobs: input.jobs,
+    ...(input.jobSuffix === undefined ? {} : { jobSuffix: input.jobSuffix }),
+  });
+  return {
+    content,
+    secrets,
+    logins: gateways.filter((gateway) => gateway.login !== undefined).map((gateway) => gateway.label),
+    // A new config leaves app.command commented out.
+    startsApp: input.existingConfigText !== undefined && configStartsApp(input.existingConfigText),
+    localModel: input.existingConfigText === undefined
+      ? input.model?.gateway === 'openai-compatible' && isLoopbackHost(new URL(input.model.endpoint ?? DEFAULT_ENDPOINT).hostname)
+      : configUsesLocalModel(input.existingConfigText),
+  };
+}
+
+/**
+ * The targets of an existing config, loaded the way `e2e run` loads it, or
+ * undefined, with the reason, when it does not load, such as when its engine
+ * is still not installed.
+ */
+async function readTargets(configPath: string): Promise<CiTarget[] | undefined> {
+  try {
+    return configTargets(await loadConfigModule(configPath));
+  } catch (cause) {
+    clack.log.warn(`Could not read the targets of ${path.basename(configPath)}: ${cause instanceof Error ? cause.message : String(cause)}`);
+    return undefined;
+  }
+}
+
+/**
+ * Plans the pipeline's jobs from the config's targets and writes it, then
+ * says what the user still has to do for it to pass. An existing config that
+ * does not load falls back to its package.json: with only the web engine, one
+ * web job runs every target; with the mobile engine, the targets cannot be
+ * told apart, and there is no pipeline.
+ */
+async function writePipeline(input: {
+  readonly service: CiService;
+  readonly file: CiFile;
+  readonly relative: string;
+  readonly repositoryRoot: string;
+  readonly cwd: string;
+  readonly model: ScaffoldModel | undefined;
+  readonly existingConfig: string | undefined;
+  readonly existingConfigText: string | undefined;
+  readonly newTargets: readonly CiTarget[];
+  readonly dependsOn: (name: string) => boolean;
+}): Promise<void> {
+  const { service, file, relative, cwd, existingConfigText } = input;
+  const targets = input.existingConfig === undefined ? input.newTargets : await readTargets(path.join(cwd, input.existingConfig));
+  let jobs: CiJobs;
+  if (targets !== undefined) {
+    jobs = ciJobs(targets, detectMobileBuilds(cwd, input.dependsOn));
+  } else if (input.dependsOn('@e2e-dev/web') && !input.dependsOn('@e2e-dev/mobile')) {
+    clack.log.warn(`The pipeline runs every target in one web job; run e2e init again once ${input.existingConfig} loads to split them`);
+    jobs = { web: 'all' };
+  } else {
+    clack.log.warn(`No pipeline: the mobile jobs need the config's targets; run e2e init again once ${input.existingConfig} loads`);
+    return;
+  }
+  if (jobs.web === undefined && jobs.ios === undefined && jobs.android === undefined) {
+    clack.log.warn(`No web, iOS, or Android target to run in CI, so no pipeline; see ${DOCS_URL}/ci`);
+    return;
+  }
+  const workflow = planWorkflow({
+    service,
+    cwd,
+    repositoryRoot: input.repositoryRoot,
+    model: input.model,
+    existingConfigText,
+    jobs,
+    jobSuffix: file.jobSuffix,
+  });
+  const absolute = path.join(input.repositoryRoot, file.file);
+  mkdirSync(path.dirname(absolute), { recursive: true });
+  writeFileSync(absolute, workflow.content, 'utf8');
+  clack.log.success(`Created ${relative} (${service.label})`);
+  if (file.include !== undefined) {
+    clack.log.warn(`${GITLAB_PIPELINE} exists, not touching it; add this to it to run the e2e jobs:\n${file.include}`);
+  }
+  if (file.note !== undefined) clack.log.warn(file.note);
+  for (const secret of workflow.secrets) clack.log.info(service.secretHint(secret));
+  for (const login of workflow.logins) {
+    clack.log.warn(`${login} signs in on this machine only, so agent steps fail in CI; use a gateway with an API key there, see ${DOCS_URL}/ci#model-credentials`);
+  }
+  for (const [platform, label, artifact] of [['ios', 'iOS', 'a .app for the simulator under build/'], ['android', 'Android', 'an APK at android/app/build/outputs/apk/release/app-release.apk']] as const) {
+    if (jobs[platform]?.build.kind === 'custom') {
+      clack.log.warn(`The ${label} job's build step is a placeholder that fails: replace it in ${relative} with your app's build, ${artifact}`);
+    }
+  }
+  if (service.id === 'gitlab' && (jobs.ios !== undefined || jobs.android !== undefined)) {
+    clack.log.warn(`GitLab's hosted runners can't run a simulator or an emulator: the mobile jobs need self-managed runners; set their tags in ${relative}, see ${DOCS_URL}/ci/gitlab#ios-and-android`);
+    if (!(existingConfigText ?? '').includes('E2E_DEVICE')) {
+      clack.log.warn('The GitLab mobile jobs boot a device of their own and name it in E2E_DEVICE: set device: process.env.E2E_DEVICE in each mobile() target');
+    }
+  }
+  if (workflow.localModel) {
+    clack.log.warn(`The model endpoint is on this machine, so agent steps fail in CI; point it at a server the runner can reach, see ${DOCS_URL}/ci#model-credentials`);
+  }
+  if (jobs.web !== undefined && !workflow.startsApp) {
+    clack.log.warn(`Nothing starts the app in CI: set app.command in e2e.config.ts so the runner starts it, see ${DOCS_URL}/web#starting-your-app`);
+  }
+}
+
+/** The major version of the pnpm on this machine, for `pnpm/action-setup`; `latest` when it cannot be read. */
+function localPnpmMajor(): string {
+  const result = spawnSync('pnpm', ['--version'], { encoding: 'utf8', shell: process.platform === 'win32' });
+  const major = /^(\d+)\./u.exec(String(result.stdout ?? '').trim())?.[1];
+  return major ?? 'latest';
 }
 
 /**

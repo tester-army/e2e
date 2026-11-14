@@ -4,6 +4,7 @@ import { InvalidArgumentError, Option, type Command } from 'commander';
 import type { InitOptions } from '../init.ts';
 import { parseNames } from '../parse-names.ts';
 import { SKILL_LOCATIONS } from './agent-skill.ts';
+import { CI_SERVICES } from './ci.ts';
 import { getEnginePresets, type EngineId } from './engines.ts';
 import { EXAMPLES, findExample } from './examples.ts';
 import { GATEWAYS, validateEndpoint } from './gateways.ts';
@@ -41,6 +42,12 @@ export function addInitOptions(command: Command): Command {
     )
     .option('--skills <dirs>', `where to install the agent skill, comma-separated: ${SKILL_DIRS.join(', ')}, or none`, parseNames('skill directory'))
     .option('--mcp <files>', `where to register the MCP server, comma-separated: ${MCP_FILES.join(', ')}, or none`, parseNames('MCP config file'))
+    .addOption(
+      new Option('--ci <id>', 'CI pipeline that runs the web tests; none writes none, and --yes alone writes none').choices([
+        ...CI_SERVICES.map((service) => service.id),
+        'none',
+      ]),
+    )
     .option('--install', 'install dependencies after scaffolding')
     .option('--no-install', 'do not install dependencies');
 }
