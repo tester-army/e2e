@@ -1,4 +1,5 @@
-import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { setImmediate } from 'node:timers/promises';
@@ -9,20 +10,21 @@ import { acp } from '../src/index.ts';
 import type { AcpOptions } from '../src/types.ts';
 
 const AGENT = fileURLToPath(new URL('./fixtures/scripted-agent.ts', import.meta.url));
-const cleanups: (() => void)[] = [];
+const cleanups: (() => void | Promise<void>)[] = [];
 
 /** Waits on the scripted agent: a child process, which a busy machine can start or answer seconds late. */
 function eventually<T>(check: () => T): Promise<T> {
   return vi.waitFor(check, { timeout: 15_000 });
 }
-afterEach(() => {
-  for (const cleanup of cleanups.splice(0)) cleanup();
+afterEach(async () => {
+  for (const cleanup of cleanups.splice(0).toReversed()) await cleanup();
 });
 
 /** A scripted agent: one list of moves per prompt turn, and the log it writes. */
 function scripted(turns: unknown[][] | Record<string, unknown[]>, extra: Partial<AcpOptions> = {}) {
   const directory = mkdtempSync(join(tmpdir(), 'e2e-acp-test-'));
-  cleanups.push(() => rmSync(directory, { recursive: true, force: true }));
+  // Ending an attempt signals the child, which can still append its last log entry while exiting.
+  cleanups.push(() => rm(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }));
   const logFile = join(directory, 'agent.jsonl');
   const executor = acp({
     command: process.execPath,
@@ -37,7 +39,7 @@ function scripted(turns: unknown[][] | Record<string, unknown[]>, extra: Partial
       return [];
     }
   };
-  return { executor, log };
+  return { executor, log, directory };
 }
 
 /** A step context with recorded actions and an attempt the test ends. */
@@ -96,6 +98,24 @@ const pass = { call: 'complete_step', args: { status: 'passed', summary: 'added'
 describe('acp', () => {
   it('rejects a config without a command', () => {
     expect(() => acp({} as AcpOptions)).toThrow(/takes \{ command, args \}/);
+  });
+
+  it('ends attempts before removing scripted-agent logs', async () => {
+    const { executor, directory } = scripted([[pass]]);
+    const step = context();
+    cleanups.push(() => {
+      try {
+        expect(step.ctx.attempt.signal.aborted).toBe(true);
+        expect(existsSync(directory)).toBe(true);
+      } finally {
+        step.end();
+      }
+    });
+    cleanups.push(async () => {
+      await setImmediate();
+      step.end();
+    });
+    await expect(executor.runStep(step.ctx)).resolves.toEqual({ status: 'passed', summary: 'added' });
   });
 
   it('acts through ctx.actions and passes on complete_step', async () => {
