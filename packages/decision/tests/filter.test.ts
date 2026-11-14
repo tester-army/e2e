@@ -532,6 +532,30 @@ describe('decisionFilter', () => {
     expect(result.relevance).toEqual({ [ADDS.id]: 1, [SIGNS_IN.id]: 0.35, [scrolls.id]: 0.5 });
   });
 
+  it('scores the tests the model did not judge with the unjudgedRelevance it is given, not 0.5', async () => {
+    const huge = 'tests/huge.e2e.ts';
+    const repo = changedRepo(
+      { 'src/cart.ts': 'export const total = 1;\n', [CART]: "test('adds an item', async () => {});\n", [LOGIN]: "test('signs in', async () => {});\n", [huge]: sized('scrolls', 90_000) },
+      { 'src/cart.ts': 'export const total = 2;\n', [CART]: "test('adds an item', async () => { /* edited */ });\n" },
+    );
+    const scrolls = candidate(huge, 'scrolls');
+    const { model } = scriptedJudge(() => 0.35);
+    const result = await decisionFilter({ model, unjudgedRelevance: 0 }).filter([ADDS, SIGNS_IN, scrolls], filterContext(repo).context);
+    expect(result.relevance).toEqual({ [ADDS.id]: 1, [SIGNS_IN.id]: 0.35, [scrolls.id]: 0 });
+  });
+
+  it('scores the tests it never asked about with the unjudgedRelevance it is given when a lockfile leaves nothing out', async () => {
+    const { model, requests } = scriptedJudge(() => 0);
+    const repo = cartRepo({ 'pnpm-lock.yaml': 'changed\n', [LOGIN]: "test('signs in', async () => { /* edited */ });\n" });
+    const result = await decisionFilter({ model, unjudgedRelevance: 0 }).filter([ADDS, SIGNS_IN], filterContext(repo).context);
+    expect(result).toEqual({
+      exclude: {},
+      relevance: { [ADDS.id]: 0, [SIGNS_IN.id]: 1 },
+      note: 'pnpm-lock.yaml changed, so the decision filter left nothing out',
+    });
+    expect(requests).toEqual([]);
+  });
+
   it('sends the provider options it is given with every call', async () => {
     const providerOptions = { gateway: { zeroDataRetention: true } };
     const { model, requests } = scriptedJudge(() => 0.9);
@@ -722,6 +746,16 @@ describe('decisionFilter', () => {
       'provider options that are not objects by provider',
       { model: scriptedJudge(() => 0).model, providerOptions: { gateway: true } },
       'decisionFilter({ providerOptions }) maps provider names to option objects, e.g. { gateway: { zeroDataRetention: true } }',
+    ],
+    [
+      'an unjudgedRelevance outside 0 to 1',
+      { model: scriptedJudge(() => 0).model, unjudgedRelevance: 1.5 },
+      'decisionFilter({ unjudgedRelevance }) must be a number from 0 to 1; got 1.5',
+    ],
+    [
+      'an unjudgedRelevance that is not a number',
+      { model: scriptedJudge(() => 0).model, unjudgedRelevance: Number.NaN },
+      'decisionFilter({ unjudgedRelevance }) must be a number from 0 to 1; got NaN',
     ],
   ])('refuses %s at config load as INVALID_CONFIG naming decisionFilter', (_name, options, message) => {
     expect(() => decisionFilter(options as never)).toThrow(expect.objectContaining({ name: 'ConfigurationError', code: 'INVALID_CONFIG', message }));

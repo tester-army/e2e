@@ -58,4 +58,13 @@ export interface DecisionFilterOptions {
    * `{ gateway: { zeroDataRetention: true } }` for Vercel AI Gateway.
    */
   readonly providerOptions?: Parameters<typeof experimental_decide>[0]['providerOptions'];
+  /**
+   * The score given to a test (or its setup) the model did not judge:
+   * neither likely nor unlikely. The run starts each target's likeliest
+   * files first, so this orders the unjudged among the judged ones.
+   * Default 0.5, which puts them mid-pack; 0 puts them in the lowest band,
+   * beside the judged tests under 25%, 1 beside the ones the change
+   * touches. From 0 to 1.
+   */
+  readonly unjudgedRelevance?: number;
 }
