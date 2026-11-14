@@ -73,6 +73,12 @@
       "default": "./dist/oauth/opencode-console.js"
     }
   },
+  "imports": {
+    "#e2e-node-addons": {
+      "node-addons": "fs",
+      "default": "path"
+    }
+  },
   "bin": {
     "e2e": "./dist/cli/bin.js"
   },
@@ -100,6 +106,7 @@
     "@oxc-project/runtime": "0.158.0",
     "@vitest/expect": "5.1.0",
     "commander": "15.1.0",
+    "exsolve": "1.2.0",
     "get-tsconfig": "4.14.3",
     "oxc-parser": "0.158.0",
     "oxc-transform": "0.158.0",

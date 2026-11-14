@@ -1,4 +1,5 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -21,7 +22,7 @@ function install(dir: string, name: string, source: string, subpaths: Readonly<R
 }
 
 beforeEach(() => {
-  root = mkdtempSync(path.join(os.tmpdir(), 'e2e-default-engine-'));
+  root = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'e2e-default-engine-')));
   lookup = { cwd: path.join(root, 'project'), enginesDir: path.join(root, 'engines') };
   mkdirSync(lookup.cwd);
 });
@@ -47,6 +48,39 @@ describe('loadEngine', () => {
     install(lookup.cwd, 'esm-only', FACTORY, { web: FACTORY.replace("'fake'", "'from-subpath'") }, 'import');
     expect(await loadEngine({ package: 'esm-only' }, lookup)).toMatchObject({ name: 'fake' });
     expect(await loadEngine({ package: 'esm-only/web' }, lookup)).toMatchObject({ name: 'from-subpath' });
+  });
+
+  it.each([
+    ['dual', 'import'],
+    ['dual/web', 'import'],
+    ['dual', 'require'],
+    ['dual/web', 'require'],
+  ])('loads the import entry of %s when %s is declared first', async (specifier, first) => {
+    const dir = path.join(lookup.cwd, 'node_modules', 'dual');
+    mkdirSync(dir, { recursive: true });
+    const entry = (base: string) => first === 'import' ? { import: `./${base}.js`, require: `./${base}.cjs` } : { require: `./${base}.cjs`, import: `./${base}.js` };
+    writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ name: 'dual', version: '0.0.0', type: 'module', exports: { '.': entry('index'), './web': entry('web') } }));
+    for (const base of ['index', 'web']) {
+      writeFileSync(path.join(dir, `${base}.js`), FACTORY.replace("'fake'", "'esm'"));
+      writeFileSync(path.join(dir, `${base}.cjs`), FACTORY.replace('export default', 'module.exports =').replace("'fake'", "'cjs'"));
+    }
+    expect(await loadEngine({ package: specifier }, lookup)).toMatchObject({ name: 'esm' });
+  });
+
+  it.each([null, './missing.js', '../outside.js'])('rejects an import target of %s without bypassing it for require', async (target) => {
+    const dir = path.join(lookup.cwd, 'node_modules', 'broken');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ name: 'broken', type: 'module', exports: { import: target, require: './index.cjs' } }));
+    writeFileSync(path.join(dir, 'index.cjs'), FACTORY.replace('export default', 'module.exports ='));
+    await expect(loadEngine({ package: 'broken' }, lookup)).rejects.toMatchObject({ code: 'INVALID_CONFIG', message: expect.stringContaining('but its entry cannot be resolved') });
+  });
+
+  it('loads a legacy CommonJS package with a main entry', async () => {
+    const dir = path.join(lookup.cwd, 'node_modules', 'legacy');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ name: 'legacy', version: '0.0.0', main: 'index.cjs' }));
+    writeFileSync(path.join(dir, 'index.cjs'), FACTORY.replace('export default', 'module.exports =').replace("'fake'", "'legacy'"));
+    expect(await loadEngine({ package: 'legacy' }, lookup)).toMatchObject({ name: 'legacy' });
   });
 
   it('makes the factory calls among the options first, so an engine gets a provider JSON cannot carry', async () => {
@@ -120,5 +154,104 @@ describe('loadEngine', () => {
     await expect(loadEngine({ package: 'named-only', export: 'constructor.prototype' }, lookup)).rejects.toMatchObject({ code: 'INVALID_ARGUMENT' });
     await expect(loadEngine({ package: 'not-an-engine' }, lookup)).rejects.toMatchObject({ code: 'INVALID_CONFIG', message: expect.stringContaining('did not return an engine') });
     await expect(loadEngine({ package: 'old-contract' }, lookup)).rejects.toMatchObject({ code: 'INVALID_CONFIG', message: expect.stringContaining('engine contract 0') });
+  });
+});
+
+describe('loadEngine runtime export conditions', () => {
+  it.each([
+    { label: 'the defaults', condition: 'module-sync', flags: [], env: {}, expected: 'native' },
+    { label: '--no-experimental-require-module', condition: 'module-sync', flags: ['--no-experimental-require-module'], env: {}, expected: 'fallback' },
+    { label: '--no-addons', condition: 'node-addons', flags: ['--no-addons'], env: {}, expected: 'fallback' },
+    { label: 'NODE_OPTIONS=--no-addons', condition: 'node-addons', flags: [], env: { NODE_OPTIONS: '--no-addons' }, expected: 'fallback' },
+  ])('loads what native import resolves under $label', ({ condition, flags, env, expected }) => {
+    const dir = path.join(lookup.cwd, 'node_modules', 'cond');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ name: 'cond', type: 'module', exports: { [condition]: './native.js', default: './fallback.js' } }));
+    for (const name of ['native', 'fallback']) writeFileSync(path.join(dir, name + '.js'), FACTORY.replace('fake', name));
+    const program = [
+      'const { loadEngine } = await import(process.argv[1]);',
+      'const native = (await import("cond")).default({}).name;',
+      'const loaded = (await loadEngine({ package: "cond" }, { cwd: process.cwd(), enginesDir: process.cwd() })).name;',
+      'console.log(JSON.stringify({ native, loaded }));',
+    ].join('\n');
+    const loader = new URL('../../src/mcp/default-engine.ts', import.meta.url).href;
+    const child = spawnSync(process.execPath, [...flags, '--input-type=module', '-e', program, '--', loader], { cwd: lookup.cwd, encoding: 'utf8', env: { ...process.env, NODE_OPTIONS: '', ...env } });
+    expect(child.status, child.stderr).toBe(0);
+    expect(JSON.parse(child.stdout.trim())).toEqual({ native: expected, loaded: expected });
+  });
+});
+
+describe('loadEngine nested export conditions', () => {
+  const NESTED: [string, Record<string, unknown>, string | null][] = [
+    ['subpath/web', { '.': { import: './outer.js' }, './web': { node: { require: './inner.cjs' }, import: './other.js' } }, 'other'],
+    ['deep', { '.': { node: { default: { require: './inner.cjs' } }, import: './outer.js' } }, 'outer'],
+    ['array', { '.': { node: [{ require: './inner.cjs' }, { custom: './other.js' }], import: './outer.js' } }, 'outer'],
+    ['inner-require', { '.': { node: { require: './inner.cjs' }, import: './outer.js' } }, 'outer'],
+    ['inner-null', { '.': { node: { require: null }, import: './outer.js' } }, 'outer'],
+    ['active-null', { '.': { node: { import: null }, default: './outer.js' } }, null],
+    ['null-array', { '.': { node: [null], import: './outer.js' } }, null],
+    ['empty-array', { '.': { node: [], import: './outer.js' } }, null],
+    ['blocked-subpath/web', { '.': { import: './outer.js' }, './web': null }, null],
+    ['node-addons', { '.': { 'node-addons': './other.js', import: './outer.js' } }, 'other'],
+    ['require-only', { '.': { require: './inner.cjs' } }, null],
+  ];
+
+  const PROGRAM = [
+    'const { loadEngine } = await import(process.argv[1]);',
+    'const spec = process.argv[2];',
+    'const lookup = { cwd: process.cwd(), enginesDir: process.cwd() };',
+    'const native = await import(spec).then((m) => m.default({}).name, (e) => ({ code: e.code }));',
+    'const loaded = await loadEngine({ package: spec }, lookup).then((e) => e.name, (e) => ({ code: e.code, message: e.message }));',
+    'console.log(JSON.stringify({ native, loaded }));',
+  ].join('\n');
+
+  it.each(NESTED)('loads %s as a native import does', (spec, exports, expected) => {
+    const name = spec.split('/')[0] ?? spec;
+    const dir = path.join(lookup.cwd, 'node_modules', name);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ name, type: 'module', exports }));
+    writeFileSync(path.join(dir, 'outer.js'), FACTORY.replace('fake', 'outer'));
+    writeFileSync(path.join(dir, 'other.js'), FACTORY.replace('fake', 'other'));
+    writeFileSync(path.join(dir, 'inner.cjs'), FACTORY.replace('export default', 'module.exports =').replace('fake', 'inner'));
+    const loader = new URL('../../src/mcp/default-engine.ts', import.meta.url).href;
+    const child = spawnSync(process.execPath, ['--input-type=module', '-e', PROGRAM, '--', loader, spec], { cwd: lookup.cwd, encoding: 'utf8', env: { ...process.env, NODE_OPTIONS: '' } });
+    expect(child.status, child.stderr).toBe(0);
+    const { native, loaded } = JSON.parse(child.stdout.trim()) as { native: unknown; loaded: unknown };
+    if (expected !== null) {
+      expect(native).toBe(expected);
+      expect(loaded).toBe(expected);
+      return;
+    }
+    expect(native).toMatchObject({ code: 'ERR_PACKAGE_PATH_NOT_EXPORTED' });
+    expect(loaded).toMatchObject({ code: 'INVALID_CONFIG', message: expect.stringContaining('package ' + spec + ' is installed at ' + dir + ' but its entry cannot be resolved') });
+  });
+
+  it('reports the first installed copy whose conditions block the entry, and looks no further for it', async () => {
+    const dir = path.join(lookup.cwd, 'node_modules', 'refused');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ name: 'refused', type: 'module', exports: { '.': { node: { import: null }, default: './index.js' } } }));
+    writeFileSync(path.join(dir, 'index.js'), FACTORY);
+    install(lookup.enginesDir, 'refused', FACTORY);
+    await expect(loadEngine({ package: 'refused' }, lookup)).rejects.toMatchObject({
+      code: 'INVALID_CONFIG',
+      message: expect.stringContaining('is installed at ' + dir + ' but its entry cannot be resolved'),
+    });
+  });
+
+  it('resolves entries again after files or manifests change', async () => {
+    install(lookup.cwd, 'late', FACTORY, {}, 'import');
+    rmSync(path.join(lookup.cwd, 'node_modules', 'late', 'index.js'));
+    await expect(loadEngine({ package: 'late' }, lookup)).rejects.toMatchObject({ code: 'INVALID_CONFIG' });
+    writeFileSync(path.join(lookup.cwd, 'node_modules', 'late', 'index.js'), FACTORY.replace('fake', 'late'));
+    expect(await loadEngine({ package: 'late' }, lookup)).toMatchObject({ name: 'late' });
+
+    const dir = path.join(lookup.cwd, 'node_modules', 'swap');
+    mkdirSync(dir, { recursive: true });
+    for (const name of ['a', 'b']) writeFileSync(path.join(dir, name + '.js'), FACTORY.replace('fake', name));
+    const manifest = (entry: string) => JSON.stringify({ name: 'swap', type: 'module', exports: { '.': { import: './' + entry + '.js' } } });
+    writeFileSync(path.join(dir, 'package.json'), manifest('a'));
+    expect(await loadEngine({ package: 'swap' }, lookup)).toMatchObject({ name: 'a' });
+    writeFileSync(path.join(dir, 'package.json'), manifest('b'));
+    expect(await loadEngine({ package: 'swap' }, lookup)).toMatchObject({ name: 'b' });
   });
 });
