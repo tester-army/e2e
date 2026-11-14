@@ -309,6 +309,20 @@ export const FIXTURE_PAGES: readonly FixturePage[] = [
     `,
   },
   {
+    name: 'modal dialog the show order never saw',
+    html: `
+      <main><button>Page button</button></main>
+      <dialog id="first" aria-label="Shown by script"><button id="next" commandfor="second" command="show-modal">Next step</button></dialog>
+      <dialog id="second" aria-label="Shown by a command"><button>Command dialog button</button></dialog>
+      <script>
+        document.getElementById('first').showModal();
+        // A show-modal command opens the second without calling showModal(), so the record never sees it.
+        document.getElementById('next').click();
+        document.activeElement.blur();
+      </script>
+    `,
+  },
+  {
     name: 'modal dialog nested in a modal dialog',
     html: `
       <dialog id="outer" aria-label="Edit order"><button>Save order</button>

@@ -22,7 +22,7 @@ const MODAL_ORDER_KEY = 'e2e.modalDialogOrder';
  * nothing, and on one shown without a modal it throws, as it does on a
  * dialog that is not connected. Keyed by the dialog and never enumerated, so
  * it holds nothing alive. A browser without `showModal` gets no record, and
- * the reader falls back to focus and tree order.
+ * the reader goes by focus alone.
  */
 export const MODAL_ORDER_INIT_SCRIPT = `(() => {
   const key = Symbol.for(${JSON.stringify(MODAL_ORDER_KEY)});

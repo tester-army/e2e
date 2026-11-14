@@ -511,6 +511,7 @@ takes no input:
 - An element with the `inert` attribute, and everything under it.
 - Everything outside a modal `<dialog>`, opened with `showModal()` or a
   `show-modal` command. With several open, only the one shown last stays.
+  When e2e can't tell which one that is, it leaves out nothing.
 
 Locators still find inert content, and `toBeVisible` still passes, as in
 Playwright.

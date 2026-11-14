@@ -1227,10 +1227,11 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
    * dialog it shows and inert content cannot take focus back, and a modal
    * nested in another leaves the outer one's own controls inert; else the
    * one the init script saw shown last (`modalOrder`), for a page that
-   * blurred; else the last in tree order, for dialogs the record never saw
-   * (opened by an invoker command, or before the script ran). Tree order
-   * alone is wrong: `showModal()` on a later dialog, then an earlier one,
-   * leaves the earlier one on top.
+   * blurred. Tree order alone is wrong: `showModal()` on a later dialog, then
+   * an earlier one, leaves the earlier one on top. When the record never saw
+   * one of them (opened by a `show-modal` command, or before the script ran),
+   * nothing tells which is on top, and none is picked: a guess can drop the
+   * one dialog that takes input, which is worse than listing the page.
    */
   const topModalOf = (dialogs: readonly Element[]): Element | undefined => {
     if (dialogs.length <= 1) return dialogs[0];
@@ -1241,8 +1242,9 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
     let top: Element | undefined;
     let topOrder = 0;
     for (const dialog of dialogs) {
-      const order = modalOrder?.get(dialog) ?? 0;
-      if (order >= topOrder) {
+      const order = modalOrder?.get(dialog);
+      if (order === undefined) return undefined;
+      if (order > topOrder) {
         top = dialog;
         topOrder = order;
       }
@@ -1252,10 +1254,12 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
 
   /** What an open modal dialog leaves of the page for the walk (`modalScopeOf`). */
   interface ModalScope {
-    /** Elements the dialog sits under, through shadow hosts: walked to reach it, never listed. */
-    readonly ancestors: ReadonlySet<Element>;
-    /** Whether an element is the dialog or under it in the flat tree, so it stays live. */
-    readonly holds: (el: Element) => boolean;
+    /**
+     * Where an element sits: `inside` the dialog's flat tree, which stays
+     * live; an `ancestor` the dialog sits under, through shadow hosts, walked
+     * to reach it and never listed; or `outside`, which is inert.
+     */
+    readonly placeOf: (el: Element) => 'inside' | 'ancestor' | 'outside';
   }
 
   /**
@@ -1266,14 +1270,15 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
    * stays is the dialog and its flat-tree descendants, light children slotted
    * into it from outside its shadow root included. Its ancestors drop out of
    * the tree too, but are walked, since the dialog and those slotted children
-   * are reached through them. Undefined when no modal dialog is open.
+   * are reached through them. Undefined when no modal dialog is open, or when
+   * none can be told to be on top (`topModalOf`).
    */
   const modalScopeOf = (doc: Document): ModalScope | undefined => {
     const dialog = topModalOf(openModalDialogsIn(doc));
     if (dialog === undefined) return undefined;
     const ancestors = new Set<Element>();
     for (let up = parentOrHostOf(dialog); up !== null; up = parentOrHostOf(up)) ancestors.add(up);
-    return { ancestors, holds: (el) => isInFlatTree(el, dialog) };
+    return { placeOf: (el) => (ancestors.has(el) ? 'ancestor' : isInFlatTree(el, dialog) ? 'inside' : 'outside') };
   };
 
   /** A closed select has no option boxes; explicit exclusions still remove choices it does not offer. */
@@ -1692,9 +1697,9 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
     const style = styleOf(el);
     if (hidesSubtree(el, style)) return;
     // Outside an open modal dialog everything is inert (`modalScopeOf`); the
-    // dialog's ancestors are walked to reach it and listed nothing of their own.
-    const enclosesModal = modal !== undefined && modal.ancestors.has(el);
-    if (modal !== undefined && !enclosesModal && !modal.holds(el)) return;
+    // dialog's ancestors are walked to reach it and list nothing of their own.
+    const place = modal === undefined ? 'inside' : modal.placeOf(el);
+    if (place === 'outside') return;
     const hidden = isHidden(el, style);
     // The two elements listed by a rule of their own carry nothing a person
     // sees past their edges: a frame with no box shows none of its document,
@@ -1723,7 +1728,7 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
     const drawnByLabel = hidden && isDrawnByLabel(el, style);
     // An empty painted rectangle carries no semantics to be "interesting" by and
     // is still something a person sees and aims at; `roleOf` names it `box`.
-    if (!enclosesModal && (!hidden || drawnByLabel) && (isInteresting(el) || isVisibleEmptyBox(el))) {
+    if (place !== 'ancestor' && (!hidden || drawnByLabel) && (isInteresting(el) || isVisibleEmptyBox(el))) {
       if (nodes.length >= maxNodes) {
         truncated = true;
         return;
