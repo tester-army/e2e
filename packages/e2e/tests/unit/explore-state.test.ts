@@ -103,13 +103,23 @@ describe('ExploreState', () => {
     const state = new ExploreState('goal', { maxSteps: 2, timeoutMs: 300_000 });
     state.beginStep('x'.repeat(400), 'y'.repeat(5_000));
     state.endStep('passed', 'z'.repeat(9_000));
-    finding(state, { title: 't'.repeat(300), reproduction: Array.from({ length: 30 }, () => 'r'.repeat(900)) });
+    finding(state, {
+      title: 't'.repeat(300),
+      expected: 'e'.repeat(2_500),
+      actual: 'a'.repeat(2_500),
+      path: 'p'.repeat(2_500),
+      reproduction: Array.from({ length: 30 }, () => 'r'.repeat(900)),
+    });
     state.end('finished', 's'.repeat(9_000));
     const snapshot = state.snapshot();
     assertValidExplore(snapshot);
     expect(snapshot.steps[0]!.title).toHaveLength(200);
     expect(snapshot.steps[0]!.instruction).toHaveLength(2_000);
+    expect(snapshot.findings[0]!.expected).toHaveLength(2_000);
+    expect(snapshot.findings[0]!.actual).toHaveLength(2_000);
+    expect(snapshot.findings[0]!.path).toHaveLength(2_048);
     expect(snapshot.findings[0]!.reproduction).toHaveLength(20);
+    expect(snapshot.findings[0]!.reproduction.every((entry) => entry.length === 500)).toBe(true);
     expect(snapshot.summary).toHaveLength(4_000);
   });
 
