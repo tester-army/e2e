@@ -56,7 +56,7 @@ export function buildEngine(surface: AgentDeviceSurface): EngineHandle<MobileFix
       reset: (operation) => surface.reset(operation),
       // `app.open(path)` on a target with `app.linkBase`: the link opens in the pinned app, as `device.openLink` would.
       openLink: async (url, operation) =>
-        await surface.openLink(linkTarget(url), undefined, operation.signal, surface.inputBudget('open link', operation.timeoutMs)),
+        await surface.openLink(linkTarget(url), undefined, operation.signal, surface.inputBudget('open link', operation)),
     },
     artifacts: {
       screenshot: (label, operation) => surface.screenshot(label, operation, surface.inputBudget('screenshot', operation)),
