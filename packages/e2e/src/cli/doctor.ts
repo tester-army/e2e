@@ -3,7 +3,9 @@
  * anything. It loads the config, asks each target's engine what it needs on
  * this machine, and names the model each agent resolved to. It never claims
  * which credential a model reads: the instance owns that. Only a login e2e
- * stores is checked, and `--check-model` makes one real call per model.
+ * stores is checked, and `--check-model` makes one real call per model. A
+ * model `--model` names needs no config entry and is checked even when the
+ * config fails.
  */
 
 import picocolors from 'picocolors';
@@ -12,21 +14,23 @@ import { ModelOutputInvalidError } from '../agent/model/adapter.ts';
 import { loadAiSdk } from '../agent/ai-sdk.ts';
 import { AgentError, isAgentError } from '../agent/error.ts';
 import { engineAppInfo } from '../config/app.ts';
-import { modelLabel, type ResolvedAgentConfig, type ResolvedModel } from '../config/agent.ts';
+import { DEFAULT_LIMITS, modelLabel, type ResolvedAgentConfig, type ResolvedModel } from '../config/agent.ts';
 import { discoverConfig, loadConfigModule, missingConfigError } from '../config/load.ts';
 import { resolveConfig, type ResolvedConfig } from '../config/resolve.ts';
 import type { ResolvedTarget } from '../config/targets.ts';
 import { selectTargets } from '../collect/select.ts';
 import type { EngineDoctorCheck } from '../engine/index.ts';
-import { classifyError, InfrastructureError } from '../internal/errors.ts';
+import { classifyError, ConfigurationError, InfrastructureError } from '../internal/errors.ts';
 import { onBun, SUPPORTED_BUN_RANGE, SUPPORTED_NODE_RANGE } from '../internal/runtime.ts';
 import { budgetText, cancelledError, NEVER_ABORTS, withAbort, withinCleanupBudget } from '../internal/time.ts';
 import { loginOf } from '../oauth/login-model.ts';
-import { apiKeyFor, getProvider, loginHint, type ProviderId } from '../oauth/providers.ts';
+import { PROVIDER_IDS } from '../oauth/provider-ids.ts';
+import { apiKeyFor, getProvider, isProviderId, loginHint, type ProviderId } from '../oauth/providers.ts';
 import { defaultCredentialStore } from '../oauth/store.ts';
 import { bounded } from '../report/format.ts';
 import { processSecrets, registerStaticSecrets } from '../run/secrecy.ts';
 import type { RunnerOutput } from '../run/process-output.ts';
+import type { ModelInstance } from '../types.ts';
 
 /** The `schemaVersion` of `e2e doctor --json`, described by `schema/doctor-v1.schema.json`. */
 const DOCTOR_SCHEMA_VERSION = 'doctor-1';
@@ -97,6 +101,8 @@ export interface DoctorOptions {
   readonly env: NodeJS.ProcessEnv;
   readonly config?: string | undefined;
   readonly targets?: readonly string[] | undefined;
+  /** Models `--model` names as `<provider>/<model-id>`, each checked without a config entry. */
+  readonly models?: readonly string[] | undefined;
   readonly headed: boolean;
   readonly checkModel: boolean;
   readonly signal: AbortSignal;
@@ -110,9 +116,10 @@ export interface DoctorOptions {
 
 /**
  * Runs every check: the runtime, then the config, then each selected
- * target's engine and each agent's model. A config that does not load ends
- * the checks there, since the rest read it; so does the signal, after the
- * check it cut short.
+ * target's engine, each agent's model, and each model `--model` names. A
+ * config that does not load ends the checks that read it, since the rest
+ * need it; the named models still run, since they exist without one. The
+ * signal ends the checks after the one it cut short.
  */
 export async function doctor(options: DoctorOptions): Promise<DoctorReport> {
   const checks: DoctorCheck[] = [nodeCheck()];
@@ -122,6 +129,7 @@ export async function doctor(options: DoctorOptions): Promise<DoctorReport> {
   );
   if ('failure' in loaded) {
     checks.push(loaded.failure);
+    checks.push(...(await namedModelChecks(options)));
     return doctorReport(options.version, checks);
   }
   const { config } = loaded;
@@ -130,6 +138,7 @@ export async function doctor(options: DoctorOptions): Promise<DoctorReport> {
     targets = selectTargets(config.targets, options.targets);
   } catch (cause) {
     checks.push(failed('config', cause));
+    checks.push(...(await namedModelChecks(options)));
     return doctorReport(options.version, checks);
   }
   checks.push({
@@ -143,6 +152,7 @@ export async function doctor(options: DoctorOptions): Promise<DoctorReport> {
     checks.push(...(await engineChecks(target, config, options)));
   }
   if (!options.signal.aborted) checks.push(...(await modelChecks(config, options)));
+  if (!options.signal.aborted) checks.push(...(await namedModelChecks(options)));
   return doctorReport(options.version, checks);
 }
 
@@ -291,6 +301,79 @@ function callKey(agent: ResolvedAgentConfig): string | undefined {
 }
 
 /**
+ * One `model` check per model `--model` names: a subscription model whose
+ * `e2e/oauth` constructor needs no config entry. It runs whether or not the
+ * config loaded, and checks the stored login the constructor reads; with
+ * `--check-model`, one call.
+ */
+async function namedModelChecks(options: DoctorOptions): Promise<DoctorCheck[]> {
+  const checks: DoctorCheck[] = [];
+  for (const spec of options.models ?? []) {
+    if (options.signal.aborted) break;
+    checks.push(await namedModelCheck(spec, options));
+  }
+  return checks;
+}
+
+/**
+ * The `model` check of one `<provider>/<model-id>`: `INVALID_CONFIG` for a
+ * name that is not a provider `e2e login` stores and a model id, else the
+ * stored login, and one call with `--check-model`. A construction failure,
+ * such as a missing provider package, fails the check with its own code.
+ */
+async function namedModelCheck(spec: string, options: DoctorOptions): Promise<DoctorCheck> {
+  const slash = spec.indexOf('/');
+  const provider = slash === -1 ? '' : spec.slice(0, slash);
+  const modelId = slash === -1 ? '' : spec.slice(slash + 1);
+  if (!isProviderId(provider) || modelId === '') {
+    return failed(
+      'model',
+      new ConfigurationError('INVALID_CONFIG', `--model takes <provider>/<model-id> with provider one of ${PROVIDER_IDS.join(', ')}, e.g. openai/gpt-6-luna; got ${JSON.stringify(spec)}`),
+    );
+  }
+  let instance: ModelInstance;
+  try {
+    instance = await constructModel(provider, modelId);
+  } catch (cause) {
+    return failed('model', cause);
+  }
+  const model: ResolvedModel = { provider: instance.provider, id: instance.modelId, model: instance };
+  const login = loginOf(instance);
+  const result = (status: DoctorStatus, outcome: Pick<DoctorCheck, 'code' | 'message'>): DoctorCheck => ({
+    id: 'model',
+    status,
+    model: doctorModel(model),
+    ...(login === undefined ? {} : { login }),
+    ...outcome,
+  });
+  const credential = login === undefined ? undefined : await loginCredential(login);
+  if (credential !== undefined && !credential.ok) return result('fail', { code: 'MODEL_UNAVAILABLE', message: credential.message });
+  if (options.checkModel) {
+    const sdk = await loadAiSdk().then(() => undefined, (cause: unknown) => cause);
+    if (sdk !== undefined) return result('fail', errorOutcome(sdk));
+    const failure = await callModel(model, {}, options.signal);
+    if (failure !== undefined) return result('fail', errorOutcome(failure));
+    return result('pass', { message: 'answered' });
+  }
+  if (credential !== undefined) return result('pass', { message: credential.message });
+  return result('unknown', { message: 'the model reads its own credential; --check-model calls it' });
+}
+
+/** The `e2e/oauth` constructor each subscription provider's model ids come from, loaded only when a check needs it. */
+async function constructModel(provider: ProviderId, modelId: string): Promise<ModelInstance> {
+  switch (provider) {
+    case 'openai':
+      return (await import('../oauth/chatgpt.ts')).chatgpt(modelId);
+    case 'github-copilot':
+      return (await import('../oauth/copilot.ts')).copilot(modelId);
+    case 'opencode-console':
+      return (await import('../oauth/opencode-console.ts')).opencodeConsole(modelId);
+    case 'spacexai':
+      return (await import('../oauth/grok.ts')).grok(modelId);
+  }
+}
+
+/**
  * The `model` check of one agent: its model and, when it is another one, its
  * judge, each checked on its own. An executor that brings its own agent may
  * still leave judgments to `judge`.
@@ -362,13 +445,19 @@ async function loginCredential(provider: ProviderId): Promise<{ readonly ok: boo
   }
 }
 
+/** What one model call reads off whoever asked for it: the provider options and input cap. */
+interface CallProfile {
+  readonly maxInputTokens?: number | undefined;
+  readonly providerOptions?: NonNullable<ResolvedAgentConfig['providerOptions']> | undefined;
+}
+
 /**
  * One small call to `model` with the agent's provider options, resolving to
  * the failure or undefined. A reply that is not the JSON asked for, or a
  * refusal, still proves the model answered: the adapter throws a provider
  * failure for a call that ended on an error.
  */
-async function callModel(model: ResolvedModel, agent: ResolvedAgentConfig, signal: AbortSignal): Promise<unknown> {
+async function callModel(model: ResolvedModel, agent: CallProfile, signal: AbortSignal): Promise<unknown> {
   try {
     await createModelAdapter(model).generate({
       system: 'You are checking that this model is reachable.',
@@ -377,7 +466,8 @@ async function callModel(model: ResolvedModel, agent: ResolvedAgentConfig, signa
       schema: undefined,
       validate: (value) => ({ ok: true, value }),
       maxOutputTokens: 1024,
-      maxInputTokens: agent.maxInputTokens,
+      // A named model brings no agent cap; it gets the same per-call input ceiling a default agent gets.
+      maxInputTokens: agent.maxInputTokens ?? DEFAULT_LIMITS.maxModelTokensPerCall,
       providerOptions: agent.providerOptions,
       signal,
       timeoutMs: MODEL_CALL_TIMEOUT_MS,

@@ -973,15 +973,17 @@ runs the same selection in process and also returns the removed pairs.
 
 Checks whether `e2e run` can start here without starting anything. It loads the
 config, runs each target's engine checks, and names the model each agent
-resolved to. It starts no app, engine session, or worker, only the server of
-an engine that runs in its own process, and makes no model call unless you
-pass `--check-model`.
+resolved to. A model named with `--model` needs no config entry and is checked
+even when the config fails. It starts no app, engine session, or worker, only
+the server of an engine that runs in its own process, and makes no model call
+unless you pass `--check-model`.
 
 <CodeGroup>
 ```bash npm
 npx e2e doctor
 npx e2e doctor --json
 npx e2e doctor --check-model
+npx e2e doctor --model openai/gpt-6-luna
 npx e2e doctor --target web --headed
 ```
 
@@ -989,6 +991,7 @@ npx e2e doctor --target web --headed
 pnpm exec e2e doctor
 pnpm exec e2e doctor --json
 pnpm exec e2e doctor --check-model
+pnpm exec e2e doctor --model openai/gpt-6-luna
 pnpm exec e2e doctor --target web --headed
 ```
 
@@ -996,6 +999,7 @@ pnpm exec e2e doctor --target web --headed
 bunx e2e doctor
 bunx e2e doctor --json
 bunx e2e doctor --check-model
+bunx e2e doctor --model openai/gpt-6-luna
 bunx e2e doctor --target web --headed
 ```
 </CodeGroup>
@@ -1004,16 +1008,17 @@ bunx e2e doctor --target web --headed
 | --- | --- |
 | `--config <path>` | As for [`run`](#flags). |
 | `--target <ids>` | Checks only these targets. As for [`run`](#flags). |
+| `--model <ids>` | Checks these models without a config entry, comma-separated or repeated, each `<provider>/<model-id>` with provider `openai`, `github-copilot`, `opencode-console`, or `spacexai` — the providers [`e2e login`](/subscriptions) stores. Each is checked using the credential its `e2e/oauth` constructor reads (the stored login or its provider API-key variable), and runs even when the config fails. |
 | `--headed` | Checks for what a headed run needs, such as the full Chromium build instead of the headless shell. |
-| `--check-model` | Calls each agent's model, and its judge when that is a different model, once with a short prompt and the agent's provider options. Agents that share a model, equal provider options, and `maxInputTokens` share the call. A reply that isn't the JSON asked for, or a refusal, still counts as an answer. |
+| `--check-model` | Calls each agent's model, its judge when that is a different model, and each model `--model` name once with a short prompt. Named models use the default call profile; agents use their provider options. Agents that share a model, equal provider options, and `maxInputTokens` share the call. A reply that isn't the JSON asked for, or a refusal, still counts as an answer. |
 | `--json` | Prints the `doctor-1` report instead of one line per check. |
 
 | Check | Status |
 | --- | --- |
 | `node` | `pass`: the Node.js or Bun version. On an unsupported runtime, `--json` still prints a report with `node` as `fail`. |
-| `config` | `pass` with `path` and `targets` (`name`, `platform`, `engine`), or `fail` with the `CONFIG_*` or `UNKNOWN_TARGET` code. A failed `config` is the last check. |
+| `config` | `pass` with `path` and `targets` (`name`, `platform`, `engine`), or `fail` with the `CONFIG_*` or `UNKNOWN_TARGET` code. A failed `config` ends the checks that read it; the `model` checks `--model` names still run. |
 | Engine checks, with `target` | What the target's engine reports, such as the web engine's `browser`: `pass` when installed, `warn` when the first run will download it, `skip` with a browser provider or `connect`; or the mobile engine's agent-device checks (`agent-device`, `toolchain`, `ios-runner-cache`, `device` per configured device, `target-app`) and `app-path`, with only `device`, as `skip`, for a device provider. An engine that reports nothing adds no check. `engine` is `skip` when the engine has no `doctor` hook, and `fail` when the hook threw, timed out, or returned a malformed check. |
-| `model`, with `agent` | `model` and `judge` as `provider` and `modelId`, the names the AI SDK instance reports. `pass` or `fail` for a model on an [`e2e login`](/subscriptions), from the stored login or the provider's API key variable, with `login` set when the agent's models read one login. `unknown` for any other model, because the model reads its own credential. With `--check-model`, `pass` when every model answered, else `fail` with the error code, its message prefixed `model:` or `judge:` when the agent has both. `skip` when the agent has no model. `unknown` with `executor` when a custom executor brings its own agent and declares no model or judge; any model it declares is checked like an agent's. |
+| `model`, with `agent` | `model` and `judge` as `provider` and `modelId`, the names the AI SDK instance reports. `pass` or `fail` for a model on an [`e2e login`](/subscriptions), from the stored login or the provider's API key variable, with `login` set when the agent's models read one login. `unknown` for any other model, because the model reads its own credential. With `--check-model`, `pass` when every model answered, else `fail` with the error code, its message prefixed `model:` or `judge:` when the agent has both. `skip` when the agent has no model. `unknown` with `executor` when a custom executor brings its own agent and declares no model or judge; any model it declares is checked like an agent's. A `model` check without `agent` is one `--model` names, checked the same way on its login. |
 
 By default, doctor prints one line per check: a mark, the check id, the
 target or agent in brackets, and the details. The last line says whether a
