@@ -13,24 +13,16 @@
  * Exits 1 listing every page that fails, with the compiler's reason.
  */
 
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { compile } from '@mdx-js/mdx';
 import remarkGfm from 'remark-gfm';
+import { pages } from './docs-pages.ts';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const DOCS = join(ROOT, 'docs');
 const FRONTMATTER = /^---\n[\s\S]*?\n---\n/;
-
-/** Every `.mdx` page under `dir`, skipping `node_modules`. */
-function pages(dir: string): string[] {
-  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
-    const path = join(dir, entry.name);
-    if (entry.isDirectory()) return entry.name === 'node_modules' ? [] : pages(path);
-    return entry.name.endsWith('.mdx') ? [path] : [];
-  });
-}
 
 /** The page body with its frontmatter blanked line for line, so positions match the file. */
 function body(path: string): string {

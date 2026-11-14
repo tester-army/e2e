@@ -17,9 +17,10 @@
  * Exits 1 listing every problem.
  */
 
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { basename, join, posix, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { pages } from './docs-pages.ts';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const DOCS = join(ROOT, 'docs');
@@ -36,15 +37,6 @@ const SECTIONS: { dir: string; overview: string }[] = [
 const CARD = /<Card\b[^>]*>/g;
 const FENCE = /^ {0,3}(`{3,}|~{3,})/;
 const JSX_COMMENT = /\{\/\*[\s\S]*?\*\/\}/g;
-
-/** Every `.mdx` page under `dir`, skipping `node_modules`. */
-function pages(dir: string): string[] {
-  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
-    const path = join(dir, entry.name);
-    if (entry.isDirectory()) return entry.name === 'node_modules' ? [] : pages(path);
-    return entry.name.endsWith('.mdx') ? [path] : [];
-  });
-}
 
 /** A docs path relative to `docs/`, with `/` separators on every OS. */
 function docsPath(path: string): string {

@@ -15,10 +15,11 @@
  * Exits 1 listing every broken link.
  */
 
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import slugify, { slugifyWithCounter } from '@sindresorhus/slugify';
+import { pages } from './docs-pages.ts';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const DOCS = join(ROOT, 'docs');
@@ -34,15 +35,6 @@ const FILE = /\.[a-z0-9]+$/i;
 interface DocsJson {
   navigation: { tabs: { pages?: string[]; groups?: { pages: string[] }[] }[] };
   redirects?: { source: string; destination: string }[];
-}
-
-/** Every `.mdx` page under `dir`, skipping `node_modules`. */
-function pages(dir: string): string[] {
-  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
-    const path = join(dir, entry.name);
-    if (entry.isDirectory()) return entry.name === 'node_modules' ? [] : pages(path);
-    return entry.name.endsWith('.mdx') ? [path] : [];
-  });
 }
 
 /**
