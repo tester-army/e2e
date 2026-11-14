@@ -264,6 +264,18 @@ describe('ScreenPresenter folds large unchanged subtrees in the full-screen fall
     '  #n37 link "Back to orders"',
   ];
 
+  const MAIN_SEARCH = [
+    ' #n40 main "Order search"',
+    '  #n41 heading "Find an order"',
+    '  #n42 textbox "Order number"',
+    '  #n43 button "Search"',
+    '  #n44 text "No order selected"',
+    '  #n45 button "Clear"',
+    '  #n46 link "All orders"',
+    '  #n47 text "Search by number or customer"',
+    '  #n48 button "Help"',
+  ];
+
   function orderScreen(main: readonly string[], sidebarCount: number): string[] {
     return ['#n1 document "Orders"', ...sidebar(sidebarCount), ...main];
   }
@@ -354,6 +366,65 @@ describe('ScreenPresenter folds large unchanged subtrees in the full-screen fall
     expect(text).not.toContain('nodes inside, unchanged since revision');
     expect(text).toContain(' #n3 link "Item 1"');
     expect(text).toContain(' #n14 link "Item 12"');
+  });
+
+  it('names the revision that last listed the subtree in full, not an intervening diff', () => {
+    const presenter = new ScreenPresenter();
+    presenter.initial(screen('b1', orderScreen(MAIN_LIST, 12)));
+    // The sidebar is not listed at b2: the diff names only the changed heading.
+    const changed = orderScreen(MAIN_LIST, 12).map((line) =>
+      (line.includes('#n21 ') ? '  #n21 heading "Orders (2)"' : line),
+    );
+    const diff = presenter.update(screen('b2', changed));
+    expect(diff).toContain('changed #n21 heading "Orders (2)"');
+    expect(diff).not.toContain('Current screen');
+    const text = presenter.update(screen('b3', orderScreen(MAIN_DETAILS, 12)), { lead: 'Tapped #n22.' });
+    expect(text).toContain('The screen changed substantially since revision b2.');
+    expect(text).toContain(' #n2 navigation "Sidebar" (12 nodes inside, unchanged since revision b1)');
+    expect(text).not.toContain('unchanged since revision b2');
+  });
+
+  it('names the original revision when the previous screen itself folded the subtree', () => {
+    const presenter = new ScreenPresenter();
+    presenter.initial(screen('b1', orderScreen(MAIN_LIST, 12)));
+    const first = presenter.update(screen('b2', orderScreen(MAIN_DETAILS, 12)), { lead: 'Tapped #n22.' });
+    expect(first).toContain(' #n2 navigation "Sidebar" (12 nodes inside, unchanged since revision b1)');
+    const second = presenter.update(screen('b3', orderScreen(MAIN_SEARCH, 12)), { lead: 'Tapped #n43.' });
+    expect(second).toContain('The screen changed substantially since revision b2.');
+    expect(second).toContain(' #n2 navigation "Sidebar" (12 nodes inside, unchanged since revision b1)');
+    expect(second).not.toContain('unchanged since revision b2');
+  });
+
+  it('lists a changed subtree in full again, then folds it against that listing', () => {
+    const presenter = new ScreenPresenter();
+    presenter.initial(screen('b1', orderScreen(MAIN_LIST, 12)));
+    const renamed = orderScreen(MAIN_LIST, 12).map((line) =>
+      (line.includes('#n5 ') ? '  #n5 link "Item 3 (new)"' : line),
+    );
+    expect(presenter.update(screen('b2', renamed))).toContain('changed #n5 link "Item 3 (new)"');
+    // The sidebar changed at b2, so b3 may not fold it against b1: the model
+    // holds the old item text there, not the new one.
+    const rename = (lines: readonly string[]): string[] =>
+      lines.map((line) => (line.includes('#n5 ') ? '  #n5 link "Item 3 (new)"' : line));
+    const relisted = presenter.update(screen('b3', rename(orderScreen(MAIN_DETAILS, 12))), { lead: 'Tapped #n22.' });
+    expect(relisted).toContain('The screen changed substantially since revision b2.');
+    expect(relisted).not.toContain('nodes inside, unchanged since revision');
+    expect(relisted).toContain(' #n5 link "Item 3 (new)"');
+    const folded = presenter.update(screen('b4', rename(orderScreen(MAIN_SEARCH, 12))), { lead: 'Tapped #n43.' });
+    expect(folded).toContain(' #n2 navigation "Sidebar" (12 nodes inside, unchanged since revision b3)');
+    expect(folded).not.toContain('unchanged since revision b1');
+  });
+
+  it('still folds against the original revision when a change was undone', () => {
+    const presenter = new ScreenPresenter();
+    presenter.initial(screen('b1', orderScreen(MAIN_LIST, 12)));
+    const renamed = orderScreen(MAIN_LIST, 12).map((line) =>
+      (line.includes('#n5 ') ? '  #n5 link "Item 3 (new)"' : line),
+    );
+    presenter.update(screen('b2', renamed));
+    presenter.update(screen('b3', orderScreen(MAIN_LIST, 12)));
+    const text = presenter.update(screen('b4', orderScreen(MAIN_DETAILS, 12)), { lead: 'Tapped #n22.' });
+    expect(text).toContain(' #n2 navigation "Sidebar" (12 nodes inside, unchanged since revision b1)');
   });
 });
 

@@ -86,8 +86,24 @@ function rewriteOldestParts(messages: ModelMessage[], count: number, rewrite: Pa
  * How many of the newest full screens stay verbatim in the transcript. One:
  * a whole new screen means the page changed mostly, and the screen it
  * replaced is dead weight on every later turn. Change updates never elide.
+ * A screen a surviving screen's fold lines depend on stays too: a folded
+ * line names the revision that last listed its subtree in full, and that
+ * screen is the only place the model can still read it.
  */
 const FULL_SCREEN_PRESERVE_COUNT = 1;
+
+/** A fold line's dependency: `(12 nodes inside, unchanged since revision b1)`. */
+const FOLD_DEPENDENCY_PATTERN = /\(\d+ nodes inside, unchanged since revision ([^)]+)\)/g;
+
+/** The revision a full screen's heading carries, or undefined when it carries none. */
+function screenRevision(text: string): string | undefined {
+  return /Current screen \(revision ([^,)]+),/.exec(text)?.[1];
+}
+
+/** The revisions a full screen's fold lines depend on. */
+function foldDependencies(text: string): string[] {
+  return [...text.matchAll(FOLD_DEPENDENCY_PATTERN)].map((match) => match[1]!);
+}
 
 /**
  * Bytes of superseded full screens a transcript carries before they are
@@ -104,23 +120,56 @@ export interface CompactScreenHistoryOptions {
 
 /**
  * Elides full screens the transcript no longer needs: every full screen but
- * the newest few is reduced to its lead and a notice, in the opening prompt
- * and in tool results alike, once the stale screens together outgrow the
- * budget. Diffs are never touched. Returns the input array unchanged when
- * nothing qualifies, so the caller can skip the override.
+ * the newest is reduced to its lead and a notice, in the opening prompt
+ * and in tool results alike, once the screens that may be elided together
+ * outgrow the budget. Diffs are never touched. A screen a surviving screen's
+ * fold lines depend on is never elided, with the screens it in turn depends
+ * on: the fold line names the revision that last listed its subtree in full,
+ * and eliding it would leave the model a pointer to content it no longer
+ * holds. Returns the input array unchanged when nothing qualifies, so the
+ * caller can skip the override.
  */
 export function compactScreenHistory(
   messages: ModelMessage[],
   options: CompactScreenHistoryOptions = {},
 ): ModelMessage[] {
-  const screens = transcriptParts(messages).map(fullScreenText).filter((text) => text !== undefined);
-  const stale = screens.length - FULL_SCREEN_PRESERVE_COUNT;
-  if (stale <= 0) return messages;
-  const staleBytes = screens.slice(0, stale).reduce((bytes, text) => bytes + Buffer.byteLength(text, 'utf8'), 0);
+  const screens = transcriptParts(messages)
+    .map(fullScreenText)
+    .filter((text) => text !== undefined)
+    .map((text) => ({ text, revision: screenRevision(text) }));
+  const preserved = new Set<number>();
+  for (let at = Math.max(0, screens.length - FULL_SCREEN_PRESERVE_COUNT); at < screens.length; at += 1) {
+    preserved.add(at);
+  }
+  // Follow each preserved screen's fold lines to the screens they depend on,
+  // transitively: a preserved screen's fold may name a screen that itself
+  // folded another subtree, and only that screen lists it in full.
+  const queue = [...preserved];
+  while (queue.length > 0) {
+    const index = queue.pop()!;
+    for (const dependency of foldDependencies(screens[index]!.text)) {
+      screens.forEach((screen, at) => {
+        if (screen.revision === dependency && !preserved.has(at)) {
+          preserved.add(at);
+          queue.push(at);
+        }
+      });
+    }
+  }
+  const elidable = screens.filter((_, index) => !preserved.has(index));
+  if (elidable.length === 0) return messages;
+  const staleBytes = elidable.reduce((bytes, screen) => bytes + Buffer.byteLength(screen.text, 'utf8'), 0);
   if (staleBytes <= (options.keepStaleBytes ?? KEEP_STALE_SCREEN_BYTES)) return messages;
-  return rewriteOldestParts(messages, stale, {
-    user: (part) => (part.type === 'text' && isFullScreen(part.text) ? { ...part, text: elideScreen(part.text) } : undefined),
-    tool: elideResultScreen,
+  const preservedRevisions = new Set(
+    [...preserved].map((index) => screens[index]!.revision).filter((revision) => revision !== undefined),
+  );
+  const keep = (text: string): boolean => {
+    const revision = screenRevision(text);
+    return revision !== undefined && preservedRevisions.has(revision);
+  };
+  return rewriteOldestParts(messages, elidable.length, {
+    user: (part) => (part.type === 'text' && isFullScreen(part.text) && !keep(part.text) ? { ...part, text: elideScreen(part.text) } : undefined),
+    tool: (part) => elideResultScreen(part, keep),
   });
 }
 
@@ -132,19 +181,21 @@ function fullScreenText(part: UserPart | ToolPart): string | undefined {
 
 /**
  * The tool result with its full screen elided, or undefined when it carries
- * none. A result with a screenshot attached loses only the screen text and
- * keeps its other items: the image, or the notice that replaced it.
+ * none or the screen is one a surviving screen depends on. A result with a
+ * screenshot attached loses only the screen text and keeps its other items:
+ * the image, or the notice that replaced it.
  */
-function elideResultScreen(part: ToolPart): ToolPart | undefined {
+function elideResultScreen(part: ToolPart, keep: (text: string) => boolean): ToolPart | undefined {
   if (part.type !== 'tool-result') return undefined;
   const { output } = part;
   if (output.type === 'text') {
-    return isFullScreen(output.value) ? { ...part, output: { ...output, value: elideScreen(output.value) } } : undefined;
+    return isFullScreen(output.value) && !keep(output.value) ? { ...part, output: { ...output, value: elideScreen(output.value) } } : undefined;
   }
   if (output.type !== 'content' || !output.value.some(isScreenItem)) return undefined;
+  if (output.value.every((item) => !isScreenItem(item) || keep(item.text))) return undefined;
   return {
     ...part,
-    output: { ...output, value: output.value.map((item) => (isScreenItem(item) ? { ...item, text: elideScreen(item.text) } : item)) },
+    output: { ...output, value: output.value.map((item) => (isScreenItem(item) && !keep(item.text) ? { ...item, text: elideScreen(item.text) } : item)) },
   };
 }
 
