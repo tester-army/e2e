@@ -1,0 +1,52 @@
+test: control inventory › back returns from the details view to the inventory
+file: tests-agent/control-inventory.e2e.ts
+recordedWith:
+  engine: 1
+  platform: web
+  app: dc587874e98340c0ead3b9555bef25c85bca9337c6c8e28ae9e991c982ef1202
+  contextDigest: "02e45116d4a18a6603260cbbc8fa198d311b6a1a01362cc9dd6aa341d16bb3cf"
+
+acts:
+  - instruction: open the details, then return to the inventory through the browser history
+    steps:
+      - tap: { role: button, name: Open details, within: Navigation }
+      - back: {}
+      - wait: { role: status, name: Navigation state, text: back on the inventory }
+      - waitGone: { role: status, name: Navigation state, text: not opened }
+    replay:
+      key: d2a64638fa64821ffadb8a50d092e13ee89722c9ce06b9ae34628d827a9f37df
+      order: 0
+      variant:
+        agent: "37a8eec1ce19687d132fe29051dca629d164e2c4958ba141d5f4133a33f0688f"
+        project: "6c340b4558007fd12144b6a4e0daf3abb724b92faa2d08705fa564444b68533c"
+        target: "4b5e57f6eb2f42b9039b3d1e13929295f231749c510cbe341cd68036d9af97e2"
+      checks:
+        endPath: /e/control-inventory
+        endWaitMs: 12570
+        executor:
+          name: e2e-default-agent
+          version: "2"
+        keyedBy:
+          agentContextDigest: "02e45116d4a18a6603260cbbc8fa198d311b6a1a01362cc9dd6aa341d16bb3cf"
+          appIdentity: dc587874e98340c0ead3b9555bef25c85bca9337c6c8e28ae9e991c982ef1202
+          cacheSchema: trace-1
+          engineName: web
+          engineSpiVersion: 1
+          platform: web
+          policyVersion: conservative/6
+          project: "6c340b4558007fd12144b6a4e0daf3abb724b92faa2d08705fa564444b68533c"
+        recordedFor:
+          agent: default
+          callIndex: 0
+          instructionDigest: b654f62f1b06969b737e6bc5900524da39b012965a0d82aef45fce7af099ba6c
+          paramsDigest: "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+          targetId: web
+          testId: tests-agent/control-inventory.e2e.ts::control%20inventory::back%20returns%20from%20the%20details%20view%20to%20the%20inventory
+        startPath: /e/control-inventory
+        summary: Opened Details, then used browser history to return to /e/control-inventory. The Navigation state now reads “back on the inventory.”
+      summaries:
+        - tap button "Open details" in "Navigation"
+        - navigate back
+identity:
+  id: "07b4d7e9bd3b15f44051f1e387b5afcf6e7534ebc17d317fc7d11903eaebc3d6"
+  testId: tests-agent/control-inventory.e2e.ts::control%20inventory::back%20returns%20from%20the%20details%20view%20to%20the%20inventory

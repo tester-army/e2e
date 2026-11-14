@@ -1,0 +1,66 @@
+test: act completes otp-auto-advance
+file: tests-agent/scenarios.e2e.ts
+recordedWith:
+  engine: 1
+  platform: web
+  app: dc587874e98340c0ead3b9555bef25c85bca9337c6c8e28ae9e991c982ef1202
+  contextDigest: "02e45116d4a18a6603260cbbc8fa198d311b6a1a01362cc9dd6aa341d16bb3cf"
+
+acts:
+  - instruction: "Complete this scenario as the page instructs: enter the 6-digit code the page shows into the segmented code inputs and verify it"
+    steps:
+      - type: { role: textbox, testId: otp-input-0, inputPurpose: one-time-code, value: "4" }
+      - type: { role: textbox, testId: otp-input-1, inputPurpose: one-time-code, value: "9" }
+      - type: { role: textbox, testId: otp-input-2, inputPurpose: one-time-code, value: "3" }
+      - type: { role: textbox, testId: otp-input-3, inputPurpose: one-time-code, value: "0" }
+      - type: { role: textbox, testId: otp-input-4, inputPurpose: one-time-code, value: "2" }
+      - type: { role: textbox, testId: otp-input-5, inputPurpose: one-time-code, value: "7" }
+      - wait: { text: Code verified, testId: success-message }
+      - waitGone: { text: Enter code 493027. }
+      - waitGone: { role: textbox, testId: otp-input-0, inputPurpose: one-time-code }
+      - waitGone: { role: textbox, testId: otp-input-1, inputPurpose: one-time-code }
+      - waitGone: { role: textbox, testId: otp-input-2, inputPurpose: one-time-code }
+      - waitGone: { role: textbox, testId: otp-input-3, inputPurpose: one-time-code }
+      - waitGone: { role: textbox, testId: otp-input-4, inputPurpose: one-time-code }
+      - waitGone: { role: textbox, testId: otp-input-5, inputPurpose: one-time-code }
+    replay:
+      key: "1d59459d7a881c6b4678da3686969d22fe1258a8be44e53d70929ed7d91def84"
+      order: 0
+      variant:
+        agent: "37a8eec1ce19687d132fe29051dca629d164e2c4958ba141d5f4133a33f0688f"
+        project: "6c340b4558007fd12144b6a4e0daf3abb724b92faa2d08705fa564444b68533c"
+        target: "4b5e57f6eb2f42b9039b3d1e13929295f231749c510cbe341cd68036d9af97e2"
+      checks:
+        endPath: /e/otp-auto-advance
+        endWaitMs: 14371
+        executor:
+          name: e2e-default-agent
+          version: "2"
+        keyedBy:
+          agentContextDigest: "02e45116d4a18a6603260cbbc8fa198d311b6a1a01362cc9dd6aa341d16bb3cf"
+          appIdentity: dc587874e98340c0ead3b9555bef25c85bca9337c6c8e28ae9e991c982ef1202
+          cacheSchema: trace-1
+          engineName: web
+          engineSpiVersion: 1
+          platform: web
+          policyVersion: conservative/6
+          project: "6c340b4558007fd12144b6a4e0daf3abb724b92faa2d08705fa564444b68533c"
+        recordedFor:
+          agent: default
+          callIndex: 0
+          instructionDigest: c878aa968fdbc93d377500f8aecb2f3b0ab701c37b7f9757f8d993f0fc87e109
+          paramsDigest: "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+          targetId: web
+          testId: tests-agent/scenarios.e2e.ts::act%20completes%20otp-auto-advance
+        startPath: /e/otp-auto-advance
+        summary: Entered the displayed code 493027 into the six segmented inputs. The page now displays “Code verified.”
+      summaries:
+        - type "4" into textbox "otp-input-0"
+        - type "9" into textbox "otp-input-1"
+        - type "3" into textbox "otp-input-2"
+        - type "0" into textbox "otp-input-3"
+        - type "2" into textbox "otp-input-4"
+        - type "7" into textbox "otp-input-5"
+identity:
+  id: cd3aea23d9553cff90777f2a637ba534de3571fd986c1bdb9ac7496080f1f483
+  testId: tests-agent/scenarios.e2e.ts::act%20completes%20otp-auto-advance

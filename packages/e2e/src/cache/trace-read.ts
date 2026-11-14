@@ -7,6 +7,9 @@
  * repaired or partially trusted entry.
  */
 
+import { validateJsonValue } from '../internal/json-value.ts';
+import type { JsonValue } from '../types.ts';
+
 import { isKeyModifier, KEY_MODIFIERS, type KeyModifier } from '../engine/contract.ts';
 import type { ScrollDirection } from '../types.ts';
 import { VIEWPORT_LIMITS } from '../internal/geometry.ts';
@@ -99,6 +102,14 @@ function readActionTrace(document: unknown): ActionTrace | undefined {
   }
   const raw = document as Record<string, unknown>;
 
+  const instruction = raw['instruction'];
+  if (instruction !== undefined && (typeof instruction !== 'string' || instruction.length > 65536)) return undefined;
+  const params = raw['params'];
+  if (params !== undefined) {
+    if (params === null || typeof params !== 'object' || Array.isArray(params)) return undefined;
+    try { validateJsonValue(params, 'recorded params', { maxDepth: 32 }); } catch { return undefined; }
+  }
+
   const executorRaw = raw['executor'];
   if (typeof executorRaw !== 'object' || executorRaw === null) return undefined;
   const executorName = (executorRaw as Record<string, unknown>)['name'];
@@ -145,6 +156,8 @@ function readActionTrace(document: unknown): ActionTrace | undefined {
 
   return {
     actions,
+    ...(instruction === undefined ? {} : { instruction }),
+    ...(params === undefined ? {} : { params: params as Readonly<Record<string, JsonValue>> }),
     executor: {
       name: executorName,
       ...(executorVersion === undefined ? {} : { version: executorVersion }),

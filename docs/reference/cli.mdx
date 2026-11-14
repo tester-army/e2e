@@ -1033,6 +1033,11 @@ Inspects or clears the replay cache. Each subcommand loads the discovered
 config or `--config <path>`, reads the directory a run would, and exits 0 on
 an empty store.
 
+Only test-named `.yml` recordings are read. Unreadable YAML is reported with
+its filename and line and left alone by `clear`; delete it manually to regenerate. Legacy `.json` and `.replay.ts` files are left alone by
+all cache commands. Delete them and regenerate with `cache: 'read-write'`.
+There is no cache migration command.
+
 <CodeGroup>
 ```bash npm
 npx e2e cache ls
@@ -1058,7 +1063,7 @@ bunx e2e cache ls --config packages/web/e2e.config.ts
 
 | Command | Prints |
 | --- | --- |
-| `e2e cache ls` | One row per entry: the test and target it was recorded for, the first 12 characters of its instruction digest, its age, and how many actions a replay would run (`(truncated)` when recording hit the action cap). Rows are grouped by test, then target, oldest first. |
+| `e2e cache ls` | One row per test file: the test, targets, number of act steps, and number of actions (`(truncated)` when recording hit the action cap). Rows sort by test, targets, then filename. Recordings have no creation timestamp. |
 | `e2e cache stats` | The store directory, the number of readable entries, their total size, and the number of unreadable files when there are any. |
 | `e2e cache clear` | Deletes every cache file, then the directory when nothing else is left in it, and reports how many files went. |
 
@@ -1068,13 +1073,11 @@ bunx e2e cache ls --config packages/web/e2e.config.ts
 | `--cache-dir <dir>` | The store directory. Default: `E2E_CACHE_DIR`, else `cache.dir`, else `.e2e/cache/`. |
 
 ```text
-TEST                             TARGET  INSTRUCTION   AGE  ACTIONS
-tests/billing.e2e.ts::upgrades   web     4f1c0a9d3b62  2h   4
-tests/signup.e2e.ts::signs%20up  web     9ab7715ce004  3d   7 (truncated)
+TEST                            TARGET  STEPS  ACTIONS
+tests/billing.e2e.ts::upgrades    web     2      4
+tests/signup.e2e.ts::signs%20up   web     1      7 (truncated)
 ```
 
-- An entry recorded before entries carried provenance prints `-` in those
-  columns and still replays.
 - A file the store cannot read (truncated, over the 1 MiB ceiling, or from a
   newer schema) is counted separately on stderr, treated as a miss by a run,
   and removed by `clear`.

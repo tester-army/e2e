@@ -1,0 +1,58 @@
+test: act completes overlay-trap
+file: tests-agent/scenarios.e2e.ts
+recordedWith:
+  engine: 1
+  platform: web
+  app: dc587874e98340c0ead3b9555bef25c85bca9337c6c8e28ae9e991c982ef1202
+  contextDigest: "02e45116d4a18a6603260cbbc8fa198d311b6a1a01362cc9dd6aa341d16bb3cf"
+
+acts:
+  - instruction: "Complete this scenario as the page instructs: dismiss the cookie banner and the overlay in the way, then press Continue"
+    steps:
+      - tap: { role: button, name: Accept cookies, testId: accept-cookies-button }
+      - tap: { role: button, name: × close overlay }
+      - tap: { role: button, name: Continue, testId: continue-button }
+      - wait: { text: You made it past the overlay, testId: success-message }
+      - waitGone: { text: "Accept cookies, close whatever is blocking clicks, then press Continue." }
+      - waitGone: { text: "Blocked clicks: 0", testId: blocked-count }
+      - waitGone: { role: button, name: Continue, testId: continue-button }
+      - waitGone: { text: We use cookies to run this benchmark. }
+      - waitGone: { role: button, name: Accept cookies, testId: accept-cookies-button }
+    replay:
+      key: "3aa75b32cb016b70702dbf3853d17fb70dcd7fca5274a024199db5d58a671d00"
+      order: 0
+      variant:
+        agent: "37a8eec1ce19687d132fe29051dca629d164e2c4958ba141d5f4133a33f0688f"
+        project: "6c340b4558007fd12144b6a4e0daf3abb724b92faa2d08705fa564444b68533c"
+        target: "4b5e57f6eb2f42b9039b3d1e13929295f231749c510cbe341cd68036d9af97e2"
+      checks:
+        endPath: /e/overlay-trap
+        endWaitMs: 11329
+        executor:
+          name: e2e-default-agent
+          version: "2"
+        keyedBy:
+          agentContextDigest: "02e45116d4a18a6603260cbbc8fa198d311b6a1a01362cc9dd6aa341d16bb3cf"
+          appIdentity: dc587874e98340c0ead3b9555bef25c85bca9337c6c8e28ae9e991c982ef1202
+          cacheSchema: trace-1
+          engineName: web
+          engineSpiVersion: 1
+          platform: web
+          policyVersion: conservative/6
+          project: "6c340b4558007fd12144b6a4e0daf3abb724b92faa2d08705fa564444b68533c"
+        recordedFor:
+          agent: default
+          callIndex: 0
+          instructionDigest: "6705af9140f936652f275b785be7e42b157ba15b3fa16eefba2c51d6f3fdcd1b"
+          paramsDigest: "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+          targetId: web
+          testId: tests-agent/scenarios.e2e.ts::act%20completes%20overlay-trap
+        startPath: /e/overlay-trap
+        summary: Dismissed the cookie banner, closed the overlay, and pressed Continue. The page shows “You made it past the overlay.”
+      summaries:
+        - tap button "Accept cookies"
+        - tap button "× close overlay"
+        - tap button "Continue"
+identity:
+  id: "9df55695b7d0449c40232727d2b3cad2ce1fe8490dbaa4d5ab06ece9a654da27"
+  testId: tests-agent/scenarios.e2e.ts::act%20completes%20overlay-trap

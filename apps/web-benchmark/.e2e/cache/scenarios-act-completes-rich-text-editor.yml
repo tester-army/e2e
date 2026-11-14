@@ -1,0 +1,129 @@
+test: act completes rich-text-editor
+file: tests-agent/scenarios.e2e.ts
+recordedWith:
+  engine: 1
+  platform: web
+  app: dc587874e98340c0ead3b9555bef25c85bca9337c6c8e28ae9e991c982ef1202
+  contextDigest: "02e45116d4a18a6603260cbbc8fa198d311b6a1a01362cc9dd6aa341d16bb3cf"
+
+acts:
+  - instruction: 'Complete this scenario as the page instructs: type "release approved" into the editor, make exactly the word approved bold, and check the document'
+    steps:
+      - type: { role: textbox, testId: editor, value: release approved }
+      - press: { role: textbox, text: release approved, testId: editor, key: Control+Shift+ArrowLeft }
+      - press: { role: textbox, text: release approved, testId: editor, key: ArrowRight }
+      - press: { role: textbox, text: release approved, testId: editor, key: Control+Shift+ArrowLeft }
+      - tap: { role: textbox, text: release approved, testId: editor }
+      - press: { role: textbox, text: release approved, testId: editor, key: Shift+End }
+      - press: { role: textbox, text: release approved, testId: editor, key: Shift+ArrowRight }
+      - press: Shift+ArrowRight
+      - press: Shift+ArrowRight
+      - press: Shift+ArrowRight
+      - press: Shift+ArrowRight
+      - press: Shift+ArrowRight
+      - press: Shift+ArrowRight
+      - press: Shift+ArrowRight
+      - tap: { role: textbox, text: release approved, testId: editor }
+      - press: { role: textbox, text: release approved, testId: editor, key: Control+a }
+      - tap: { role: textbox, text: release approved, testId: editor }
+      - press: { role: textbox, text: release approved, testId: editor, key: Control+a }
+      - press: { role: textbox, text: release approved, testId: editor, key: Control+Shift+ArrowLeft }
+      - press: { role: textbox, text: release approved, testId: editor, key: Home }
+      - press: { role: textbox, text: release approved, testId: editor, key: Shift+ArrowRight }
+      - press: Shift+ArrowRight
+      - press: Shift+ArrowRight
+      - press: Shift+ArrowRight
+      - press: Shift+ArrowRight
+      - press: Shift+ArrowRight
+      - press: Shift+ArrowRight
+      - press: Shift+ArrowRight
+      - press: { role: textbox, text: release approved, testId: editor, key: ArrowRight }
+      - press: { role: textbox, text: release approved, testId: editor, key: Shift+ArrowRight }
+      - press: Shift+ArrowRight
+      - press: Shift+ArrowRight
+      - press: Shift+ArrowRight
+      - press: Shift+ArrowRight
+      - press: Shift+ArrowRight
+      - press: Shift+ArrowRight
+      - press: Shift+ArrowRight
+      - tap: { role: button, name: B, testId: bold-button }
+      - tap: { role: button, name: Check document, testId: check-button }
+      - wait: { text: Document approved, testId: success-message }
+      - waitGone: { text: 'Type "release approved" in the editor and make the word approved bold, then check the document.' }
+      - waitGone: { role: button, name: B, testId: bold-button }
+      - waitGone: { role: textbox, testId: editor }
+      - waitGone: { role: button, name: Check document, testId: check-button }
+    replay:
+      key: "8fd84a0f9335c6c96be5d82a9cda46146389f138c2fd46037ffbf64f4ef6e2eb"
+      order: 0
+      variant:
+        agent: "37a8eec1ce19687d132fe29051dca629d164e2c4958ba141d5f4133a33f0688f"
+        project: "6c340b4558007fd12144b6a4e0daf3abb724b92faa2d08705fa564444b68533c"
+        target: "4b5e57f6eb2f42b9039b3d1e13929295f231749c510cbe341cd68036d9af97e2"
+      checks:
+        endPath: /e/rich-text-editor
+        endWaitMs: 11834
+        executor:
+          name: e2e-default-agent
+          version: "2"
+        keyedBy:
+          agentContextDigest: "02e45116d4a18a6603260cbbc8fa198d311b6a1a01362cc9dd6aa341d16bb3cf"
+          appIdentity: dc587874e98340c0ead3b9555bef25c85bca9337c6c8e28ae9e991c982ef1202
+          cacheSchema: trace-1
+          engineName: web
+          engineSpiVersion: 1
+          platform: web
+          policyVersion: conservative/6
+          project: "6c340b4558007fd12144b6a4e0daf3abb724b92faa2d08705fa564444b68533c"
+        recordedFor:
+          agent: default
+          callIndex: 0
+          instructionDigest: e37ad9ac878deebe5c840d23fded9589f67228d8229a059b855347ab5e49ab96
+          paramsDigest: "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+          targetId: web
+          testId: tests-agent/scenarios.e2e.ts::act%20completes%20rich-text-editor
+        startPath: /e/rich-text-editor
+        summary: Entered “release approved,” selected only “approved” and applied bold formatting, then checked the document. The page confirmed “Document approved.”
+      summaries:
+        - type "release approved" into textbox "editor"
+        - press "Control+Shift+ArrowLeft" on textbox "release approved"
+        - press "ArrowRight" on textbox "release approved"
+        - press "Control+Shift+ArrowLeft" on textbox "release approved"
+        - tap textbox "release approved"
+        - press "Shift+End" on textbox "release approved"
+        - press "Shift+ArrowRight" on textbox "release approved"
+        - press "Shift+ArrowRight" on the focused field
+        - press "Shift+ArrowRight" on the focused field
+        - press "Shift+ArrowRight" on the focused field
+        - press "Shift+ArrowRight" on the focused field
+        - press "Shift+ArrowRight" on the focused field
+        - press "Shift+ArrowRight" on the focused field
+        - press "Shift+ArrowRight" on the focused field
+        - tap textbox "release approved"
+        - press "Control+a" on textbox "release approved"
+        - tap textbox "release approved"
+        - press "Control+a" on textbox "release approved"
+        - press "Control+Shift+ArrowLeft" on textbox "release approved"
+        - press "Home" on textbox "release approved"
+        - press "Shift+ArrowRight" on textbox "release approved"
+        - press "Shift+ArrowRight" on the focused field
+        - press "Shift+ArrowRight" on the focused field
+        - press "Shift+ArrowRight" on the focused field
+        - press "Shift+ArrowRight" on the focused field
+        - press "Shift+ArrowRight" on the focused field
+        - press "Shift+ArrowRight" on the focused field
+        - press "Shift+ArrowRight" on the focused field
+        - press "ArrowRight" on textbox "release approved"
+        - press "Shift+ArrowRight" on textbox "release approved"
+        - press "Shift+ArrowRight" on the focused field
+        - press "Shift+ArrowRight" on the focused field
+        - press "Shift+ArrowRight" on the focused field
+        - press "Shift+ArrowRight" on the focused field
+        - press "Shift+ArrowRight" on the focused field
+        - press "Shift+ArrowRight" on the focused field
+        - press "Shift+ArrowRight" on the focused field
+        - tap button "B"
+        - tap button "Check document"
+identity:
+  id: c1dc0a607301036844b16e4996f71839030b412774a7febfe485f6ef5c12410d
+  testId: tests-agent/scenarios.e2e.ts::act%20completes%20rich-text-editor

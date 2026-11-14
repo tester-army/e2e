@@ -1,0 +1,76 @@
+test: act completes Sequential Onboarding
+file: tests-agent/scenarios.e2e.ts
+recordedWith:
+  engine: 1
+  platform: android
+  app: e18e9835187bab993e11f2dd7ff5624429bc26890c846accacf0057b525e92a0
+  contextDigest: "9851c2b004c95e29037ba508c9a81e7efff8fcaa01e5491077154e702520281a"
+
+acts:
+  - instruction: "Complete this scenario as the screen instructs: complete the signup wizard with the email, name, and phone the screen asks for, dismissing the keyboard before each Continue"
+    steps:
+      - type: { role: textbox, name: e.g. jane@example.com, testId: email-input, placeholder: e.g. jane@example.com, selector: id=email-input, within: Step 1 of 3, value: jane@example.com }
+      - dismissKeyboard: {}
+      - tap: { role: group, name: Continue, testId: continue-button, selector: id=continue-button, within: Step 1 of 3 }
+      - type: { role: textbox, name: e.g. Jane, testId: first-name-input, placeholder: e.g. Jane, selector: id=first-name-input, within: Step 2 of 3, value: Jane }
+      - type: { role: textbox, name: e.g. Merchant, testId: last-name-input, placeholder: e.g. Merchant, selector: id=last-name-input, within: Step 2 of 3, value: Merchant }
+      - dismissKeyboard: {}
+      - tap: { role: group, name: Continue, testId: continue-button, selector: id=continue-button, within: Step 2 of 3 }
+      - type: { role: textbox, name: e.g. 0612435678, testId: phone-input, placeholder: e.g. 0612435678, selector: id=phone-input, within: Step 3 of 3, value: "0612435678" }
+      - dismissKeyboard: {}
+      - tap: { role: group, name: Continue, testId: continue-button, selector: id=continue-button, within: Step 3 of 3 }
+      - wait: { role: text, name: Onboarding complete, testId: success-message }
+      - wait: { role: text, name: jane@example.com, testId: echo-email }
+      - wait: { role: text, name: Jane Merchant, testId: echo-name }
+      - wait: { role: text, name: "0612435678", testId: echo-phone }
+      - waitGone: { role: text, name: Step 1 of 3 }
+      - waitGone: { role: text, name: Let's start with your email }
+      - waitGone: { role: textbox, name: e.g. jane@example.com, testId: email-input, placeholder: e.g. jane@example.com }
+      - waitGone: { role: text, name: Continue }
+      - waitGone: { role: group, testId: onboarding-step-email }
+      - waitGone: { role: group, name: Continue, testId: continue-button }
+    replay:
+      key: bac4ef2c2e541ff451b7cacb5b4470aa86a01fbb224794ca75972e219b5215e8
+      order: 0
+      variant:
+        agent: "37a8eec1ce19687d132fe29051dca629d164e2c4958ba141d5f4133a33f0688f"
+        project: "5db668e539f1f8a455eaa798ab239f0cfdc68c99776863db1ddd6f27a9fba643"
+        target: a34152a60079722a259a417c0251ad71bf53cd3ef002e7f6c1e465dad98bee2b
+      checks:
+        endPath: dev.e2e.benchmark
+        endWaitMs: 11700
+        executor:
+          name: e2e-default-agent
+          version: "2"
+        keyedBy:
+          agentContextDigest: "9851c2b004c95e29037ba508c9a81e7efff8fcaa01e5491077154e702520281a"
+          appIdentity: e18e9835187bab993e11f2dd7ff5624429bc26890c846accacf0057b525e92a0
+          cacheSchema: trace-1
+          engineName: mobile
+          engineSpiVersion: 1
+          platform: android
+          policyVersion: conservative/6
+          project: "5db668e539f1f8a455eaa798ab239f0cfdc68c99776863db1ddd6f27a9fba643"
+        recordedFor:
+          agent: default
+          callIndex: 0
+          instructionDigest: "970c887978c38f936a27d9b90e47b8e93318f07069e136ba3b343e8bfa936525"
+          paramsDigest: "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+          targetId: android-emulator
+          testId: tests-agent/scenarios.e2e.ts::act%20completes%20Sequential%20Onboarding
+        startPath: dev.e2e.benchmark
+        summary: Completed all three signup steps using jane@example.com, Jane Merchant, and 0612435678. Dismissed the keyboard before each Continue; the final screen confirms “Onboarding complete” and echoes all three values.
+      summaries:
+        - type "jane@example.com" into textbox "e.g. jane@example.com" in "Step 1 of 3"
+        - dismiss the keyboard
+        - tap group "Continue" in "Step 1 of 3"
+        - type "Jane" into textbox "e.g. Jane" in "Step 2 of 3"
+        - type "Merchant" into textbox "e.g. Merchant" in "Step 2 of 3"
+        - dismiss the keyboard
+        - tap group "Continue" in "Step 2 of 3"
+        - type "0612435678" into textbox "e.g. 0612435678" in "Step 3 of 3"
+        - dismiss the keyboard
+        - tap group "Continue" in "Step 3 of 3"
+identity:
+  id: fc0f7e6d1480b04fc8d302b622449f2d78659a13bcbf1ac0379fb89af70eff5c
+  testId: tests-agent/scenarios.e2e.ts::act%20completes%20Sequential%20Onboarding

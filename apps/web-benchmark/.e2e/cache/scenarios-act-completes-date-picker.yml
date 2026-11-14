@@ -1,0 +1,61 @@
+test: act completes date-picker
+file: tests-agent/scenarios.e2e.ts
+recordedWith:
+  engine: 1
+  platform: web
+  app: dc587874e98340c0ead3b9555bef25c85bca9337c6c8e28ae9e991c982ef1202
+  contextDigest: "02e45116d4a18a6603260cbbc8fa198d311b6a1a01362cc9dd6aa341d16bb3cf"
+
+acts:
+  - instruction: "Complete this scenario as the page instructs: book an appointment for the exact date the page requires, navigating the calendar to it"
+    steps:
+      - tap: { role: textbox, name: Select date, testId: date-input, placeholder: Select date }
+      - tap: { role: button, name: ›, testId: next-month-button }
+      - tap: { role: button, name: ›, testId: next-month-button }
+      - tap: { role: button, name: ›, testId: next-month-button }
+      - tap: { role: button, name: "17", testId: day-button-17 }
+      - tap: { role: button, name: Confirm booking, testId: confirm-button }
+      - wait: { text: "Appointment booked for September 17, 2026", testId: success-message }
+      - waitGone: { role: textbox, name: Select date, testId: date-input, placeholder: Select date }
+      - waitGone: { role: button, name: Confirm booking, testId: confirm-button }
+    replay:
+      key: be7d298262310938ce138756a44f67f5f87010d6eca26d02996608769c664c54
+      order: 0
+      variant:
+        agent: "37a8eec1ce19687d132fe29051dca629d164e2c4958ba141d5f4133a33f0688f"
+        project: "6c340b4558007fd12144b6a4e0daf3abb724b92faa2d08705fa564444b68533c"
+        target: "4b5e57f6eb2f42b9039b3d1e13929295f231749c510cbe341cd68036d9af97e2"
+      checks:
+        endPath: /e/date-picker
+        endWaitMs: 11647
+        executor:
+          name: e2e-default-agent
+          version: "2"
+        keyedBy:
+          agentContextDigest: "02e45116d4a18a6603260cbbc8fa198d311b6a1a01362cc9dd6aa341d16bb3cf"
+          appIdentity: dc587874e98340c0ead3b9555bef25c85bca9337c6c8e28ae9e991c982ef1202
+          cacheSchema: trace-1
+          engineName: web
+          engineSpiVersion: 1
+          platform: web
+          policyVersion: conservative/6
+          project: "6c340b4558007fd12144b6a4e0daf3abb724b92faa2d08705fa564444b68533c"
+        recordedFor:
+          agent: default
+          callIndex: 0
+          instructionDigest: dcf88f9a5a9a284823967721c9316e3541f960b36032c247343f678217019dde
+          paramsDigest: "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+          targetId: web
+          testId: tests-agent/scenarios.e2e.ts::act%20completes%20date-picker
+        startPath: /e/date-picker
+        summary: Navigated the calendar from June to September 2026, selected September 17, and confirmed. The page shows “Appointment booked for September 17, 2026.”
+      summaries:
+        - tap textbox "Select date"
+        - tap button "›"
+        - tap button "›"
+        - tap button "›"
+        - tap button "17"
+        - tap button "Confirm booking"
+identity:
+  id: "0e32432370b928cde31a36555b53f553cd3435cd7718db8558b731b3aacc84dc"
+  testId: tests-agent/scenarios.e2e.ts::act%20completes%20date-picker

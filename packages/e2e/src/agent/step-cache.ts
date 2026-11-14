@@ -12,6 +12,9 @@
  * when replay performed no action.
  */
 
+import { FileCacheStore } from '../cache/store.ts';
+import { redactParams } from './act-validation.ts';
+
 import { deltaEvidenced, deltaMismatch, describeDelta, type DeltaMismatch } from '../cache/anchors.ts';
 import type { AgentCacheContext, ClaimedKey } from '../cache/context.ts';
 import { decideTraceReplay, opensWithNavigate, type TraceReplayMissReason } from '../cache/decide.ts';
@@ -197,6 +200,7 @@ export class StepTraceSession {
     // The key digests the params as the recording spells them, a placeholder
     // where each `unique()` value was, so every run's value finds one entry.
     this.claim = options.cache.claimKey('act', options.instruction, templateParams(options.params, options.templates), options.agent);
+    if (this.cache.store instanceof FileCacheStore) this.cache.store.displayIdentity(options.redact(this.claim.step.testId), options.redact);
     this.keyHash = this.claim.keyHash;
     if (options.cache.mode === 'read-write') {
       this.recorder = new TraceRecorder({
@@ -296,13 +300,13 @@ export class StepTraceSession {
   private async failIfRekeyed(): Promise<void> {
     const { strict } = this.cache;
     if (strict === false || strict.recordings === undefined) return;
-    const previous = await strict.recordings.underAnotherKey(this.keyHash, recordedProvenance(this.claim.step, this.options.redact));
+    const previous = await strict.recordings.underAnotherKey(this.keyHash, recordedProvenance(this.claim.step, this.options.redact), this.claim.step.testId);
     if (previous === undefined) return;
     const changes = keyContextChanges(previous.keyedBy, this.claim.context);
     const why = changes.length === 0 ? "the runner, the engine, the app, or the agent's context changed after it was recorded" : `${changes.join(', ')} changed after it was recorded`;
     throw new AgentError(
       'REPLAY_STALE',
-      `the recording of this step no longer replays: the store holds it under another cache key (${previous.keyHash}.json), since ${why}, and cache.strict hands no step to the agent; ${strict.advice}`,
+      `the recording of this step no longer replays: the store holds it under another cache key (${previous.fileName}), since ${why}, and cache.strict hands no step to the agent; ${strict.advice}`,
     );
   }
 
@@ -609,7 +613,7 @@ export class StepTraceSession {
     const routeMoved = this.startPath !== undefined && endPath !== undefined && !sameRoute(this.startPath, endPath);
     const delta = describeDelta(startNodes, endNodes, routeMoved);
     if (delta.appeared.length === 0 && delta.gone.length === 0 && !routeMoved) return 'no-change';
-    const trace = recorder.finalize({
+    const recorded = recorder.finalize({
       executor: this.options.executor,
       recordedFor: this.claim.step,
       ...(recordedBy === undefined ? {} : { recordedBy }),
@@ -628,7 +632,9 @@ export class StepTraceSession {
       endWaitMs: Date.now() - this.endWaitBaselineMs(recorder) + END_WAIT_MARGIN_MS,
       keyedBy: this.claim.context,
     });
-    if (trace === undefined) return 'skipped';
+    if (recorded === undefined) return 'skipped';
+    const params = this.options.params === undefined ? undefined : templateParams(redactParams(this.options.params ?? {}, this.options.templates, this.options.redact, 'act').params, this.options.templates);
+    const trace = { ...recorded, instruction: this.options.redact(this.options.instruction), ...(params === undefined ? {} : { params }) };
     // A trace with no start anchor — no recorded path (a surface without a URL)
     // and no opening navigate — could never replay: `wrong-context` forever.
     // Writing it would be pure store traffic, so it is not written at all.

@@ -1,0 +1,130 @@
+test: act completes Choice Controls
+file: tests-agent/scenarios.e2e.ts
+recordedWith:
+  engine: 1
+  platform: android
+  app: e18e9835187bab993e11f2dd7ff5624429bc26890c846accacf0057b525e92a0
+  contextDigest: "9851c2b004c95e29037ba508c9a81e7efff8fcaa01e5491077154e702520281a"
+
+acts:
+  - instruction: "Complete this scenario as the screen instructs: order a Medium pizza with exactly Cheese and Olives, enable rush delivery, dismiss the keyboard, and place the order"
+    steps:
+      - check: { role: checkbox, name: Cheese, testId: topping-cheese, selector: id=topping-cheese, within: "Order a Medium pizza with exactly Cheese and Olives, enable rush delivery, then…", checked: true }
+      - check: { role: checkbox, name: Olives, testId: topping-olives, selector: id=topping-olives, within: "Order a Medium pizza with exactly Cheese and Olives, enable rush delivery, then…", checked: true }
+      - check: { role: switch, testId: rush-delivery, selector: id=rush-delivery, within: "Order a Medium pizza with exactly Cheese and Olives, enable rush delivery, then…", checked: true }
+      - tap: { role: radio, name: Medium, testId: size-medium, selector: id=size-medium, within: "Order a Medium pizza with exactly Cheese and Olives, enable rush delivery, then…" }
+      - tap: { role: textbox, name: Ring the doorbell twice, testId: delivery-notes, placeholder: Ring the doorbell twice, selector: id=delivery-notes, within: "Order a Medium pizza with exactly Cheese and Olives, enable rush delivery, then…" }
+      - dismissKeyboard: {}
+      - tap: { role: group, name: Place order, testId: place-order, selector: id=place-order, within: "Order a Medium pizza with exactly Cheese and Olives, enable rush delivery, then…" }
+      - wait: { role: text, name: "Order placed: Medium with Cheese, Olives (rush)", testId: success-message }
+      - waitGone: { role: text, name: "Order a Medium pizza with exactly Cheese and Olives, enable rush delivery, then place the order (dismiss the keyboard first)." }
+      - waitGone: { role: text, name: Size }
+      - waitGone: { role: text, name: Small }
+      - waitGone: { role: text, name: Medium }
+      - waitGone: { role: text, name: Large }
+      - waitGone: { role: text, name: Toppings }
+      - waitGone: { role: text, name: Cheese }
+      - waitGone: { role: text, name: Olives }
+    replay:
+      key: "8c77217a25baacc933adac4c87bd3b8fdd9e7d1ffb9752abae35a6464e4002a3"
+      order: 0
+      variant:
+        agent: "37a8eec1ce19687d132fe29051dca629d164e2c4958ba141d5f4133a33f0688f"
+        project: "5db668e539f1f8a455eaa798ab239f0cfdc68c99776863db1ddd6f27a9fba643"
+        target: a34152a60079722a259a417c0251ad71bf53cd3ef002e7f6c1e465dad98bee2b
+      checks:
+        endPath: dev.e2e.benchmark
+        endWaitMs: 11772
+        executor:
+          name: e2e-default-agent
+          version: "2"
+        keyedBy:
+          agentContextDigest: "9851c2b004c95e29037ba508c9a81e7efff8fcaa01e5491077154e702520281a"
+          appIdentity: e18e9835187bab993e11f2dd7ff5624429bc26890c846accacf0057b525e92a0
+          cacheSchema: trace-1
+          engineName: mobile
+          engineSpiVersion: 1
+          platform: android
+          policyVersion: conservative/6
+          project: "5db668e539f1f8a455eaa798ab239f0cfdc68c99776863db1ddd6f27a9fba643"
+        recordedFor:
+          agent: default
+          callIndex: 0
+          instructionDigest: e45bc3c8dfe206c28355448b56384192428222d9ab9b304cefdfa5b86f6da188
+          paramsDigest: "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+          targetId: android-emulator
+          testId: tests-agent/scenarios.e2e.ts::act%20completes%20Choice%20Controls
+        startPath: dev.e2e.benchmark
+        summary: "Selected Medium, enabled Cheese and Olives only, turned on rush delivery, dismissed the keyboard, and placed the order. The screen confirms: “Order placed: Medium with Cheese, Olives (rush).”"
+      summaries:
+        - check checkbox "Cheese" in "Order a Medium pizza with exactly Chees…"
+        - check checkbox "Olives" in "Order a Medium pizza with exactly Chees…"
+        - check switch "rush-delivery" in "Order a Medium pizza with exactly Chees…"
+        - tap radio "Medium" in "Order a Medium pizza with exactly Chees…"
+        - tap textbox "Ring the doorbell twice" in "Order a Medium pizza with exactly Chees…"
+        - dismiss the keyboard
+        - tap group "Place order" in "Order a Medium pizza with exactly Chees…"
+
+  - instruction: "Complete this scenario as the screen instructs: order a Medium pizza with exactly Cheese and Olives, enable rush delivery, dismiss the keyboard, and place the order"
+    steps:
+      - check: { role: checkbox, name: Cheese, testId: topping-cheese, selector: id=topping-cheese, checked: true }
+      - check: { role: checkbox, name: Olives, testId: topping-olives, selector: id=topping-olives, checked: true }
+      - check: { role: switch, name: "0", testId: rush-delivery, selector: id=rush-delivery, checked: true }
+      - tap: { role: radio, name: Medium, testId: size-medium, selector: id=size-medium }
+      - tap: { role: textbox, testId: delivery-notes, placeholder: Ring the doorbell twice, selector: id=delivery-notes }
+      - tap: { role: checkbox, name: "✓, Mushrooms", testId: topping-mushrooms, selector: id=topping-mushrooms }
+      - tap: { role: button, name: return, testId: Return, selector: id=Return }
+      - tap: { role: other, name: Place order, testId: place-order, selector: id=place-order }
+      - wait: { role: other, name: "Order placed: Medium with Cheese, Olives (rush)" }
+      - wait: { role: text, name: "Order placed: Medium with Cheese, Olives (rush)", testId: success-message }
+      - waitGone: { role: text, name: "Order a Medium pizza with exactly Cheese and Olives, enable rush delivery, then place the order (dismiss the keyboard first)." }
+      - waitGone: { role: text, name: Size }
+      - waitGone: { role: radio, name: Small, testId: size-small }
+      - waitGone: { role: radio, name: Medium, testId: size-medium }
+      - waitGone: { role: radio, name: Large, testId: size-large }
+      - waitGone: { role: text, name: Toppings }
+      - waitGone: { role: checkbox, name: Cheese, testId: topping-cheese }
+      - waitGone: { role: checkbox, name: Olives, testId: topping-olives }
+    replay:
+      key: "95280d940d6f212bd91962b84aeb45bf720de999852e014e808c8eb717ace167"
+      order: 0
+      variant:
+        agent: "37a8eec1ce19687d132fe29051dca629d164e2c4958ba141d5f4133a33f0688f"
+        project: "5db668e539f1f8a455eaa798ab239f0cfdc68c99776863db1ddd6f27a9fba643"
+        target: d34e594487171911acb852c9c20a9b1e42d960b2c08aeb43fe1145049c6f1eed
+      checks:
+        endPath: dev.e2e.benchmark / Choice Controls
+        endWaitMs: 12243
+        executor:
+          name: e2e-default-agent
+          version: "2"
+        keyedBy:
+          agentContextDigest: "9851c2b004c95e29037ba508c9a81e7efff8fcaa01e5491077154e702520281a"
+          appIdentity: "873e96a3c0364ffd8e603a0fb9ccef7bb32dd2c64eb8bddaa76d36fdfbf446ae"
+          cacheSchema: trace-1
+          engineName: mobile
+          engineSpiVersion: 1
+          platform: ios
+          policyVersion: conservative/6
+          project: "5db668e539f1f8a455eaa798ab239f0cfdc68c99776863db1ddd6f27a9fba643"
+        recordedFor:
+          agent: default
+          callIndex: 0
+          instructionDigest: e45bc3c8dfe206c28355448b56384192428222d9ab9b304cefdfa5b86f6da188
+          paramsDigest: "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+          targetId: ios-simulator
+          testId: tests-agent/scenarios.e2e.ts::act%20completes%20Choice%20Controls
+        startPath: dev.e2e.benchmark / Choice Controls
+        summary: "Selected Medium, Cheese, and Olives, enabled rush delivery, opened the notes field and dismissed the keyboard, then placed the order. The app confirms: “Order placed: Medium with Cheese, Olives (rush).”"
+      summaries:
+        - check checkbox "Cheese"
+        - check checkbox "Olives"
+        - check switch "0"
+        - tap radio "Medium"
+        - tap textbox "Ring the doorbell twice"
+        - tap checkbox "✓, Mushrooms"
+        - tap button "return"
+        - tap other "Place order"
+identity:
+  id: "2e3270dec0992ca484787f3891f25c5601b0cea03f3d807b9e4606a8a73fb8ff"
+  testId: tests-agent/scenarios.e2e.ts::act%20completes%20Choice%20Controls

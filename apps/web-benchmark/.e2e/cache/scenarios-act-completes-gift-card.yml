@@ -1,0 +1,62 @@
+test: act completes gift-card-purchase
+file: tests-agent/scenarios.e2e.ts
+recordedWith:
+  engine: 1
+  platform: web
+  app: dc587874e98340c0ead3b9555bef25c85bca9337c6c8e28ae9e991c982ef1202
+  contextDigest: "02e45116d4a18a6603260cbbc8fa198d311b6a1a01362cc9dd6aa341d16bb3cf"
+
+acts:
+  - instruction: "Complete this scenario as the page instructs: buy a gift card for friend@example.com and complete the purchase"
+    steps:
+      - tap: { role: button, name: gift_card_amount_option_undefined, text: $25, testId: amount-25 }
+      - type: { role: textbox, name: "{{recipient_email_label}}", testId: recipient-input, placeholder: friend@example.com, value: friend@example.com }
+      - tap: { role: button, name: btn_purchase_label, text: Buy gift card, testId: buy-button }
+      - wait: { text: Gift card sent to friend@example.com, testId: success-message }
+      - wait: { text: A $25.00 gift card is on its way. }
+      - waitGone: { text: Send a digital gift card. Delivered by email within minutes. }
+      - waitGone: { role: button, name: gift_card_amount_option_undefined, text: $10, testId: amount-10 }
+      - waitGone: { role: button, name: gift_card_amount_option_undefined, text: $25, testId: amount-25 }
+      - waitGone: { role: button, name: gift_card_amount_option_undefined, text: $50, testId: amount-50 }
+      - waitGone: { role: textbox, name: "{{recipient_email_label}}", testId: recipient-input, placeholder: friend@example.com }
+      - waitGone: { text: Total }
+      - waitGone: { text: "Total: $NaN" }
+      - waitGone: { role: button, name: btn_purchase_label, text: Buy gift card, testId: buy-button }
+    replay:
+      key: "325c3192f76978208e795a9a2afbd9f7a89cd4bcb63640b8fc09c4742e995fe8"
+      order: 0
+      variant:
+        agent: "37a8eec1ce19687d132fe29051dca629d164e2c4958ba141d5f4133a33f0688f"
+        project: "6c340b4558007fd12144b6a4e0daf3abb724b92faa2d08705fa564444b68533c"
+        target: "4b5e57f6eb2f42b9039b3d1e13929295f231749c510cbe341cd68036d9af97e2"
+      checks:
+        endPath: /e/gift-card-purchase
+        endWaitMs: 11710
+        executor:
+          name: e2e-default-agent
+          version: "2"
+        keyedBy:
+          agentContextDigest: "02e45116d4a18a6603260cbbc8fa198d311b6a1a01362cc9dd6aa341d16bb3cf"
+          appIdentity: dc587874e98340c0ead3b9555bef25c85bca9337c6c8e28ae9e991c982ef1202
+          cacheSchema: trace-1
+          engineName: web
+          engineSpiVersion: 1
+          platform: web
+          policyVersion: conservative/6
+          project: "6c340b4558007fd12144b6a4e0daf3abb724b92faa2d08705fa564444b68533c"
+        recordedFor:
+          agent: default
+          callIndex: 0
+          instructionDigest: "58b82e08250d41e942c183d1c49b7e031fb5754f62c785c3f064c404c6b44851"
+          paramsDigest: "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+          targetId: web
+          testId: tests-agent/scenarios.e2e.ts::act%20completes%20gift-card-purchase
+        startPath: /e/gift-card-purchase
+        summary: Selected a $25 gift card, entered friend@example.com, and completed the purchase. The page confirms the gift card was sent and says a $25.00 gift card is on its way.
+      summaries:
+        - tap button "gift_card_amount_option_undefined"
+        - type "friend@example.com" into textbox "{{recipient_email_label}}"
+        - tap button "btn_purchase_label"
+identity:
+  id: e6fc816d4240c92038ef5f5ab5547891efda54705805e9b530104576b3eb74c7
+  testId: tests-agent/scenarios.e2e.ts::act%20completes%20gift-card-purchase

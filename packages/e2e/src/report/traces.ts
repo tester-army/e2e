@@ -1,3 +1,4 @@
+import { resolveCacheFile } from '../cache/file-name.ts';
 /**
  * The traces a run keeps: one markdown page per test whose `trace` mode kept
  * one (by default each that failed, timed out, or was flaky), as `trace.md`
@@ -77,7 +78,7 @@ export async function writeTracePages(report: Report1Document, traced: ReadonlyS
       artifactsDir: relative(options.resultsRoot),
       pageDir: dir,
       readArtifact,
-      ...(options.cacheDir === undefined ? {} : { cacheDir: displayPath(options.projectRoot, options.cacheDir) }),
+      ...(options.cacheDir === undefined ? {} : { cacheDir: displayPath(options.projectRoot, options.cacheDir), cacheFile: path.basename(await resolveCacheFile(options.cacheDir, result.testId)) }),
     });
     await writeTextReport(file, page);
     pages.set(result.id, relative(file));

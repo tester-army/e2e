@@ -191,7 +191,7 @@ export function buildTraceCacheKey(parts: {
   };
 }
 
-/** SHA-256/JCS of one key, used as both the entry digest and its file name. */
+/** SHA-256/JCS of one act key, used for step lookup inside a test recording. */
 export function traceCacheKeyHash(key: TraceCacheKey): string {
   return canonicalDigest(key);
 }

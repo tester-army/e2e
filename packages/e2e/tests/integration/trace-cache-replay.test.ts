@@ -32,8 +32,10 @@ import {
   handedOffNotice,
   onlyActStep,
   readEntries,
+  writeEntry,
   type Flow,
 } from '../helpers/trace-cache.ts';
+
 
 const FLOWS_FILE = 'tests/flows.e2e.ts';
 
@@ -287,7 +289,7 @@ describe('trace cache: --strict-cache fails a step whose key changed under its r
     expect(entry.payload.keyedBy?.agentContextDigest).toBe(createHash('sha256').update('').digest('hex'));
     // An entry from before the occurrence fields: a read-write replay completes it.
     const { testId, targetId, instructionDigest } = recordedFor;
-    writeFileSync(file, JSON.stringify({ ...entry, payload: { ...entry.payload, recordedFor: { testId, targetId, instructionDigest } } }), 'utf8');
+    writeEntry(file, { ...entry, payload: { ...entry.payload, recordedFor: { testId, targetId, instructionDigest } } });
     const replayed = await runExisting(project, { appUrl: app.url, config: cacheConfig(flowsModel()) });
     expectPassed(replayed);
     expectReplayed(onlyActStep(replayed, 'increments the counter'), 2);
@@ -318,7 +320,7 @@ describe('trace cache: --strict-cache fails a step whose key changed under its r
     expectPassed(lenient);
     expect(loopCalls.length).toBeGreaterThan(0);
     expectMissed(onlyActStep(lenient, 'increments the counter'), 'no-entry', 0);
-    expect(readEntries(project)).toHaveLength(2);
+    expect(readEntries(project)).toHaveLength(1);
 
     const strict = await runExisting(project, { appUrl: app.url, config: rekeyed(), runOptions: { strictCache: true } });
     expectPassed(strict);
@@ -371,8 +373,8 @@ describe('trace cache: two targets keep separate entries', () => {
     const entries = readEntries(project);
     expect(entries.map(({ entry }) => entry.payload.recordedFor?.targetId).toSorted()).toEqual(['web', 'web-b']);
     const listing = await cacheCli(project, 'ls');
-    expect(listing).toMatch(/increments%20the%20counter\s+web\s+/u);
-    expect(listing).toMatch(/increments%20the%20counter\s+web-b\s+/u);
+    expect(new Set(entries.map(({ file }) => file)).size).toBe(1);
+    expect(listing).toMatch(/increments%20the%20counter\s+web, web-b\s+2\s+4/u);
   }, 120_000);
 
   it('replays on both targets without a model call', async () => {

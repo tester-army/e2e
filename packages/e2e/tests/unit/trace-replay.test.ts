@@ -1,6 +1,8 @@
+import { cacheContext } from '../helpers/cache-context.ts';
 /** Zero-turn replay: typed dispatch, relocation backoff, divergence. */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { emitReplayYaml, readReplayYaml } from '../../src/cache/yaml.ts';
 import { AgentError } from '../../src/agent/error.ts';
 import type { ExecutorActions } from '../../src/agent/executor.ts';
 import { replayTrace, verifyEndState, type ObservedScreen, type ReplayHost } from '../../src/agent/replay.ts';
@@ -23,7 +25,8 @@ const upgrade: SemanticNode = { ref: { id: 'n1', revision: 'r1' }, role: 'button
 const email: SemanticNode = { ref: { id: 'n2', revision: 'r1' }, role: 'textbox', name: 'Email' };
 
 function trace(actions: RecordedAction[]): ActionTrace {
-  return { actions, executor: { name: 'test' }, summary: 'done' };
+  const payload = { keyedBy: cacheContext(), actions, executor: { name: 'test' }, summary: 'done' };
+  return readReplayYaml(emitReplayYaml({ id: 'a'.repeat(64), testId: 'fixture', steps: [{ key: 'b'.repeat(64), order: 0, variant: { project: '', target: '', agent: '' }, trace: payload }] })).steps[0]!.trace;
 }
 
 const tapUpgrade: RecordedAction = {

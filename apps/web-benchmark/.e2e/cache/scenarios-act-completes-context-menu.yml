@@ -1,0 +1,61 @@
+test: act completes context-menu-trap
+file: tests-agent/scenarios.e2e.ts
+recordedWith:
+  engine: 1
+  platform: web
+  app: dc587874e98340c0ead3b9555bef25c85bca9337c6c8e28ae9e991c982ef1202
+  contextDigest: "02e45116d4a18a6603260cbbc8fa198d311b6a1a01362cc9dd6aa341d16bb3cf"
+
+acts:
+  - instruction: "Complete this scenario as the page instructs: rename the file report.pdf to summary.pdf in the file manager"
+    steps:
+      - secondaryTap: { text: report.pdf }
+      - tap: { role: button, name: More actions for report.pdf, text: ⋯ }
+      - tap: { role: button, name: Rename }
+      - type: { role: textbox, name: New file name, value: summary.pdf }
+      - tap: { role: button, name: Save }
+      - wait: { text: summary.pdf }
+      - wait: { role: button, name: More actions for summary.pdf, text: ⋯ }
+      - wait: { text: File renamed to summary.pdf, testId: success-message }
+      - waitGone: { text: report.pdf }
+      - waitGone: { role: button, name: More actions for report.pdf, text: ⋯ }
+    replay:
+      key: d737be304170b7372163dd61fce8015ac180c44cdc899ac5da795854e17ae3b8
+      order: 0
+      variant:
+        agent: "37a8eec1ce19687d132fe29051dca629d164e2c4958ba141d5f4133a33f0688f"
+        project: "6c340b4558007fd12144b6a4e0daf3abb724b92faa2d08705fa564444b68533c"
+        target: "4b5e57f6eb2f42b9039b3d1e13929295f231749c510cbe341cd68036d9af97e2"
+      checks:
+        endPath: /e/context-menu-trap
+        endWaitMs: 11888
+        executor:
+          name: e2e-default-agent
+          version: "2"
+        keyedBy:
+          agentContextDigest: "02e45116d4a18a6603260cbbc8fa198d311b6a1a01362cc9dd6aa341d16bb3cf"
+          appIdentity: dc587874e98340c0ead3b9555bef25c85bca9337c6c8e28ae9e991c982ef1202
+          cacheSchema: trace-1
+          engineName: web
+          engineSpiVersion: 1
+          platform: web
+          policyVersion: conservative/6
+          project: "6c340b4558007fd12144b6a4e0daf3abb724b92faa2d08705fa564444b68533c"
+        recordedFor:
+          agent: default
+          callIndex: 0
+          instructionDigest: "63530e281eafd2d07743a56500bfed3eae14e1ab7a4c0ad00e838e8b51912917"
+          paramsDigest: "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+          targetId: web
+          testId: tests-agent/scenarios.e2e.ts::act%20completes%20context-menu-trap
+        startPath: /e/context-menu-trap
+        summary: Renamed report.pdf to summary.pdf. The file manager now lists summary.pdf and shows “File renamed to summary.pdf.”
+      summaries:
+        - secondary-tap node "report.pdf"
+        - tap button "More actions for report.pdf"
+        - tap button "Rename"
+        - type "summary.pdf" into textbox "New file name"
+        - tap button "Save"
+identity:
+  id: aa44574c382c5bce70e5e593c1edcb2eddf4892c38ae6a2fb2187d286775b83f
+  testId: tests-agent/scenarios.e2e.ts::act%20completes%20context-menu-trap

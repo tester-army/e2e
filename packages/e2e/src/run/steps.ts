@@ -132,7 +132,7 @@ export interface StepCacheInfo {
   notRecorded?: 'param-collision';
   replayedActions: number;
   totalActions: number;
-  /** The step's cache key, which names its entry file (`<cache.dir>/<entry>.json` in the file store). */
+  /** The act call's lookup key inside its test's replay file. */
   entry?: string;
   /**
    * Why the replay missed or handed off, past what the reason token says:

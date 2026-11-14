@@ -309,12 +309,22 @@ the [session errors](/reference/errors).
 
 ### Cache trust
 
+YAML recordings (`.yml`) are parsed as core-schema data, never evaluated.
+Tags, anchors, aliases, duplicate keys, prototype keys and unknown fields are
+rejected with a filename and line. Each test file is capped at 1 MiB and 64
+nesting levels. Every step passes trace validation and runtime replay safeguards.
+`recordedWith` must contain engine contract version, platform, app identity
+digest and redacted agent context digest, matching the first variant's metadata.
+Variant ownership uses hashes of target and agent names; display provenance,
+instructions and params are secret-redacted. Secret fills keep references only.
+Legacy JSON and TypeScript recordings are ignored and never read.
+
 Cache entries replay actions without a model and aren't signed.
 
 | Rule | Detail |
 | --- | --- |
 | Validation | Every entry is validated before use. An invalid entry is a miss. |
-| File name | A hash of the expected key. A file larger than 1 MiB is refused. |
+| File name | A test slug of at most 40 characters, with a digest suffix only on collision. Identity and act keys are validated inside the file. |
 | Key | Holds the agent's context only as a hash of its redacted text. |
 | Contents | Actions and a redacted summary. Replay runs only the actions. Other typed values are stored verbatim. |
 | Secret fills | Store a name and authorize the fill again on replay. |

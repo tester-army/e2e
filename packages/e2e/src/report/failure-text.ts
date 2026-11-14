@@ -1,3 +1,4 @@
+import { cacheFileName } from '../cache/file-name.ts';
 /**
  * A failed test as text: the facts the run page's failure block states (what
  * the error said in structured form, whether the attempts failed alike, the
@@ -48,6 +49,8 @@ export interface TracePageOptions {
   readonly readArtifact?: ((reportPath: string) => string | undefined) | undefined;
   /** The replay cache directory as the reader should see it; a step's entry is named as a file there. */
   readonly cacheDir?: string | undefined;
+  /** Resolved filename, including a collision suffix when one exists. */
+  readonly cacheFile?: string | undefined;
 }
 
 // --- facts shared with the run page ---
@@ -362,9 +365,9 @@ function appLogLine(entry: AppLogRecord): string {
  * poll that waited or failed (the values it read in order), where the app
  * went, and every line the app logged while it ran (`appLog`, the attempt's).
  */
-function stepDetailLines(step: ReportStep, appLog: readonly AppLogRecord[], options: Pick<TracePageOptions, 'cacheDir'> = {}): string[] {
+function stepDetailLines(step: ReportStep, appLog: readonly AppLogRecord[], options: Pick<TracePageOptions, 'cacheDir' | 'cacheFile'>, testId: string): string[] {
   const lines: string[] = [];
-  if (step.cache !== undefined) lines.push(cacheLine(step.cache, options.cacheDir));
+  if (step.cache !== undefined) lines.push(cacheLine(step.cache, options.cacheDir, testId, options.cacheFile));
   const items: PageItem[] = [
     ...step.events
       .filter((event) => event.kind === 'engine' || event.kind === 'navigation' || (event.kind === 'poll' && ((event.count ?? 0) > 1 || event.status !== 'passed')))
@@ -397,7 +400,7 @@ function appLogLines(steps: readonly ReportStep[], appLog: readonly AppLogRecord
   return [...(left === 0 ? [] : [`${left} ${left === 1 ? 'line' : 'lines'} left out`]), ...shown.map((item) => item.line)];
 }
 
-function cacheLine(cache: StepCacheRecord, cacheDir: string | undefined): string {
+function cacheLine(cache: StepCacheRecord, cacheDir: string | undefined, testId: string, file?: string): string {
   const how =
     cache.mode === 'self-finalized'
       ? `replayed all ${plural(cache.totalActions, 'recorded action')}, no model call`
@@ -411,7 +414,7 @@ function cacheLine(cache: StepCacheRecord, cacheDir: string | undefined): string
     ...(cache.write === undefined ? [] : [CACHE_WRITE_TEXT[cache.write]]),
     ...(cache.notRecorded === 'param-collision' ? ['nothing recorded: a unique() value collides with another param'] : []),
   ];
-  const entry = cache.entry === undefined || cacheDir === undefined ? '' : ` (${code(`${cacheDir}/${cache.entry}.json`, MAX_PATH_CHARS)})`;
+  const entry = cache.entry === undefined || cacheDir === undefined ? '' : ` (${code(`${cacheDir}/${file ?? cacheFileName(testId)}`, MAX_PATH_CHARS)})`;
   return `${parts.join('; ')}${entry}`;
 }
 
@@ -576,7 +579,7 @@ export function renderTracePage(report: Report1Document, result: ReportResult, f
       if (step.status !== 'passed' && step.explanation !== undefined && step.explanation.trim() !== '') {
         lines.push(`   > ${cell(step.explanation, MAX_DETAIL_CHARS)}`);
       }
-      for (const line of stepDetailLines(step, told.appLog, options)) lines.push(`   - ${line}`);
+      for (const line of stepDetailLines(step, told.appLog, options, result.testId)) lines.push(`   - ${line}`);
       for (const artifact of told.artifacts) {
         if (artifact.kind === 'screenshot' && step.artifacts.includes(artifact.id)) lines.push(`   - ${artifactPath(artifact, options)}`);
       }

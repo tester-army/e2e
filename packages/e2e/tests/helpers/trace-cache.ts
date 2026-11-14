@@ -5,10 +5,11 @@
  * store holds.
  */
 
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { expect } from 'vitest';
-import type { TraceEntry } from '../../src/cache/trace.ts';
+import { emitReplayYaml, readReplayYaml } from '../../src/cache/yaml.ts';
+import { buildTraceEntry, type TraceEntry } from '../../src/cache/trace.ts';
 import type { E2EConfig, ModelInstance } from '../../src/index.ts';
 import type { StepCacheInfo, StepRecord } from '../../src/run/steps.ts';
 import { installFakeLoopModel, nodeIdFor, type LoopCall, type LoopToolCall } from './fake-loop-model.ts';
@@ -288,11 +289,11 @@ export function readEntries(project: FixtureProject): { readonly file: string; r
   const dir = path.join(project.dir, '.e2e', 'cache');
   if (!existsSync(dir)) return [];
   return readdirSync(dir)
-    .filter((name) => name.endsWith('.json'))
+    .filter((name) => name.endsWith('.yml'))
     .toSorted()
-    .map((name) => {
+    .flatMap((name) => {
       const file = path.join(dir, name);
-      return { file, entry: JSON.parse(readFileSync(file, 'utf8')) as TraceEntry };
+      return readReplayYaml(readFileSync(file, 'utf8')).steps.map((step) => ({ file, entry: buildTraceEntry(step.trace) }));
     });
 }
 
@@ -338,4 +339,11 @@ export function expectReplayed(step: StepRecord, actions: number): void {
 /** A step the executor ran from the top, with the reason the report gives. */
 export function expectMissed(step: StepRecord, reason: NonNullable<StepCacheInfo['reason']>, totalActions: number): void {
   expect(step.cache).toMatchObject({ mode: 'missed', reason, replayedActions: 0, totalActions });
+}
+
+/** Rewrites a fixture recording as replay declarations. */
+export function writeEntry(file: string, entry: TraceEntry): void {
+  const recording = readReplayYaml(readFileSync(file, 'utf8'));
+  const steps = recording.steps.map((step) => JSON.stringify(step.trace.recordedFor) === JSON.stringify(entry.payload.recordedFor) || recording.steps.length === 1 ? { ...step, trace: entry.payload } : step);
+  writeFileSync(file, emitReplayYaml({ ...recording, steps }), 'utf8');
 }

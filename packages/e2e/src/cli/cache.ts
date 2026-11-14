@@ -1,21 +1,22 @@
 /**
  * `e2e cache`: what is in the replay cache, and how to get rid of it.
  *
- * The store is a directory of digest-named files, so a committed cache is
- * unreadable without a reader: `ls` prints each entry's provenance — the test,
- * the target, the instruction digest, its age, and how many actions it would
- * replay — `stats` sizes the store, and `clear` empties it.
+ * The store is a directory of test-named YAML files, so a committed cache is
+ * indexed by `ls`: test, targets, act steps and actions. `stats` sizes the
+ * store, and `clear` empties it.
  *
  * Every command works on files only. A project that configures `cache.store`
  * replaced the filesystem with its own store, and this CLI has no way to
  * enumerate it, so it says so instead of listing an empty directory.
  */
 
-import { readdir, rm, rmdir } from 'node:fs/promises';
+import { readdir, readFile, stat, rm, rmdir } from 'node:fs/promises';
 import path from 'node:path';
 import type { Command } from 'commander';
 import picocolors from 'picocolors';
-import { FileCacheStore, MAX_CACHE_WIRE_BYTES } from '../cache/store.ts';
+import { readReplayYaml } from '../cache/yaml.ts';
+import { isCacheFile } from '../cache/file-name.ts';
+import { MAX_CACHE_WIRE_BYTES } from '../cache/store.ts';
 import { discoverConfig, loadConfigModule, missingConfigError } from '../config/load.ts';
 import { resolveConfig } from '../config/resolve.ts';
 import { errorMessage } from '../internal/errors.ts';
@@ -38,37 +39,32 @@ interface CacheOptions {
 
 /** One entry as `ls` prints it, or a file that is not a readable entry. */
 interface CacheEntrySummary {
+  readonly name: string;
   readonly keyHash: string;
   readonly bytes: number;
-  readonly createdAt: string;
   readonly actions: number;
   readonly truncated: boolean;
   readonly testId: string | undefined;
   readonly targetId: string | undefined;
-  readonly instructionDigest: string | undefined;
+  readonly steps: number;
 }
 
 interface CacheContents {
   readonly directory: string;
   readonly entries: readonly CacheEntrySummary[];
   /** Digest-named files the store could not read: a miss to the runner too. */
-  readonly unreadable: readonly { readonly name: string; readonly bytes: number }[];
+  readonly unreadable: readonly { readonly name: string; readonly bytes: number; readonly reason: string }[];
   /** Files in the directory that are not cache-shaped; never touched. */
   readonly foreign: readonly string[];
 }
 
-/** Store file names: the key digest, as `FileCacheStore` writes them. */
-const ENTRY_FILE = /^([a-f0-9]{64})\.json$/u;
-/** A crashed writer's leftover; a store file for cleanup purposes. */
-const TEMPORARY_FILE = /^[a-f0-9]{64}\.json\.[a-f0-9]{16}\.tmp$/u;
-
-/** Digest prefix printed instead of the full 64 hex characters. */
-const DIGEST_PREFIX_CHARS = 12;
+/** Only files the atomic writer creates qualify for cleanup. */
+const TEMPORARY_FILE = /^[a-z0-9][a-z0-9-]{0,88}\.yml\.[a-f0-9]{16}\.tmp$/u;
 
 /**
  * Runs one `e2e cache` command against the configured store directory.
  * Returns the process exit code: 2 for a config or filesystem error, 0
- * otherwise — an empty or absent cache is a fact, not a failure.
+ * otherwise; an empty or absent cache is a fact, not a failure.
  */
 async function cache(command: CacheCommand, options: CacheOptions = {}): Promise<number> {
   let directory: string;
@@ -95,7 +91,7 @@ async function cache(command: CacheCommand, options: CacheOptions = {}): Promise
   }
 }
 
-/** Registers `e2e cache` and its `ls`, `clear`, and `stats` subcommands on `program`. */
+/** Registers cache inspection commands. */
 export function registerCacheCommand(program: Command): void {
   const cacheCommand = program
     .command('cache')
@@ -123,7 +119,7 @@ export function registerCacheCommand(program: Command): void {
   cacheSubcommand(
     'ls',
     'list the cached traces',
-    'Print one row per cached trace: the test and target it was recorded for, the digest of its instruction, its age, and how many actions a replay would run.',
+    'Print one row per cached trace: the test and target it was recorded for, the digest of its instruction, how many actions a replay would run.',
   );
   cacheSubcommand('clear', 'delete every cached trace', 'Delete the cache files and the directory itself; files the runner never wrote are left alone.');
   cacheSubcommand('stats', 'print the entry count and size', 'Print the store directory, how many readable entries it holds, and how many bytes they take.');
@@ -159,9 +155,8 @@ async function resolveCacheDirectory(options: CacheOptions): Promise<string> {
  * there. A directory that does not exist is an empty store.
  */
 async function readContents(directory: string): Promise<CacheContents> {
-  const store = new FileCacheStore({ directory, maxBytes: MAX_CACHE_WIRE_BYTES, writable: false });
   const entries: CacheEntrySummary[] = [];
-  const unreadable: { name: string; bytes: number }[] = [];
+  const unreadable: { name: string; bytes: number; reason: string }[] = [];
   const foreign: string[] = [];
 
   let names: string[];
@@ -175,35 +170,32 @@ async function readContents(directory: string): Promise<CacheContents> {
   }
 
   for (const name of names.toSorted()) {
-    const keyHash = ENTRY_FILE.exec(name)?.[1];
-    if (keyHash === undefined) {
+    if (!isCacheFile(name)) {
       if (!TEMPORARY_FILE.test(name)) foreign.push(name);
       continue;
     }
-    const read = await store.read(keyHash);
-    if (read.status !== 'hit') {
-      unreadable.push({ name, bytes: read.status === 'invalid' ? (read.bytes ?? 0) : 0 });
-      continue;
-    }
-    const trace = read.entry.payload;
-    entries.push({
-      keyHash,
-      bytes: read.bytes,
-      createdAt: read.entry.createdAt,
-      actions: trace.actions.length,
-      truncated: trace.truncated === true,
-      testId: trace.recordedFor?.testId,
-      targetId: trace.recordedFor?.targetId,
-      instructionDigest: trace.recordedFor?.instructionDigest,
-    });
+    const file = path.join(directory, name);
+    let bytes = 0;
+    try {
+      bytes = (await stat(file)).size;
+      if (bytes > MAX_CACHE_WIRE_BYTES) throw new Error('oversized test recording');
+      const source = await readFile(file, 'utf8');
+      if (Buffer.byteLength(source) > MAX_CACHE_WIRE_BYTES) throw new Error('oversized test recording');
+      const recording = readReplayYaml(source, file);
+      entries.push({ name, keyHash: recording.id, bytes, testId: recording.testId,
+        targetId: [...new Set(recording.steps.map((step) => step.trace.recordedFor?.targetId ?? '-'))].toSorted().join(', '),
+        actions: recording.steps.reduce((sum, step) => sum + step.trace.actions.length, 0),
+        steps: recording.steps.length, truncated: recording.steps.some((step) => step.trace.truncated === true),
+      });
+    } catch (cause) { unreadable.push({ name, bytes, reason: errorMessage(cause) }); }
   }
   return { directory, entries, unreadable, foreign };
 }
 
 /**
- * Prints one row per entry, newest last within a test, so a reviewer reads a
- * committed cache test by test. Provenance an entry does not carry — one
- * recorded before entries described themselves — prints as `-`.
+ * Prints one row per entry, ordered by test, target and key, so a reviewer reads a
+ * committed cache test by test. Provenance an entry does not carry, one
+ * recorded before entries described themselves, prints as `-`.
  */
 function list(contents: CacheContents): number {
   if (contents.entries.length === 0) {
@@ -211,22 +203,20 @@ function list(contents: CacheContents): number {
     warnAboutSkipped(contents);
     return 0;
   }
-  const now = Date.now();
   const rows = contents.entries
     .toSorted(
       (left, right) =>
         (left.testId ?? '').localeCompare(right.testId ?? '') ||
         (left.targetId ?? '').localeCompare(right.targetId ?? '') ||
-        left.createdAt.localeCompare(right.createdAt),
+        left.keyHash.localeCompare(right.keyHash),
     )
     .map((entry) => [
       entry.testId ?? '-',
       entry.targetId ?? '-',
-      entry.instructionDigest?.slice(0, DIGEST_PREFIX_CHARS) ?? '-',
-      formatAge(entry.createdAt, now),
+      String(entry.steps),
       `${entry.actions}${entry.truncated ? ' (truncated)' : ''}`,
     ]);
-  const header = ['TEST', 'TARGET', 'INSTRUCTION', 'AGE', 'ACTIONS'];
+  const header = ['TEST', 'TARGET', 'STEPS', 'ACTIONS'];
   const widths = header.map((title, column) =>
     Math.max(visibleWidth(title), ...rows.map((row) => visibleWidth(row[column]!))),
   );
@@ -264,10 +254,7 @@ function stats(contents: CacheContents): number {
  * and a mistyped one must not take a project's files with it.
  */
 async function clear(contents: CacheContents): Promise<number> {
-  const removable = [
-    ...contents.entries.map((entry) => `${entry.keyHash}.json`),
-    ...contents.unreadable.map((file) => file.name),
-  ];
+  const removable = contents.entries.map((entry) => entry.name);
   for (const name of removable) {
     await rm(path.join(contents.directory, name), { force: true });
   }
@@ -304,27 +291,15 @@ async function removeTemporaries(directory: string): Promise<number> {
 function warnAboutSkipped(contents: CacheContents): void {
   if (contents.unreadable.length > 0) {
     process.stderr.write(
-      `${contents.unreadable.length} file(s) in ${contents.directory} are not readable trace-1 entries; a run treats each as a miss\n`,
+      `${contents.unreadable.length} file(s) in ${contents.directory} are not readable trace-1 entries and were left alone; a normal run treats each as a miss, strict mode fails\n`,
     );
   }
+  for (const file of contents.unreadable) process.stderr.write(`${file.name}: ${JSON.stringify(file.reason)}\n`);
   if (contents.foreign.length > 0) {
     process.stderr.write(
       `${contents.foreign.length} file(s) in ${contents.directory} are not cache files and were left alone: ${contents.foreign.join(', ')}\n`,
     );
   }
-}
-
-/** Coarse age of one entry: the unit a reviewer cares about, nothing finer. */
-function formatAge(createdAt: string, now: number): string {
-  const ms = now - Date.parse(createdAt);
-  if (!Number.isFinite(ms)) return '-';
-  // A future timestamp is a clock difference between two machines, not an age.
-  if (ms < 60_000) return ms < 0 ? '0m' : '<1m';
-  const minutes = Math.floor(ms / 60_000);
-  if (minutes < 60) return `${minutes}m`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h`;
-  return `${Math.floor(hours / 24)}d`;
 }
 
 function formatBytes(bytes: number): string {

@@ -16,13 +16,13 @@ import { createScriptedInstance } from '../helpers/scripted-model.ts';
 import { createFakeEngine, FAKE_APP_URL } from '../helpers/fake-engine.ts';
 import {
   createProject,
-  resultByTitle,
   runExisting,
+  resultByTitle,
   webTarget,
   type FixtureProject,
   type RunOutcome,
 } from '../helpers/run-project.ts';
-import { readEntries } from '../helpers/trace-cache.ts';
+import { writeEntry, readEntries } from '../helpers/trace-cache.ts';
 import { findNode } from '../helpers/executor-tree.ts';
 import type {
   ExecutorNode,
@@ -32,6 +32,7 @@ import type {
   StepExecutorContext,
 } from '../../src/agent/executor.ts';
 import type { ActionTrace, TraceEntry } from '../../src/cache/trace.ts';
+
 
 const SUITE = `import { test, expect } from 'e2e';
 
@@ -94,7 +95,7 @@ function readOnlyEntry(project: FixtureProject): { file: string; entry: TraceEnt
 /** Rewrites the single entry's payload in place: the shape of a store holding a stale or damaged recording. */
 function rewriteOnlyEntry(project: FixtureProject, edit: (payload: ActionTrace) => ActionTrace): void {
   const { file, entry } = readOnlyEntry(project);
-  writeFileSync(file, JSON.stringify({ ...entry, payload: edit(entry.payload) }, null, 2), 'utf8');
+  writeEntry(file, { ...entry, payload: edit(entry.payload) });
 }
 
 /** The one entry file's bytes and modification time, to prove a replay left it alone. */
@@ -543,7 +544,7 @@ describe('trace cache: modes', () => {
       // An entry from before the occurrence fields: a read-write replay would complete and rewrite it.
       const { file, entry } = readOnlyEntry(project);
       const { testId, targetId, instructionDigest } = entry.payload.recordedFor!;
-      writeFileSync(file, JSON.stringify({ ...entry, payload: { ...entry.payload, recordedFor: { testId, targetId, instructionDigest } } }), 'utf8');
+      writeEntry(file, { ...entry, payload: { ...entry.payload, recordedFor: { testId, targetId, instructionDigest } } });
       const legacy = entryFileState(project);
       const inCi: ExecutorRecord = { calls: 0, prefixes: [] };
       const second = await runExisting(project, options(inCi, { ...process.env, APP_URL: app.url, CI: '1' }));
@@ -601,7 +602,7 @@ describe('trace cache: --strict-cache never writes the cache', () => {
       const recording = await runExisting(project, options({ calls: 0, prefixes: [] }, false));
       expect(recording.exitCode).toBe(0);
       const recorded = entryFileState(project);
-      const entry = path.basename(readOnlyEntry(project).file, '.json');
+      const entry = actStep(recording).cache!.entry;
 
       writeFileSync(path.join(project.dir, 'fail-once'), '', 'utf8');
       const strict: ExecutorRecord = { calls: 0, prefixes: [] };

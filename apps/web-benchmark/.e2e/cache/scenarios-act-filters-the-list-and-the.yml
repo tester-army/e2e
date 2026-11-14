@@ -1,0 +1,54 @@
+test: act filters the list and the URL carries the filter
+file: tests-agent/scenarios.e2e.ts
+recordedWith:
+  engine: 1
+  platform: web
+  app: dc587874e98340c0ead3b9555bef25c85bca9337c6c8e28ae9e991c982ef1202
+  contextDigest: "02e45116d4a18a6603260cbbc8fa198d311b6a1a01362cc9dd6aa341d16bb3cf"
+
+acts:
+  - instruction: filter the product list down to the mug
+    steps:
+      - type: { role: textbox, name: Filter products, testId: filter-input, placeholder: Filter products, value: mug }
+      - wait: { role: textbox, name: Filter products, testId: filter-input, placeholder: Filter products, value: mug }
+      - waitGone: { role: textbox, name: Filter products, testId: filter-input, placeholder: Filter products }
+      - waitGone: { role: listitem, name: Trail Backpack }
+      - waitGone: { role: listitem, name: Steel Water Bottle }
+      - waitGone: { role: listitem, name: Merino Hiking Socks }
+      - waitGone: { role: listitem, name: Camp Lantern }
+    replay:
+      key: "618740e5f3cb8877ae510cb93db7a22ad557d812994431961c0c9f63c71e9941"
+      order: 0
+      variant:
+        agent: "37a8eec1ce19687d132fe29051dca629d164e2c4958ba141d5f4133a33f0688f"
+        project: "6c340b4558007fd12144b6a4e0daf3abb724b92faa2d08705fa564444b68533c"
+        target: "4b5e57f6eb2f42b9039b3d1e13929295f231749c510cbe341cd68036d9af97e2"
+      checks:
+        endPath: /e/filter-deep-link?q=mug
+        endWaitMs: 11489
+        executor:
+          name: e2e-default-agent
+          version: "2"
+        keyedBy:
+          agentContextDigest: "02e45116d4a18a6603260cbbc8fa198d311b6a1a01362cc9dd6aa341d16bb3cf"
+          appIdentity: dc587874e98340c0ead3b9555bef25c85bca9337c6c8e28ae9e991c982ef1202
+          cacheSchema: trace-1
+          engineName: web
+          engineSpiVersion: 1
+          platform: web
+          policyVersion: conservative/6
+          project: "6c340b4558007fd12144b6a4e0daf3abb724b92faa2d08705fa564444b68533c"
+        recordedFor:
+          agent: default
+          callIndex: 0
+          instructionDigest: c54ac6f470b19c027dd580aa19d24ab48c4f0612b3930178028f20eb76cdd216
+          paramsDigest: "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+          targetId: web
+          testId: tests-agent/scenarios.e2e.ts::act%20filters%20the%20list%20and%20the%20URL%20carries%20the%20filter
+        startPath: /e/filter-deep-link
+        summary: Entered “mug” in the product filter. The list is filtered to Titanium Mug, and the page URL is /e/filter-deep-link?q=mug.
+      summaries:
+        - type "mug" into textbox "Filter products"
+identity:
+  id: f9793c0b6e43bf1c367aef70d6bb34c8012e8456857454ef22b3cc5b75c16ca0
+  testId: tests-agent/scenarios.e2e.ts::act%20filters%20the%20list%20and%20the%20URL%20carries%20the%20filter

@@ -1,4 +1,5 @@
-import { readFileSync, writeFileSync } from 'node:fs';
+import type { ActionTrace } from '../../src/cache/trace.ts';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { expect, it } from 'vitest';
 import type { ModelInstance } from '../../src/types.ts';
@@ -7,7 +8,7 @@ import { installFakeLoopModel, loopCalls, nodeIdFor } from '../helpers/fake-loop
 import { startFixtureApp } from '../helpers/fixture-app.ts';
 import { assertValidReport } from '../helpers/report-schema.ts';
 import { contentsUnder, createProject, runExisting } from '../helpers/run-project.ts';
-import { onlyActStep, readEntries } from '../helpers/trace-cache.ts';
+import { onlyActStep, readEntries, writeEntry } from '../helpers/trace-cache.ts';
 import { ListReporter } from '../../src/report/list.ts';
 
 const TITLE = 'model provenance';
@@ -34,7 +35,7 @@ function counterModel(modelId: string): ModelInstance {
   return { ...model, modelId };
 }
 
-it.each(['same', 'different', 'legacy', 'null', 'invalid-model', 'missing-provider', 'blank-model', 'oversized-provider', 'oversized-model'])('reports recording attribution without changing replay, %s', async (mode) => {
+it.each(['same', 'different', 'legacy', 'null', 'invalid-model', 'missing-provider', 'blank-model', 'oversized-provider', 'oversized-model'])('reports valid attribution and rejects malformed YAML metadata, %s', async (mode) => {
   const app = await startFixtureApp();
   const project = createProject({ 'tests/provenance.e2e.ts': SUITE });
   const source = { provider: 'fake-loop', model: 'model-A' };
@@ -50,7 +51,7 @@ it.each(['same', 'different', 'legacy', 'null', 'invalid-model', 'missing-provid
         null: null, 'invalid-model': { provider: 'test', model: 1 }, 'missing-provider': { model: 'test' },
         'blank-model': { provider: 'test', model: ' ' }, 'oversized-provider': { provider: 'x'.repeat(301), model: 'A' }, 'oversized-model': { provider: 'test', model: 'x'.repeat(301) },
       };
-      writeFileSync(entry!.file, JSON.stringify({ ...entry!.entry, payload: { ...payload, ...(mode === 'legacy' ? {} : { recordedBy: invalid[mode] }) } }));
+      writeEntry(entry!.file, { ...entry!.entry, payload: { ...payload, ...(mode === 'legacy' ? {} : { recordedBy: invalid[mode] }) } as ActionTrace });
     }
     const before = readFileSync(entry!.file, 'utf8');
     const lines: string[] = [];
@@ -62,6 +63,14 @@ it.each(['same', 'different', 'legacy', 'null', 'invalid-model', 'missing-provid
         reporters: [{ name: 'capture', onEvent: (event) => list.handle(event) }],
       },
     });
+    if (!known && mode !== 'legacy') {
+      expect(replayed.exitCode).toBe(2);
+      expect(loopCalls).toHaveLength(0);
+      expect(onlyActStep(replayed, TITLE).cache?.reason).toBe('invalid-entry');
+      expect(readFileSync(entry!.file, 'utf8')).toBe(before);
+      assertValidReport(replayed.report);
+      return;
+    }
     expect(replayed.exitCode).toBe(0);
     expect(loopCalls).toHaveLength(0);
     const step = onlyActStep(replayed, TITLE);

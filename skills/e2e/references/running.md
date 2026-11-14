@@ -7,6 +7,7 @@
 - Output
 - Exit codes
 - Continuous integration
+- YAML recordings
 
 ## Commands
 
@@ -118,7 +119,9 @@ With npm, use `npm exec -- e2e run --headed` to pass flags to e2e.
 
 ## The replay cache
 
-Entries live under `.e2e/cache/`, one file per key, named by key digest.
+Recordings live under `.e2e/cache/`, one `.yml` file per test, named from
+the source stem and test titles with a short digest suffix only on collision. Each file groups ordered act
+steps by project, target and agent; each act retains its signature-based key.
 `E2E_CACHE_DIR` or `--cache-dir <dir>` (on `run` and `cache`) replaces
 `cache.dir` (file store only), so worktrees can share one directory; the mode
 stays as configured.
@@ -128,7 +131,7 @@ its own tools.
 
 | Command | Prints |
 | --- | --- |
-| `e2e cache ls` | One row per entry: test, target, instruction digest, age, action count. |
+| `e2e cache ls` | One row per test file: test, targets, step count, action count. |
 | `e2e cache stats` | Directory, entry count, total size. |
 | `e2e cache clear` | Deletes the entries and the directory; files the runner never wrote stay. |
 
@@ -303,3 +306,23 @@ jobs:
   decision filter reads what the commits change, and a file only the
   working tree changes by name alone.
   Reference: https://e2e.com/docs/filters
+
+## YAML recordings
+
+The file cache writes YAML core-schema data with compact action maps. Slugs
+use the file stem and test titles, capped at a word boundary within 40 characters;
+only collisions add a stable digest suffix. Every file requires `recordedWith`
+with engine contract version, platform, app identity digest and agent context
+digest. Empty or missing headers fail validation.
+Tags, aliases, anchors, duplicate keys and unknown fields are rejected with
+a filename and line. The runner never evaluates recordings. Web and mobile share target matching,
+outcome checks, confirmation and agent fallback. Runtime-derived values remain
+explicit agent handoffs.
+
+Delete old `.json` and `.replay.ts` cache files and
+run with `cache: 'read-write'` to regenerate. Old files are ignored, including
+in strict mode. There is no `cache.format` option or cache migration command.
+Use Git to review changes. A successful attempt removes obsolete steps for
+its variant. Read-write runs prune renamed or removed tests only when their
+collection proves absence; filtered, strict and read-only runs preserve other
+recordings. Custom stores retain the per-act typed trace contract.

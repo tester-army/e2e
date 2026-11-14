@@ -1,5 +1,9 @@
+import { parseDocument } from 'yaml';
+import { cacheContext } from '../helpers/cache-context.ts';
 /** StepTraceSession: store resilience, staging anchors, replay postconditions, the write-side decision. */
 
+import { readReplayYaml } from '../../src/cache/yaml.ts';
+import { cacheFileName } from '../../src/cache/file-name.ts';
 import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -48,7 +52,6 @@ const exampleContext = {
   project: 'p'.repeat(64),
   platform: 'web',
   engineName: 'web',
-  engineVersion: '0.11',
   engineSpiVersion: 1,
   appIdentity: 'a'.repeat(64),
   agentContextDigest: 'c'.repeat(64),
@@ -1003,7 +1006,7 @@ describe('StepTraceSession', () => {
 
   it('leaves the entry file untouched across replays and rewrites it after a hand-off the executor healed', async () => {
     const directory = await tempDir('e2e-step-cache-');
-    const store = new FileCacheStore({ directory, maxBytes: MAX_CACHE_WIRE_BYTES, writable: true });
+    const store = new FileCacheStore({ testId: exampleStep.testId, directory, maxBytes: MAX_CACHE_WIRE_BYTES, writable: true });
     const context = (): AgentCacheContext => ({
       mode: 'read-write',
       store,
@@ -1012,7 +1015,7 @@ describe('StepTraceSession', () => {
       claimKey: () => claimedKey('a'.repeat(64)),
       staged: [],
     });
-    const file = join(directory, `${'a'.repeat(64)}.json`);
+    const file = join(directory, cacheFileName(exampleStep.testId));
     const snapshot = async () => ({ bytes: await readFile(file, 'utf8'), mtimeMs: (await stat(file)).mtimeMs });
     const run = async (paths: string[], screens: (readonly SemanticNode[])[], lastVerifiedStepIndex = 5) => {
       const current = context();
@@ -1030,7 +1033,7 @@ describe('StepTraceSession', () => {
     const recorded = await run(['/pricing', '/customers'], [[], [savedMarker]]);
     expect(recorded.cacheInfo?.mode).toBe('missed');
     const written = await snapshot();
-    expect(JSON.parse(written.bytes).payload.endAnchors).toEqual([savedAnchor]);
+    expect(readReplayYaml(written.bytes).steps[0]!.trace.endAnchors).toEqual([savedAnchor]);
 
     // Two replays in a row: the file's bytes and mtime never move.
     await new Promise((resolve) => setTimeout(resolve, 20));
@@ -1047,7 +1050,7 @@ describe('StepTraceSession', () => {
     expect(healed.replayedPrefix?.stopReason).toBe('end-mismatch');
     const rewritten = await snapshot();
     expect(rewritten.bytes).not.toBe(written.bytes);
-    expect(JSON.parse(rewritten.bytes).payload.endAnchors).toEqual([{ ...savedAnchor, text: 'stored' }]);
+    expect(readReplayYaml(rewritten.bytes).steps[0]!.trace.endAnchors).toEqual([{ ...savedAnchor, text: 'stored' }]);
 
     // A replay nothing verified afterwards is implicated like a recording would be: evicted.
     const unconfirmed = await run(['/pricing', '/customers'], [[], [renamed]], 0);
@@ -1169,7 +1172,7 @@ describe('destination path settling', () => {
 describe('settleStagedTraces and a re-recorded flow', () => {
   it('leaves an entry the same flow re-recorded untouched, and replaces it when the actions change', async () => {
     const directory = await tempDir('e2e-flush-');
-    const store = new FileCacheStore({ directory, maxBytes: MAX_CACHE_WIRE_BYTES, writable: true });
+    const store = new FileCacheStore({ testId: exampleStep.testId, directory, maxBytes: MAX_CACHE_WIRE_BYTES, writable: true });
     const context = (): AgentCacheContext => ({
       mode: 'read-write',
       store,
@@ -1178,9 +1181,10 @@ describe('settleStagedTraces and a re-recorded flow', () => {
       claimKey: () => claimedKey('c'.repeat(64)),
       staged: [],
     });
-    const file = join(directory, `${'c'.repeat(64)}.json`);
+    const file = join(directory, cacheFileName(exampleStep.testId));
     const snapshot = async () => ({ bytes: await readFile(file, 'utf8'), mtimeMs: (await stat(file)).mtimeMs });
     const trace = (summary: string, endWaitMs: number, taps: number): ActionTrace => ({
+      keyedBy: exampleContext,
       actions: Array.from({ length: taps }, (_, index) => ({
         name: 'tap' as const,
         summary: `tap ${String(index)}`,
@@ -1201,7 +1205,7 @@ describe('settleStagedTraces and a re-recorded flow', () => {
 
     await flush({ ...trace('saved the record', 10_100, 1), recordedBy: { provider: 'test', model: 'A' } });
     const written = await snapshot();
-    expect(JSON.parse(written.bytes).payload.summary).toBe('saved the record');
+    expect(readReplayYaml(written.bytes).steps[0]!.trace.summary).toBe('saved the record');
 
     // A live run of the same flow words its summary differently and measures
     // another end wait; the file is what a replay reads, and nothing it reads changed.
@@ -1213,14 +1217,15 @@ describe('settleStagedTraces and a re-recorded flow', () => {
     await flush(trace('saved after a retry', 10_090, 2));
     const replaced = await snapshot();
     expect(replaced.bytes).not.toBe(written.bytes);
-    expect(JSON.parse(replaced.bytes).payload.actions).toHaveLength(2);
+    expect(readReplayYaml(replaced.bytes).steps[0]!.trace.actions).toHaveLength(2);
   });
 
   it('leaves an entry untouched when only the rule that flagged a typed value differs', async () => {
     const directory = await tempDir('e2e-flush-derived-');
-    const store = new FileCacheStore({ directory, maxBytes: MAX_CACHE_WIRE_BYTES, writable: true });
-    const file = join(directory, `${'d'.repeat(64)}.json`);
+    const store = new FileCacheStore({ testId: exampleStep.testId, directory, maxBytes: MAX_CACHE_WIRE_BYTES, writable: true });
+    const file = join(directory, cacheFileName(exampleStep.testId));
     const trace = (derived?: DerivedReason): ActionTrace => ({
+      keyedBy: exampleContext,
       actions: [
         { name: 'tool', summary: 'tool type (run-time value)', ...(derived === undefined ? {} : { derived }) },
         { name: 'tap', summary: 'tap Apply', target: { role: 'button', name: 'Apply' } },
@@ -1256,6 +1261,7 @@ describe('settleStagedTraces and a re-recorded flow', () => {
   it('says a confirmed recording the store did not write was not written, rather than saved', async () => {
     const directory = await tempDir('e2e-flush-too-large-');
     const trace: ActionTrace = {
+      keyedBy: exampleContext,
       actions: [{ name: 'tap', summary: 'tap Save', target: { role: 'button', name: 'Save' } }],
       executor: { name: 'scripted' },
       summary: 'saved',
@@ -1266,7 +1272,7 @@ describe('settleStagedTraces and a re-recorded flow', () => {
     const outcome = async (maxBytes: number) => {
       const context: AgentCacheContext = {
         mode: 'read-write',
-        store: new FileCacheStore({ directory, maxBytes, writable: true }),
+        store: new FileCacheStore({ testId: exampleStep.testId, directory, maxBytes, writable: true }),
         replayEligible: true,
         strict: false,
         claimKey: () => claimedKey('e'.repeat(64)),
@@ -1337,6 +1343,7 @@ describe('cache.strict and a step whose key changed under its recording', () => 
   const OWN_KEY = 'a'.repeat(64);
   const OLD_KEY = 'b'.repeat(64);
   const recordedPayload = (recordedFor: ActionTrace['recordedFor'], overrides: Partial<ActionTrace> = {}): ActionTrace => ({
+    keyedBy: exampleContext,
     actions: [{ name: 'navigate', summary: 'navigate to "/customers"', url: '/customers' }],
     executor: { name: 'recorded-agent' },
     ...(recordedFor === undefined ? {} : { recordedFor }),
@@ -1345,15 +1352,15 @@ describe('cache.strict and a step whose key changed under its recording', () => 
   });
 
   /** A file store holding one entry under `OLD_KEY`, and a context whose own key finds nothing in it. */
-  async function rekeyedContext(payload: ActionTrace, strict = true): Promise<AgentCacheContext> {
+  async function rekeyedContext(payload: ActionTrace, strict = true, fileTestId = payload.recordedFor?.testId ?? exampleStep.testId): Promise<AgentCacheContext> {
     const directory = await tempDir('e2e-rekeyed-');
-    const store = new FileCacheStore({ directory, maxBytes: MAX_CACHE_WIRE_BYTES, writable: true });
+    const store = new FileCacheStore({ testId: fileTestId, directory, maxBytes: MAX_CACHE_WIRE_BYTES, writable: true });
     await store.write(OLD_KEY, payload);
     return {
       mode: 'read-only',
       store,
       replayEligible: true,
-      strict: strict ? { advice: 're-record it', recordings: new StoredRecordings(store) } : false,
+      strict: strict ? { advice: 're-record it', recordings: new StoredRecordings(directory) } : false,
       claimKey: () => claimedKey(OWN_KEY),
       staged: [],
     };
@@ -1363,7 +1370,7 @@ describe('cache.strict and a step whose key changed under its recording', () => 
     const session = makeSession(await rekeyedContext(recordedPayload(exampleStep)), makeHost(['/']));
     const failure = session.begin();
     await expect(failure).rejects.toMatchObject({ code: 'REPLAY_STALE', category: 'configuration' });
-    await expect(failure).rejects.toThrow(`the store holds it under another cache key (${OLD_KEY}.json)`);
+    await expect(failure).rejects.toThrow(`the store holds it under another cache key (${cacheFileName(exampleStep.testId)})`);
     await expect(failure).rejects.toThrow(/; re-record it$/u);
     expect(session.cacheInfo).toMatchObject({ mode: 'missed', reason: 'no-entry' });
   });
@@ -1406,10 +1413,29 @@ describe('cache.strict and a step whose key changed under its recording', () => 
     const secrets = new SecretLedger();
     secrets.register('password', 'hunter2');
     const step = { ...exampleStep, testId: 'tests/example.e2e.ts::logs in with hunter2' };
-    const context = await rekeyedContext(recordedPayload({ ...step, testId: secrets.redact(step.testId) }));
+    const context = await rekeyedContext(recordedPayload({ ...step, testId: secrets.redact(step.testId) }), true, step.testId);
     const session = makeSession({ ...context, claimKey: () => ({ keyHash: OWN_KEY, context: exampleContext, step }) }, makeHost(['/']), { redact: secrets.redact });
     const failure = session.begin();
     await expect(failure).rejects.toMatchObject({ code: 'REPLAY_STALE' });
     await expect(failure).rejects.not.toThrow('hunter2');
   });
+});
+
+it.each(['web', 'ios', 'android'])('carries %s validity through recording, confirmation and the YAML header', async (platform) => {
+  const directory = await tempDir('e2e-recorded-with-');
+  const store = new FileCacheStore({ testId: exampleStep.testId, directory, maxBytes: MAX_CACHE_WIRE_BYTES, writable: true });
+  const keyedBy = cacheContext(platform);
+  const context: AgentCacheContext = {
+    mode: 'read-write', store, replayEligible: true, strict: false, staged: [],
+    claimKey: () => ({ ...claimedKey('a'.repeat(64)), context: keyedBy }),
+  };
+  const session = recordingSession(context, ['/pricing', '/customers', '/customers']);
+  expect(await session.begin()).toBeUndefined();
+  session.record({ name: 'navigate', url: '/customers' });
+  await session.conclude('passed', 'opened customers');
+  expect(stagedTrace(context).keyedBy).toEqual(keyedBy);
+  expect((await settleStagedTraces(context, { lastVerifiedStepIndex: 5, implicatesUnconfirmed: true })).get(1)).toBe('saved');
+  const source = await readFile(join(directory, cacheFileName(exampleStep.testId)), 'utf8');
+  expect(parseDocument(source).toJS().recordedWith).toEqual({ engine: 1, platform, app: keyedBy.appIdentity, contextDigest: keyedBy.agentContextDigest });
+  expect(readReplayYaml(source).steps[0]!.trace.keyedBy).toEqual(keyedBy);
 });

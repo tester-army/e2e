@@ -1,6 +1,7 @@
+import { cacheContext } from '../helpers/cache-context.ts';
 /** `e2e cache ls`, `clear`, and `stats` over a real store directory. */
 
-import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { stripVTControlCharacters } from 'node:util';
@@ -32,6 +33,7 @@ function writeDefaultConfig(): void {
 
 function trace(recordedFor: TraceProvenance | undefined, actions: number): ActionTrace {
   return {
+    keyedBy: cacheContext(),
     actions: Array.from({ length: actions }, (_, index) => ({
       name: 'tap' as const,
       summary: `tap ${index}`,
@@ -44,12 +46,10 @@ function trace(recordedFor: TraceProvenance | undefined, actions: number): Actio
 }
 
 async function seed(entries: readonly { keyHash: string; trace: ActionTrace }[]): Promise<void> {
-  const store = new FileCacheStore({
-    directory: path.join(root, CACHE_DIR),
-    maxBytes: MAX_CACHE_WIRE_BYTES,
-    writable: true,
-  });
-  for (const entry of entries) await store.write(entry.keyHash, entry.trace);
+  for (const entry of entries) {
+    const store = new FileCacheStore({ directory: path.join(root, CACHE_DIR), testId: entry.trace.recordedFor?.testId ?? entry.keyHash, maxBytes: MAX_CACHE_WIRE_BYTES, writable: true });
+    await store.write(entry.keyHash, entry.trace);
+  }
 }
 
 async function invoke(...args: string[]): Promise<void> {
@@ -74,7 +74,7 @@ afterEach(() => {
 });
 
 describe('e2e cache ls', () => {
-  it('prints the provenance, age, and action count of every entry', async () => {
+  it('prints the test identity, step count, and action count of every entry', async () => {
     await seed([
       {
         keyHash: 'a'.repeat(64),
@@ -88,10 +88,10 @@ describe('e2e cache ls', () => {
     await invoke('cache', 'ls');
     const lines = written(stdoutSpy).trimEnd().split('\n');
     expect(process.exitCode).toBe(0);
-    expect(lines[0]).toMatch(/^TEST +TARGET +INSTRUCTION +AGE +ACTIONS$/);
+    expect(lines[0]).toMatch(/^TEST +TARGET +STEPS +ACTIONS$/);
     // Sorted by test, so billing precedes signup whatever the file order was.
-    expect(lines[1]).toMatch(/^tests\/billing\.e2e\.ts::upgrades +safari +eeeeeeeeeeee +<1m +1$/);
-    expect(lines[2]).toMatch(/^tests\/signup\.e2e\.ts::signs up +web +dddddddddddd +<1m +3$/);
+    expect(lines[1]).toMatch(/^tests\/billing\.e2e\.ts::upgrades +safari +1 +1$/);
+    expect(lines[2]).toMatch(/^tests\/signup\.e2e\.ts::signs up +web +1 +3$/);
   });
 
   it('marks a recording the action cap cut short', async () => {
@@ -115,10 +115,10 @@ describe('e2e cache ls', () => {
     expect(process.exitCode).toBe(0);
     expect(lines).toHaveLength(3);
     expect(lines.find((line) => line.startsWith(asciiId))).toBe(
-      `${asciiId}${' '.repeat(asciiPadding)}web     dddddddddddd  <1m  1`,
+      `${asciiId}${' '.repeat(asciiPadding)}web     1      1`,
     );
     expect(lines.find((line) => line.startsWith(testId))).toBe(
-      `${testId}${' '.repeat(padding)}web     eeeeeeeeeeee  <1m  1`,
+      `${testId}${' '.repeat(padding)}web     1      1`,
     );
   });
 
@@ -130,7 +130,7 @@ describe('e2e cache ls', () => {
 
   it('counts a file the store cannot read as unreadable, not as an entry', async () => {
     mkdirSync(path.join(root, CACHE_DIR), { recursive: true });
-    writeFileSync(path.join(root, CACHE_DIR, `${'c'.repeat(64)}.json`), '{ not json', 'utf8');
+    writeFileSync(path.join(root, CACHE_DIR, `${'c'.repeat(64)}.yml`), '{ not json', 'utf8');
     await invoke('cache', 'ls');
     expect(written(stdoutSpy)).toContain('no replay cache entries in');
     expect(written(stderrSpy)).toContain('are not readable trace-1 entries');
@@ -176,13 +176,14 @@ describe('e2e cache clear', () => {
     expect(process.exitCode).toBe(0);
   });
 
-  it('removes an unreadable entry and a crashed writer\u2019s temporary file', async () => {
+  it('preserves unrecognized YAML while removing a crashed writer’s temporary file', async () => {
     const directory = path.join(root, CACHE_DIR);
     mkdirSync(directory, { recursive: true });
-    writeFileSync(path.join(directory, `${'c'.repeat(64)}.json`), 'torn', 'utf8');
-    writeFileSync(path.join(directory, `${'d'.repeat(64)}.json.0123456789abcdef.tmp`), '{}', 'utf8');
+    writeFileSync(path.join(directory, 'settings.yml'), 'my: configuration', 'utf8');
+    writeFileSync(path.join(directory, `${'d'.repeat(64)}.yml.0123456789abcdef.tmp`), '{}', 'utf8');
     await invoke('cache', 'clear');
-    expect(written(stdoutSpy)).toContain('cleared 2 file(s)');
+    expect(readFileSync(path.join(directory, 'settings.yml'), 'utf8')).toBe('my: configuration');
+    expect(written(stdoutSpy)).toContain('cleared 1 file(s)');
   });
 
   it('leaves files the runner never wrote, and says so', async () => {
@@ -221,4 +222,24 @@ describe('e2e cache configuration', () => {
     expect(written(stderrSpy)).toContain('config file not found');
     expect(process.exitCode).toBe(2);
   });
+});
+
+it('ignores legacy JSON without reading or clearing it', async () => {
+  const directory = path.join(root, CACHE_DIR);
+  mkdirSync(directory, { recursive: true });
+  const legacy = `${'a'.repeat(64)}.json`;
+  writeFileSync(path.join(directory, legacy), 'not valid JSON');
+  await invoke('cache', 'stats');
+  expect(process.exitCode).toBe(0);
+  expect(written(stdoutSpy)).toMatch(/entries\s+0/u);
+  expect(written(stderrSpy)).not.toContain('unreadable');
+  await invoke('cache', 'clear');
+  expect(process.exitCode).toBe(0);
+  expect(readdirSync(directory)).toEqual([legacy]);
+});
+
+it.each(['diff', 'migrate'])('does not register the removed cache %s command', async (command) => {
+  await invoke('cache', command);
+  expect(process.exitCode).toBe(2);
+  expect(written(stderrSpy)).toContain(`unknown command '${command}'`);
 });
