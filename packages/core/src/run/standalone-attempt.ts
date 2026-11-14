@@ -1,7 +1,7 @@
 /**
  * One attempt on a prepared standalone worker: reservation, launch, fixtures,
- * deadline, and close. What differs by kind (the runner's hosted and one-shot
- * attempts) comes in through `AttemptPolicy`.
+ * deadline, and close. What differs by kind (an `e2e-core` session, the
+ * runner's hosted and one-shot attempts) comes in through `AttemptPolicy`.
  */
 
 import path from 'node:path';
@@ -18,7 +18,7 @@ import { attemptVideo } from '../internal/recording-modes.ts';
 import type { TestFixtures } from '../types.ts';
 import { createAttemptArtifacts, type AttemptArtifacts } from './artifacts.ts';
 import { AttemptBudget } from './budget.ts';
-import { classifyAttemptStatus, type ClosingRecord, type EngineSessions } from './engine-sessions.ts';
+import { classifyAttemptStatus, type ClosingRecord, type EngineSessions, type RestoredState } from './engine-sessions.ts';
 import { createFixtures, type AttemptEnvironment } from './fixtures.ts';
 import type { AttemptRecord } from './records.ts';
 import { redactForSession, sessionLedger } from './secrecy.ts';
@@ -33,6 +33,8 @@ export interface StandaloneSessionOptions {
   readonly onProgress?: (progress: StepProgress) => void;
   /** The test title of a hosted attempt; its policy decides whether the attempt reads it. */
   readonly name?: string;
+  /** A state an earlier session captured, restored at launch. */
+  readonly state?: RestoredState | undefined;
 }
 
 export interface StandaloneAttempt<Extra = unknown> {
@@ -93,8 +95,8 @@ export interface ClosedAttempt<Sessions extends EngineSessions, Extra> {
 
 /**
  * What one kind of attempt adds to the shared lifecycle. Every hook but
- * `identity` is optional, so a kind that publishes nothing, runs no test, and
- * writes no trace needs none of them.
+ * `identity` is optional: an `e2e-core` session publishes nothing, runs no
+ * test, and writes no trace.
  */
 export interface AttemptPolicy<Sessions extends EngineSessions = EngineSessions, Extra = undefined> {
   /** The attempt's test id and results directory. */
@@ -201,7 +203,7 @@ export async function launchAttempt<Sessions extends EngineSessions, Extra>(
     return { status: classifyAttemptStatus(error, step?.status === 'timed-out', error.code === 'CANCELLED'), error };
   };
   const video = attemptVideo(target.video, 0);
-  session = await executor.launchSession({ session: undefined, recordings: { trace: undefined, video } }, attemptId, artifacts.dir, attemptSignal);
+  session = await executor.launchSession({ session: options.state, recordings: { trace: undefined, video } }, attemptId, artifacts.dir, attemptSignal);
   const opened = session;
   const closeOpened = (record: ClosingRecord): Promise<void> =>
     executor.closeSession(opened, { attemptId, video }, record, artifacts.sink, attemptErrors);

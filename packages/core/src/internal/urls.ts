@@ -227,3 +227,15 @@ function serializeForComparison(url: string): string {
   }
 }
 
+
+/** The schemes a device link may not take: the ones that read local content or inline a document, and the browser wrappers that carry one inside. */
+const REFUSED_LINK_SCHEMES: ReadonlySet<string> = new Set(['file:', 'data:', 'javascript:', 'view-source:', 'blob:', 'filesystem:']);
+
+/**
+ * Whether a link's scheme (`URL.protocol`, with its colon) is one no app
+ * link may take. A device link is any app's custom scheme, so links are
+ * checked against this list rather than the http(s) rule navigation follows.
+ */
+export function isRefusedLinkScheme(protocol: string): boolean {
+  return REFUSED_LINK_SCHEMES.has(protocol.toLowerCase());
+}

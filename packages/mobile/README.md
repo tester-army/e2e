@@ -5,6 +5,8 @@ The mobile engine for [`e2e`](https://www.npmjs.com/package/e2e), built on
 Android emulators, and connected phones through the same `e2e-core/engine` contract the browser engine
 implements. A test written against `screen`, `expect`, `app`, and `agent` runs
 on a device target unchanged; neither `e2e` nor `e2e-core` imports this package.
+To drive a device from a program without the test runner, import `mobile` from
+`@e2e-dev/mobile/engine` with [`e2e-core`](https://www.npmjs.com/package/e2e-core).
 
 ## Install
 

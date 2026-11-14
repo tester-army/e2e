@@ -98,7 +98,16 @@ interface Resolved {
 
 /** Per-attempt locator execution engine. */
 export class LocatorEngine {
-  constructor(private readonly options: LocatorEngineOptions) {}
+  constructor(private options: LocatorEngineOptions) {}
+
+  /**
+   * Replaces the default timeouts of the operations that start from now on,
+   * for an `e2e-core` session's `setDefaultTimeout`. A running operation keeps
+   * the deadline it started with.
+   */
+  setDefaultTimeouts(timeouts: { readonly action: number; readonly assertion: number }): void {
+    this.options = { ...this.options, actionTimeout: timeouts.action, assertionTimeout: timeouts.assertion };
+  }
 
   get session(): TargetSession {
     return this.options.session;
@@ -111,6 +120,10 @@ export class LocatorEngine {
 
   get assertionTimeout(): number {
     return this.options.assertionTimeout;
+  }
+
+  get actionTimeout(): number {
+    return this.options.actionTimeout;
   }
 
   /** Records an event under the running step; a no-op where no step records. */

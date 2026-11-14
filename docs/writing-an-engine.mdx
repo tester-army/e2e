@@ -35,8 +35,8 @@ the engine's capabilities when the config loads.
 
 <Note>
 Import types and helpers from `e2e-core/engine` only; there is no internal
-subpath. Declare `e2e-core` as a peer dependency, so the engine and the runner
-share one set of error classes. `e2e/engine`
+subpath. Declare `e2e-core` as a peer dependency, so the engine, the runner,
+and [e2e-core](/core) programs share one set of error classes. `e2e/engine`
 re-exports the same module, so an engine that imports it and peers on `e2e`
 still runs under the runner.
 </Note>

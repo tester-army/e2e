@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "session-state-1",
+  "engine": "web",
+  "platform": "web",
+  "appIdentity": "0000000000000000000000000000000000000000000000000000000000000000",
+  "createdAt": "2026-11-13T12:00:00.000Z",
+  "secrecy": {
+    "names": []
+  },
+  "state": {
+    "format": "playwright-storage-state",
+    "version": 1,
+    "algorithm": "A256GCM",
+    "iv": "AAAAAAAAAAAAAAAA",
+    "tag": "AAAAAAAAAAAAAAAAAAAAAA==",
+    "data": { "cookies": [{ "name": "session", "value": "plaintext" }] }
+  }
+}

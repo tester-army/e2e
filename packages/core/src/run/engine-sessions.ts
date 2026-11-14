@@ -1,12 +1,12 @@
 /**
  * The engine side of one worker: the engine's init and dispose, and each
  * attempt's session from launch to close. The runner's `TargetExecutor` runs
- * tests on top of it; a standalone worker drives it directly.
+ * tests on top of it; an `e2e-core` host drives it directly.
  */
 
 import { rm } from 'node:fs/promises';
 import path from 'node:path';
-import type { EngineDisposeContext, EngineSnapshot, ResolveSecretOptions } from '../engine/index.ts';
+import type { EngineDisposeContext, EngineSnapshot, EngineState, ResolveSecretOptions } from '../engine/index.ts';
 import type { TargetSession, OperationContext, VideoSegment } from '../engine/surface.ts';
 import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
 import { classifyError, ConfigurationError, InfrastructureError, serializeError, translateEngineError, type SerializedError } from '../internal/errors.ts';
@@ -18,7 +18,7 @@ import type { Secret } from '../types.ts';
 import { createEngineSession } from '../engine/session.ts';
 import type { ArtifactSink } from './fixtures.ts';
 import type { AttemptRecord, RunError } from './records.ts';
-import { adoptSecrets, registerDerivedSecrets, resolveSecretValue, sessionLedger } from './secrecy.ts';
+import { adoptSecrets, registerDerivedSecrets, resolveSecretValue, sessionLedger, type SavedSecrets } from './secrecy.ts';
 import { isSecret } from '../secrets.ts';
 import { targetIdentity, type SessionIdentity, type SessionStore } from './sessions.ts';
 import { EngineError } from '../engine/contract.ts';
@@ -57,8 +57,15 @@ export interface ClosingRecord {
  * whether it keeps a trace, which decides whether screens are taken at all.
  */
 export interface SessionPlan {
-  readonly session: string | undefined;
+  /** A saved session to restore: its name in the run's store, or a state an `e2e-core` session holds. */
+  readonly session: string | RestoredState | undefined;
   readonly recordings: AttemptRecordings;
+}
+
+/** A captured state handed back to a launch, and the secret values the capturing session had learned. */
+export interface RestoredState {
+  readonly state: EngineState;
+  readonly secrets: SavedSecrets;
 }
 
 /** What closing an attempt's session needs besides its verdict: the video it started. */
@@ -228,7 +235,7 @@ export class EngineSessions {
         );
       }
       if (sessionName !== undefined) {
-        const saved = await this.options.sessionStore.load(sessionName, this.sessionIdentity);
+        const saved = typeof sessionName === 'string' ? await this.options.sessionStore.load(sessionName, this.sessionIdentity) : sessionName;
         // The values the saving session learned come back with its state, so
         // a stored value the app echoes is redacted here too.
         adoptSecrets(sessionLedger(session, this.config.allSecrets), saved.secrets);

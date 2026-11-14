@@ -27,6 +27,8 @@ const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const EXAMPLES: Record<string, string> = {
   'docs/examples/browser-run/e2e.config.ts': 'docs/integrations/browser-run.mdx',
   'docs/examples/runner/run.ts': 'docs/reference/runner.mdx',
+  'docs/examples/core/prices.ts': 'docs/core.mdx',
+  'docs/examples/core/checkout.ts': 'docs/core.mdx',
   'docs/examples/runner/explore.ts': 'docs/reference/runner.mdx',
   'docs/examples/limrun/e2e.config.ts': 'docs/integrations/limrun.mdx',
   'docs/examples/limrun/greeting.e2e.ts': 'docs/integrations/limrun.mdx',

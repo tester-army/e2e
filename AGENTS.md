@@ -9,7 +9,8 @@ There is no separate spec. The code is the contract, pinned in three places:
 
 - The emitted `packages/e2e/dist/index.d.ts` (and `dist/engine/index.d.ts`,
   `dist/runner.d.ts`, `dist/oauth/*.d.ts`), and `e2e-core`'s
-  `packages/core/dist/engine/index.d.ts`, are the public API. `packages/e2e/tests/types/sdk-types.ts` holds compile-time
+  `packages/core/dist/core/*.d.ts` and `dist/engine/index.d.ts`,
+  are the public API. `packages/e2e/tests/types/sdk-types.ts` holds compile-time
   assertions (`@ts-expect-error` lines) for the parts that are easy to loosen
   by accident; it runs under the package `typecheck`, never under vitest.
 - Wire formats live in `packages/e2e/schema/*.schema.json` (report-1,
@@ -42,10 +43,16 @@ suites that consume the built packages the way a user would.
   the replay cache (`src/cache/`), secrets, and the session half of a
   worker: `run/engine-sessions.ts` (engine init and dispose, each attempt's
   session from launch to close, which the runner's `TargetExecutor`
-  extends), `run/standalone.ts` (the worker a runner host or MCP keeps
-  alive, with a `WorkerPolicy` per kind), and `run/standalone-attempt.ts`
-  (one attempt: reservation, launch, fixtures, deadline, close). Its one
-  public entry is `e2e-core/engine`. It imports nothing of `e2e`:
+  extends), `run/standalone.ts` (the worker an `e2e-core` host, a runner
+  host, or MCP keeps alive, with a `WorkerPolicy` per kind), and
+  `run/standalone-attempt.ts` (one attempt: reservation, launch, fixtures,
+  deadline, close). `src/core/` is its own surface: `launch` opens a
+  `core` attempt (nothing published to `globalThis`, no process secret
+  registry, no trace, no session deadline), `SessionState` the
+  `session-state-1` export, and `createAgent` (`e2e-core/agent`) the agent
+  with a per-`cacheKey` replay cache settled at session close and a `guard`
+  (`src/agent/guard.ts`) the action dispatcher checks before every action,
+  replayed ones included. It imports nothing of `e2e`:
   `tests/unit/package-imports.test.ts` in `packages/e2e` fails on a
   dependency `e2e-core`'s manifest does not declare. `e2e` reaches its
   modules as `e2e-core/lib/<path>` (`./lib/*` in its exports), which is
@@ -93,8 +100,11 @@ suites that consume the built packages the way a user would.
     checks that need a stored login and are never part of `pnpm test`.
 - `packages/web` — the published `@e2e-dev/web` package: the
   browser engine, built with the public `defineEngine`, contributing the
-  `browser` fixture and `expect(browser)`. It depends on `e2e-core` and
-  `e2e` (peers), never the reverse; a target names it explicitly as
+  `browser` fixture and `expect(browser)`. `@e2e-dev/web/engine` (and
+  `@e2e-dev/mobile/engine`) export the factory and types without `test`, so
+  `e2e-core` programs never import `e2e`'s main entry. It depends on
+  `e2e-core` (peer), never the reverse, and on `e2e` as an optional peer
+  that only the main entry loads; a target names it explicitly as
   `engine: web()`. There is no default engine and no well-known id registry
   in core. It imports from `e2e-core/engine` only: the semantics every
   engine must reproduce (error taxonomy, text and URL matching, assertion
@@ -103,7 +113,7 @@ suites that consume the built packages the way a user would.
 - `packages/mobile` — the published `@e2e-dev/mobile` package: the
   iOS/Android engine on agent-device, built with the same public
   `defineEngine`, contributing the `device` fixture. Like the web engine it
-  depends on `e2e-core` and `e2e` (peers), never the reverse; the
+  depends on `e2e-core` (peer) and optionally `e2e`, never the reverse; the
   engine implementation imports from `e2e-core/engine` only, and a target
   names it as `engine: mobile()`.
   The `@e2e-dev/mobile/tools` subpath holds the agent-side `open_app`, `swipe`,
@@ -367,7 +377,7 @@ pnpm --filter @e2e-dev/testbed run test:headed
 - Package `test` scripts do **not** build. Root `build` and `test` order the
   packages explicitly rather than relying on topological sort, because `e2e`
   devDepends on the web engine for its browser-backed integration tests
-  while the engine peer-depends on `e2e` — pnpm reports that cycle
+  while the engine optionally peer-depends on `e2e` — pnpm reports that cycle
   on every install. `e2e-core` builds first: `e2e` and every engine compile
   against its `dist`.
 - `pnpm typecheck` runs `build` first, then per-package `typecheck`. The
@@ -713,7 +723,7 @@ trees, on both platforms, without a device.
   entry. On `0.x` the bump is `patch` for a feature or fix; never
   pick `minor` on your own. A breaking change is a `minor` with the summary
   opening `**Breaking:**`; a `minor` or `major` for a release the maintainer
-  calls opens `**Release:**` (`scripts/check-changeset-bumps.ts`, `pnpm check`). Peer ranges point one way only (engine -> `e2e-core` and `e2e`, integration ->
+  calls opens `**Release:**` (`scripts/check-changeset-bumps.ts`, `pnpm check`). Peer ranges point one way only (engine -> `e2e-core` and optionally `e2e`, integration ->
   engine) and read `>=<major.minor.patch> <major+1>`, the floor the oldest
   sibling the package works with. Raise it when a package starts relying on a
   newer sibling's export or contract field;

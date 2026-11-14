@@ -358,6 +358,9 @@ importers:
       e2e:
         specifier: workspace:*
         version: link:../packages/e2e
+      e2e-core:
+        specifier: workspace:*
+        version: link:../packages/core
       typescript:
         specifier: 7.0.2
         version: 7.0.2

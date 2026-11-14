@@ -353,6 +353,7 @@ targets: [
 | [`url`](#url) | `string` | - |
 | [`bundleId`](#bundleid) | `string` | - |
 | [`appPath`](#apppath) | `string` | - |
+| [`linkBase`](#linkbase) | `string` | - |
 | [`identity`](#identity) | `string` | derived from the app |
 | [`environment`](#environment) | `'test' \| 'staging' \| 'production'` | `'test'` or `'production'` |
 | [`launchArguments`](#launcharguments) | `string[]` | - |
@@ -367,6 +368,7 @@ target. A target with `app` needs an [engine](#engine).
   `launchArguments`.
 - A `mobile()` target needs `app.bundleId` or `app.appPath`. `app.url` on a
   mobile target is not supported yet.
+- `app.linkBase` needs an engine that opens links, such as `mobile()`.
 - An unknown key in `app` or `app.command` fails with a did-you-mean.
 
 <Note>
@@ -419,6 +421,29 @@ appPath: './build/App.app',
 
 Without `bundleId`, the app it installs is the one launched. See
 [the device engine](/reference/mobile#engine) for when it is installed.
+
+#### `linkBase`
+
+Where `app.open(path)` opens on a device target: the path joins the link base,
+and the link opens in the pinned app.
+
+```ts
+linkBase: 'https://shop.example.com', // app.open('/orders/42') opens https://shop.example.com/orders/42
+linkBase: 'shopapp://', // app.open('/orders/42') opens shopapp://orders/42
+```
+
+- One slash joins the base and the path; none follows a bare scheme
+  (`shopapp://`).
+- An absolute link passed to `app.open` opens as given, a custom app scheme
+  included; `file:`, `data:`, `javascript:`, `view-source:`, `blob:`, and
+  `filesystem:` links are `POLICY_DENIED`.
+- Without `linkBase`, `app.open()` on a device launches the app and takes no
+  path (`APP_URL_REQUIRED`).
+
+| Throws | When |
+| --- | --- |
+| `INVALID_CONFIG` | The engine opens no links (a `web()` target), the value is not an absolute URL or a scheme, it has a query or fragment (an empty `?` or `#` included), it has leading or trailing whitespace, or it names `file:`, `data:`, `javascript:`, `view-source:`, `blob:`, or `filesystem:`. |
+| `POLICY_DENIED` | `app.open` got an absolute link with one of those schemes. |
 
 #### `identity`
 

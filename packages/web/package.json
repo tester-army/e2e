@@ -37,6 +37,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./engine": {
+      "types": "./dist/engine-entry.d.ts",
+      "default": "./dist/engine-entry.js"
     }
   },
   "bin": {
@@ -60,6 +64,11 @@
   "peerDependencies": {
     "e2e": ">=0.23.1 <1",
     "e2e-core": ">=0.23.1 <1"
+  },
+  "peerDependenciesMeta": {
+    "e2e": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@napi-rs/image": "1.16.0",

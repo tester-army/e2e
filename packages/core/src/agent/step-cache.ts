@@ -23,7 +23,7 @@ import { targetLabel, type ActionTrace, type DerivedReason, type RecordedModel, 
 import { readTraceEntry } from '../cache/trace-read.ts';
 import { sleep } from '../internal/time.ts';
 import type { StepCacheInfo } from '../run/steps.ts';
-import type { JsonValue } from '../types.ts';
+import type { JsonValue, ProposedAction } from '../types.ts';
 import type { RecordableAction } from './actions.ts';
 import { ActionHookError, AgentError, isAgentError, isModelUnreachable } from './error.ts';
 import { isRuntimeHardStop, type ReplayedPrefix, type StepVerdict } from './executor.ts';
@@ -182,6 +182,14 @@ export class StepTraceSession {
    * nothing and an unconfirmed one still evicts.
    */
   private replayedWhole = false;
+  /** The action the replayed recording stopped before, when the cache finished a stopped step. */
+  replayedStop: ProposedAction | undefined;
+  /**
+   * The screen a guard stopped the step on, settled before the stop cut the
+   * step's signal: the recording's end state, which staging cannot probe
+   * once the signal is gone.
+   */
+  stoppedScreen: ObservedScreen | undefined;
   /** True once a cached entry's actions were run this step, fully or partly. */
   private consumedReplay = false;
   /** True once the store returned an entry for this step, whether or not it replayed. */
@@ -338,7 +346,7 @@ export class StepTraceSession {
    *   that diverged hands off again next run, where a model that answers
    *   re-records it.
    */
-  async conclude(outcome: StepOutcome, verdictSummary: string | undefined, recordedBy?: RecordedModel): Promise<void> {
+  async conclude(outcome: StepOutcome, verdictSummary: string | undefined, recordedBy?: RecordedModel, stop?: ProposedAction): Promise<void> {
     const recorder = this.recorder;
     if (recorder === undefined) return;
     if (this.handedOffMs !== undefined) this.executorCompletedMs = Date.now();
@@ -358,7 +366,7 @@ export class StepTraceSession {
             recordedFor: recordedProvenance(this.claim.step, this.options.redact),
           });
         } else {
-          const staged = await this.stage(recorder, verdictSummary, recordedBy);
+          const staged = await this.stage(recorder, verdictSummary, recordedBy, stop);
           if (staged !== 'staged' && this.readEntryHit) await this.evict();
           else if (staged === 'no-change') this.cache.staged.push({ kind: 'decided', outcome: 'no-change', keyHash: this.keyHash, stepIndex: this.options.stepIndex });
         }
@@ -543,6 +551,7 @@ export class StepTraceSession {
 
   private selfFinalize(trace: ActionTrace, outcome: ReplayOutcome): StepVerdict {
     this.replayedWhole = true;
+    this.replayedStop = trace.stop;
     this.info = {
       mode: 'self-finalized',
       replayedActions: outcome.executed,
@@ -598,9 +607,9 @@ export class StepTraceSession {
    * does a step that changed nothing a replay could check, no node and no
    * route: a trace without its check would replay on mechanics alone.
    */
-  private async stage(recorder: TraceRecorder, verdictSummary: string | undefined, recordedBy: RecordedModel | undefined): Promise<StageOutcome> {
+  private async stage(recorder: TraceRecorder, verdictSummary: string | undefined, recordedBy: RecordedModel | undefined, stop: ProposedAction | undefined): Promise<StageOutcome> {
     if (!this.host.traceEligible || this.startNodes === undefined || recorder.recordedCount === 0) return 'skipped';
-    const observation = await probeScreen(this.host, 'held-still');
+    const observation = this.stoppedScreen ?? await probeScreen(this.host, 'held-still');
     if (!this.host.traceEligible || observation?.kind !== 'semantic') return 'skipped';
     const { nodes: endNodes, path: endPath } = observation;
     // The start capture may predate a secret this step resolved; read with
@@ -627,6 +636,7 @@ export class StepTraceSession {
       // baseline. The replay and executor turn are not app settling time.
       endWaitMs: Date.now() - this.endWaitBaselineMs(recorder) + END_WAIT_MARGIN_MS,
       keyedBy: this.claim.context,
+      ...(stop === undefined ? {} : { stop }),
     });
     if (trace === undefined) return 'skipped';
     // A trace with no start anchor — no recorded path (a surface without a URL)

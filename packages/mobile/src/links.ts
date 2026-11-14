@@ -11,9 +11,7 @@
  * (`view-source:file:...`, `blob:`, `filesystem:`) that carry one inside.
  */
 
-import { ConfigurationError, TestError } from 'e2e-core/engine';
-
-const FORBIDDEN_PROTOCOLS = new Set(['file:', 'data:', 'javascript:', 'view-source:', 'blob:', 'filesystem:']);
+import { ConfigurationError, isRefusedLinkScheme, TestError } from 'e2e-core/engine';
 
 /**
  * What agent-device opens as a URL instead of resolving as an app: a
@@ -29,7 +27,7 @@ export function isLink(value: string): boolean {
 }
 
 function denyForbiddenScheme(protocol: string): void {
-  if (FORBIDDEN_PROTOCOLS.has(protocol)) {
+  if (isRefusedLinkScheme(protocol)) {
     throw new ConfigurationError('POLICY_DENIED', `forbidden URL scheme: ${protocol}`);
   }
 }

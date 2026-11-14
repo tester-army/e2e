@@ -92,7 +92,7 @@ describe('manifest', () => {
     expect([...pinned.capabilities].toSorted()).toEqual(['actions', 'artifacts', 'device', 'keyboard', 'location', 'observation', 'pointer']);
     expect(pinned.name).toBe('mobile');
     expect(pinned.version).not.toBe('unknown');
-    expect(Object.keys(pinned.session!).toSorted()).toEqual(['back', 'reset', 'restart']);
+    expect(Object.keys(pinned.session!).toSorted()).toEqual(['back', 'openLink', 'reset', 'restart']);
     // No `open`: a device app has no URL. No select verb either: the touch surface has no option lists to pick from.
     expect(pinned.session!.open).toBeUndefined();
     expect(pinned.actions).toEqual(['tap', 'doubleTap', 'longPress', 'fill', 'clear', 'press', 'check', 'uncheck', 'focus', 'hover', 'dragTo', 'swipe']);
@@ -563,7 +563,7 @@ describe('lifecycle', () => {
       bundleId: 'com.example.app',
       identifiers: {},
     }));
-    expect(Object.keys(h.engine.session!).toSorted()).toEqual(['back', 'reset', 'restart']);
+    expect(Object.keys(h.engine.session!).toSorted()).toEqual(['back', 'openLink', 'reset', 'restart']);
     await boot(h);
     await h.engine.startAttempt!({ attemptId: 'a1', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets, ...ignoreTrace });
     expect(h.fake.methods()).toEqual(['devices.boot']);
@@ -932,6 +932,7 @@ describe('observation', () => {
     ['press', 'command.keyboard', (h, op) => h.engine.keyboard!.press('Enter', op)],
     ['keyboard dismiss', 'command.keyboard', (h, op) => h.engine.keyboard!.dismiss!(op)],
     ['back', 'command.back', (h, op) => h.engine.session!.back!(op)],
+    ['open link', 'apps.open', (h, op) => h.engine.session!.openLink!('e2e-benchmark://orders/42', op)],
   ];
 
   it.each(INPUTS)('ends %s, hung on %s, at its budget as possibly committed', async (_entry, method, call) => {
@@ -2230,6 +2231,18 @@ describe('device fixture', () => {
       ['apps.open', { platform: 'ios', app: 'com.apple.mobilesafari', url: 'https://example.com/verify' }],
     ]);
     expect((await h.engine.observe!(operation())).location).toBe('dev.e2e.benchmark / General');
+  });
+
+  it('opens app.open(path) links on a target with app.linkBase in the pinned app, through session.openLink', async () => {
+    const h = harness();
+    await openAttempt(h);
+    h.fake.respond('apps.open', () => ({ session: 's', appName: 'Benchmark', appBundleId: 'dev.e2e.benchmark', identifiers: {} }));
+    const before = h.fake.calls.length;
+    await h.engine.session!.openLink!('e2e-benchmark://orders/42', operation());
+    expect(h.fake.calls.slice(before).map((call) => [call.method, call.args])).toEqual([
+      ['apps.open', { platform: 'ios', app: 'Settings', url: 'e2e-benchmark://orders/42' }],
+    ]);
+    await expect(h.engine.session!.openLink!('javascript:alert(1)', operation())).rejects.toMatchObject({ code: 'POLICY_DENIED' });
   });
 
   it('lets Android route a link without an app, and needs one on iOS, where an unbound open leaves no session', async () => {

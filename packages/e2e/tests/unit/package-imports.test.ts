@@ -48,8 +48,9 @@ const SCOPES: readonly Scope[] = [
       '@ai-sdk/xai': ['oauth/grok.ts'],
     },
   },
-  { dir: 'web', optionalPeerHomes: {} },
-  { dir: 'mobile', optionalPeerHomes: { ai: [] } },
+  // An engine's main entry adds its fixture to `test`; its `/engine` entry runs on `e2e-core` alone.
+  { dir: 'web', optionalPeerHomes: { e2e: ['index.ts'] } },
+  { dir: 'mobile', optionalPeerHomes: { ai: [], e2e: ['index.ts'] } },
   { dir: 'github', optionalPeerHomes: {} },
   { dir: 'core', optionalPeerHomes: { ai: ['agent/ai-sdk.ts'] } },
 ];
@@ -155,7 +156,7 @@ function staticImports(source: string): string[] {
 }
 
 /** The `e2e-core` entries and its `lib/*` modules, as files under `packages/core/src`. */
-const CORE_ENTRIES: Readonly<Record<string, string>> = { 'e2e-core/engine': 'engine/index.ts' };
+const CORE_ENTRIES: Readonly<Record<string, string>> = { 'e2e-core': 'core/index.ts', 'e2e-core/agent': 'core/agent.ts', 'e2e-core/engine': 'engine/index.ts' };
 
 /** The module under `packages/<dir>/src` a specifier names, `e2e-core`'s included, or undefined for another package. */
 function sourceModule(dir: string, file: string, specifier: string): string | undefined {
@@ -209,6 +210,8 @@ const STARTUP: readonly { readonly dir: string; readonly entry: string; readonly
   { dir: 'limrun', entry: 'index.ts', lazy: ['@limrun/api'] },
   // `e2e list`, and a run whose browsers a provider hosts, read the config without ever launching a browser.
   { dir: 'web', entry: 'index.ts', lazy: ['playwright-core'] },
+  // A program that only drives a browser never decodes a PNG or runs the agent.
+  { dir: 'core', entry: 'core/index.ts', lazy: ['@napi-rs/image', 'ai', 'zod'] },
 ];
 
 describe.each(STARTUP)('importing packages/$dir/src/$entry', ({ dir, entry, lazy }) => {

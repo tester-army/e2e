@@ -14,6 +14,14 @@ desktop engine plugs into the same seam with no privilege either way.
 npm install --save-dev e2e @e2e-dev/web
 ```
 
+To drive a browser from a program without the test runner, install
+[`e2e-core`](https://www.npmjs.com/package/e2e-core) instead of `e2e`, and
+import `web` from `@e2e-dev/web/engine`:
+
+```bash
+npm install e2e-core @e2e-dev/web
+```
+
 This package depends on `playwright-core` pinned to an exact version, so the
 engine always runs the Playwright it was tested against. An app that depends
 on Playwright itself keeps its own copy; the two share a browser cache only

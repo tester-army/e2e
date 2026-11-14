@@ -56,9 +56,11 @@ const { summary, cache } = await agent.act('Sign in', {
 ```
 
 - `instruction` is 1 through 8192 UTF-8 bytes after NFC normalization.
-- The [`ActResult`](#types) carries the step's `summary`, the `modelCalls`
-  and `actions` it spent, and `cache`: how the [replay cache](/cache) took
-  part.
+- The [`ActResult`](#types) carries the step's `status`, its `summary`, the
+  `modelCalls` and `actions` it spent, and `cache`: how the
+  [replay cache](/cache) took part. `status` is `done`, or `stopped` when an
+  [`e2e-core`](/core#keep-actions-for-your-code) agent's guard stopped the
+  step before the action in `stoppedAt`.
 - The agent acts through the [action tools](#action-tools) and requests
   screenshots itself through the
   [pixel tools](#pixel-tools-screenshot-and-the-point-verbs).
@@ -658,8 +660,19 @@ export interface VisionOption {
  */
 export type VisionMode = boolean | 'only';
 
-/** What one passing `act` step did, as the report records it. */
-export interface ActResult {
+/**
+ * What one passing `act` step did, as the report records it. `status` is
+ * `done` when the step finished, and `stopped` when an `e2e-core` agent's
+ * guard stopped it before an action, for the program to take over; only a
+ * guard stops a step, and `stoppedAt` is the action it stopped before.
+ */
+export type ActResult = ActOutcome & (
+  | { readonly status: 'done'; readonly stoppedAt?: never }
+  | { readonly status: 'stopped'; readonly stoppedAt: ProposedAction }
+);
+
+/** What every passing `act` step reports, whatever its `status`. */
+export interface ActOutcome {
   /** The executor's one-line account of the step, or the replay's when the cache finished it. */
   readonly summary: string;
   /** How the replay cache took part; absent when caching is off for the step. */

@@ -19,6 +19,7 @@ import {
   type EngineHandle,
 } from 'e2e-core/engine';
 import { createRequire } from 'node:module';
+import type { WebFixtures } from './fixtures.ts';
 import { asBrowserProvider } from './provider.ts';
 import { PlaywrightSurface, type WebOptions } from './surface.ts';
 import { createBrowserFixture } from './browser.ts';
@@ -54,7 +55,7 @@ export function surfaceOf(engine: EngineHandle): PlaywrightLiveSurface | undefin
   return { page: () => surface.requirePage(), context: () => surface.requireContext() };
 }
 
-export function web(options: WebOptions = {}): EngineHandle {
+export function web(options: WebOptions = {}): EngineHandle<WebFixtures> {
   if ('allowedOrigins' in options) {
     throw new ConfigurationError(
       'INVALID_CONFIG',
@@ -104,7 +105,7 @@ export function web(options: WebOptions = {}): EngineHandle {
     );
   }
   const surface = new PlaywrightSurface(options);
-  const handle = defineEngine({
+  const handle = defineEngine<WebFixtures>({
     name: 'web',
     version: ownVersion(),
     spiVersion: 1,

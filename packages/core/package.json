@@ -1,7 +1,7 @@
 {
   "name": "e2e-core",
   "version": "0.0.0",
-  "description": "The engine contract, locators, agent, and replay cache the e2e test runner is built on",
+  "description": "Drive a browser or a native app from code, with an optional agent: the engines, locators, and agent of e2e, without the test runner",
   "keywords": [
     "e2e",
     "automation",
@@ -33,6 +33,14 @@
   },
   "type": "module",
   "exports": {
+    ".": {
+      "types": "./dist/core/index.d.ts",
+      "default": "./dist/core/index.js"
+    },
+    "./agent": {
+      "types": "./dist/core/agent.d.ts",
+      "default": "./dist/core/agent.js"
+    },
     "./engine": {
       "types": "./dist/engine/index.d.ts",
       "default": "./dist/engine/index.js"

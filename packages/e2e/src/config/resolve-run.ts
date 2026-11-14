@@ -1,6 +1,7 @@
 /**
- * The runner's config: the project config (`resolveProjectConfig`), plus
- * the reporters and test filters only a run reads.
+ * The runner's config: the project config `e2e-core` resolves too
+ * (`resolveProjectConfig`), plus the reporters and test filters only a run
+ * reads.
  */
 
 import { ConfigurationError } from 'e2e-core/lib/internal/errors';

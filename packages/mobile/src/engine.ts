@@ -11,15 +11,16 @@ import { createAgentDeviceClient } from 'agent-device';
 import { ConfigurationError, defineEngine, obj, type EngineAppCheckInfo, type EngineAppDeclaration, type EngineHandle } from 'e2e-core/engine';
 import { createDeviceFixture } from './device.ts';
 import type { ClientFactory, MobileOptions, MobilePlatform } from './options.ts';
-import { isLink } from './links.ts';
+import { isLink, linkTarget } from './links.ts';
 import { DEVICE_ACTIONS, DEVICE_POINTER_ACTIONS } from './actions.ts';
 import { AgentDeviceSurface, assertPermissions } from './surface.ts';
+import type { MobileFixtures } from './fixtures.ts';
 
 const surfaces = new WeakMap<EngineHandle, AgentDeviceSurface>();
 
 /** Assembles the manifest for one surface. Exported for tests that script the client. */
-export function buildEngine(surface: AgentDeviceSurface): EngineHandle {
-  const handle = defineEngine({
+export function buildEngine(surface: AgentDeviceSurface): EngineHandle<MobileFixtures> {
+  const handle = defineEngine<MobileFixtures>({
     name: 'mobile',
     version: ownVersion(),
     spiVersion: 1,
@@ -53,6 +54,9 @@ export function buildEngine(surface: AgentDeviceSurface): EngineHandle {
       back: (operation) => surface.back(operation, surface.inputBudget('back', operation)),
       restart: (operation) => surface.restart(operation),
       reset: (operation) => surface.reset(operation),
+      // `app.open(path)` on a target with `app.linkBase`: the link opens in the pinned app, as `device.openLink` would.
+      openLink: async (url, operation) =>
+        await surface.openLink(linkTarget(url), undefined, operation.signal, surface.inputBudget('open link', operation)),
     },
     artifacts: {
       screenshot: (label, operation) => surface.screenshot(label, operation, surface.inputBudget('screenshot', operation)),
@@ -68,7 +72,7 @@ export function buildEngine(surface: AgentDeviceSurface): EngineHandle {
 }
 
 /** Creates one agent-device engine: one device session per worker; a test launches the pinned app with `app.open()`. */
-export function mobile(options: MobileOptions): EngineHandle {
+export function mobile(options: MobileOptions): EngineHandle<MobileFixtures> {
   // The type requires it; `e2e mcp`'s `open_session {engine}` calls this with the JSON an agent wrote.
   const platform: unknown = (options as Partial<MobileOptions> | undefined)?.platform;
   if (platform !== 'ios' && platform !== 'android') {

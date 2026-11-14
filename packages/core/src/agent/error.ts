@@ -64,7 +64,7 @@ export const CATEGORY_BY_CODE: Readonly<Record<AgentErrorCode, ErrorCategory>> =
   ) as Record<AgentErrorCode, ErrorCategory>;
 
 /** The codes that mean no model answered; derived from the one table. */
-const MODEL_UNREACHABLE_CODES: ReadonlySet<string> = new Set(
+export const MODEL_UNREACHABLE_CODES: ReadonlySet<string> = new Set(
   Object.entries(AGENT_CODE_TABLE)
     .filter(([, entry]) => entry.modelUnreachable === true)
     .map(([code]) => code),

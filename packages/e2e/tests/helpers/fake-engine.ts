@@ -73,7 +73,7 @@ export interface RecordedKey {
 export interface RecordedSessionCall {
   readonly kind: 'session';
   readonly attemptId: string;
-  readonly method: 'open' | 'back' | 'restart' | 'reset';
+  readonly method: 'open' | 'openLink' | 'back' | 'restart' | 'reset';
   readonly url?: string;
 }
 
@@ -138,6 +138,8 @@ export interface FakeEngineBehavior {
    * the app, opening the scene at the fake's location. Overrides `navigation`.
    */
   device?: boolean;
+  /** With `device`, declares `session.openLink`: every call is a `session` record, and the app opens at the link. */
+  links?: boolean;
   /** Declares the state capability. */
   state?: boolean;
   /** Declares the artifacts capability (screenshot only). */
@@ -154,6 +156,8 @@ export interface FakeEngineBehavior {
   onStopVideo?(attemptIndex: number): void | Promise<void>;
   /** Throw to fail state restore after startAttempt succeeded. */
   onRestore?(state: EngineState): void | Promise<void>;
+  /** Throw to fail state capture. */
+  onCapture?(): void | Promise<void>;
   /** Contributes a `gadget` fixture exercising every fixture-context facility. */
   fixtures?: boolean;
   /** The secrets the engine declares, which `onStartAttempt` may resolve through its context. */
@@ -308,6 +312,15 @@ export function createFakeEngine(behavior: FakeEngineBehavior = {}): FakeEngineH
         calls.push({ kind: 'session', attemptId: operation.attemptId, method: 'restart' });
         sceneOf(operation)?.open(location);
       },
+      ...(behavior.links === true
+        ? {
+            async openLink(url: string, operation: OperationContext) {
+              record('session.openLink', operation);
+              calls.push({ kind: 'session', attemptId: operation.attemptId, method: 'openLink', url });
+              sceneOf(operation)?.open(url);
+            },
+          }
+        : {}),
     } : {
       async open(url, operation) {
         record(`session.open(${url})`, operation);
@@ -376,6 +389,7 @@ export function createFakeEngine(behavior: FakeEngineBehavior = {}): FakeEngineH
           state: {
             async capture(operation) {
               record('state.capture', operation);
+              await behavior.onCapture?.();
               const state: EngineState = { format: 'fake-state', version: 1, data: { ok: true } };
               capturedStates.push(state);
               return state;

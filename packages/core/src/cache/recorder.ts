@@ -18,6 +18,7 @@
 
 import { describeAction, type DescribedAction, type PlacedPoint, type RecordableAction } from '../agent/actions.ts';
 import type { RedactedNode } from '../agent/observation.ts';
+import type { ProposedAction } from '../types.ts';
 import type { ViewportPoint } from '../engine/surface.ts';
 import { isRelocatableDescriptor } from './relocate.ts';
 import {
@@ -123,6 +124,8 @@ export class TraceRecorder {
     readonly endWaitMs?: number;
     /** The key's context as this run derived it; see `ActionTrace.keyedBy`. */
     readonly keyedBy?: TraceKeyContext;
+    /** The action a guard stopped the step before; see `ActionTrace.stop`. */
+    readonly stop?: ProposedAction;
   }): ActionTrace | undefined {
     if (this.actions.length === 0) return undefined;
     const source = conclusion.recordedBy;
@@ -134,6 +137,8 @@ export class TraceRecorder {
     // trace non-replayable rather than storing it bent.
     const startPath = this.anchorPath(conclusion.startPath);
     const endPath = this.anchorPath(conclusion.endPath);
+    // Stored before `truncated` is read: keeping the stop's location may poison the trace.
+    const stop = conclusion.stop === undefined ? undefined : this.storedStop(conclusion.stop);
     return {
       actions: [...this.actions],
       executor: {
@@ -156,6 +161,29 @@ export class TraceRecorder {
         : { endWaitMs: Math.min(MAX_TRACE_END_WAIT_MS, Math.max(0, Math.round(conclusion.endWaitMs))) }),
       ...(conclusion.keyedBy === undefined ? {} : { keyedBy: conclusion.keyedBy }),
       ...(this.truncated ? { truncated: true } : {}),
+      ...(stop === undefined ? {} : { stop }),
+    };
+  }
+
+  /** The stopped action as stored: names bounded like a descriptor, its location and destination kept whole or the trace poisoned. */
+  private storedStop(stop: ProposedAction): ProposedAction {
+    const url = stop.url === undefined ? undefined : this.anchorPath(stop.url);
+    const destination = stop.destination === undefined ? undefined : this.anchorPath(stop.destination);
+    const node = stop.node;
+    return {
+      kind: stop.kind,
+      ...(node === undefined
+        ? {}
+        : {
+            node: {
+              role: bound(node.role, MAX_TRACE_DESCRIPTOR_CHARS),
+              name: bound(this.redact(node.name), MAX_TRACE_DESCRIPTOR_CHARS),
+              ...(node.testId === undefined || node.testId === '' ? {} : { testId: bound(this.redact(node.testId), MAX_TRACE_DESCRIPTOR_CHARS) }),
+            },
+          }),
+      ...(url === undefined ? {} : { url }),
+      ...(destination === undefined ? {} : { destination }),
+      ...(stop.key === undefined ? {} : { key: stop.key }),
     };
   }
 
