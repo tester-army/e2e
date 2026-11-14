@@ -66,9 +66,14 @@ describe('links', () => {
     expect(linkLabel('https://token@example.com/verify')).toBe('https://example.com/verify');
     expect(linkLabel('https://a@b:c@example.com/x?token=s3cret#frag')).toBe('https://example.com/x');
     expect(linkLabel('myapp://orders/42#user:secret@x')).toBe('myapp://orders/42');
+    expect(linkLabel('https:user:pass@example.com/path')).toBe('https:example.com/path');
+    expect(linkLabel('HTTPS:user:pass@example.com/path')).toBe('HTTPS:example.com/path');
+    expect(linkLabel('myapp://a\\b@host/x')).toBe('myapp://host/x');
+    expect(linkLabel('ht\ttps://user:pass@example.com/x')).toBe('https://example.com/x');
+    expect(linkLabel('https:/\t/user:pass@example.com/x')).toBe('https://example.com/x');
   });
 
-  it('keeps an @ outside the authority, and leaves app ids and unparseable strings whole', () => {
+  it('keeps an @ outside the authority, and leaves app ids and non-authority strings whole', () => {
     expect(linkLabel('https://example.com/users/@me')).toBe('https://example.com/users/@me');
     expect(linkLabel('https://example.com/invite?email=a@b.com')).toBe('https://example.com/invite');
     expect(linkLabel('mailto:someone@example.com')).toBe('mailto:someone@example.com');
@@ -76,5 +81,6 @@ describe('links', () => {
     expect(linkLabel('Notes: Pro')).toBe('Notes: Pro');
     expect(linkLabel('https://user:s3cret@exa mple.com/verify')).toBe('https://exa mple.com/verify');
     expect(linkLabel('://user@x')).toBe('://user@x');
+    expect(linkLabel('myapp:/invite@friend')).toBe('myapp:/invite@friend');
   });
 });

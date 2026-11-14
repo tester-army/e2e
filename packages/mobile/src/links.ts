@@ -80,12 +80,19 @@ export function assertAppId(app: string): void {
  * `user:password@` login), as `printableUrl` does on the web. A step label is
  * kept for as long as the report is. Takes any string, since `openApp` labels
  * a bundle id the same way, and never throws: userinfo goes only from a
- * `scheme://user@host` authority (`URL` also reads `https:/` and backslashes
- * as one), so `com.example.app` and `mailto:` addresses stay as they are.
+ * `scheme://user@host` authority (`URL` also reads `https:/`, `https:` and backslashes
+ * as one on web schemes), so `com.example.app` and `mailto:` addresses stay as they are.
  */
 export function linkLabel(input: string): string {
-  return input.replace(/[?#][\s\S]*$/, '').replace(USERINFO, '$1');
+  return input
+    .replace(/[\t\n\r]/g, '')
+    .replace(/[?#][\s\S]*$/, '')
+    .replace(SPECIAL_USERINFO, '$1')
+    .replace(USERINFO, '$1');
 }
 
-/** A link's scheme and slashes, then the userinfo up to its last `@` before the path. */
-const USERINFO = /^(\s*[A-Za-z][A-Za-z0-9+.-]*:[\\/]+)[^/\\]*@/;
+/** A special-scheme link's scheme and any slashes, then userinfo up to its last `@`: `https:user@host` is one too. */
+const SPECIAL_USERINFO = /^(\s*(?:https?|ftp|wss?):[\\/]*)[^/\\]*@/i;
+
+/** A custom-scheme link's `scheme://`, then userinfo up to its last `@` before the path. */
+const USERINFO = /^(\s*[A-Za-z][A-Za-z0-9+.-]*:\/\/)[^/]*@/;
