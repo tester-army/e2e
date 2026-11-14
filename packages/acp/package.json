@@ -51,7 +51,7 @@
     "zod": "4.6.7"
   },
   "peerDependencies": {
-    "e2e": ">=0.21.4 <1"
+    "e2e": ">=0.22.0 <1"
   },
   "devDependencies": {
     "@modelcontextprotocol/client": "2.4.0",
