@@ -1,15 +1,15 @@
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import type { StepExecutor, StepExecutorContext } from 'e2e';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { claudeCode, codex } from '../src/index.ts';
 
-const AGENT = fileURLToPath(new URL('./fixtures/scripted-agent.ts', import.meta.url));
+const AGENT = new URL('./fixtures/scripted-agent.ts', import.meta.url).href;
 const pass = { call: 'complete_step', args: { status: 'passed', summary: 'done' } };
 const cleanups: (() => void)[] = [];
 afterEach(() => {
+  vi.unstubAllEnvs();
   for (const cleanup of cleanups.splice(0)) cleanup();
 });
 
@@ -89,12 +89,17 @@ describe('agent presets', () => {
   it("starts Codex read-only with its own tools and the user's MCP servers off", async () => {
     const directory = project(['@agentclientprotocol/codex-acp']);
     const log = join(directory, 'agent.jsonl');
-    // Stands in for the Codex the adapter runs, which lists the user's MCP servers, and none when it gets a secret.
-    const codexBin = join(directory, 'codex');
-    writeFileSync(codexBin, `#!/bin/sh\n[ "$1 $2 $3" = "mcp list --json" ] && [ -z "$E2E_SECRET_KEY" ] && echo '[{"name":"playwright"},{"name":"executor"}]'\n`);
-    chmodSync(codexBin, 0o755);
+    // Use the adapter's bundled Node entry instead of a platform-specific executable.
+    vi.stubEnv('CODEX_PATH', undefined);
+    const codexPackage = join(directory, 'node_modules', '@openai', 'codex');
+    mkdirSync(join(codexPackage, 'bin'), { recursive: true });
+    writeFileSync(join(codexPackage, 'package.json'), JSON.stringify({ name: '@openai/codex' }));
+    writeFileSync(join(codexPackage, 'bin', 'codex.js'), `
+if (process.argv.slice(2).join(' ') !== 'mcp list --json' || process.env.E2E_SECRET_KEY) process.exit(1);
+console.log(JSON.stringify([{ name: 'playwright' }, { name: 'executor' }]));
+`);
     const executor = inProject(directory, () =>
-      codex({ env: { CODEX_PATH: codexBin, E2E_SECRET_KEY: 'sk_test_value', ACP_SCRIPT: JSON.stringify([[pass]]), ACP_LOG: log } }),
+      codex({ env: { E2E_SECRET_KEY: 'sk_test_value', ACP_SCRIPT: JSON.stringify([[pass]]), ACP_LOG: log } }),
     );
     const entries = await runStep(executor, log);
     expect(entries).toContainEqual({ mode: 'read-only' });
