@@ -16,8 +16,8 @@ import { TargetExecutor, type InMemoryAttempts } from '../execute.ts';
 import { encodeResult, type RunError } from '../records.ts';
 import type { SessionStore } from '../sessions.ts';
 import type { HeldStep } from '../step-hold.ts';
-import { countsTowardFailureLimit, disappearedResult, failureLimitSkip } from '../units.ts';
-import type { FailureLimit, MainToWorker, RunUnitMessage, WirePair, WorkerToMain } from './protocol.ts';
+import { countsTowardFailureLimit, disappearedResult } from '../units.ts';
+import type { MainToWorker, RunUnitMessage, WirePair, WorkerToMain } from './protocol.ts';
 
 /** Pairs resolved locally for one unit, plus identities that vanished. */
 export interface ResolvedUnitPairs {
@@ -89,8 +89,12 @@ export class TargetWorker {
   get pairInFlight(): { readonly testId: string; readonly agent: string; readonly repeat: number } | undefined {
     return this.inFlight;
   }
-  /** The failure limit of the unit running now, counting this worker's own failures since its dispatch. */
-  private failureLimit: FailureLimit | undefined;
+  /** Whether the run has a failure limit, so each failure this worker reports waits for the runner's answer. */
+  private answersFailures = false;
+  /** Failures this worker reported that the runner has not answered yet. */
+  private unanswered = 0;
+  /** Wakes the wait in `failuresAnswered` once the last of them is answered. */
+  private answered: (() => void) | undefined;
   /** Serializes message handling so units never overlap on one worker. */
   private queue: Promise<void> = Promise.resolve();
   /** Disposal happens once, whichever of shutdown or terminate asks first. */
@@ -123,14 +127,16 @@ export class TargetWorker {
         ...(deps.step === true ? { holdStep: (step: HeldStep, signal: AbortSignal) => this.holdStep(step, signal) } : {}),
         ...(deps.debug !== undefined ? { debug: deps.debug } : {}),
         inMemory: deps.inMemory,
+        beforePair: () => this.failuresAnswered(),
         events: {
           onResult: (result) => {
             // Teardown after the result (an afterAll) belongs to no pair.
             if (this.inFlight?.testId === result.test.id && this.inFlight.agent === result.agent && this.inFlight.repeat === result.repeat) {
               this.inFlight = undefined;
             }
+            // Counted before it is sent: an in-process runner answers inside `emit`.
+            if (this.answersFailures && countsTowardFailureLimit(result.status)) this.unanswered += 1;
             this.host.emit({ type: 'result', result: encodeResult(result) });
-            if (countsTowardFailureLimit(result.status)) this.countFailure();
           },
           onSerialGroup: (group) => this.host.emit({ type: 'serial-group', group }),
           onAttemptStart: (pair, index) =>
@@ -215,6 +221,11 @@ export class TargetWorker {
         // Now too: the unit it releases is the one running.
         this.holds.get(message.holdId)?.();
         return;
+      case 'continue':
+        // Now too: the running unit is what waits for it.
+        this.unanswered -= 1;
+        if (this.unanswered === 0) this.answered?.();
+        return;
       default:
         message satisfies never;
     }
@@ -247,18 +258,24 @@ export class TargetWorker {
   }
 
   /**
-   * Counts a failure toward the unit's failure limit. Reaching it stops the
-   * unit the way the runner's interrupt would, at once: the tests the worker
-   * has not started are skipped with the limit's reason, however long the
-   * runner's interrupt takes to arrive. Other workers' failures only add to
-   * the run's count, so a limit reached here is reached for the run too.
+   * Resolves once the runner has answered every failure this worker reported,
+   * or the interrupt arrived. The runner alone counts failures toward the
+   * run's limit, so a worker whose failure reached it never starts another
+   * test: the interrupt answering that failure skips the rest with the
+   * limit's reason.
    */
-  private countFailure(): void {
-    const current = this.failureLimit;
-    if (current === undefined) return;
-    const counted = { limit: current.limit, failures: current.failures + 1 };
-    this.failureLimit = counted;
-    if (counted.failures >= counted.limit) this.interruptController.abort(failureLimitSkip(counted.failures, counted.limit));
+  private failuresAnswered(): Promise<void> {
+    const signal = this.interruptController.signal;
+    if (this.unanswered === 0 || signal.aborted) return Promise.resolve();
+    return new Promise<void>((resolve) => {
+      const done = (): void => {
+        this.answered = undefined;
+        signal.removeEventListener('abort', done);
+        resolve();
+      };
+      this.answered = done;
+      signal.addEventListener('abort', done, { once: true });
+    });
   }
 
   /**
@@ -292,7 +309,7 @@ export class TargetWorker {
     // fatal for the worker; the scheduler still holds the unit and synthesizes
     // failed results for every pair it never heard about. Reporting the unit
     // done first would clear that bookkeeping and drop those tests silently.
-    this.failureLimit = message.failureLimit;
+    this.answersFailures = message.answersFailures === true;
     const { pairs, missing, registration } = await deps.resolvePairs(message);
     for (const wire of missing) {
       executor.recordDisappeared(

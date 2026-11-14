@@ -36,7 +36,6 @@ import {
 } from './units.ts';
 import {
   type AttemptDeadlineMessage,
-  type FailureLimit,
   type OutputMessage,
   type PairStart,
   type WirePair,
@@ -232,8 +231,8 @@ class SchedulerWorker {
     });
   }
 
-  /** Sends a unit, with the run's failure limit when it has one, and starts tracking it. */
-  dispatch(unit: WorkUnit, failureLimit: FailureLimit | undefined): void {
+  /** Sends a unit, saying whether the run has a failure limit, and starts tracking it. */
+  dispatch(unit: WorkUnit, answersFailures: boolean): void {
     this.state = 'busy';
     this.unit = unit;
     this.reported.clear();
@@ -254,7 +253,7 @@ class SchedulerWorker {
       file: unit.file,
       absolutePath: unit.absolutePath,
       pairs,
-      ...(failureLimit === undefined ? {} : { failureLimit }),
+      ...(answersFailures ? { answersFailures: true as const } : {}),
     });
   }
 
@@ -397,16 +396,19 @@ class Scheduler {
   /**
    * Every result leaves through here, so the failure count is one number
    * however the result came about: a worker's verdict, a synthesized crash,
-   * or a skip. Reaching the limit stops the run at once.
+   * or a skip. Reaching the limit stops the run at once. Returns whether the
+   * result was a counted failure the run goes on after.
    */
-  private report(result: ResultRecord): void {
+  private report(result: ResultRecord): boolean {
     this.options.events.onResult(result);
-    if (!countsTowardFailureLimit(result.status)) return;
+    if (!countsTowardFailureLimit(result.status)) return false;
     this.failures += 1;
     const limit = this.options.maxFailures;
-    if (limit === undefined || this.stopSkip !== undefined || this.failures < limit) return;
-    this.stopEarly(failureLimitSkip(this.failures, limit));
-    this.options.events.onFailureLimit?.(this.failures, limit);
+    if (limit !== undefined && this.stopSkip === undefined && this.failures >= limit) {
+      this.stopEarly(failureLimitSkip(this.failures, limit));
+      this.options.events.onFailureLimit?.(this.failures, limit);
+    }
+    return !this.interrupting;
   }
 
   /**
@@ -433,10 +435,9 @@ class Scheduler {
     this.wakeUp();
   }
 
-  /** The failure limit a unit dispatched now carries, when the run has one. */
-  private get failureLimit(): FailureLimit | undefined {
-    const limit = this.options.maxFailures;
-    return limit === undefined ? undefined : { limit, failures: this.failures };
+  /** Whether the run has a failure limit, so its workers wait for an answer to each failure they report. */
+  private get answersFailures(): boolean {
+    return this.options.maxFailures !== undefined;
   }
 
   /** Empties a target's queues, reporting every pair they held as skipped for `skip`. */
@@ -667,7 +668,7 @@ class Scheduler {
         this.returnUnit(state, unit);
         return;
       }
-      if (worker.state === 'idle') worker.dispatch(unit, this.failureLimit);
+      if (worker.state === 'idle') worker.dispatch(unit, this.answersFailures);
       else worker.queued = unit;
     }
   }
@@ -863,7 +864,7 @@ class Scheduler {
         worker.state = 'idle';
         const queued = worker.queued;
         worker.queued = undefined;
-        if (queued !== undefined) worker.dispatch(queued, this.failureLimit);
+        if (queued !== undefined) worker.dispatch(queued, this.answersFailures);
         this.wakeUp();
         break;
       }
@@ -926,7 +927,7 @@ class Scheduler {
           worker.sawFailure = true;
         }
         if (result.test.kind === 'setup') this.recordSetupOutcome(state, result);
-        this.report(result);
+        if (this.report(result) && this.answersFailures) worker.runner.send({ type: 'continue' });
         break;
       }
       case 'serial-group': {
