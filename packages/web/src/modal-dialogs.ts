@@ -14,13 +14,15 @@
 const MODAL_ORDER_KEY = 'e2e.modalDialogOrder';
 
 /**
- * Context init script that numbers every `showModal()` call: a `WeakMap` from
- * dialog to the count of modal shows so far, under a well-known symbol. A
- * dialog shown again gets a new number, so the highest number among the open
- * modal dialogs is the one on top. A call that throws (a dialog already open,
- * or not connected) records nothing. Keyed by the dialog and never
- * enumerated, so it holds nothing alive. A browser without `showModal` gets
- * no record, and the reader falls back to focus and tree order.
+ * Context init script that numbers every `showModal()` call that opens a
+ * dialog: a `WeakMap` from dialog to the count of modal shows so far, under a
+ * well-known symbol. A dialog closed and shown again gets a new number, so
+ * the highest number among the open modal dialogs is the one on top. A call
+ * on a dialog already open records nothing: on a modal one it changes
+ * nothing, and on one shown without a modal it throws, as it does on a
+ * dialog that is not connected. Keyed by the dialog and never enumerated, so
+ * it holds nothing alive. A browser without `showModal` gets no record, and
+ * the reader falls back to focus and tree order.
  */
 export const MODAL_ORDER_INIT_SCRIPT = `(() => {
   const key = Symbol.for(${JSON.stringify(MODAL_ORDER_KEY)});
@@ -31,9 +33,12 @@ export const MODAL_ORDER_INIT_SCRIPT = `(() => {
   Object.defineProperty(globalThis, key, { value: order, enumerable: false, configurable: false, writable: false });
   const showModal = HTMLDialogElement.prototype.showModal;
   HTMLDialogElement.prototype.showModal = function () {
+    const opens = !this.open;
     const result = showModal.call(this);
-    shown += 1;
-    order.set(this, shown);
+    if (opens) {
+      shown += 1;
+      order.set(this, shown);
+    }
     return result;
   };
 })();`;

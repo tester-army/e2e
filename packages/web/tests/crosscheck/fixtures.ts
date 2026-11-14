@@ -301,6 +301,8 @@ export const FIXTURE_PAGES: readonly FixturePage[] = [
       <script>
         document.getElementById('second').showModal();
         document.getElementById('first').showModal();
+        // On a dialog already modal, showModal() changes nothing, so the first stays on top.
+        document.getElementById('second').showModal();
         // Focus no longer names the dialog on top, so the recorded show order must.
         document.activeElement.blur();
       </script>

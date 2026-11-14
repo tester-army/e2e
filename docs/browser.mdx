@@ -509,8 +509,8 @@ The agent doesn't see inert content, so it never aims at a control that
 takes no input:
 
 - An element with the `inert` attribute, and everything under it.
-- Everything outside a `<dialog>` opened with `showModal()`. With several
-  open, only the one shown last stays.
+- Everything outside a modal `<dialog>`, opened with `showModal()` or a
+  `show-modal` command. With several open, only the one shown last stays.
 
 Locators still find inert content, and `toBeVisible` still passes, as in
 Playwright.
