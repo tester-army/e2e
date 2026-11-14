@@ -3,11 +3,13 @@ import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { discoverConfig } from '../../src/config/load.ts';
-import { isCiMode, resolveConfig, type CliOverrides } from '../../src/config/resolve.ts';
+import { isCiMode, type CliOverrides } from '../../src/config/resolve.ts';
+import { resolveConfig } from '../../src/config/resolve-run.ts';
 import { ConfigurationError, defineEngine } from '../../src/engine/index.ts';
 import { protocolEngine } from '../../src/engine/protocol/client.ts';
 import { secrets } from '../../src/secrets.ts';
-import type { CommandConfig, E2EConfig, Target, TargetApp, TestFilter } from '../../src/types.ts';
+import type { CommandConfig, Target, TargetApp } from '../../src/types.ts';
+import type { E2EConfig, TestFilter } from '../../src/run-types.ts';
 import { snapshot } from '../helpers/snapshot.ts';
 import { invalid } from '../helpers/invalid.ts';
 

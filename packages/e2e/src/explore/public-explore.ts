@@ -9,7 +9,7 @@ import type { ReportExplore } from '../report/build.ts';
 import type { RunEventSink } from '../run/events.ts';
 import { ownedRun, runResult, type RunResult } from '../run/public-run.ts';
 import { toSelectionRunOptions } from '../run/runner.ts';
-import type { E2EConfig } from '../types.ts';
+import type { E2EConfig } from '../run-types.ts';
 
 /** Options for one exploration through the public runner API. Recording and output settings come from the config. */
 export interface ExplorationOptions {

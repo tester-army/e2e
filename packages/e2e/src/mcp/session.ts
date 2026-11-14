@@ -27,7 +27,8 @@ import { selectTarget } from '../run/select-target.ts';
 import { SharedAppProcesses } from '../run/process-pool.ts';
 import { outputLayout } from '../run/output.ts';
 import { processSecrets, registerStaticSecrets } from '../run/secrecy.ts';
-import { openStandaloneAttempt, type StandaloneAttempt } from '../run/standalone.ts';
+import { openStandaloneAttempt, type OneShotAttempt } from '../run/standalone-kinds.ts';
+import type { StandaloneAttempt } from '../run/standalone-attempt.ts';
 import { selectStandaloneTest, testLocation } from '../run/standalone-test.ts';
 import type { AgentParams } from '../types.ts';
 import { createSessionCatalog, isGrammarVerb, type SessionCatalog } from './catalog.ts';
@@ -301,7 +302,7 @@ export class SessionHost {
     const cancel = (): void => abort.abort();
     if (opening.aborted) cancel();
     else opening.addEventListener('abort', cancel, { once: true });
-    let attempt: StandaloneAttempt | undefined;
+    let attempt: OneShotAttempt | undefined;
     let step: InteractiveStep | undefined;
     try {
       attempt = await openStandaloneAttempt({

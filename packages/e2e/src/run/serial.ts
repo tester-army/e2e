@@ -10,11 +10,13 @@ import {
 import { canonicalDigest, timestamp, uuidv7 } from '../internal/ids.ts';
 import type { CollectedTest } from '../collect/collect.ts';
 import { groupTitles, type RegisteredTest } from '../collect/registry.ts';
-import { pairRecordings, type SkipInfo, type TestTargetPair } from '../collect/select.ts';
+import { pairRecordings, type TestTargetPair } from '../collect/select.ts';
+import type { SkipInfo } from './records.ts';
 import type { ResolvedTarget } from '../config/resolve.ts';
 import type { ArtifactStore } from '../types.ts';
 import { attemptSegments, createAttemptArtifacts, resultSegment } from './artifacts.ts';
-import type { AttemptContext, ClosingRecord, SessionClose, SessionPlan } from './execute.ts';
+import type { AttemptContext } from './execute.ts';
+import type { ClosingRecord, SessionClose, SessionPlan } from './engine-sessions.ts';
 import type { ArtifactSink } from './fixtures.ts';
 import type { StepRecord } from './steps.ts';
 import { findRegistered, type FileRef, type Realm, RealmManager } from './realm.ts';

@@ -9,7 +9,7 @@ import { mkdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { findChanges } from '../../src/run/changes.ts';
-import type { TestFilterChanges } from '../../src/types.ts';
+import type { TestFilterChanges } from '../../src/run-types.ts';
 import { commitFiles, initRepo, runGit, useTempDirs } from '../helpers/git-repo.ts';
 
 const tempDir = useTempDirs();

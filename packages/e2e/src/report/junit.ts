@@ -4,7 +4,7 @@ import path from 'node:path';
 import { envValue } from '../internal/env.ts';
 import { sanitizeText } from '../internal/errors.ts';
 import { realpathOfExisting, relativeToProjectRoot } from '../internal/paths.ts';
-import type { FinishedRun } from '../types.ts';
+import type { FinishedRun } from '../run-types.ts';
 import type { Report1Document, ReportError, ReportResult, ReportSerialGroup } from './build.ts';
 import { repeatSuffix } from './format.ts';
 import { failureScreenshot, toldAttempt } from './failure-text.ts';

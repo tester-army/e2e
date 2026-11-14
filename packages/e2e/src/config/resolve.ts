@@ -9,26 +9,11 @@ import { canonicalDigest, sha256Hex } from '../internal/ids.ts';
 import { realpathOfExisting } from '../internal/paths.ts';
 import { didYouMean } from '../internal/suggest.ts';
 import { isRecordingMode, legacyTraceSpelling, RECORDING_MODES, type RecordingKind, type ResolvedRecording } from '../internal/recording-modes.ts';
-import { BUILTIN_REPORTER_LIST, BUILTIN_REPORTERS, isBuiltinReporter } from '../report/builtin.ts';
-import { ellipsize } from '../report/format.ts';
 import { isStepExecutor } from '../agent/executor.ts';
 import { compileGlob, compileGlobList, literalPrefix } from '../internal/globs.ts';
 import { isRecord } from './command.ts';
 import { boundedInt, describeValue, timerMs } from './validate.ts';
-import type {
-  ArtifactStore,
-  ArtifactsConfig,
-  BuiltinReporter,
-  CacheMode,
-  E2EConfig,
-  ModelInstance,
-  Reporter,
-  SecretProvider,
-  SecretPurpose,
-  RecordingMode,
-  CacheStore,
-  TestFilter,
-} from '../types.ts';
+import type { ArtifactStore, ArtifactsConfig, CacheMode, ModelInstance, SecretProvider, SecretPurpose, RecordingMode, CacheStore, ProjectConfig } from '../types.ts';
 import { isModelInstance, resolveAgentConfig, runLimits, type ResolvedAgentConfig, type ResolvedLimits } from './agent.ts';
 import { bindTargets, digestTargets, resolveTargets, TARGET_NAME_PATTERN, type PortAssignments, type ResolvedTarget } from './targets.ts';
 import { credentialNamed, credentialSecretName, envName, isSecretValue, secretValueProblem } from './secrets.ts';
@@ -76,12 +61,6 @@ export interface ResolvedConfig {
   readonly artifactStore: ArtifactStore | undefined;
   /** Absolute directory the run writes its results to: `--output`, else the config's `output`, else `<projectRoot>/.e2e`. */
   readonly output: string;
-  /** The built-in renderers in force: `--reporter` when given, else the config's ids. */
-  readonly reporters: readonly BuiltinReporter[];
-  /** The reporter objects the config names; `--reporter` never removes one. */
-  readonly customReporters: readonly Reporter[];
-  /** The test filters, in order; empty when unset. A run with `--changed-since` applies them. */
-  readonly filters: readonly TestFilter[];
   /**
    * The agents unpinned tests run as, one result each: `agents.default`, or
    * the names `--agent` gave, in order and deduplicated. Never empty.
@@ -143,7 +122,6 @@ export interface CliOverrides {
   actionTimeout?: number;
   /** `--assertion-timeout <ms>`: the default `expect` deadline, over the config's `assertionTimeout`. */
   assertionTimeout?: number;
-  reporters?: readonly BuiltinReporter[];
   /** Replay cache mode override; `--no-cache` maps to `'off'`. */
   cache?: CacheMode;
   /** `--strict-cache`: turns `cache.strict` on for the run. */
@@ -234,8 +212,8 @@ export function isCiMode(env: NodeJS.ProcessEnv = process.env): boolean {
  * is what identities and the digest key on. `assignPorts` puts a run's
  * ports in.
  */
-export function resolveConfig(
-  raw: E2EConfig,
+export function resolveProjectConfig(
+  raw: ProjectConfig,
   options: {
     projectRoot: string;
     configPath?: string;
@@ -299,8 +277,6 @@ export function resolveConfig(
   }
 
   const artifactStore = resolveArtifactStore(raw);
-  const { reporters, customReporters } = resolveReporters(raw, cli);
-  const filters = resolveTestFilters(raw.filters);
 
   const projectId = resolveProjectId(raw.projectId, options.projectRoot);
   const { credentials, secrets, allSecrets } = resolveSecrets(raw, env);
@@ -329,9 +305,6 @@ export function resolveConfig(
     workers,
     artifactStore,
     output,
-    reporters,
-    customReporters,
-    filters,
     agentNames,
     agent,
     agents,
@@ -352,7 +325,7 @@ export function resolveConfig(
  * from the same config and ports; the digest and the identities stand,
  * because the ports never enter them.
  */
-export function assignPorts(config: ResolvedConfig, ports: PortAssignments): ResolvedConfig {
+export function assignPorts<Config extends ResolvedConfig>(config: Config, ports: PortAssignments): Config {
   return { ...config, targets: bindTargets(config.targets, config.projectRoot, ports), ports };
 }
 
@@ -369,7 +342,7 @@ export function assignPorts(config: ResolvedConfig, ports: PortAssignments): Res
  * `resolveCacheDir`, with what named it.
  */
 function resolveCacheConfig(
-  raw: E2EConfig,
+  raw: ProjectConfig,
   ci: boolean,
   projectRoot: string,
   cli: CliOverrides,
@@ -588,7 +561,7 @@ function removedRecordingReplacement(kinds: readonly unknown[] | undefined, trac
  * list (bare or as `kinds`) and the `trace` block are refused with the
  * `trace` mode they meant, and `video` with the option that replaced it.
  */
-function resolveArtifactStore(raw: E2EConfig): ArtifactStore | undefined {
+function resolveArtifactStore(raw: ProjectConfig): ArtifactStore | undefined {
   const value: unknown = raw.artifacts;
   if (value === undefined) return undefined;
   if (Array.isArray(value)) {
@@ -652,7 +625,7 @@ interface RunRecording {
  * attempt keeps its trace by default, locally and in CI alike: the trace is
  * the runner's own text, cheap to write and worth reading on every failure.
  */
-function runRecordings(raw: E2EConfig, cli: CliOverrides): Readonly<Record<RecordingKind, RunRecording>> {
+function runRecordings(raw: ProjectConfig, cli: CliOverrides): Readonly<Record<RecordingKind, RunRecording>> {
   return {
     trace: { cli: recordingMode(cli.trace, '--trace', 'trace'), config: recordingMode(raw.trace, 'trace', 'trace'), fallback: 'retain-on-failure' },
     video: { cli: recordingMode(cli.video, '--video', 'video'), config: recordingMode(raw.video, 'video', 'video'), fallback: 'off' },
@@ -673,107 +646,6 @@ function targetRecording(run: RunRecording, own: unknown, where: string, kind: R
   return { mode: run.fallback, source: 'default' };
 }
 
-
-/**
- * Splits `reporters` into the built-in ids and the reporter objects.
- * `--reporter` replaces the ids only: an object has no id to name on the
- * command line, so a CI flag choosing `list,junit` never drops the upload a
- * config asked for.
- */
-function resolveReporters(
-  raw: E2EConfig,
-  cli: CliOverrides,
-): { reporters: readonly BuiltinReporter[]; customReporters: readonly Reporter[] } {
-  const configured = raw.reporters ?? ['list'];
-  if (!Array.isArray(configured)) {
-    throw new ConfigurationError(
-      'INVALID_CONFIG',
-      'reporters must be an array of reporter ids and reporter objects',
-    );
-  }
-  const ids: BuiltinReporter[] = [];
-  const customReporters: Reporter[] = [];
-  for (const reporter of configured as readonly unknown[]) {
-    if (typeof reporter === 'string') {
-      if (!isBuiltinReporter(reporter)) {
-        throw new ConfigurationError(
-          'INVALID_CONFIG',
-          `unknown reporter "${reporter}"; reporters are ${BUILTIN_REPORTER_LIST}${didYouMean(reporter, BUILTIN_REPORTERS)}`,
-        );
-      }
-      ids.push(reporter);
-    } else if (isReporter(reporter)) {
-      customReporters.push(reporter);
-    } else {
-      throw new ConfigurationError(
-        'INVALID_CONFIG',
-        `a reporter is a built-in id (${BUILTIN_REPORTERS.join(', ')}) or an object with a name and an onEvent or onRunFinished method`,
-      );
-    }
-  }
-  const reporters = cli.reporters ?? ids;
-  if (reporters.includes('json') && reporters.includes('list')) {
-    throw new ConfigurationError('INVALID_CONFIG', 'the json renderer cannot be combined with list');
-  }
-  return { reporters, customReporters };
-}
-
-const MAX_FILTER_NAME = 256;
-
-/**
- * Resolves `filters`: a list of test filters, each checked structurally,
- * never with `instanceof`, since the config may import another copy of
- * `e2e`. A filter's name is how the report and errors tell it apart, so
- * names are unique. Workers resolve it too and never call a filter, so the
- * check stays synchronous.
- */
-function resolveTestFilters(raw: E2EConfig['filters']): readonly TestFilter[] {
-  if (raw === undefined) return [];
-  if (!Array.isArray(raw)) {
-    throw new ConfigurationError('INVALID_CONFIG', 'filters must be a list of test filters: filters: [{ name, filter(tests, context) }]');
-  }
-  const names = new Set<string>();
-  return Array.from(raw as readonly unknown[], (value, index) => {
-    const label = `filters[${index}]`;
-    if (typeof value === 'function') {
-      throw new ConfigurationError('INVALID_CONFIG', `${label} is ${value.name ? `the function ${value.name}` : 'a function'}; call it, such as filters: [decisionFilter({ model })]`);
-    }
-    if (!isTestFilter(value)) {
-      throw new ConfigurationError('INVALID_CONFIG', `${label} must be a TestFilter: { name, filter(tests, context) }`);
-    }
-    const { name } = value;
-    if (!TARGET_NAME_PATTERN.test(name)) {
-      throw new ConfigurationError(
-        'INVALID_CONFIG',
-        `invalid filter name ${JSON.stringify(name)}: names are ASCII letters, numbers, "_", "-", or ".", and cannot be only dots`,
-      );
-    }
-    if (name.length > MAX_FILTER_NAME) {
-      throw new ConfigurationError('INVALID_CONFIG', `filter name ${JSON.stringify(ellipsize(name, 32))} is longer than ${MAX_FILTER_NAME} characters`);
-    }
-    if (names.has(name)) {
-      throw new ConfigurationError('INVALID_CONFIG', `filters has two filters named ${JSON.stringify(name)}; the report tells filters apart by name`);
-    }
-    names.add(name);
-    return value;
-  });
-}
-
-/** Structural test filter check: a string name and a `filter` function. */
-function isTestFilter(value: unknown): value is TestFilter {
-  if (typeof value !== 'object' || value === null) return false;
-  const { name, filter } = value as { name?: unknown; filter?: unknown };
-  return typeof name === 'string' && typeof filter === 'function';
-}
-
-/** Structural reporter check: a non-empty name and at least one handler, each a function when present. */
-function isReporter(value: unknown): value is Reporter {
-  if (typeof value !== 'object' || value === null) return false;
-  const { name, onEvent, onRunFinished } = value as { name?: unknown; onEvent?: unknown; onRunFinished?: unknown };
-  if (typeof name !== 'string' || name.length === 0) return false;
-  const optionalFunction = (handler: unknown): boolean => handler === undefined || typeof handler === 'function';
-  return optionalFunction(onEvent) && optionalFunction(onRunFinished) && (onEvent ?? onRunFinished) !== undefined;
-}
 
 function isArtifactStore(value: unknown): value is ArtifactStore {
   return (
@@ -881,7 +753,7 @@ function resolveProjectId(explicit: string | undefined, projectRoot: string): st
  * like a password handle collides.
  */
 function resolveSecrets(
-  raw: E2EConfig,
+  raw: ProjectConfig,
   env: NodeJS.ProcessEnv,
 ): Pick<ResolvedConfig, 'credentials' | 'secrets' | 'allSecrets'> {
   const credentials = new Map<string, ResolvedCredential>();
@@ -1038,7 +910,7 @@ const AGENT_NAME_PATTERN = TARGET_NAME_PATTERN;
  * unknown name is a config error before anything starts.
  */
 function resolveAgents(
-  raw: E2EConfig['agents'],
+  raw: ProjectConfig['agents'],
   selected: readonly string[] | undefined,
 ): { agents: ReadonlyMap<string, ResolvedAgentConfig>; agentNames: readonly string[]; agent: ResolvedAgentConfig } {
   if (raw !== undefined && (typeof raw !== 'object' || raw === null || Array.isArray(raw) || isStepExecutor(raw))) {
@@ -1073,7 +945,7 @@ function resolveAgents(
 }
 
 function computeConfigDigest(
-  raw: E2EConfig,
+  raw: ProjectConfig & { readonly reporters?: unknown; readonly filters?: unknown },
   projectId: string,
   targets: readonly ResolvedTarget[],
 ): string {
@@ -1146,7 +1018,7 @@ function computeConfigDigest(
  * so it is a plain options object: its plain options are cloned, its tools
  * named, and its executor reduced to what identifies it.
  */
-function digestAgents(agents: NonNullable<E2EConfig['agents']>): unknown {
+function digestAgents(agents: NonNullable<ProjectConfig['agents']>): unknown {
   return Object.fromEntries(
     Object.entries(agents).map(([name, entry]) => {
       const { tools, executor, ...options } = entry ?? {};
@@ -1173,7 +1045,7 @@ function digestAgents(agents: NonNullable<E2EConfig['agents']>): unknown {
 }
 
 /** `cache` as the digest records it: a mode string as is, an options object with its store reduced to whether it writes. */
-function digestCache(cache: NonNullable<E2EConfig['cache']>): unknown {
+function digestCache(cache: NonNullable<ProjectConfig['cache']>): unknown {
   if (typeof cache !== 'object' || cache === null) return cache;
   const { store, ...options } = cache;
   return { ...options, ...(store === undefined ? {} : { store: { writable: store.writable } }) };

@@ -6,7 +6,7 @@
  * (JUnit, markdown) share this one reading.
  */
 
-import type { SkipInfo } from '../collect/select.ts';
+import type { SkipInfo } from '../run/records.ts';
 import type { FailureEvidence } from '../run/records.ts';
 import type { AppLogRecord } from '../run/steps.ts';
 import { isCutSerialRetry } from '../run/retry.ts';

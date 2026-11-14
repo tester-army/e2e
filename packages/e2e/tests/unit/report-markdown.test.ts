@@ -13,7 +13,7 @@ import path from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import type { Report1Document, ReportAttempt, ReportExplore, ReportExploreFinding, ReportFilter, ReportResult, ReportSerialGroup, ReportStep } from '../../src/report/build.ts';
 import { markdownReporter, renderMarkdownReport } from '../../src/report/markdown.ts';
-import type { FinishedRun } from '../../src/types.ts';
+import type { FinishedRun } from '../../src/run-types.ts';
 import { REPORT_AT, reportAttempt, reportDocument, reportError, reportResult, reportStep, reportTarget } from '../helpers/report.ts';
 
 const FINISHED_AT = '2026-01-01T00:00:08.400Z';

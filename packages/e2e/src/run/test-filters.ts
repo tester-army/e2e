@@ -3,7 +3,7 @@
 import path from 'node:path';
 import type { Collection } from '../collect/collect.ts';
 import { select, type Selection, type SelectionFilters, type TestExclusion, type TestTargetPair } from '../collect/select.ts';
-import type { ResolvedConfig } from '../config/resolve.ts';
+import type { ResolvedRunConfig } from '../config/resolve-run.ts';
 import { describeValue } from '../config/validate.ts';
 import { leaveWorkBehind } from '../internal/abandoned.ts';
 import { E2EError, errorMessage } from '../internal/errors.ts';
@@ -15,14 +15,14 @@ import { compareTests, type FilterOutcome, type ReportChanges, type ReportFilter
 import { ellipsize, filterDecision, shortCommit } from '../report/format.ts';
 import { plural } from '../report/markdown-text.ts';
 import { leftOutTests } from '../report/left-out.ts';
-import type { TestFilter, TestFilterCandidate, TestFilterChanges, TestFilterContext } from '../types.ts';
+import type { TestFilter, TestFilterCandidate, TestFilterChanges, TestFilterContext } from '../run-types.ts';
 import { findChanges } from './changes.ts';
 import { staticSecretLedger } from './secrecy.ts';
 import { relevanceBand } from './units.ts';
 
 /** What `filterSelection` judges a selection with, and where each line about what the gate and the filters decided goes. */
 export interface FilterSelectionOptions {
-  readonly config: ResolvedConfig;
+  readonly config: ResolvedRunConfig;
   /** The base ref `--changed-since` named. */
   readonly changedSince: string;
   readonly signal: AbortSignal;
@@ -60,7 +60,7 @@ export interface TestFilterScope {
   readonly changes: TestFilterChanges;
   /** The loaded config file relative to `changes.root`, POSIX; none for a config object. */
   readonly configFile: string | undefined;
-  readonly secrets: ResolvedConfig['allSecrets'];
+  readonly secrets: ResolvedRunConfig['allSecrets'];
   /** The id of every collected test, setup tests included: an `exclude` naming one a filter was not given is ignored, since that test's fate is settled. */
   readonly collectedIds: ReadonlySet<string>;
   /** How long each filter call may take before the run stops waiting for it. */

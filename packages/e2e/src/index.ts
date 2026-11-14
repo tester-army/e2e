@@ -11,6 +11,7 @@ export { renderMarkdownReport } from './report/markdown.ts';
 export type { MarkdownReportOptions } from './report/markdown.ts';
 
 export type * from './types.ts';
+export type * from './run-types.ts';
 export type {
   ExecutorActions,
   ExecutorAttempt,

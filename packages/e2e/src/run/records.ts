@@ -3,11 +3,57 @@
 import type { SerializedError } from '../internal/errors.ts';
 import type { ExpectedFailureInfo } from '../internal/expected-failure.ts';
 import { resultId } from '../internal/ids.ts';
-import type { TestIdentity } from '../collect/collect.ts';
-import type { SkipInfo } from '../collect/select.ts';
+import type { SourceLocation } from '../internal/source.ts';
 import { keeps, type Keep } from '../internal/recording-modes.ts';
 import type { ResolvedTarget } from '../config/resolve.ts';
 import type { AppLogRecord, StepRecord } from './steps.ts';
+
+/**
+ * Everything needed to name and report a test, with no executable or realm
+ * state attached. Fully JSON-serializable, so it is what result records carry
+ * and what crosses the runner<->worker IPC channel.
+ */
+export interface TestIdentity {
+  readonly kind: 'test' | 'setup';
+  readonly title: string;
+  readonly titlePath: readonly string[];
+  readonly declarationIndex: number;
+  readonly sessions: readonly string[];
+  /** The tags the test declares, outermost describe first, each once; what `--tag` selects on. */
+  readonly tags: readonly string[];
+  readonly source: SourceLocation | undefined;
+  /** Normalized project-root-relative file path with `/` separators. */
+  readonly file: string;
+  readonly id: string;
+  readonly serialId: string | undefined;
+}
+
+/** Why a pair did not run; only a `filtered` one can name the test filter that left it out. */
+export type SkipInfo =
+  | (SkipDetail & {
+      readonly cause: 'filtered';
+      /** The name of the test filter that left the test out; absent when the selection did, as with `--tag`. */
+      readonly filter?: string;
+    })
+  | (SkipDetail & {
+      readonly cause:
+        | 'explicit'
+        | 'platform-unavailable'
+        | 'capability-unavailable'
+        | 'setup-failed'
+        | 'serial-predecessor-failed'
+        | 'hook-failed'
+        | 'infrastructure-unavailable'
+        | 'failure-limit'
+        | 'time-limit';
+      readonly filter?: never;
+    });
+
+/** What a skip says whatever its cause: why, and the id of a related test, such as the setup that failed. */
+interface SkipDetail {
+  readonly reason: string;
+  readonly relatedId?: string;
+}
 
 export type ArtifactProducer = { kind: 'step'; stepId: string } | { kind: 'attempt' };
 

@@ -6,18 +6,58 @@
  * provision differently.
  */
 
-import { pairRecording, type TestTargetPair } from '../collect/select.ts';
 import { engineAppInfo } from '../config/app.ts';
 import type { ResolvedTarget } from '../config/resolve.ts';
 import type { EnginePrepareResult } from '../engine/index.ts';
+import { ENGINE_SPI_VERSION, type EngineSpiVersion } from '../engine/contract.ts';
 import type { DebugTrace } from '../internal/debug.ts';
 import { ConfigurationError, InfrastructureError, translateProvisioningError } from '../internal/errors.ts';
 import { Deadline, NEVER_ABORTS, withScopedBudget } from '../internal/time.ts';
-import { describeTarget, type TargetProvenance } from '../report/build.ts';
-import { isRetryMode, recordsOnSomeAttempt, type RecordingKind, type ResolvedRecording } from '../internal/recording-modes.ts';
+import { isRetryMode, pairRecording, recordsOnSomeAttempt, type RecordingKind, type ResolvedRecording } from '../internal/recording-modes.ts';
+import type { RecordingMode } from '../types.ts';
 import { declaredCommands } from './declared-processes.ts';
 import { ManagedProcess, type AppProcesses, type ManagedProcessHooks } from './managed-process.ts';
 import { UNSHARED, type ProcessPool } from './process-pool.ts';
+
+/** What grading reads of one test-target pair a run selected. */
+export interface GradedPair {
+  readonly disposition: string;
+  readonly target: ResolvedTarget;
+  readonly test: { readonly titlePath: readonly string[]; readonly file: string };
+  readonly options: { readonly trace: RecordingMode | undefined; readonly video: RecordingMode | undefined; readonly retries: number };
+}
+
+export interface TargetProvenance {
+  engine: { name: string; version: string; spiVersion: EngineSpiVersion };
+  capabilities: string[];
+  /** What the engine can capture: screenshots (a failure's among them), a video. */
+  artifactCapabilities: ('screenshot' | 'video')[];
+  stateCapability: boolean;
+}
+
+/**
+ * What a target's engine declaration says about it: the one description the
+ * runner grades against and the report records. A target without an engine is
+ * agent-tools-only and honestly reports no capabilities.
+ */
+export function describeTarget(target: ResolvedTarget): TargetProvenance {
+  const engine = target.engine;
+  const artifactCapabilities: TargetProvenance['artifactCapabilities'] = [];
+  if (engine?.artifacts !== undefined) {
+    artifactCapabilities.push('screenshot');
+    if (engine.artifacts.startVideo !== undefined) artifactCapabilities.push('video');
+  }
+  return {
+    engine: {
+      name: engine?.name ?? 'none',
+      version: engine?.version ?? 'unversioned',
+      spiVersion: engine?.spiVersion ?? ENGINE_SPI_VERSION,
+    },
+    capabilities: [...(engine?.capabilities ?? [])].toSorted(),
+    artifactCapabilities,
+    stateCapability: engine?.state !== undefined,
+  };
+}
 
 /** A target graded against its engine declaration, before any test starts. */
 export interface EngineGrade {
@@ -41,10 +81,10 @@ export interface EngineGrade {
  * engine can record and is skipped with a notice elsewhere, and a default
  * one is skipped quietly.
  */
-export function validateEngine(target: ResolvedTarget, pairs?: readonly TestTargetPair[]): EngineGrade {
+export function validateEngine(target: ResolvedTarget, pairs?: readonly GradedPair[]): EngineGrade {
   const provenance = describeTarget(target);
   if (provenance.artifactCapabilities.includes('video')) return { provenance, videoSkipped: false };
-  const asked: { readonly recording: ResolvedRecording; readonly pair?: TestTargetPair }[] =
+  const asked: { readonly recording: ResolvedRecording; readonly pair?: GradedPair }[] =
     pairs === undefined
       ? recordsOnSomeAttempt(target.video.mode, 0) ? [{ recording: target.video }] : []
       : pairs.flatMap((pair) => {
@@ -72,7 +112,7 @@ export function validateEngine(target: ResolvedTarget, pairs?: readonly TestTarg
  * to pass the flag instead of setting retries.
  */
 export function recordingNotices(
-  perTarget: readonly { readonly target: ResolvedTarget; readonly pairs: readonly TestTargetPair[] }[],
+  perTarget: readonly { readonly target: ResolvedTarget; readonly pairs: readonly GradedPair[] }[],
   grades: ReadonlyMap<string, EngineGrade>,
   options: { readonly explore?: boolean } = {},
 ): string[] {
@@ -97,7 +137,7 @@ export function recordingNotices(
  */
 function retryOnlyNotice(
   kind: RecordingKind,
-  perTarget: readonly { readonly target: ResolvedTarget; readonly pairs: readonly TestTargetPair[] }[],
+  perTarget: readonly { readonly target: ResolvedTarget; readonly pairs: readonly GradedPair[] }[],
   captures: (target: ResolvedTarget) => boolean,
   explore: boolean,
 ): string | undefined {

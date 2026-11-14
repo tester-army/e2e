@@ -9,8 +9,9 @@ import { createAgentCacheContext, settleStagedTraces } from '../../src/cache/con
 import { FileCacheStore } from '../../src/cache/store.ts';
 import { buildTraceEntry } from '../../src/cache/trace.ts';
 import { readTraceEntry } from '../../src/cache/trace-read.ts';
-import { resolveConfig } from '../../src/config/resolve.ts';
-import type { ActionTrace, E2EConfig, CacheStore } from '../../src/types.ts';
+import { resolveConfig } from '../../src/config/resolve-run.ts';
+import type { ActionTrace, CacheStore } from '../../src/types.ts';
+import type { E2EConfig } from '../../src/run-types.ts';
 
 const ROOT = path.resolve('/tmp/e2e-cache-config-tests');
 const BASE_ENV = {} as NodeJS.ProcessEnv;

@@ -8,7 +8,8 @@
  * execution.
  */
 
-import type { SkipInfo, TestTargetPair } from '../collect/select.ts';
+import type { TestTargetPair } from '../collect/select.ts';
+import type { SkipInfo } from './records.ts';
 import type { ResolvedTarget } from '../config/resolve.ts';
 import type { AiTraceSnapshot } from '../internal/ai-trace.ts';
 import type { DebugSnapshot } from '../internal/debug.ts';

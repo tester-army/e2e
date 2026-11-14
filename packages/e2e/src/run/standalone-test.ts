@@ -11,7 +11,8 @@
 
 import { isModelUnreachable } from '../agent/error.ts';
 import { settleStagedTraces, type AgentCacheContext } from '../cache/context.ts';
-import { collect, type CollectedFile, type TestIdentity } from '../collect/collect.ts';
+import { collect, type CollectedFile } from '../collect/collect.ts';
+import type { TestIdentity } from './records.ts';
 import { select, type TestTargetPair } from '../collect/select.ts';
 import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
 import type { OperationContext, TargetSession } from '../engine/surface.ts';
@@ -27,7 +28,8 @@ import { settleExpectedFailure } from './expected-failure.ts';
 import { withAbort, withTimeout } from '../internal/time.ts';
 import type { SetupFn } from '../types.ts';
 import type { AttemptBudget } from './budget.ts';
-import { classifyAttemptStatus, type TargetExecutor } from './execute.ts';
+import type { TargetExecutor } from './execute.ts';
+import { classifyAttemptStatus } from './engine-sessions.ts';
 import { createExtendedFixtures, type ExtendedFixtures } from './extended-fixtures.ts';
 import { captureFailureEvidence } from './failure-evidence.ts';
 import type { ArtifactSink, AttemptFixtures } from './fixtures.ts';

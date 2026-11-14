@@ -9,7 +9,7 @@
 
 import path from 'node:path';
 import picocolors from 'picocolors';
-import type { SkipInfo } from '../collect/select.ts';
+import type { SkipInfo } from '../run/records.ts';
 import type { SerializedError } from '../internal/errors.ts';
 import { resultId } from '../internal/ids.ts';
 import { packageVersion } from '../internal/package-version.ts';
@@ -17,7 +17,7 @@ import type { RunEvent, RunEventFact, RunEventOf, RunEventResult, SetupStep } fr
 import type { StepPrompt } from '../run/step-hold.ts';
 import type { AppLogRecord, StepRecord } from '../run/steps.ts';
 import { cleanupErrorsOf, expectedFailureOf, failureBeforeSkip, type ArtifactRecord, type AttemptRecord, type AttemptStatus, type FailureEvidence, type ResultStatus, type SerialGroupRecord } from '../run/records.ts';
-import type { Reporter, ReporterSummary } from '../types.ts';
+import type { Reporter, ReporterSummary } from '../run-types.ts';
 import { projectSource } from './build.ts';
 import { codeFrame, userFrame } from './code-frame.ts';
 import { appErrorsOf, type AppErrors } from './failure-text.ts';

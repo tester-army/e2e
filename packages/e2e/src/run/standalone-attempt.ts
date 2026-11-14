@@ -1,44 +1,29 @@
-/** One attempt on a prepared standalone worker: reservation, launch, fixtures, deadline, and close. */
+/**
+ * One attempt on a prepared standalone worker: reservation, launch, fixtures,
+ * deadline, and close. What differs by kind (the runner's hosted and one-shot
+ * attempts) comes in through `AttemptPolicy`.
+ */
 
 import path from 'node:path';
 import type { ExecutorAttempt } from '../agent/executor.ts';
 import type { AgentContext } from '../agent/invocation.ts';
 import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
 import type { TargetSession } from '../engine/surface.ts';
-import { publishAttempt } from '../expect/attempt.ts';
 import { PollScope } from '../expect/poll-scope.ts';
-import { SoftFailures } from '../expect/soft.ts';
 import type { DebugTrace } from '../internal/debug.ts';
 import { classifyError, ConfigurationError, InfrastructureError, serializeError, TestTimeoutError, type SerializedError } from '../internal/errors.ts';
-import { resultId, timestamp, uuidv7 } from '../internal/ids.ts';
+import { timestamp, uuidv7 } from '../internal/ids.ts';
 import { Deadline, MAX_TIMER_MS, withTimeout } from '../internal/time.ts';
 import { attemptVideo } from '../internal/recording-modes.ts';
-import type { Report, TestFixtures } from '../types.ts';
-import { createAttemptArtifacts, resultSegment } from './artifacts.ts';
+import type { TestFixtures } from '../types.ts';
+import { createAttemptArtifacts, type AttemptArtifacts } from './artifacts.ts';
 import { AttemptBudget } from './budget.ts';
-import { classifyAttemptStatus, type ClosingRecord, type TargetExecutor } from './execute.ts';
-import { createFixtures } from './fixtures.ts';
-import { writeHostTrace } from './host-trace.ts';
+import { classifyAttemptStatus, type ClosingRecord, type EngineSessions } from './engine-sessions.ts';
+import { createFixtures, type AttemptEnvironment } from './fixtures.ts';
 import type { AttemptRecord } from './records.ts';
-import { holdSecretRegistry } from '../secrets.ts';
-import { createAgentCacheContext } from '../cache/context.ts';
-import { storedRecordingsFor } from '../cache/rekeyed.ts';
-import { WrittenScreenshots } from './screenshots.ts';
-import { processSecrets, redactForSession, sessionLedger } from './secrecy.ts';
-import { targetIdentity } from './sessions.ts';
-import { createStandaloneTestRun, type StandaloneTest, type StandaloneTestRun } from './standalone-test.ts';
+import { redactForSession, sessionLedger } from './secrecy.ts';
 import { StepRecorder, type StepProgress } from './steps.ts';
 import { WorkerModels } from './worker-models.ts';
-
-/**
- * Who drives the attempt. A hosted attempt is a test in another runner: it
- * publishes itself for `expect.soft` and `expect.poll`, enforces its deadline,
- * and writes a trace under `results/host/`. A one-shot attempt is `e2e mcp`'s
- * live session, with artifacts under `results/mcp/`: no test body unless the
- * session runs one (`StandaloneSessionOptions.test`), which publishes itself
- * only while its code runs.
- */
-export type AttemptKind = 'hosted' | 'one-shot';
 
 export interface StandaloneSessionOptions {
   readonly signal: AbortSignal;
@@ -46,17 +31,11 @@ export interface StandaloneSessionOptions {
   readonly timeoutMs: number;
   readonly agent?: string | undefined;
   readonly onProgress?: (progress: StepProgress) => void;
-  /** The test title of a hosted attempt; ignored by a one-shot attempt. */
+  /** The test title of a hosted attempt; its policy decides whether the attempt reads it. */
   readonly name?: string;
-  /**
-   * The collected test a one-shot attempt runs (`open_session {test}`): the
-   * attempt takes its identity, agent context, and replay cache, and exposes
-   * the run as `test`.
-   */
-  readonly test?: StandaloneTest | undefined;
 }
 
-export interface StandaloneAttempt {
+export interface StandaloneAttempt<Extra = unknown> {
   readonly runId: string;
   readonly attemptId: string;
   readonly fixtures: TestFixtures;
@@ -66,19 +45,74 @@ export interface StandaloneAttempt {
   readonly budget: AttemptBudget;
   readonly artifactsDir: string;
   readonly tracePath: string;
-  /** The test the attempt runs, when its options named one. */
-  readonly test: StandaloneTestRun | undefined;
-  report(): Report | undefined;
+  /** What the policy's `launched` built on the attempt. */
+  readonly extra: Extra;
   close(): Promise<readonly SerializedError[]>;
 }
 
+/** Where an attempt's results go, and the test id its records carry. */
+export interface AttemptIdentity {
+  readonly testId: string;
+  /** Directory segments under the results root. */
+  readonly segments: readonly string[];
+}
+
+/** What a policy's `reserve` publishes for the attempt, withdrawn by `release`. */
+export interface AttemptPublication {
+  /** Failures the publication holds at close, such as soft assertions; called once. */
+  close(): unknown;
+  release(): void;
+}
+
+/** What a policy's `launched` reads of the open attempt. */
+export interface LaunchedAttempt<Sessions extends EngineSessions> {
+  readonly worker: AttemptWorker<Sessions>;
+  readonly attemptId: string;
+  readonly session: TargetSession;
+  readonly steps: StepRecorder;
+  readonly artifacts: AttemptArtifacts;
+  /** The inputs the attempt's own fixtures were built from, for fixtures of another budget. */
+  readonly fixtureBase: Omit<AttemptEnvironment, 'budget' | 'agentContext'>;
+  /** The worker's, the caller's, and the attempt's own cancellation together. */
+  readonly signal: AbortSignal;
+  readonly redact: (text: string) => string;
+}
+
+/** What a policy's `closed` reads once the attempt's session is closed. */
+export interface ClosedAttempt<Sessions extends EngineSessions, Extra> {
+  readonly worker: AttemptWorker<Sessions>;
+  /** What `launched` returned. */
+  readonly extra: Extra;
+  readonly identity: AttemptIdentity;
+  readonly agent: string;
+  readonly options: StandaloneSessionOptions;
+  readonly tracePath: string;
+  readonly redact: (text: string) => string;
+  readonly record: Omit<AttemptRecord, 'index' | 'trace'>;
+}
+
+/**
+ * What one kind of attempt adds to the shared lifecycle. Every hook but
+ * `identity` is optional, so a kind that publishes nothing, runs no test, and
+ * writes no trace needs none of them.
+ */
+export interface AttemptPolicy<Sessions extends EngineSessions = EngineSessions, Extra = undefined> {
+  /** The attempt's test id and results directory. */
+  identity(worker: AttemptWorker<Sessions>, attemptId: string, agent: string, redactedName: string): AttemptIdentity;
+  /** Runs synchronously at reservation, before any engine work, so nothing can publish over it. */
+  reserve?(worker: AttemptWorker<Sessions>, reserved: { readonly attemptId: string; readonly budget: AttemptBudget; readonly polls: PollScope }): AttemptPublication;
+  /** Runs once the attempt's fixtures exist; a throw closes the attempt and fails the launch. */
+  launched?(attempt: LaunchedAttempt<Sessions>): Extra;
+  /** Runs once the session is closed and its artifacts settled; a throw is a cleanup failure. */
+  closed?(attempt: ClosedAttempt<Sessions, Extra>): Promise<void>;
+}
+
 /** The prepared worker an attempt runs on. */
-export interface AttemptWorker {
-  readonly kind: AttemptKind;
+export interface AttemptWorker<Sessions extends EngineSessions = EngineSessions> {
   readonly config: ResolvedConfig;
   readonly target: ResolvedTarget;
   readonly runId: string;
-  readonly executor: TargetExecutor;
+  readonly executor: Sessions;
   readonly resultsDir: string;
   readonly debug: DebugTrace;
   /** Aborts when the host closes or its caller cancels it. */
@@ -94,10 +128,8 @@ export interface AttemptReservation {
   /** The worker's, the caller's, and the attempt's own cancellation together. */
   readonly signal: AbortSignal;
   readonly budget: AttemptBudget;
-  readonly soft: SoftFailures;
   readonly polls: PollScope;
-  /** Withdraws the publication and the registry hold once cleanup has settled. */
-  readonly release: () => void;
+  readonly publication: AttemptPublication | undefined;
 }
 
 /** What the host learns when an attempt's close settles. */
@@ -106,10 +138,15 @@ export interface AttemptClosed {
 }
 
 /**
- * Validates the options and publishes a hosted attempt, synchronously, so
- * `expect` finds it before launch and no second attempt can publish over it.
+ * Validates the options and runs the policy's `reserve`, synchronously, so
+ * what it publishes is there before launch and no second attempt can publish
+ * over it.
  */
-export function reserveAttempt(worker: AttemptWorker, options: StandaloneSessionOptions): AttemptReservation {
+export function reserveAttempt<Sessions extends EngineSessions, Extra>(
+  worker: AttemptWorker<Sessions>,
+  policy: AttemptPolicy<Sessions, Extra>,
+  options: StandaloneSessionOptions,
+): AttemptReservation {
   if (worker.signal.aborted || options.signal.aborted) throw new InfrastructureError('CANCELLED', 'opening the e2e session was cancelled');
   if (!Number.isFinite(options.timeoutMs) || options.timeoutMs <= 0) {
     throw new ConfigurationError('INVALID_CONFIG', 'session timeout must be a positive, finite number of milliseconds');
@@ -118,15 +155,9 @@ export function reserveAttempt(worker: AttemptWorker, options: StandaloneSession
   const end = new AbortController();
   const signal = AbortSignal.any([worker.signal, options.signal, end.signal]);
   const budget = new AttemptBudget(signal, new Deadline(options.timeoutMs));
-  const soft = new SoftFailures();
   const polls = new PollScope('the hosted session');
-  if (worker.kind === 'one-shot') return { attemptId, options, end, signal, budget, soft, polls, release: () => undefined };
-  const { config } = worker;
-  const publication = new AbortController();
-  publishAttempt({ attemptId, owner: 'host', testKind: 'test', assertionTimeout: config.assertionTimeout, budget, soft, polls }, publication.signal);
-  // The live attempt's secrets resolve against its own config while other hosts hold theirs.
-  const releaseRegistry = holdSecretRegistry(config, { live: true });
-  return { attemptId, options, end, signal, budget, soft, polls, release: () => { publication.abort(); releaseRegistry(); } };
+  const publication = policy.reserve?.(worker, { attemptId, budget, polls });
+  return { attemptId, options, end, signal, budget, polls, publication };
 }
 
 /**
@@ -135,19 +166,19 @@ export function reserveAttempt(worker: AttemptWorker, options: StandaloneSession
  * on; the worker stays usable. `onClosed` runs once when `close` settles,
  * before `close` returns, so the host can retire a worker whose cleanup failed.
  */
-export async function launchAttempt(
-  worker: AttemptWorker,
+export async function launchAttempt<Sessions extends EngineSessions, Extra>(
+  worker: AttemptWorker<Sessions>,
+  policy: AttemptPolicy<Sessions, Extra>,
   reservation: AttemptReservation,
   onClosed: (closed: AttemptClosed) => Promise<void>,
-): Promise<StandaloneAttempt> {
+): Promise<StandaloneAttempt<Extra>> {
   const { config, target, executor, runId } = worker;
-  const { attemptId, options, budget, soft, polls, end } = reservation;
+  const { attemptId, options, budget, polls, end } = reservation;
   const attemptSignal = reservation.signal;
   let session: TargetSession | undefined;
   const redact = (text: string): string => redactForSession(session, config.allSecrets, text);
   const agent = options.agent ?? config.agentNames[0] ?? '';
-  const test = worker.kind === 'one-shot' ? options.test : undefined;
-  const identity = attemptIdentity(worker, attemptId, agent, redact(options.name ?? target.name), test?.pair.test.id);
+  const identity = policy.identity(worker, attemptId, agent, redact(options.name ?? target.name));
   const steps = new StepRecorder(attemptId, {
     maxEventsPerStep: config.limits.maxEventsPerStep, projectRoot: config.projectRoot, redact, signal: attemptSignal,
     ...(options.onProgress === undefined ? {} : { onProgress: options.onProgress }),
@@ -188,31 +219,12 @@ export async function launchAttempt(
     models: new WorkerModels((error) => recordFailure(error, 'body')), debug: worker.debug,
   };
   let acquired: ReturnType<typeof createFixtures>;
-  let testRun: StandaloneTestRun | undefined;
+  let extra: Extra;
   try {
     acquired = createFixtures({ ...base, budget, agentContext: undefined });
-    if (test !== undefined) {
-      // The test's fixtures have a budget of their own, so a body its timeout
-      // cut short cannot drive the session the agent uses afterwards. Its
-      // agent steps replay and record as on a run's first attempt, and its
-      // screenshots count as written by a run of their own: a baseline one
-      // session wrote is compared against in the next, as the next run would.
-      // Its agent steps read the test's title, as they do in a run.
-      const testBudget = new AttemptBudget(attemptSignal, new Deadline(test.pair.options.timeout));
-      const cache = createAgentCacheContext({
-        cache: config.cache, projectRoot: config.projectRoot, projectId: config.projectId, testId: test.pair.test.id,
-        target: targetIdentity(target), attemptIndex: 0, recordings: storedRecordingsFor(config.cache),
-      });
-      const { fixtures } = createFixtures({
-        ...base, attempt: { ...attempt, titlePath: test.pair.test.titlePath }, budget: testBudget, agentContext: test.pair.options.agentContext,
-        ...(cache === undefined ? {} : { cache }),
-        test: { file: test.pair.test.file, titlePath: test.pair.test.titlePath, writtenScreenshots: new WrittenScreenshots(artifacts.dir) },
-      });
-      testRun = createStandaloneTestRun({
-        config, target, executor, runId, attemptId, session: opened, steps, budget: testBudget, fixtures,
-        artifacts: artifacts.sink, cache, signal: attemptSignal, redact,
-      }, test);
-    }
+    extra = policy.launched === undefined
+      ? undefined as Extra
+      : policy.launched({ worker, attemptId, session: opened, steps, artifacts, fixtureBase: base, signal: attemptSignal, redact });
   } catch (cause) {
     end.abort();
     await closeOpened({ status: 'failed', cleanup: 'complete' });
@@ -239,7 +251,6 @@ export async function launchAttempt(
   const startedMs = Date.now();
   const tracePath = path.join(artifacts.dir, 'trace.md');
   let ending: Promise<readonly SerializedError[]> | undefined;
-  let report: Report | undefined;
   const close = (): Promise<readonly SerializedError[]> => {
     ending ??= (async () => {
       clearTimeout(expiry);
@@ -248,7 +259,7 @@ export async function launchAttempt(
       const abandonedPoll = polls.close();
       const abandonedStep = steps.abandonRunning();
       end.abort();
-      for (const error of [abandonedStep, abandonedPoll, soft.close()]) if (error !== undefined) recordFailure(error, 'body');
+      for (const error of [abandonedStep, abandonedPoll, reservation.publication?.close()]) if (error !== undefined) recordFailure(error, 'body');
       try {
         await withTimeout(steps.settleAbandoned(), config.cleanupTimeout, () => new InfrastructureError('CLEANUP_TIMEOUT', 'abandoned session steps did not settle'));
       } catch (cause) { recordFailure(cause, 'cleanup'); }
@@ -261,15 +272,13 @@ export async function launchAttempt(
         await closeOpened(record);
       } catch (cause) { recordFailure(cause, 'cleanup'); record.cleanup = 'failed'; }
       try { await artifacts.settle(); } catch (cause) { recordFailure(cause, 'cleanup'); }
-      if (worker.kind === 'hosted') {
+      if (policy.closed !== undefined) {
         try {
           const { error, status } = verdict();
-          report = await writeHostTrace({
-            config, target, runId, testId: identity.testId, agent, tracePath, redact,
-            title: processSecrets.redact(redact(options.name ?? target.name)),
-            resultsDir: worker.resultsDir, segments: identity.segments,
-            attempt: {
-              id: attemptId, index: 0, status, startedAt, durationMs: Date.now() - startedMs,
+          await policy.closed({
+            worker, extra, identity, agent, options, tracePath, redact,
+            record: {
+              id: attemptId, status, startedAt, durationMs: Date.now() - startedMs,
               steps: [...steps.all()], appLog: [...steps.appLog()], artifacts: artifacts.records,
               ...(error === undefined ? {} : { error }), secondaryErrors: attemptErrors.slice(1), cleanup: record.cleanup,
             },
@@ -279,7 +288,7 @@ export async function launchAttempt(
       try {
         await onClosed({ cleanup: record.cleanup });
       } finally {
-        reservation.release();
+        reservation.publication?.release();
       }
       return attemptErrors;
     })();
@@ -287,30 +296,6 @@ export async function launchAttempt(
   };
   return {
     runId, attemptId, fixtures: acquired.fixtures, agentRuntime: acquired.agentRuntime, session: opened, steps, budget,
-    artifactsDir: artifacts.dir, tracePath, test: testRun, close,
-    report: () => report && structuredClone(report),
+    artifactsDir: artifacts.dir, tracePath, extra, close,
   };
-}
-
-interface AttemptIdentity {
-  readonly testId: string;
-  /** Directory segments under the results root. */
-  readonly segments: readonly string[];
-}
-
-/**
- * A hosted attempt's directory is `host/<file>-<title>-<digest>`: the digest
- * covers the unique attempt id, so repeated names never share a directory,
- * and the title slug is dropped while a provider's values are unknown, since
- * no caller text can then be vouched for as a path. A one-shot attempt keeps
- * `mcp/<target>-<attemptId>`, and the id of the test it runs, if any.
- */
-function attemptIdentity(worker: AttemptWorker, attemptId: string, agent: string, redactedName: string, runsTest: string | undefined): AttemptIdentity {
-  const { kind, target, config } = worker;
-  if (kind === 'one-shot') return { testId: runsTest ?? `session:${target.name}`, segments: ['mcp', `${target.name}-${attemptId}`] };
-  const testId = `host:${attemptId}`;
-  const providerSecrets = [...config.allSecrets.values()].some((secret) => typeof secret.value === 'function');
-  const title = providerSecrets ? 'session' : processSecrets.redact(redactedName);
-  const segment = resultSegment({ id: resultId(testId, target.name, agent, 0), file: 'host', titlePath: [title] });
-  return { testId, segments: ['host', segment] };
 }

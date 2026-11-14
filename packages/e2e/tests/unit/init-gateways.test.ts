@@ -8,7 +8,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { GATEWAYS } from '../../src/cli/init/gateways.ts';
-import { resolveConfig } from '../../src/config/resolve.ts';
+import { resolveConfig } from '../../src/config/resolve-run.ts';
 
 const EXPORTS = (JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')) as {
   exports: Record<string, { default: string }>;
