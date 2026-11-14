@@ -100,13 +100,14 @@ const UNRENDERED = 'the control and its labels are not visible';
 /**
  * Runs in the page. A component library (Element Plus) hides a native
  * checkbox or radio under its label's styled spans with `z-index: -1`, or
- * gives it no box at all, so Playwright refuses the input itself (`<span>
- * intercepts pointer events`, `element is not visible`) though a user's click
- * there reaches it through the label. Returns that label, or null to click the
- * control itself. The choice reads the control and its labels only, past
- * anything else on top (a loading mask, a modal): Playwright's checks on the
- * label wait that out, or fail on it. Throws `UNRENDERED` while none of them
- * is rendered (a dialog not open yet), since nothing tells the two apart then.
+ * gives it no box at all, and `sr-only` shrinks it to a clipped pixel, so
+ * Playwright refuses the input itself (`<span> intercepts pointer events`,
+ * `element is not visible`) though a user's click there reaches it through
+ * the label. Returns that label, or null to click the control itself. The
+ * choice reads the control and its labels only, past anything else on top (a
+ * loading mask, a modal): Playwright's checks on the label wait that out, or
+ * fail on it. Throws `UNRENDERED` while none of them is rendered (a dialog
+ * not open yet), since nothing tells the two apart then.
  */
 function pickStandIn(node: Element, unrendered: string): HTMLLabelElement | null {
   if (!(node instanceof HTMLInputElement) || (node.type !== 'checkbox' && node.type !== 'radio') || node.matches(':disabled')) {
@@ -122,37 +123,48 @@ function pickStandIn(node: Element, unrendered: string): HTMLLabelElement | null
     root.elementsFromPoint(x, y).find((hit) => hit === node || labels.some((label) => label.contains(hit)));
   const pressesInteractive = (label: HTMLLabelElement, hit: Element | undefined): boolean =>
     label.contains(hit?.closest(INTERACTIVE) ?? null);
-  node.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-  const box = node.getBoundingClientRect();
-  if (!hasBox(box)) {
+  const labelAtCentre = (requireHit: boolean): HTMLLabelElement | null => {
     const shown = labels.filter((label) => hasBox(label.getBoundingClientRect()) && label.checkVisibility({ visibilityProperty: true }));
     if (shown.length === 0) throw new Error(unrendered);
-    return (
-      shown.find((label) => {
-        label.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-        return !pressesInteractive(label, topmost(...centre(label.getBoundingClientRect())));
-      }) ?? null
-    );
-  }
+    let unreached = false;
+    for (const label of shown) {
+      label.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      const hit = topmost(...centre(label.getBoundingClientRect()));
+      if (hit === undefined && requireHit) unreached = true;
+      else if (!pressesInteractive(label, hit)) return label;
+    }
+    if (unreached) throw new Error(unrendered);
+    return null;
+  };
+  node.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  const box = node.getBoundingClientRect();
+  if (!hasBox(box)) return labelAtCentre(false);
+  const pixel = box.width <= 1 && box.height <= 1;
   const [x, y] = centre(box);
   const hit = topmost(x, y);
-  if (hit === undefined) throw new Error(unrendered);
+  if (hit === undefined) {
+    if (pixel) return labelAtCentre(true);
+    throw new Error(unrendered);
+  }
   const label = labels.find((own) => own.contains(hit));
   if (label === undefined || pressesInteractive(label, hit)) return null;
   const outer = label.getBoundingClientRect();
-  return x >= outer.left && x <= outer.right && y >= outer.top && y <= outer.bottom ? label : null;
+  if (x >= outer.left && x <= outer.right && y >= outer.top && y <= outer.bottom) return label;
+  return pixel ? labelAtCentre(true) : null;
 }
 
 /**
  * Runs in the page: where a click on the label lands, the centre of its
- * control relative to the label, or none for a control with no box, which
- * takes the label's centre.
+ * control relative to the label, or none for a control with no box or one
+ * centred outside the label, which takes the label's centre.
  */
 function controlPoint(label: HTMLLabelElement): { x: number; y: number } | null {
   const box = label.control?.getBoundingClientRect();
   if (box === undefined || box.width === 0 || box.height === 0) return null;
   const outer = label.getBoundingClientRect();
-  return { x: box.left + box.width / 2 - outer.left, y: box.top + box.height / 2 - outer.top };
+  const x = box.left + box.width / 2 - outer.left;
+  const y = box.top + box.height / 2 - outer.top;
+  return x < 0 || x > outer.width || y < 0 || y > outer.height ? null : { x, y };
 }
 
 /**
