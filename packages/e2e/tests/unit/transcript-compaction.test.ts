@@ -218,6 +218,23 @@ describe('compactScreenHistory', () => {
     expect(compacted[3]).toEqual(messages[3]);
   });
 
+  it('leaves a screenshot result whose screens are all kept untouched, without spending the elision budget', () => {
+    const messages = [
+      pixelScreenResult('c1', 'b1'),
+      fullScreenResult('c2', 'b2'),
+      fullScreenResult('c3', 'b3'),
+      foldedScreenResult('c4', 'b4', 'b1'),
+    ];
+    const compacted = compactScreenHistory(messages, { keepStaleBytes: 0 });
+    expect(compacted).not.toBe(messages);
+    // The opening screenshot result carries only the kept b1 screen, so it
+    // is returned untouched and the budget still covers both elidable screens.
+    expect(compacted[0]).toBe(messages[0]);
+    expect(toolOutput(compacted[1]!)).toMatchObject({ type: 'text', value: expect.stringContaining('[earlier screen elided') });
+    expect(toolOutput(compacted[2]!)).toMatchObject({ type: 'text', value: expect.stringContaining('[earlier screen elided') });
+    expect(compacted[3]).toBe(messages[3]);
+  });
+
   it('shrinks a pixel-mode history on the budget-free pass the overflow retry runs after the cache-friendly pass kept it', () => {
     const messages = [opening, pixelScreenResult('c1', 'b1', 40), changesResult('c2'), fullScreenResult('c3', 'b3'), pixelScreenResult('c4', 'b4', 40)];
     const kept = compactScreenHistory(messages);

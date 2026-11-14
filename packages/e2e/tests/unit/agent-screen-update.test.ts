@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import type { ModelMessage, ToolResultPart } from 'ai';
 import type { ExecutorObservation } from '../../src/agent/executor.ts';
 import { ScreenPresenter } from '../../src/agent/screen-update.ts';
+import { compactScreenHistory } from '../../src/agent/transcript-compaction.ts';
 
 function screen(revision: string, lines: readonly string[], extra: Partial<ExecutorObservation> = {}): ExecutorObservation {
   return {
@@ -20,6 +22,22 @@ const HOME = [
   ' #n5 link "About" href="/about"',
   ' #n6 textbox "Email"',
 ];
+
+/** One tool result carrying a rendered screen as its text. */
+function toolResult(id: string, text: string): ModelMessage {
+  return {
+    role: 'tool',
+    content: [{ type: 'tool-result', toolCallId: id, toolName: 'tap', output: { type: 'text', value: text } }],
+  };
+}
+
+/** The text of a tool message's one text result. */
+function toolText(message: ModelMessage): string {
+  const [part] = message.content as ToolResultPart[];
+  const output = part!.output;
+  if (output.type !== 'text') throw new Error('expected a text tool result');
+  return output.value;
+}
 
 describe('ScreenPresenter', () => {
   it('retires semantic history through repeated unavailable captures and shows recovery whole', () => {
@@ -425,6 +443,102 @@ describe('ScreenPresenter folds large unchanged subtrees in the full-screen fall
     presenter.update(screen('b3', orderScreen(MAIN_LIST, 12)));
     const text = presenter.update(screen('b4', orderScreen(MAIN_DETAILS, 12)), { lead: 'Tapped #n22.' });
     expect(text).toContain(' #n2 navigation "Sidebar" (12 nodes inside, unchanged since revision b1)');
+  });
+
+  it('folds against the original listing when an intervening change was undone, even though the previous screen differs', () => {
+    const presenter = new ScreenPresenter();
+    presenter.initial(screen('b1', orderScreen(MAIN_LIST, 12)));
+    const renamed = orderScreen(MAIN_LIST, 12).map((line) =>
+      (line.includes('#n5 ') ? '  #n5 link "Item 3 (new)"' : line),
+    );
+    expect(presenter.update(screen('b2', renamed))).toContain('changed #n5 link "Item 3 (new)"');
+    // b3 changes most of the screen and puts the sidebar back as b1 listed
+    // it: the fold names b1, since the digest is what the model holds, not
+    // the screen before it.
+    const text = presenter.update(screen('b3', orderScreen(MAIN_DETAILS, 12)), { lead: 'Tapped #n22.' });
+    expect(text).toContain('The screen changed substantially since revision b2.');
+    expect(text).toContain(' #n2 navigation "Sidebar" (12 nodes inside, unchanged since revision b1)');
+  });
+
+  it('a truncated full screen clears the fold record, so the next fallback lists the subtree in full instead of naming an elided screen', () => {
+    const presenter = new ScreenPresenter();
+    const b1 = presenter.initial(screen('b1', orderScreen(MAIN_LIST, 12)));
+    const b2 = presenter.update(screen('b2', orderScreen(MAIN_DETAILS, 12)), { lead: 'Tapped #n22.' });
+    expect(b2).toContain(' #n2 navigation "Sidebar" (12 nodes inside, unchanged since revision b1)');
+    // b3 is a truncated full screen: it records nothing and folds nothing.
+    const extra = Array.from({ length: 12 }, (_, i) => `  #n${String(i + 60)} button "Extra ${String(i + 1)}"`);
+    const b3 = presenter.update(screen('b3', [...orderScreen(MAIN_SEARCH, 12), ...extra], { truncated: true }), { lead: 'Tapped #n43.' });
+    expect(b3).toContain('The screen changed substantially since revision b2.');
+    expect(b3).not.toContain('nodes inside, unchanged since revision');
+    // By the time b4 renders, compaction has already elided b1 and b2: the
+    // truncated screen carries no fold, so nothing preserves them.
+    const messages = [b1, b2, b3].map((text, index) => toolResult(`c${String(index)}`, text));
+    const compacted = compactScreenHistory(messages, { keepStaleBytes: 0 });
+    const b1Text = toolText(compacted[0]!);
+    expect(b1Text).toContain('[earlier screen elided');
+    expect(b1Text).not.toContain('#n3 link "Item 1"');
+    // The record b3 cleared means b4 cannot fold against b1: the sidebar is
+    // listed in full again instead of naming a screen the model no longer holds.
+    const b4 = presenter.update(screen('b4', orderScreen(MAIN_DETAILS, 12)), { lead: 'Tapped #n22.' });
+    expect(b4).toContain('The screen changed substantially since revision b3.');
+    expect(b4).not.toContain('nodes inside, unchanged since revision');
+    expect(b4).toContain(' #n3 link "Item 1"');
+    expect(b4).toContain(' #n14 link "Item 12"');
+  });
+
+  it('drops the fold record when a subtree leaves the screen, so a re-added subtree is listed in full', () => {
+    const presenter = new ScreenPresenter();
+    const extras = [
+      ' #n50 group "Extras"',
+      ...Array.from({ length: 24 }, (_, i) => `  #n${String(60 + i)} button "Extra ${String(i + 1)}"`),
+    ];
+    const wide = (main: readonly string[], sidebarCount: number): string[] =>
+      ['#n1 document "Orders"', ...sidebar(sidebarCount), ...main, ...extras];
+    presenter.initial(screen('b1', wide(MAIN_LIST, 12)));
+    // The sidebar leaves in a change update: 13 removed lines of 43 nodes.
+    const removed = presenter.update(screen('b2', ['#n1 document "Orders"', ...MAIN_LIST, ...extras]));
+    expect(removed).toContain('removed #n2 navigation "Sidebar"');
+    expect(removed).not.toContain('Current screen');
+    const readded = presenter.update(screen('b3', wide(MAIN_LIST, 12)));
+    expect(readded).toContain('added #n2 navigation "Sidebar"');
+    expect(readded).not.toContain('Current screen');
+    // The record was dropped when the sidebar left, so the fallback lists it
+    // in full even though it reads exactly as b1 listed it.
+    const renamedExtras = extras.map((line, index) =>
+      (index > 0 ? line.replace(/Extra (\d+)/, 'Extra $1 (new)') : line),
+    );
+    const text = presenter.update(screen('b4', ['#n1 document "Orders"', ...sidebar(12), ...MAIN_DETAILS, ...renamedExtras]), { lead: 'Tapped #n22.' });
+    expect(text).toContain('The screen changed substantially since revision b3.');
+    expect(text).not.toContain('nodes inside, unchanged since revision');
+    expect(text).toContain(' #n3 link "Item 1"');
+  });
+
+  it('never folds a top-level root, even one holding enough unchanged nodes', () => {
+    const presenter = new ScreenPresenter();
+    // A second top-level root with its leaves directly under it: the root
+    // itself is the only node that could fold, and its indent is 0.
+    const second = [
+      '#n50 document "Second"',
+      ...Array.from({ length: 12 }, (_, i) => ` #n${String(60 + i)} link "Second ${String(i + 1)}"`),
+    ];
+    const first = [
+      '#n1 document "First"',
+      ' #n2 heading "First"',
+      ' #n3 button "First 1"',
+      ' #n4 button "First 2"',
+      ' #n5 button "First 3"',
+    ];
+    presenter.initial(screen('b1', [...first, ...second]));
+    const changedFirst = [
+      '#n1 document "First (new)"',
+      ' #n2 heading "First changed"',
+      ...Array.from({ length: 9 }, (_, i) => ` #n${String(70 + i)} button "New ${String(i + 1)}"`),
+    ];
+    const text = presenter.update(screen('b2', [...changedFirst, ...second]), { lead: 'Tapped #n3.' });
+    expect(text).toContain('The screen changed substantially since revision b1.');
+    expect(text).not.toContain('nodes inside, unchanged since revision');
+    expect(text).toContain('#n50 document "Second"');
+    expect(text).toContain(' #n60 link "Second 1"');
   });
 });
 

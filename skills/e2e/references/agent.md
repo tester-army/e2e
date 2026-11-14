@@ -357,7 +357,9 @@ screen of a step arrives whole; later action results report what changed,
 keyed by node ids stable while an element exists, or the whole screen when
 most changed, with large subtrees that have not changed since the last screen
 folded to one line each naming the node count and the revision that last
-listed them in full. `observe` still returns the complete tree. Pixels arrive through `vision` on a judgment or the act loop's
+listed them in full. `observe` returns what changed since the last screen,
+not the whole tree; only the MCP `observe` returns the complete tree every
+time. Pixels arrive through `vision` on a judgment or the act loop's
 `screenshot` and point tools, with secure fields masked. When
 the browser engine's tree capture times out, the model gets a screenshot and
 a warning, a judgment needs `vision: true`, and no control may be inferred

@@ -11,7 +11,7 @@
  */
 
 import type { FilePart, ModelMessage, TextPart, ToolResultPart, UserContent } from 'ai';
-import { FULL_SCREEN_PATTERN, toolResultTexts } from './screen-update.ts';
+import { FOLD_DEPENDENCY_PATTERN, FULL_SCREEN_PATTERN, toolResultTexts } from './screen-update.ts';
 
 /** A part of a user message; a string message counts as one text part. */
 type UserPart = Exclude<UserContent, string>[number];
@@ -91,9 +91,6 @@ function rewriteOldestParts(messages: ModelMessage[], count: number, rewrite: Pa
  * screen is the only place the model can still read it.
  */
 const FULL_SCREEN_PRESERVE_COUNT = 1;
-
-/** A fold line's dependency: `(12 nodes inside, unchanged since revision b1)`. */
-const FOLD_DEPENDENCY_PATTERN = /\(\d+ nodes inside, unchanged since revision ([^)]+)\)/g;
 
 /** The revision a full screen's heading carries, or undefined when it carries none. */
 function screenRevision(text: string): string | undefined {
