@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { setImmediate } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
+import { setImmediate } from 'node:timers/promises';
 import { AgentError, type ExecutorActions, type ExecutorModelCall, type StepExecutorContext } from 'e2e';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { acp } from '../src/index.ts';
@@ -353,6 +354,68 @@ describe('acp', () => {
     const second = context({ attempt: { attempt: first.ctx.attempt as never, end: first.end } });
     await expect(executor.runStep(second.ctx)).resolves.toMatchObject({ status: 'passed' });
     expect(log().filter((entry) => 'prompt' in entry)).toHaveLength(1);
+  });
+
+  it('does not read a cancelled step screen after the previous turn stops', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'e2e-acp-turn-'));
+    cleanups.push(() => rmSync(directory, { recursive: true, force: true }));
+    const release = join(directory, 'release');
+    const { executor, log } = scripted([[{ hang: true, cancelUntilFile: release }]]);
+    const first = context();
+    cleanups.push(first.end);
+    const run = executor.runStep(first.ctx);
+    await eventually(() => expect(log().filter((entry) => 'prompt' in entry)).toHaveLength(1));
+    first.abortStep(new AgentError('STEP_TIMEOUT', 'the first step timed out'));
+    await expect(run).rejects.toMatchObject({ code: 'STEP_TIMEOUT' });
+    const second = context({ attempt: { attempt: first.ctx.attempt as never, end: first.end } });
+    const observe = vi.mocked(second.ctx.observe);
+    const look = observe.getMockImplementation()!;
+    observe.mockImplementation(async (request) => {
+      second.ctx.signal.throwIfAborted();
+      return look(request);
+    });
+    const next = executor.runStep(second.ctx);
+    await eventually(() => expect(log()).toContainEqual({ cancelled: true }));
+    await setImmediate();
+    const reason = new AgentError('STEP_TIMEOUT', 'the second step timed out while waiting for the first turn');
+    second.abortStep(reason);
+    writeFileSync(release, '');
+    await expect(next).rejects.toBe(reason);
+    expect(observe).not.toHaveBeenCalled();
+    expect(log().filter((entry) => 'prompt' in entry)).toHaveLength(1);
+  });
+
+  it('ends a cancelled step without waiting for its opening screen', async () => {
+    const { executor, log } = scripted([[pass], [pass]]);
+    const first = context();
+    cleanups.push(first.end);
+    await executor.runStep(first.ctx);
+    const second = context({ attempt: { attempt: first.ctx.attempt as never, end: first.end } });
+    const observe = vi.mocked(second.ctx.observe);
+    const look = observe.getMockImplementation()!;
+    let release: () => void = () => undefined;
+    const heldScreen = new Promise<void>((resolve) => { release = resolve; });
+    observe.mockImplementationOnce(async (request) => {
+      await heldScreen;
+      return look(request);
+    });
+    const reason = new AgentError('STEP_TIMEOUT', 'the step timed out while reading its screen');
+    const rejected = vi.fn();
+    const run = executor.runStep(second.ctx);
+    void run.catch(rejected);
+    try {
+      await eventually(() => expect(observe).toHaveBeenCalled());
+      second.abortStep(reason);
+      await vi.waitFor(() => expect(rejected).toHaveBeenCalledWith(reason), { timeout: 1_000 });
+      expect(log().filter((entry) => 'prompt' in entry)).toHaveLength(1);
+      const third = context({ attempt: { attempt: first.ctx.attempt as never, end: first.end } });
+      await expect(executor.runStep(third.ctx)).resolves.toMatchObject({ status: 'passed' });
+      expect(log().filter((entry) => 'session' in entry)).toHaveLength(1);
+    } finally {
+      release();
+      await run.catch(() => undefined);
+    }
+    expect(log().filter((entry) => 'prompt' in entry)).toHaveLength(2);
   });
 
   it('gives up on a session whose agent never stops the turn of a step that ended', async () => {

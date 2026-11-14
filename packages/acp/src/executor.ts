@@ -72,8 +72,9 @@ function executor(name: string, options: AcpAgentOptions, launch: () => Promise<
     cache: 'inherit',
     async runStep(ctx) {
       const { held, session } = await ready(ctx, launch, memoryKey);
+      ctx.signal.throwIfAborted();
       const active = activeStep(ctx);
-      const text = await stepMessage(active, held.tools, held.introduced ? undefined : [RULES, options.system, ctx.agentContext]);
+      const text = await untilAborted(stepMessage(active, held.tools, held.introduced ? undefined : [RULES, options.system, ctx.agentContext]), ctx.signal);
       // A step that ended while its screen was read sends no prompt, which no cancel would reach.
       ctx.signal.throwIfAborted();
       held.introduced = true;
