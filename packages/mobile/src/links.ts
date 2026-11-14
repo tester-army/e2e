@@ -75,10 +75,17 @@ export function assertAppId(app: string): void {
 }
 
 /**
- * The link as the report shows it, cut before its query and fragment. A
- * magic link carries its one-time token there, and a step label is kept for
- * as long as the report is.
+ * The link as the report shows it: without its userinfo, query, or fragment,
+ * any of which may carry a credential (a magic link's one-time token, a
+ * `user:password@` login), as `printableUrl` does on the web. A step label is
+ * kept for as long as the report is. Takes any string, since `openApp` labels
+ * a bundle id the same way, and never throws: userinfo goes only from a
+ * `scheme://user@host` authority (`URL` also reads `https:/` and backslashes
+ * as one), so `com.example.app` and `mailto:` addresses stay as they are.
  */
 export function linkLabel(input: string): string {
-  return input.replace(/[?#][\s\S]*$/, '');
+  return input.replace(/[?#][\s\S]*$/, '').replace(USERINFO, '$1');
 }
+
+/** A link's scheme and slashes, then the userinfo up to its last `@` before the path. */
+const USERINFO = /^(\s*[A-Za-z][A-Za-z0-9+.-]*:[\\/]+)[^/\\]*@/;
