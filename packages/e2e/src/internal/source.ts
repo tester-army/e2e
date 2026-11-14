@@ -18,7 +18,8 @@ export interface StackFrame {
 /** A position the report keeps: the file relative to the project root, POSIX separators, one-based line and column. */
 export type SourceLocation = StackFrame;
 
-const FRAME_PATTERN = /^((?:file:\/{0,2})?\/[^):]+):(\d+):(\d+)\)?\s*$/;
+const FRAME_START = /(?:^|[\s(])(?=file:\/|[A-Za-z]:[\\/]|\\\\|\/)/;
+const FRAME_PATTERN = /^(.+):(\d+):(\d+)\)?\s*$/;
 
 /**
  * `file` relative to `projectRoot` with POSIX separators, or nothing when the
@@ -44,10 +45,9 @@ export function projectRelativePath(projectRoot: string, file: string): string |
 export function userFrame(stack: string | undefined, projectRoot: string | undefined): StackFrame | undefined {
   if (stack === undefined || projectRoot === undefined) return undefined;
   for (const raw of stack.split('\n')) {
-    const slash = raw.indexOf('/');
-    if (slash === -1) continue;
-    const start = raw.slice(Math.max(0, slash - 5), slash) === 'file:' ? slash - 5 : slash;
-    const match = FRAME_PATTERN.exec(raw.slice(start));
+    const start = FRAME_START.exec(raw);
+    if (start === null) continue;
+    const match = FRAME_PATTERN.exec(raw.slice(start.index + start[0].length));
     if (match === null) continue;
     const [, location, line, column] = match;
     if (location === undefined || line === undefined || column === undefined) continue;
@@ -59,7 +59,7 @@ export function userFrame(stack: string | undefined, projectRoot: string | undef
       continue;
     }
     if (projectRelativePath(projectRoot, file) === undefined) continue;
-    if (file.includes(`${path.sep}node_modules${path.sep}`)) continue;
+    if (file.split(path.sep).join('/').includes('/node_modules/')) continue;
     return { file, line: Number(line), column: Number(column) };
   }
   return undefined;

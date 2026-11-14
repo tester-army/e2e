@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { resultId } from '../../src/internal/ids.ts';
 import { visibleWidth } from '../../src/report/format.ts';
@@ -510,9 +510,10 @@ describe('ListReporter', () => {
     });
 
     it('resolves file URLs and strips module-cache query strings', () => {
-      const stack = `    at async Object.fn (file://${root}/tests/login.e2e.ts?worker-collect-1:7:3)`;
+      const file = path.join(root, 'tests', 'login.e2e.ts');
+      const stack = `    at async Object.fn (${pathToFileURL(file).href}?worker-collect-1:7:3)`;
       expect(userFrame(stack, root)).toEqual({
-        file: `${root}/tests/login.e2e.ts`,
+        file,
         line: 7,
         column: 3,
       });

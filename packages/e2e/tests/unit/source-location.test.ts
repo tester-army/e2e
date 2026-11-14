@@ -5,6 +5,8 @@
  * ending in a separator keeps its frames.
  */
 
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { projectRelativePath, sourceLocation } from '../../src/internal/source.ts';
 
@@ -13,6 +15,41 @@ function stackThrough(file: string): string {
 }
 
 describe('sourceLocation', () => {
+  const root = path.resolve('/repo/app');
+
+  it.each([
+    path.join(root, 'tests', 'a.e2e.ts'),
+    path.join(root, 'tests', 'a (checkout).e2e.ts'),
+    path.join(root, 'tests', 'a (checkout).e2e.ts').split(path.sep).join('/'),
+    pathToFileURL(path.join(root, 'tests', 'a (checkout).e2e.ts')).href,
+  ])('keeps a platform-native frame using %s', (file) => {
+    const expected = { file: `tests/${file.includes('checkout') ? 'a (checkout)' : 'a'}.e2e.ts`, line: 14, column: 3 };
+    expect(sourceLocation(stackThrough(file), root)).toEqual(expected);
+    expect(sourceLocation(`    at ${file}:14:3`, root)).toEqual(expected);
+  });
+
+  it('skips dependency frames with either separator before the user frame', () => {
+    const file = path.join(root, 'tests', 'a.e2e.ts');
+    for (const dependency of [path.join(root, 'node_modules', 'lib', 'index.js'), `${root}/node_modules/lib/index.js`]) {
+      const stack = `    at poll (${dependency}:5:1)\n${stackThrough(file)}`;
+      expect(sourceLocation(stack, root)).toEqual({ file: 'tests/a.e2e.ts', line: 14, column: 3 });
+    }
+  });
+
+  it('strips a module-cache query from a platform-native file URL', () => {
+    const url = `${pathToFileURL(path.join(root, 'tests', 'a.e2e.ts')).href}?worker-collect-1`;
+    expect(sourceLocation(stackThrough(url), root)).toEqual({ file: 'tests/a.e2e.ts', line: 14, column: 3 });
+  });
+
+  it.skipIf(process.platform !== 'win32')('keeps UNC frames and refuses another drive', () => {
+    const uncRoot = '\\\\server\\share\\app';
+    const file = `${uncRoot}\\tests\\a.e2e.ts`;
+    for (const location of [file, pathToFileURL(file).href]) {
+      expect(sourceLocation(stackThrough(location), uncRoot)).toEqual({ file: 'tests/a.e2e.ts', line: 14, column: 3 });
+    }
+    expect(sourceLocation('    at fn (E:\\other\\tests\\a.e2e.ts:14:3)', 'D:\\repo\\app')).toBeUndefined();
+  });
+
   it('keeps a frame under the root relative to it', () => {
     expect(sourceLocation(stackThrough('/repo/app/tests/a.e2e.ts'), '/repo/app')).toEqual({ file: 'tests/a.e2e.ts', line: 14, column: 3 });
   });
@@ -50,10 +87,13 @@ describe('projectRelativePath', () => {
 });
 
 it('decodes file URLs and rejects long slash-only stack frames', () => {
-  expect(sourceLocation(stackThrough('file:///repo/app/tests/a%20b.e2e.ts'), '/repo/app')).toEqual({ file: 'tests/a b.e2e.ts', line: 14, column: 3 });
+  const root = path.resolve('/repo/app');
+  const url = pathToFileURL(path.join(root, 'tests', 'a b.e2e.ts')).href;
+  expect(sourceLocation(stackThrough(url), root)).toEqual({ file: 'tests/a b.e2e.ts', line: 14, column: 3 });
   expect(sourceLocation('    at ' + '/'.repeat(200_000), '/repo/app')).toBeUndefined();
 });
 
-it.each(['file:/repo/app/tests/a%20b.e2e.ts', 'file:///repo/app/tests/a%20b.e2e.ts', 'file://localhost/repo/app/tests/a%20b.e2e.ts'])('keeps a stack frame using %s', file => {
-  expect(sourceLocation(stackThrough(file), '/repo/app')).toEqual({ file: 'tests/a b.e2e.ts', line: 14, column: 3 });
+const fileUrl = pathToFileURL(path.resolve('/repo/app/tests/a b.e2e.ts')).href;
+it.each([fileUrl.replace('file://', 'file:'), fileUrl, fileUrl.replace('file://', 'file://localhost')])('keeps a stack frame using %s', file => {
+  expect(sourceLocation(stackThrough(file), path.resolve('/repo/app'))).toEqual({ file: 'tests/a b.e2e.ts', line: 14, column: 3 });
 });
