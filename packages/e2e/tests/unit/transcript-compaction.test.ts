@@ -67,6 +67,21 @@ function textChars(messages: readonly ModelMessage[]): number {
   }, 0);
 }
 
+/** A full screen whose subtree folds against an earlier revision. */
+function foldedScreenResult(id: string, revision: string, dependsOn: string, subtree = 'Sidebar'): ModelMessage {
+  return {
+    role: 'tool',
+    content: [
+      {
+        type: 'tool-result',
+        toolCallId: id,
+        toolName: 'tap',
+        output: { type: 'text', value: `Tapped #n3.\n\nThe screen changed substantially since revision b0. Current screen (revision ${revision}, 14 nodes):\n#n1 document\n #n2 navigation "${subtree}" (12 nodes inside, unchanged since revision ${dependsOn})\n #n20 main "Orders"` },
+      },
+    ],
+  };
+}
+
 function changesResult(id: string): ModelMessage {
   return {
     role: 'tool',
@@ -151,6 +166,73 @@ describe('compactScreenHistory', () => {
       ],
     });
     expect(compacted[2]).toEqual(messages[2]);
+  });
+
+  it('keeps a full screen a surviving folded screen depends on', () => {
+    const messages = [
+      opening,
+      changesResult('c1'),
+      fullScreenResult('c2', 'b2'),
+      foldedScreenResult('c4', 'b4', 'b0'),
+    ];
+    const compacted = compactScreenHistory(messages, { keepStaleBytes: 0 });
+    expect(compacted).not.toBe(messages);
+    // The opening screen is the only place the folded sidebar is listed in
+    // full, so it stays verbatim; the middle screen, which nothing names,
+    // is elided.
+    expect(compacted[0]).toEqual(messages[0]);
+    expect(compacted[1]).toEqual(messages[1]);
+    expect(toolOutput(compacted[2]!)).toMatchObject({ type: 'text', value: expect.stringContaining('[earlier screen elided') });
+    expect(compacted[3]).toEqual(messages[3]);
+  });
+
+  it('elides a screen no surviving fold depends on, even when it is the oldest', () => {
+    const messages = [
+      opening,
+      changesResult('c1'),
+      fullScreenResult('c2', 'b2'),
+      foldedScreenResult('c4', 'b4', 'b2'),
+    ];
+    const compacted = compactScreenHistory(messages, { keepStaleBytes: 0 });
+    expect(compacted).not.toBe(messages);
+    expect(compacted[0]!.content).toContain('[earlier screen elided');
+    expect(compacted[2]).toEqual(messages[2]);
+    expect(compacted[3]).toEqual(messages[3]);
+  });
+
+  it('keeps a dependency screen transitively, through a screen that itself folded', () => {
+    const messages = [
+      opening,
+      fullScreenResult('c1', 'bx'),
+      foldedScreenResult('c2', 'b1', 'b0', 'Footer'),
+      foldedScreenResult('c3', 'b2', 'b1'),
+    ];
+    const compacted = compactScreenHistory(messages, { keepStaleBytes: 0 });
+    expect(compacted).not.toBe(messages);
+    // The newest screen names b1, and b1 names b0: both stay, so every fold
+    // line still points at a screen the model holds. Only the screen no
+    // fold names is elided.
+    expect(compacted[0]).toEqual(messages[0]);
+    expect(toolOutput(compacted[1]!)).toMatchObject({ type: 'text', value: expect.stringContaining('[earlier screen elided') });
+    expect(compacted[2]).toEqual(messages[2]);
+    expect(compacted[3]).toEqual(messages[3]);
+  });
+
+  it('leaves a screenshot result whose screens are all kept untouched, without spending the elision budget', () => {
+    const messages = [
+      pixelScreenResult('c1', 'b1'),
+      fullScreenResult('c2', 'b2'),
+      fullScreenResult('c3', 'b3'),
+      foldedScreenResult('c4', 'b4', 'b1'),
+    ];
+    const compacted = compactScreenHistory(messages, { keepStaleBytes: 0 });
+    expect(compacted).not.toBe(messages);
+    // The opening screenshot result carries only the kept b1 screen, so it
+    // is returned untouched and the budget still covers both elidable screens.
+    expect(compacted[0]).toBe(messages[0]);
+    expect(toolOutput(compacted[1]!)).toMatchObject({ type: 'text', value: expect.stringContaining('[earlier screen elided') });
+    expect(toolOutput(compacted[2]!)).toMatchObject({ type: 'text', value: expect.stringContaining('[earlier screen elided') });
+    expect(compacted[3]).toBe(messages[3]);
   });
 
   it('shrinks a pixel-mode history on the budget-free pass the overflow retry runs after the cache-friendly pass kept it', () => {
