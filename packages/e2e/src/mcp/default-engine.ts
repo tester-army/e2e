@@ -17,12 +17,12 @@ import { ENGINE_SPI_VERSION } from '../engine/contract.ts';
 import { isEngineHandle, type EngineHandle } from '../engine/index.ts';
 import { ConfigurationError, errorMessage, isE2EError } from '../internal/errors.ts';
 
-/** Returns the Node export conditions used for dynamic imports. */
-function importConditions(): readonly string[] {
-  return process.features.require_module ? ['node', 'import', 'module-sync'] : ['node', 'import'];
-}
-
-const engineConditions: readonly string[] = importConditions();
+const ENGINE_CONDITIONS = [
+  'node',
+  'import',
+  ...(process.features.require_module ? ['module-sync'] : []),
+  'node-addons',
+];
 
 /** npm's package name grammar with an optional subpath, so a path, a URL, or a `..` segment is never resolved. */
 const PACKAGE = /^(?:@[a-z0-9][a-z0-9._~-]*\/)?[a-z0-9][a-z0-9._~-]*(?:\/[A-Za-z0-9][A-Za-z0-9._~-]*)*$/;
@@ -165,11 +165,11 @@ function resolveEntry(name: string, lookup: EngineLookup, role: 'engine' | 'opti
     if (directory === undefined) continue;
     try {
       // The file need not exist: it only says which node_modules directories to walk.
-      return resolveModuleURL(name, { from: pathToFileURL(path.join(root, 'package.json')), conditions: [...engineConditions], cache: false });
+      return resolveModuleURL(name, { from: pathToFileURL(path.join(root, 'package.json')), conditions: ENGINE_CONDITIONS, cache: false });
     } catch (cause) {
       throw new ConfigurationError(
         'INVALID_CONFIG',
-        `package ${name} is installed at ${directory} but its entry cannot be resolved (conditions: ${engineConditions.join(', ')}): ${errorMessage(cause)}. Check the package's exports and entry files`,
+        `package ${name} is installed at ${directory} but its entry cannot be resolved (conditions: ${ENGINE_CONDITIONS.join(', ')}): ${errorMessage(cause)}. Check the package's exports and entry files`,
         { cause },
       );
     }

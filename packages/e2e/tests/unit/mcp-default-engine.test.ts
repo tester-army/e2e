@@ -190,6 +190,7 @@ describe('loadEngine nested export conditions', () => {
     ['null-array', { '.': { node: [null], import: './outer.js' } }, null],
     ['empty-array', { '.': { node: [], import: './outer.js' } }, null],
     ['blocked-subpath/web', { '.': { import: './outer.js' }, './web': null }, null],
+    ['node-addons', { '.': { 'node-addons': './other.js', import: './outer.js' } }, 'other'],
     ['require-only', { '.': { require: './inner.cjs' } }, null],
   ];
 
