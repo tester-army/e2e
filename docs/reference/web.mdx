@@ -439,8 +439,8 @@ export type WebInitScript = string | { readonly path: string } | (() => unknown)
 - What belongs to the browser covers every tab: `cookies`, `setCookies`,
   `clearCookies`, `route`, `unroute`, `unrouteAll`, `onDialog`, and
   `addInitScript`.
-- `setViewport` sizes the active tab and every tab opened after it, and
-  `emulateMedia` sets its media the same way.
+- `setViewport` sizes the active tab and every tab opened after it.
+- [`emulateMedia`](#media-emulation) changes media on all open and future tabs.
 - A tab the app opens, from a `target="_blank"` link or `window.open`,
   opens in the background: the active tab stays where it was until
   `waitForPopup` or `activate` makes another one active. See [Tabs](#tabs).

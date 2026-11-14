@@ -39,11 +39,11 @@
     "e2e": ">=0.23.1 <1"
   },
   "devDependencies": {
-    "@ai-sdk/openai": "4.0.115",
-    "@ai-sdk/typesafe-ai": "3.0.38",
+    "@ai-sdk/openai": "4.0.118",
+    "@ai-sdk/typesafe-ai": "3.0.40",
     "@e2e-dev/web": "workspace:*",
     "@types/node": "26.6.6",
-    "ai": "7.0.170",
+    "ai": "7.0.173",
     "ajv": "8.20.0",
     "ajv-formats": "3.0.1",
     "e2e": "workspace:*",
