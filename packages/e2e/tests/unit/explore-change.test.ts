@@ -115,7 +115,8 @@ describe('readExploreChange', () => {
     commitFiles(dir, { 'run.sh': 'echo hi\n' }, 'add run.sh');
     runGit(dir, 'checkout', '--quiet', '-b', 'feature');
     chmodSync(path.join(dir, 'run.sh'), 0o755);
-    runGit(dir, 'commit', '--quiet', '-am', 'make run.sh executable');
+    runGit(dir, 'update-index', '--chmod=+x', 'run.sh');
+    runGit(dir, 'commit', '--quiet', '-m', 'make run.sh executable');
     const { text, complete } = await changeOf(dir);
     expect(text).toContain('run.sh (+0 -0; full patch below)\nold mode 100644\nnew mode 100755');
     expect(complete).toBe(true);
