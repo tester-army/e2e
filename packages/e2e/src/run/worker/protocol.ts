@@ -15,7 +15,7 @@ import type { DebugSnapshot } from '../../internal/debug.ts';
 import type { SerializedError } from '../../internal/errors.ts';
 import type { AttemptRecord, ResultRecord, RunError, SerialAttemptRecord, SerialGroupRecord, SerialMemberRecord, WireResultRecord } from '../records.ts';
 import type { SerialAttemptStart } from '../serial.ts';
-import type { HeldStep } from '../step-hold.ts';
+import type { HeldStep, StepHolding } from '../step-hold.ts';
 import type { StepProgress } from '../steps.ts';
 
 /** One runnable pair on the wire; the worker resolves the test function. */
@@ -73,8 +73,8 @@ export interface WorkerBootstrap {
   readonly debug: boolean;
   /** Whether the worker should record model calls for `--ai-trace`. */
   readonly aiTrace: boolean;
-  /** Whether each top-level step waits for the runner's `step-release` (`e2e run --step`). */
-  readonly step: boolean;
+  /** How each top-level step waits for the runner's `step-release` (`e2e run --step`); undefined when steps never wait. */
+  readonly step: StepHolding | undefined;
 }
 
 export interface RunUnitMessage {

@@ -15,7 +15,7 @@ import { abortError, cancelledError } from '../../internal/time.ts';
 import { TargetExecutor, type InMemoryAttempts } from '../execute.ts';
 import { encodeResult, type RunError } from '../records.ts';
 import type { SessionStore } from '../sessions.ts';
-import type { HeldStep } from '../step-hold.ts';
+import type { HeldStep, StepHolding } from '../step-hold.ts';
 import { countsTowardFailureLimit, disappearedResult, failureLimitSkip } from '../units.ts';
 import type { FailureLimit, MainToWorker, RunUnitMessage, WirePair, WorkerToMain } from './protocol.ts';
 
@@ -58,8 +58,8 @@ export interface TargetWorkerDeps {
   readonly debug?: DebugTrace;
   /** See `TargetExecutorOptions.inMemory`; only an in-process worker has tests registered in memory. */
   readonly inMemory?: InMemoryAttempts | undefined;
-  /** Whether steps wait for the runner's `step-release` (`e2e run --step`). */
-  readonly step?: boolean | undefined;
+  /** How steps wait for the runner's `step-release` (`e2e run --step`); undefined when they never do. */
+  readonly step?: StepHolding | undefined;
 }
 
 /** Transport callbacks a target worker needs. */
@@ -120,7 +120,9 @@ export class TargetWorker {
         env: deps.env,
         isolated: deps.isolated,
         interruptSignal: this.interruptController.signal,
-        ...(deps.step === true ? { holdStep: (step: HeldStep, signal: AbortSignal) => this.holdStep(step, signal) } : {}),
+        ...(deps.step === undefined
+          ? {}
+          : { holdStep: (step: HeldStep, signal: AbortSignal) => this.holdStep(step, signal), heldScreens: deps.step === 'screen' }),
         ...(deps.debug !== undefined ? { debug: deps.debug } : {}),
         inMemory: deps.inMemory,
         events: {

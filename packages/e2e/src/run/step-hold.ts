@@ -23,7 +23,21 @@ export interface HeldStep {
   /** Already redacted. */
   readonly label: string;
   readonly source?: SourceLocation;
+  /**
+   * The screen the step is held on: its location, then one line per node,
+   * redacted and bounded the way the trace page lists a screen. Only a run
+   * that holds with `screen` reads it, and a screen that could not be read
+   * leaves it out.
+   */
+  readonly screen?: string;
 }
+
+/**
+ * How a stepped run holds its steps: `hold` only holds them; `screen` also
+ * reads the screen each hold starts on into `HeldStep.screen`, for a reader
+ * who cannot see the app (`e2e run --step` without a terminal).
+ */
+export type StepHolding = 'hold' | 'screen';
 
 /** A held step with its place among its test's held steps, from 1. */
 export interface NumberedStep {

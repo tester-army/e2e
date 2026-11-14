@@ -12,7 +12,7 @@ import picocolors from 'picocolors';
 import { detectPackageManager, execCommand, runScriptCommand } from '../internal/package-manager.ts';
 import { packageVersion } from '../internal/package-version.ts';
 import { MAX_TIMER_MS } from '../internal/time.ts';
-import { classifyError, exitCodeForCategory } from '../internal/errors.ts';
+import { classifyError, codedMessage, exitCodeForCategory } from '../internal/errors.ts';
 import type { Shard, TagMode } from '../collect/select.ts';
 import { listSelection, run, type ListedPair, type RunOptions, type RunOutcome } from '../run/runner.ts';
 import { claimRunnerOutput } from './run-output.ts';
@@ -40,7 +40,7 @@ import { PROVIDER_IDS } from '../oauth/provider-ids.ts';
 import type { LoginFlags } from '../oauth/cli.ts';
 import { Keyboard } from './keyboard.ts';
 import { SignalLadder } from './signals.ts';
-import { StepGate, stepKeyOf } from './step.ts';
+import { isStepAction, StepGate, stepKeyOf } from './step.ts';
 import { skillTopics } from './skill.ts';
 import { UpdateCheck } from './update-check.ts';
 import { telemetry as telemetryCommand, TELEMETRY_ACTIONS, type TelemetryAction } from './telemetry.ts';
@@ -343,17 +343,34 @@ function rejectWatchIn(command: Command, reporters: readonly Reporter[] | undefi
 }
 
 /**
- * Where `--step` cannot work: it reads keys, so it needs a terminal on both
- * ends and no CI; its prompt is one at a time, so one worker; and it cannot
- * share the keyboard with `--watch` or stdout with the json reporter.
+ * Where `--step` cannot work: it waits at every step, so not in CI; its
+ * prompt is one at a time, so one worker; and it cannot share the keyboard
+ * with `--watch` or stdout with the json reporter.
  */
 function rejectStepIn(command: Command, options: { watch?: boolean; workers?: number; reporter?: readonly Reporter[] }): void {
   const refuse = (why: string): never => command.error(`error: --step ${why}`, { exitCode: 2 });
-  if (isCiMode(process.env)) refuse('waits for a key at every step, so it is refused in CI (CI is set)');
-  if (process.stdin.isTTY !== true || process.stdout.isTTY !== true) refuse('reads keys from the terminal, so stdin and stdout must both be one');
+  if (isCiMode(process.env)) refuse('waits at every step, so it is refused in CI (CI is set)');
   if (options.watch === true) refuse('cannot be combined with --watch: both read the keyboard');
   if (options.workers !== undefined && options.workers > 1) refuse('runs one test at a time, so it cannot be combined with --workers above 1');
   if (options.reporter?.includes('json') === true) refuse('cannot be combined with --reporter json: the prompt would land in its stdout document');
+}
+
+/** Whether `--step` can read keys: stdin and stdout are both a terminal. Without one, the run steps from later commands (`step-control.ts`). */
+function hasTerminal(): boolean {
+  return process.stdin.isTTY === true && process.stdout.isTTY === true;
+}
+
+/**
+ * Runs one `--step` command that drives the background run (`e2e run --step
+ * next`, or the command that starts it), with the exit code it answers;
+ * what it throws is a usage error.
+ */
+async function driveStepped(command: Command, drive: () => Promise<number>): Promise<void> {
+  try {
+    process.exitCode = await drive();
+  } catch (cause) {
+    command.error(`error: ${codedMessage(cause)}`, { exitCode: 2 });
+  }
 }
 
 /**
@@ -666,7 +683,11 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
     .option('--strict-cache', 'fail a step whose recording no longer replays (REPLAY_STALE) instead of handing it to the agent; never writes the cache')
     .option('-u, --update-snapshots', 'write the stored screenshots toHaveScreenshot finds missing or different, and pass')
     .option('-w, --watch', 'run, then run again whenever a test or source file or the config changes or a key asks: a (all), r (current), f (failed), u, p, t, q; not in CI')
-    .option('--step', 'run the first step, then hold each later one until a key: enter runs it, n runs to the next test, a runs all, h lists the keys, q stops; one worker, a terminal, not in CI')
+    .option(
+      '--step',
+      'run the first step, then hold each later one until a key: enter runs it, n runs to the next test, a runs all, h lists the keys, q stops. Without a terminal the run goes on in the background and returns at each held step with its screen; e2e run --step next runs that step, rest runs the rest, stop ends the run. One worker, not in CI',
+    )
+    .addOption(new Option('--step-serve <log>').hideHelp())
     .optionsGroup('Output:')
     .option('--reporter <ids>', `comma-separated reporters: ${BUILTIN_REPORTERS.join(', ')}`, parseReporters)
     .option('--output <dir>', 'results directory: report, artifacts, sessions (default: output in the config, else .e2e)')
@@ -685,6 +706,7 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
           'e2e run',
           'e2e run tests/signup.e2e.ts --headed',
           'e2e run tests/checkout.e2e.ts --step --headed',
+          'e2e run tests/checkout.e2e.ts --step   # no terminal: then e2e run --step next',
           'e2e run --watch',
           "e2e run 'tests/**/*.smoke.e2e.ts' --target web --tag smoke",
           'e2e run --tag smoke,billing --tag-mode all',
@@ -737,6 +759,8 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
           updateSnapshots?: boolean;
           watch?: boolean;
           step?: boolean;
+          /** The background run `--step` starts without a terminal, with the log its output goes to; internal. */
+          stepServe?: string;
           debug?: boolean;
           aiTrace?: boolean;
           trace?: RecordingMode | true;
@@ -745,6 +769,19 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
         command: Command,
       ) => {
         rejectForwardedFlags(command, files);
+        // `e2e run --step next`, `rest`, or `stop`: commander reads the word as a file.
+        const stepAction = options.step === true ? files.find(isStepAction) : undefined;
+        if (stepAction !== undefined) {
+          const others = command.options.filter((option) => option.attributeName() !== 'step' && command.getOptionValueSource(option.attributeName()) === 'cli');
+          if (files.length > 1 || others.length > 0) {
+            command.error(`error: --step ${stepAction} takes no files or other flags: it drives the run e2e run --step started`, { exitCode: 2 });
+          }
+          await driveStepped(command, async () => {
+            const { sendStep, stepAddress } = await import('./step-control.ts');
+            return sendStep(stepAddress(process.cwd()), stepAction);
+          });
+          return;
+        }
         const runOptions: RunOptions = {
           files,
           configPath: options.config,
@@ -774,6 +811,14 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
         };
         if (options.watch === true) rejectWatchIn(command, options.reporter);
         if (options.step === true) rejectStepIn(command, options);
+        const serveLog = options.step === true ? options.stepServe : undefined;
+        if (options.step === true && serveLog === undefined && !hasTerminal()) {
+          await driveStepped(command, async () => {
+            const { startStepped, stepAddress } = await import('./step-control.ts');
+            return startStepped(stepAddress(process.cwd()), process.argv.slice(2));
+          });
+          return;
+        }
         const output = claimRunnerOutput();
         try {
           if (options.watch === true) {
@@ -799,8 +844,12 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
             });
             return;
           }
-          await runToOutcome(telemetry, command, (signals) => {
+          await runToOutcome(telemetry, command, async (signals) => {
             const base = { ...runOptions, interruptSignal: signals.interruptSignal, forceSignal: signals.forceSignal, processOutput: output };
+            if (serveLog !== undefined) {
+              const { serveSteps, stepAddress } = await import('./step-control.ts');
+              return serveSteps(base, signals, { ...stepAddress(process.cwd()), log: serveLog });
+            }
             return options.step === true ? stepped(base, signals) : run(base);
           });
         } finally {
@@ -1142,7 +1191,7 @@ export async function main(argv: readonly string[]): Promise<void> {
   const updateCheck = new UpdateCheck({ version, checkout });
   const program = createProgram(version, telemetry, updateCheck);
   try {
-    await program.parseAsync([...argv]);
+    await program.parseAsync(argv);
   } catch (cause) {
     if (cause instanceof CommanderError) {
       // Commander has already written its diagnostic. `--help` and
