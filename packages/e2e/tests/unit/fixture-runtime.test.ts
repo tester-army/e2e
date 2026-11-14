@@ -575,7 +575,7 @@ describe('project tool dispatch', () => {
     expect(read).toHaveBeenCalledOnce();
   });
 
-  it('reports unsupported reads on an older engine', async () => {
+  it('denies reads on an engine without readStyle', async () => {
     let failure: unknown;
     const engine = defineEngine({ name: 'fake', version: '1', spiVersion: 1,
       observe: async () => snapshot([{ ref: { id: 'message', revision: '' }, role: 'status' }]),
@@ -586,7 +586,7 @@ describe('project tool dispatch', () => {
       return { status: 'passed', summary: 'looked' };
     } };
     await runtime(engine, { agents: { default: { executor } } }).fixtures.agent.act('inspect');
-    expect(failure).toMatchObject({ code: 'UNSUPPORTED_CAPABILITY' });
+    expect(failure).toMatchObject({ code: 'POLICY_DENIED', message: expect.stringContaining('computed styles') });
   });
 
   it.each(['before', 'after'] as const)('refuses a value when the step deadline expires %s the engine read', async (expires) => {
@@ -621,10 +621,11 @@ describe('project tool dispatch', () => {
   });
 
   it.each([
-    { label: 'operation timeout near the deadline', remainingMs: 50, code: 'OPERATION_TIMEOUT', expected: 'STEP_TIMEOUT' },
-    { label: 'stale node after the deadline', remainingMs: -50, code: 'NODE_STALE', expected: 'STEP_TIMEOUT' },
-    { label: 'operation timeout with time remaining', remainingMs: 1_000, code: 'OPERATION_TIMEOUT', expected: 'OPERATION_TIMEOUT' },
-  ] as const)('accounts for a rejected style read: $label', async ({ remainingMs, code, expected }) => {
+    { label: 'operation timeout near the deadline', remainingMs: 50, code: 'OPERATION_TIMEOUT', expected: 'STEP_TIMEOUT', event: 'STEP_TIMEOUT' },
+    { label: 'stale node after the deadline', remainingMs: -50, code: 'NODE_STALE', expected: 'STEP_TIMEOUT', event: 'STEP_TIMEOUT' },
+    { label: 'operation timeout with time remaining', remainingMs: 1_000, code: 'OPERATION_TIMEOUT', expected: 'ACTION_FAILED', event: 'OPERATION_TIMEOUT' },
+    { label: 'stale node with time remaining', remainingMs: 1_000, code: 'NODE_STALE', expected: 'LOCATOR_NOT_FOUND', event: 'LOCATOR_NOT_FOUND' },
+  ] as const)('accounts for a rejected style read: $label', async ({ remainingMs, code, expected, event }) => {
     const clock = vi.spyOn(Date, 'now');
     let rejectsAt = 0;
     let failure: unknown;
@@ -648,7 +649,7 @@ describe('project tool dispatch', () => {
       if (expected === 'STEP_TIMEOUT') await expect(act).rejects.toMatchObject({ code: expected });
       else await act;
       expect(failure).toMatchObject({ code: expected });
-      expect(steps.all()[0]?.events.find((event) => event.name === 'readStyle')).toMatchObject({ status: 'failed', code: expected });
+      expect(steps.all()[0]?.events.find((entry) => entry.name === 'readStyle')).toMatchObject({ status: 'failed', code: event });
     } finally { clock.mockRestore(); }
   });
 
@@ -665,8 +666,8 @@ describe('project tool dispatch', () => {
     } };
     const { fixtures, steps } = runtime(engine, { agents: { default: { executor } } });
     await fixtures.agent.act('inspect');
-    expect(failure).toMatchObject({ code: 'INVALID_STATE' });
-    expect(steps.all()[0]?.events.find((event) => event.name === 'readStyle')).toMatchObject({ status: 'failed', code: 'INVALID_STATE' });
+    expect(failure).toMatchObject({ code: 'APP_UNREACHABLE', message: expect.stringContaining('returned no string for "color"') });
+    expect(steps.all()[0]?.events.find((event) => event.name === 'readStyle')).toMatchObject({ status: 'failed', code: 'ENGINE_FAILURE' });
   });
 
   it('preserves complete style values that resemble a secret prefix', async () => {

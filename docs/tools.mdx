@@ -125,7 +125,7 @@ Pass the node's ID from the newest observation. The result contains only
 requested properties, with secret values redacted as in the tree.
 Values use the browser's computed CSS format, such as `rgb(255, 0, 0)` for red.
 
-Request 1 to 10 properties from the [computed-style allow-list](/reference/engine#rendered-node-properties).
+Request properties from the [computed-style allow-list](/reference/engine#rendered-node-properties).
 Custom properties, generated content, selectors, and page code are rejected.
 
 Reads use the step's deadline and run in order with observations and actions,
@@ -136,15 +136,12 @@ another element covers it or an ancestor makes it invisible.
 
 | Error | When |
 | --- | --- |
-| `POLICY_DENIED` | A `mutates: true` tool calls `read`. |
+| `POLICY_DENIED` | A `mutates: true` tool calls `read`, or the engine has no `readStyle` method, as with the mobile engine. |
 | `INVALID_ARGUMENT` | The options or property names are invalid. |
-| `LOCATOR_NOT_FOUND` | No semantic observation exists, or the latest one does not list the ID. |
-| `NODE_STALE` | The element detached or the engine no longer holds its reference. Observe again before reading. |
+| `LOCATOR_NOT_FOUND` | No semantic observation exists, the latest one does not list the ID, or the element detached. Observe again before reading. |
 | `STEP_TIMEOUT` | The read exhausted the step's remaining time, including an engine timeout at the deadline. Catching the read error cannot make the step pass. |
-| `UNSUPPORTED_CAPABILITY` | The engine has no `readStyle` method, including the mobile engine. |
 
-Use `requires: ['computedStyle']` on a test to skip targets without style reads.
-Read events name the requested properties without recording their values.
+Use `requires: ['computed-style']` on a test to skip targets without style reads.
 
 ## Device toolkits
 

@@ -291,7 +291,7 @@ export function createEngineSession(options: EngineSessionOptions): TargetSessio
 
   const locateRaw = guard('locators (screen)', engine?.locate);
   const observeRaw = guard('observation', engine?.observe);
-  const readStyleRaw = guard('rendered node properties', engine?.readStyle);
+  const readStyleRaw = guard('computed styles', engine?.readStyle);
   const performRaw = guard('actions', engine?.perform);
   const actions: ReadonlySet<LocatorActionKind> = new Set(engine?.actions ?? []);
   const performAtRaw = guard('point actions', engine?.performAt);

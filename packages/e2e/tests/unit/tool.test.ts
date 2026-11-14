@@ -10,7 +10,7 @@ const tool = {
 describe('defineTool platforms', () => {
   it('reports unsupported reads from an older tool context', async () => {
     const context = getToolContext({ [Symbol.for('e2e.tool-context.v1')]: { observe: async () => {} } });
-    await expect(context.read({ id: 'n1' }, { style: ['color'] })).rejects.toMatchObject({ code: 'UNSUPPORTED_CAPABILITY' });
+    await expect(context.read({ id: 'n1' }, { style: ['color'] })).rejects.toMatchObject({ code: 'POLICY_DENIED' });
   });
   it('offers a scoped tool only on its declared platforms', () => {
     const defined = defineTool(tool, { mutates: true, platforms: ['ios', 'android'] });

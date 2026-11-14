@@ -24,7 +24,7 @@ import type {
   ViewportSize,
 } from './contract.ts';
 import type { AppLogEntry, EngineObserveOptions, EngineSnapshot, EngineState, EngineTabs, VideoSegment } from './index.ts';
-import type { ComputedStyleProperty, ComputedStyleValues } from './node-read.ts';
+import type { ComputedStyleProperty, ComputedStyleValues } from './computed-style.ts';
 
 export type * from './contract.ts';
 export { EngineError } from './contract.ts';

@@ -164,7 +164,7 @@ export interface Engine {
   readonly workers?: number;
   /** capability: observation. */
   observe?(context: OperationContext, options?: EngineObserveOptions): Promise<EngineSnapshot>;
-  /** capability: computedStyle, requires observation. Read-only rendered properties of a node ref. */
+  /** capability: computed-style, requires observation. Read-only rendered properties of an observation ref. */
   readStyle?(ref: NodeRef, properties: readonly ComputedStyleProperty[], context: OperationContext): Promise<ComputedStyleValues>;
   /**
    * Performs one action on a ref from the newest observation or `locate`,
@@ -364,7 +364,7 @@ member. Three gaps end differently:
 | Member | Capability | Requires | Unlocks |
 | --- | --- | --- | --- |
 | `observe` | `observation` | - | The judgment tier, prompt snapshots, trace replay, the viewport swipe's root. |
-| `readStyle` | `computedStyle` | `observe` | Allow-listed rendered properties for read-only project tools. |
+| `readStyle` | `computed-style` | `observe` | Allow-listed rendered properties for read-only project tools. |
 | `perform` + `actions` | `actions` | `observe` | Node actions of the declared kinds, with platform actionability checks. |
 | `locate` | `location` | `observe` | `screen`, `Locator`, `expect(locator)`. |
 | `tapModifiers: true` | - | `perform` | `modifiers` on `tap`, `doubleTap`, and `secondaryTap`. |
@@ -379,11 +379,10 @@ member. Three gaps end differently:
 #### Rendered node properties
 
 `readStyle(ref, properties, context)` returns computed CSS strings for the requested
-properties without changing app state. Its `computedStyle` capability requires
-`observe`. Return a string for every requested property and no unrequested keys.
-An omitted value fails with non-retryable `INVALID_STATE`. Throw retryable
-`NODE_STALE` if the node no longer binds. The harness redacts values before
-returning them to tools.
+properties without changing app state. Its `computed-style` capability requires
+`observe`, and `ref` comes from the newest observation. Return a string for
+every requested property. Throw retryable `NODE_STALE` if the node no longer
+binds. The harness redacts values before returning them to tools.
 
 ```ts
 export type ComputedStyleProperty =
@@ -394,9 +393,9 @@ export type ComputedStyleValues = Readonly<Partial<Record<ComputedStyleProperty,
 ```
 
 `COMPUTED_STYLE_PROPERTIES` exports the allow-list as a frozen array.
-`validateNodeReadOptions({ style: properties })` validates and copies 1 to 10
-entries, deduplicating them. Engines call it before page access; invalid or
-unknown options and properties are `INVALID_ARGUMENT`.
+`validateComputedStyleProperties(properties)` returns a deduplicated copy and
+throws `INVALID_ARGUMENT` for an empty list or a property outside the
+allow-list. Call it before page access.
 See [Project tools](/tools#read-a-nodes-computed-style) for `ToolContext.read`.
 
 #### Agent verbs
@@ -494,7 +493,7 @@ engine. A target with `app.url` has `browser`, and one with `app.bundleId` or
  */
 export type EngineCapability =
   | 'observation'
-  | 'computedStyle'
+  | 'computed-style'
   | 'actions'
   | 'location'
   | 'pointer'

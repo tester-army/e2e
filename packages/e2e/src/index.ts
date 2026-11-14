@@ -20,6 +20,8 @@ export type {
   ExecutorObservation,
   ExecutorObserveOptions,
   ExecutorPixels,
+  ExecutorReadOptions,
+  ExecutorReadResult,
   ExecutorStep,
   ExecutorTarget,
   ExecutorVerb,

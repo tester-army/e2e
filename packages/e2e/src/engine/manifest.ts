@@ -210,7 +210,7 @@ export function defineEngine(spec: Engine): EngineHandle {
   if (spec.observe !== undefined) capabilities.add('observation');
   if (spec.readStyle !== undefined) {
     if (!capabilities.has('observation')) throw invalid(name, 'declares readStyle without observe: style targets are observation refs');
-    capabilities.add('computedStyle');
+    capabilities.add('computed-style');
   }
   if (spec.perform !== undefined) {
     if (!capabilities.has('observation')) {

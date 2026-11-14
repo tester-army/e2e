@@ -1,9 +1,9 @@
 /** Project tools declare mutation and platform scope; the harness owns dispatch and accounting. */
 
 import type { Tool, ToolExecutionOptions } from 'ai';
-import type { ExecutorTarget, StepExecutorContext } from './executor.ts';
-import type { NodeReadOptions, NodeReadResult } from '../engine/node-read.ts';
+import type { StepExecutorContext } from './executor.ts';
 import { TestError } from '../internal/errors.ts';
+import { AgentError } from './error.ts';
 
 /** Cross-realm identity marker for defined tools. */
 const DEFINED_TOOL_MARKER = Symbol.for('e2e.defined-tool.v1');
@@ -76,10 +76,7 @@ export function isDefinedTool(value: unknown): value is DefinedTool {
  * observing the screen and reading rendered node properties (read-only
  * tools only), and keeping a screenshot artifact of the step.
  */
-export interface ToolContext extends Pick<StepExecutorContext, 'observe' | 'attachScreenshot'> {
-  /** Reads requested rendered properties of a listed node; read-only tools only. */
-  read(target: ExecutorTarget, options: NodeReadOptions): Promise<NodeReadResult>;
-}
+export type ToolContext = Pick<StepExecutorContext, 'observe' | 'read' | 'attachScreenshot'>;
 
 /** The capabilities the built-in agent supplied to the running tool. */
 export function getToolContext(options: object): ToolContext {
@@ -90,7 +87,7 @@ export function getToolContext(options: object): ToolContext {
   return {
     observe: context.observe,
     read: typeof context.read === 'function' ? context.read : async () => {
-      throw new TestError('UNSUPPORTED_CAPABILITY', 'this tool host cannot read node properties');
+      throw new AgentError('POLICY_DENIED', 'this tool host cannot read node properties');
     },
     attachScreenshot: context.attachScreenshot,
   };

@@ -75,7 +75,7 @@ describe('engine protocol', () => {
   it('carries a read request and computed values through JSON-RPC', async () => {
     const read = vi.fn(async () => ({ color: 'rgb(255, 0, 0)' }));
     const { remote } = overLoopback(toy({ readStyle: read }));
-    expect(remote.capabilities.has('computedStyle')).toBe(true);
+    expect(remote.capabilities.has('computed-style')).toBe(true);
     await remote.init!(initInfo());
     const ref = { id: 'n1', revision: '1' };
     await expect(remote.readStyle!(ref, ['color'], operation())).resolves.toEqual({ color: 'rgb(255, 0, 0)' });

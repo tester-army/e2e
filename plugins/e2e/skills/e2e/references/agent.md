@@ -489,10 +489,9 @@ before writing the AI trace.
 - A `mutates: false` tool can call `getToolContext(options).read({ id },
   { style: ['color', 'font-weight'] })` for a node in its newest observation.
   Web reads return redacted `{ style }` under the step deadline, use no action
-  slot, and never relocate stale IDs. Allowed: `color`, `background-color`,
-  `font-size`, `font-weight`, `font-style`, `text-align`, `text-decoration-line`,
-  `display`, `visibility`, `opacity`; request 1 to 10. Use `requires: ['computedStyle']` to skip engines
-  without support. See https://e2e.com/docs/tools#read-a-nodes-computed-style.
+  slot, and never relocate stale IDs. Use `requires: ['computed-style']` to
+  skip engines without support. Allowed properties and errors:
+  https://e2e.com/docs/tools#read-a-nodes-computed-style.
 - `createToolLoopExecutor` keeps the loop and replaces prompt and tool
   vocabulary; spread `createGrammarTools(ctx, { guard })` into its tools and
   start its `system` with `BASE_RULES` to keep the built-in actions.

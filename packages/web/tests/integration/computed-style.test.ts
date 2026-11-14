@@ -25,7 +25,7 @@ describe('computed node style', () => {
   let engine: EngineHandle;
   let artifactsDir: string;
   beforeAll(async () => {
-    artifactsDir = mkdtempSync(path.join(tmpdir(), 'e2e-node-read-'));
+    artifactsDir = mkdtempSync(path.join(tmpdir(), 'e2e-computed-style-'));
     engine = web();
     await engine.init!({ runId: 'read', targetName: 'web', projectRoot: process.cwd(), app: { site: 'example.test' }, env: {}, headed: false, workerSlot: 0, log: () => {}, signal: new AbortController().signal });
     await engine.startAttempt!({ attemptId: 'read-1', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets, ...ignoreTrace });
@@ -91,6 +91,14 @@ describe('computed node style', () => {
     await page.goto('http://example.test/');
     const ref = named((await engine.observe!(operation())).root, 'Framed error')!.ref;
     await expect(engine.readStyle!(ref, ['color'], operation())).resolves.toEqual({ color: 'rgb(4, 5, 6)' });
+  });
+
+  it('refuses a locator ref, since style targets are observation refs', async () => {
+    const page = surfaceOf(engine)!.page();
+    await page.setContent('<button>Located</button>');
+    const button = { kind: 'query', query: { kind: 'role', value: { kind: 'string', value: 'button', exact: true } } } as const;
+    const [located] = await engine.locate!(button, operation());
+    await expect(engine.readStyle!(located!.ref, ['color'], operation())).rejects.toMatchObject({ code: 'NODE_STALE', retryable: false });
   });
 
   it('does not evaluate a node if cancellation arrives during reference lookup', async () => {
