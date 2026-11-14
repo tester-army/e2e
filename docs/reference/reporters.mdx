@@ -56,8 +56,8 @@ reporters: ['list'], // default
 - The output ends with a `Failed` row per failed test: its file and line,
   its error's first line, and its trace page when one was written, so `e2e run | tail` still
   names what broke.
-- Failure locations use the first stack frame inside the project and outside
-  `node_modules`, including Windows paths and file URLs.
+- When available, the first project stack frame outside `node_modules` supplies
+  the failure location. Windows paths and file URLs are supported.
 
 #### `json`
 
