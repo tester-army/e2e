@@ -74,25 +74,36 @@ export function assertAppId(app: string): void {
   );
 }
 
+/** What the report shows for a link that did not parse, or an app id that looks like a link. */
+const LINK_PLACEHOLDER = '<link>';
+
 /**
- * The link as the report shows it: without its userinfo, query, or fragment,
- * any of which may carry a credential (a magic link's one-time token, a
- * `user:password@` login), as `printableUrl` does on the web. A step label is
- * kept for as long as the report is. Takes any string, since `openApp` labels
- * a bundle id the same way, and never throws: userinfo goes only from a
- * `scheme://user@host` authority (`URL` also reads `https:/`, `https:` and backslashes
- * as one on web schemes), so `com.example.app` and `mailto:` addresses stay as they are.
+ * The link as the report shows it: parsed with the parser `openLink` opens
+ * it with, then without its userinfo, query, or fragment, any of which may
+ * carry a credential (a magic link's one-time token, a `user:password@`
+ * login), as `printableUrl` does on the web. A step label is kept for as long
+ * as the report is. A string that fails to parse is never echoed, as
+ * `linkTarget` never echoes it, and the label is a placeholder.
  */
 export function linkLabel(input: string): string {
-  return input
-    .replace(/[\t\n\r]/g, '')
-    .replace(/[?#][\s\S]*$/, '')
-    .replace(SPECIAL_USERINFO, '$1')
-    .replace(USERINFO, '$1');
+  let url: URL;
+  try {
+    url = new URL(input);
+  } catch {
+    return LINK_PLACEHOLDER;
+  }
+  url.username = '';
+  url.password = '';
+  url.search = '';
+  url.hash = '';
+  return url.href;
 }
 
-/** A special-scheme link's scheme and any slashes, then userinfo up to its last `@`: `https:user@host` is one too. */
-const SPECIAL_USERINFO = /^(\s*(?:https?|ftp|wss?):[\\/]*)[^/\\]*@/i;
-
-/** A custom-scheme link's `scheme://`, then userinfo up to its last `@` before the path. */
-const USERINFO = /^(\s*[A-Za-z][A-Za-z0-9+.-]*:\/\/)[^/]*@/;
+/**
+ * The label of an `openApp` step: the app id as it is. `assertAppId` refuses
+ * a link, but the step is labeled before it runs, so a string shaped like a
+ * link gets the placeholder instead of whatever userinfo it carries.
+ */
+export function appLabel(app: string): string {
+  return isLink(app) ? LINK_PLACEHOLDER : app;
+}

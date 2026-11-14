@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { assertAppId, linkLabel, linkTarget } from '../../src/links.ts';
+import { assertAppId, appLabel, linkLabel, linkTarget } from '../../src/links.ts';
 
 describe('links', () => {
   it('parses custom schemes and web links, keeping the query the app reads', () => {
@@ -61,26 +61,40 @@ describe('links', () => {
   it('labels a link without its userinfo, query, or fragment', () => {
     expect(linkLabel('myapp://user:secret@orders/42?code=1')).toBe('myapp://orders/42');
     expect(linkLabel('https://user:pass@example.com/verify')).toBe('https://example.com/verify');
-    expect(linkLabel('https:/user:pass@example.com/verify')).toBe('https:/example.com/verify');
-    expect(linkLabel('https:\\\\user:pass@example.com\\verify')).toBe('https:\\\\example.com\\verify');
-    expect(linkLabel('https://token@example.com/verify')).toBe('https://example.com/verify');
+    expect(linkLabel('https:/user:pass@example.com/verify')).toBe('https://example.com/verify');
+    expect(linkLabel('https:user:pass@example.com/path')).toBe('https://example.com/path');
+    expect(linkLabel('HTTPS:\\\\user:pass@example.com\\verify')).toBe('https://example.com/verify');
     expect(linkLabel('https://a@b:c@example.com/x?token=s3cret#frag')).toBe('https://example.com/x');
     expect(linkLabel('myapp://orders/42#user:secret@x')).toBe('myapp://orders/42');
-    expect(linkLabel('https:user:pass@example.com/path')).toBe('https:example.com/path');
-    expect(linkLabel('HTTPS:user:pass@example.com/path')).toBe('HTTPS:example.com/path');
-    expect(linkLabel('myapp://a\\b@host/x')).toBe('myapp://host/x');
     expect(linkLabel('ht\ttps://user:pass@example.com/x')).toBe('https://example.com/x');
     expect(linkLabel('https:/\t/user:pass@example.com/x')).toBe('https://example.com/x');
+    expect(linkLabel('ftp://user:pass@example.com/x')).toBe('ftp://example.com/x');
+    expect(linkLabel('wss://user:pass@example.com/x')).toBe('wss://example.com/x');
   });
 
-  it('keeps an @ outside the authority, and leaves app ids and non-authority strings whole', () => {
+  it('keeps an @ outside the authority', () => {
     expect(linkLabel('https://example.com/users/@me')).toBe('https://example.com/users/@me');
     expect(linkLabel('https://example.com/invite?email=a@b.com')).toBe('https://example.com/invite');
     expect(linkLabel('mailto:someone@example.com')).toBe('mailto:someone@example.com');
-    expect(linkLabel('com.example.app')).toBe('com.example.app');
-    expect(linkLabel('Notes: Pro')).toBe('Notes: Pro');
-    expect(linkLabel('https://user:s3cret@exa mple.com/verify')).toBe('https://exa mple.com/verify');
-    expect(linkLabel('://user@x')).toBe('://user@x');
     expect(linkLabel('myapp:/invite@friend')).toBe('myapp:/invite@friend');
+  });
+
+  it('never echoes a link that does not parse', () => {
+    for (const malformed of [
+      'https://user:p/w@host/x',
+      'https://user:p?w@host/x',
+      'https://user:s3cret@exa mple.com/verify',
+      'not-a-url?token=s3cret',
+      '://user@x',
+    ]) {
+      expect(linkLabel(malformed)).toBe('<link>');
+    }
+  });
+
+  it('labels an app id as it is, and a link-shaped one with the placeholder', () => {
+    expect(appLabel('com.example.app')).toBe('com.example.app');
+    expect(appLabel('Notes: Pro')).toBe('Notes: Pro');
+    expect(appLabel('https://user:pass@example.com/x?t=1')).toBe('<link>');
+    expect(appLabel('myapp://orders/42')).toBe('<link>');
   });
 });

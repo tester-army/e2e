@@ -2500,10 +2500,11 @@ describe('device fixture', () => {
 
   it('labels openApp and openLink steps without the link query and setClipboard by length, so a token never enters the report', () => {
     fixture(harness());
-    expect(declared?.openApp?.label?.('https://app.example.com/magic?token=s3cret#frag')).toBe('https://app.example.com/magic');
+    expect(declared?.openApp?.label?.('https://user:pw@app.example.com/magic?token=s3cret#frag')).toBe('<link>');
     expect(declared?.openApp?.label?.('com.apple.Preferences')).toBe('com.apple.Preferences');
     expect(declared?.openLink?.label?.('myapp://orders/42?ref=mail')).toBe('myapp://orders/42');
-    expect(declared?.openLink?.label?.('verify?token=s3cret')).toBe('verify');
+    expect(declared?.openLink?.label?.('https://user:pw@app.example.com/magic?token=s3cret#frag')).toBe('https://app.example.com/magic');
+    expect(declared?.openLink?.label?.('verify?token=s3cret')).toBe('<link>');
     // Clipboard text is often a code or token the test copied, never a configured secret the ledger would redact.
     expect(declared?.setClipboard?.label?.('482913')).toBe('6 chars');
   });
