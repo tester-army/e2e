@@ -7,7 +7,7 @@
 
 import type { AgentDeviceClient as DeviceSessionClient } from 'agent-device';
 import type { EngineFixtureContext, Locator } from 'e2e/engine';
-import { linkLabel, linkTarget } from './links.ts';
+import { appLabel, linkLabel, linkTarget } from './links.ts';
 import type { DevicePermission, MobilePlatform, PermissionState } from './options.ts';
 import type { DeviceSelection } from './pool.ts';
 import { unsupported } from './support.ts';
@@ -362,7 +362,7 @@ export function createDeviceFixture(surface: AgentDeviceSurface, context: Engine
     setBiometrics: action,
     enrollBiometrics: action,
     installApp: { ...action, label: (appPath) => appPath ?? surface.appPath ?? 'appPath' },
-    openApp: { ...action, label: (app) => linkLabel(app) },
+    openApp: { ...action, label: (app) => appLabel(app) },
     openLink: { ...action, label: (url) => linkLabel(url) },
     closeApp: action,
     clearKeychain: action,

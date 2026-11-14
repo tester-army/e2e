@@ -794,8 +794,9 @@ await expect(screen.getByText('Order #42')).toBeVisible();
   the browser, and the session follows the package that took it.
 - A device link may use any app's custom scheme, so the rule refuses the
   schemes below rather than admitting http(s) alone as the web does.
-- The report shows the link cut before its query and fragment, where a magic
-  link carries its token.
+- The report shows the link without its userinfo (`user:password@` or `token@`),
+  query, or fragment, where a login or a magic link's token rides. A string
+  that does not parse shows as `<link>`, never as typed.
 - The replay cache anchors on the location the link lands on; see
   [Replay cache on a device](#replay-cache-on-a-device).
 
