@@ -505,9 +505,16 @@ characters from every name:
 
 ## Inert content
 
-The agent doesn't see an element with the `inert` attribute or anything
-under it, so it never aims at a control behind an open drawer. Locators
-still find inert content, and `toBeVisible` still passes, as in Playwright.
+The agent doesn't see inert content, so it never aims at a control that
+takes no input:
+
+- An element with the `inert` attribute, and everything under it.
+- Everything outside a modal `<dialog>`, opened with `showModal()` or a
+  `show-modal` command. With several open, only the one shown last stays.
+  When e2e can't tell which one that is, it leaves out nothing.
+
+Locators still find inert content, and `toBeVisible` still passes, as in
+Playwright.
 
 ## Shadow DOM
 

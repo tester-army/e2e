@@ -1151,10 +1151,135 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
    * `interactivity: inert`, which follows the flat tree, so a light child
    * slotted into an inert slot of a closed root counts; the attribute covers a
    * browser that does not compute it. A modal dialog's inertness of the rest
-   * of the page is not in the style and stays listed.
+   * of the page is not in the style; the walk reads it from the dialog
+   * (`modalScopeOf`).
    */
   const isInert = (el: Element, style: CSSStyleDeclaration | undefined): boolean =>
     el.hasAttribute('inert') || style?.getPropertyValue('interactivity') === 'inert';
+
+  /**
+   * The order the context's init script saw each modal dialog shown in, when
+   * it ran in this document. Same literal as `MODAL_ORDER_KEY`; the reader
+   * cannot import it.
+   */
+  const modalOrder = (globalThis as Record<symbol, WeakMap<Element, number> | undefined>)[
+    Symbol.for('e2e.modalDialogOrder')
+  ];
+
+  /**
+   * Whether `el` is an open modal `<dialog>`. `dialog:modal`, not `:modal`,
+   * which a fullscreen element matches too; a browser that cannot parse the
+   * selector has no modal to read, rather than a reader that throws.
+   */
+  const isOpenModalDialog = (el: Element): boolean => {
+    if (el.localName !== 'dialog') return false;
+    try {
+      return el.matches('dialog:modal');
+    } catch {
+      return false;
+    }
+  };
+
+  /**
+   * Every open modal dialog under `root`, in tree order, through open and
+   * closed shadow roots alike: `querySelectorAll` stops at a shadow boundary,
+   * so each host's root is searched on its own.
+   */
+  const openModalDialogsIn = (root: Document | ShadowRoot, found: Element[] = []): Element[] => {
+    for (const el of Array.from(root.querySelectorAll('*'))) {
+      if (isOpenModalDialog(el)) found.push(el);
+      const shadow = shadowRootOf(el);
+      if (shadow !== null) openModalDialogsIn(shadow, found);
+    }
+    return found;
+  };
+
+  /**
+   * The slot an element is assigned to: `assignedSlot`, which a closed root
+   * hides from the outside, else the tracked closed root's own slots, read
+   * the way `contentChildrenOf` reads them.
+   */
+  const slotOf = (el: Element): Element | null => {
+    if (el.assignedSlot !== null) return el.assignedSlot;
+    const host = el.parentElement;
+    const shadow = host === null ? undefined : closedShadowRoots?.get(host);
+    if (shadow === undefined) return null;
+    for (const slot of Array.from(shadow.querySelectorAll('slot'))) {
+      if (slot.assignedElements().indexOf(el) !== -1) return slot;
+    }
+    return null;
+  };
+
+  /** An element's parent in the flat tree: its slot, the tree parent, or the host at a shadow root. */
+  const flatParentOf = memoized((el: Element): Element | null => slotOf(el) ?? parentOrHostOf(el));
+
+  /** Whether `el` is `container` or under it in the flat tree. */
+  const isInFlatTree = (el: Element, container: Element): boolean => {
+    for (let current: Element | null = el; current !== null; current = flatParentOf(current)) {
+      if (current === container) return true;
+    }
+    return false;
+  };
+
+  /**
+   * The modal dialog on top of several open ones, the only one left live: the
+   * innermost one holding focus, since `showModal()` moves focus into the
+   * dialog it shows and inert content cannot take focus back, and a modal
+   * nested in another leaves the outer one's own controls inert; else the
+   * one the init script saw shown last (`modalOrder`), for a page that
+   * blurred. Tree order alone is wrong: `showModal()` on a later dialog, then
+   * an earlier one, leaves the earlier one on top. When the record never saw
+   * one of them (opened by a `show-modal` command, or before the script ran),
+   * nothing tells which is on top, and none is picked: a guess can drop the
+   * one dialog that takes input, which is worse than listing the page.
+   */
+  const topModalOf = (dialogs: readonly Element[]): Element | undefined => {
+    if (dialogs.length <= 1) return dialogs[0];
+    const open = new Set(dialogs);
+    for (let current = focusedElement; current !== null; current = flatParentOf(current)) {
+      if (open.has(current)) return current;
+    }
+    let top: Element | undefined;
+    let topOrder = 0;
+    for (const dialog of dialogs) {
+      const order = modalOrder?.get(dialog);
+      if (order === undefined) return undefined;
+      if (order > topOrder) {
+        top = dialog;
+        topOrder = order;
+      }
+    }
+    return top;
+  };
+
+  /** What an open modal dialog leaves of the page for the walk (`modalScopeOf`). */
+  interface ModalScope {
+    /**
+     * Where an element sits: `inside` the dialog's flat tree, which stays
+     * live; an `ancestor` the dialog sits under, through shadow hosts, walked
+     * to reach it and never listed; or `outside`, which is inert.
+     */
+    readonly placeOf: (el: Element) => 'inside' | 'ancestor' | 'outside';
+  }
+
+  /**
+   * Everything outside the modal dialog on top is inert (HTML's "blocked by a
+   * modal dialog"), as Chrome's tree drops it, though it still paints: the
+   * page behind, a lower modal dialog, a popover opened outside the dialog,
+   * and a frame's whole document, which the engine then never enters. What
+   * stays is the dialog and its flat-tree descendants, light children slotted
+   * into it from outside its shadow root included. Its ancestors drop out of
+   * the tree too, but are walked, since the dialog and those slotted children
+   * are reached through them. Undefined when no modal dialog is open, or when
+   * none can be told to be on top (`topModalOf`).
+   */
+  const modalScopeOf = (doc: Document): ModalScope | undefined => {
+    const dialog = topModalOf(openModalDialogsIn(doc));
+    if (dialog === undefined) return undefined;
+    const ancestors = new Set<Element>();
+    for (let up = parentOrHostOf(dialog); up !== null; up = parentOrHostOf(up)) ancestors.add(up);
+    return { placeOf: (el) => (ancestors.has(el) ? 'ancestor' : isInFlatTree(el, dialog) ? 'inside' : 'outside') };
+  };
 
   /** A closed select has no option boxes; explicit exclusions still remove choices it does not offer. */
   const isOfferedOption = (option: HTMLOptionElement): boolean => {
@@ -1571,6 +1696,10 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
     // this walk already pays one `getComputedStyle` per node.
     const style = styleOf(el);
     if (hidesSubtree(el, style)) return;
+    // Outside an open modal dialog everything is inert (`modalScopeOf`); the
+    // dialog's ancestors are walked to reach it and list nothing of their own.
+    const place = modal === undefined ? 'inside' : modal.placeOf(el);
+    if (place === 'outside') return;
     const hidden = isHidden(el, style);
     // The two elements listed by a rule of their own carry nothing a person
     // sees past their edges: a frame with no box shows none of its document,
@@ -1599,7 +1728,7 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
     const drawnByLabel = hidden && isDrawnByLabel(el, style);
     // An empty painted rectangle carries no semantics to be "interesting" by and
     // is still something a person sees and aims at; `roleOf` names it `box`.
-    if ((!hidden || drawnByLabel) && (isInteresting(el) || isVisibleEmptyBox(el))) {
+    if (place !== 'ancestor' && (!hidden || drawnByLabel) && (isInteresting(el) || isVisibleEmptyBox(el))) {
       if (nodes.length >= maxNodes) {
         truncated = true;
         return;
@@ -1647,6 +1776,9 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
     }
   };
 
+  // Read before the walk: the page behind a modal dialog comes first in tree
+  // order, and would otherwise spend the node budget the dialog needs.
+  const modal = modalScopeOf(element.ownerDocument);
   // The root is the document the screen shows, listed whatever its own box: a
   // page of fixed controls leaves `<html>` with no height of its own.
   nodes[include(element, -1)]!.states.hidden = false;

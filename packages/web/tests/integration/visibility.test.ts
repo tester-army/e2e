@@ -225,6 +225,46 @@ describe('an inert subtree', () => {
   });
 });
 
+describe('an open modal dialog', () => {
+  const buttonNames = async () => (await captureTree()).filter((node) => node.role === 'button').map((node) => node.name);
+
+  it('leaves the page behind it out of the tree, while Playwright still calls that page visible', async () => {
+    await page.setContent(`
+      <main><h2>Store</h2><button id="behind">Add to cart</button></main>
+      <dialog id="consent"><p>We use cookies.</p><button>Accept</button></dialog>
+      <script>document.getElementById('consent').showModal();</script>
+    `);
+    const names = (await captureTree()).map((node) => node.name).filter((name) => name !== undefined);
+    expect(names).toContain('Accept');
+    expect(names).not.toContain('Add to cart');
+    expect(names).not.toContain('Store');
+    expect(await hiddenOf('#behind')).toEqual({ reader: false, playwright: false });
+  });
+
+  it('keeps the dialog holding focus when two were shown out of tree order, with no show order recorded', async () => {
+    await page.setContent(`
+      <dialog id="first"><button>First dialog</button></dialog>
+      <dialog id="second"><button>Second dialog</button></dialog>
+      <script>document.getElementById('second').showModal(); document.getElementById('first').showModal();</script>
+    `);
+    expect(await buttonNames()).toEqual(['First dialog']);
+  });
+
+  it('leaves the page alone for a dialog shown without a modal, and once a modal dialog closes', async () => {
+    await page.setContent(`
+      <button>Page button</button>
+      <dialog id="plain"><button>Plain dialog</button></dialog>
+      <dialog id="modal"><button>Modal dialog</button></dialog>
+      <script>
+        document.getElementById('plain').show();
+        document.getElementById('modal').showModal();
+        document.getElementById('modal').close();
+      </script>
+    `);
+    expect(await buttonNames()).toEqual(['Page button', 'Plain dialog']);
+  });
+});
+
 describe('the tree walk through hidden content', () => {
   it('walks into a visibility: hidden subtree for a child that shows again, and stops at aria-hidden and skipped content', async () => {
     await page.setContent(`
