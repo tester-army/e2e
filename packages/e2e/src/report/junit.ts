@@ -34,17 +34,31 @@ const XML_FORBIDDEN = /[\ufffe\uffff]|[\ud800-\udbff](?![\udc00-\udfff])|(?<![\u
 
 /** Escapes text content; every character XML 1.0 forbids becomes U+FFFD. */
 function text(value: string): string {
-  return sanitizeText(value)
-    .replace(XML_FORBIDDEN, '\uFFFD')
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;');
+  return escapeMarkup(sanitize(value));
 }
 
 /** Escapes an attribute value; whitespace is entity-encoded so parsers keep it verbatim. */
 function attribute(value: string): string {
-  return text(value).replaceAll('\n', '&#10;').replaceAll('\r', '&#13;').replaceAll('\t', '&#9;');
+  // The references are written after the markup escapes, so their `&` is not
+  // escaped into literal text, and before the sanitising, which would turn a raw
+  // `\r` into U+FFFD and leave nothing to encode.
+  return sanitize(
+    escapeMarkup(value).replaceAll('\r', '&#13;').replaceAll('\n', '&#10;').replaceAll('\t', '&#9;'),
+  );
+}
+
+/** Replaces every character XML 1.0 forbids with U+FFFD. */
+function sanitize(value: string): string {
+  return sanitizeText(value).replace(XML_FORBIDDEN, '\uFFFD');
+}
+
+/** Escapes markup so the value reads as text content or as a quoted attribute. */
+function escapeMarkup(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;');
 }
 
 /** JUnit durations are seconds; three decimals keep millisecond precision. */
