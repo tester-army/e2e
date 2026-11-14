@@ -280,6 +280,77 @@ export const FIXTURE_PAGES: readonly FixturePage[] = [
     `,
   },
   {
+    name: 'modal dialog over the page',
+    html: `
+      <main><h1>Store</h1><button>Behind the modal</button><a href="/cart">Cart</a><input aria-label="Search"></main>
+      <iframe title="Offers" srcdoc="<button>Inside the frame</button>"></iframe>
+      <div id="late-popover" popover><button>Popover opened after</button></div>
+      <dialog id="consent" aria-label="Cookie consent"><p>We use cookies.</p><button>Accept</button></dialog>
+      <script>
+        document.getElementById('consent').showModal();
+        document.getElementById('late-popover').showPopover();
+      </script>
+    `,
+  },
+  {
+    name: 'stacked modal dialogs shown in reverse order',
+    html: `
+      <main><button>Page button</button></main>
+      <dialog id="first" aria-label="First in the document"><button>First dialog button</button></dialog>
+      <dialog id="second" aria-label="Second in the document"><button>Second dialog button</button></dialog>
+      <script>
+        document.getElementById('second').showModal();
+        document.getElementById('first').showModal();
+        // Focus no longer names the dialog on top, so the recorded show order must.
+        document.activeElement.blur();
+      </script>
+    `,
+  },
+  {
+    name: 'modal dialog nested in a modal dialog',
+    html: `
+      <dialog id="outer" aria-label="Edit order"><button>Save order</button>
+        <dialog id="inner" aria-label="Discard changes"><button>Discard</button></dialog>
+      </dialog>
+      <script>
+        document.getElementById('outer').showModal();
+        // Focus lands in the inner dialog, which the outer one also holds.
+        document.getElementById('inner').showModal();
+      </script>
+    `,
+  },
+  {
+    name: 'modal dialog in a closed shadow root',
+    html: `
+      <main><button>Page button</button></main>
+      <consent-banner><button>Slotted accept</button></consent-banner>
+      <script>
+        customElements.define('consent-banner', class extends HTMLElement {
+          connectedCallback() {
+            const root = this.attachShadow({ mode: 'closed' });
+            root.innerHTML = '<p>Behind the banner</p><dialog aria-label="Shadow consent"><slot></slot><button>Shadow decline</button></dialog>';
+            root.querySelector('dialog').showModal();
+          }
+        });
+      </script>
+    `,
+  },
+  {
+    name: 'modal dialog slotted into a shadow root',
+    html: `
+      <dialog-frame><dialog aria-label="Slotted dialog"><button>Slotted dialog button</button></dialog></dialog-frame>
+      <button>Outside button</button>
+      <script>
+        customElements.define('dialog-frame', class extends HTMLElement {
+          connectedCallback() {
+            this.attachShadow({ mode: 'open' }).innerHTML = '<div><button>Frame chrome</button><slot></slot></div>';
+            this.querySelector('dialog').showModal();
+          }
+        });
+      </script>
+    `,
+  },
+  {
     name: 'list rebuilt every millisecond',
     html: `
       <div id="rebuilt-list"></div>
