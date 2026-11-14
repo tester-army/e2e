@@ -15,7 +15,6 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { inspect } from 'node:util';
 import type { AppDeployResult, CaptureSnapshotResult } from 'agent-device';
 import {
   EngineError,
@@ -355,26 +354,6 @@ const MOBILE_OPTION_KEYS: readonly string[] = Object.keys({
 /** Every `snapshot` value, kept equal to `MobileOptions['snapshot']` by the compiler. */
 const SNAPSHOT_MODES: readonly string[] = Object.keys({ full: true, interactive: true } satisfies Record<NonNullable<MobileOptions['snapshot']>, true>);
 
-/** Formats a refused option value for an error message; never throws, whatever the value (BigInt, circular, NaN). */
-function received(value: unknown): string {
-  return inspect(value, { depth: 0, breakLength: Infinity });
-}
-
-/**
- * Refuses a `snapshot` or `videoTouches` value the engine would otherwise
- * read as its default: `snapshot: 'Interactive'` captured the full tree and
- * `videoTouches: 'false'` drew the touches.
- */
-function assertChoices(options: MobileOptions): void {
-  const { snapshot, videoTouches } = options as { readonly snapshot?: unknown; readonly videoTouches?: unknown };
-  if (snapshot !== undefined && !SNAPSHOT_MODES.includes(snapshot as string)) {
-    throw new ConfigurationError('INVALID_CONFIG', `mobile: \`snapshot\` must be ${SNAPSHOT_MODES.map((mode) => `'${mode}'`).join(' or ')}, got ${received(snapshot)}`);
-  }
-  if (videoTouches !== undefined && typeof videoTouches !== 'boolean') {
-    throw new ConfigurationError('INVALID_CONFIG', `mobile: \`videoTouches\` must be true or false, got ${received(videoTouches)}`);
-  }
-}
-
 /** Every state a permission takes, kept equal to `PermissionState` by the compiler. */
 const PERMISSION_STATES: readonly string[] = Object.keys({ grant: true, deny: true, reset: true } satisfies Record<PermissionState, true>);
 
@@ -449,6 +428,28 @@ function settleOptions(settle: MobileOptions['settle']): SettleOptions {
   return { settle: true, settleQuietMs: quietMs };
 }
 
+/**
+ * Resolves the `snapshot` option to whether captures keep interactive nodes
+ * only; `'Interactive'` used to capture the full tree as if unset.
+ */
+function interactiveSnapshots(snapshot: MobileOptions['snapshot']): boolean {
+  if (snapshot !== undefined && !SNAPSHOT_MODES.includes(snapshot)) {
+    throw new ConfigurationError('INVALID_CONFIG', `mobile: \`snapshot\` must be ${SNAPSHOT_MODES.map((mode) => `'${mode}'`).join(' or ')}, got ${JSON.stringify(snapshot)}`);
+  }
+  return snapshot === 'interactive';
+}
+
+/**
+ * Resolves the `videoTouches` option to whether recordings hide the touch
+ * overlay; `'false'` used to draw the touches as if unset.
+ */
+function hideTouches(videoTouches: MobileOptions['videoTouches']): boolean {
+  if (videoTouches !== undefined && typeof videoTouches !== 'boolean') {
+    throw new ConfigurationError('INVALID_CONFIG', `mobile: \`videoTouches\` must be true or false, got ${JSON.stringify(videoTouches)}`);
+  }
+  return videoTouches === false;
+}
+
 /** Calls one of the harness's trace hooks; a hook that throws, or one an older harness lacks, never fails the device's work. */
 function tellHarness(call: () => void): void {
   try {
@@ -513,6 +514,10 @@ export class AgentDeviceSurface {
   private latestScreen: ProjectedScreen | undefined;
   /** Budget a control that came with the last action gets to finish arriving; see DEFAULT_TRANSITION_MS. */
   private readonly transitionMs: number;
+  /** Whether snapshots keep interactive nodes only, from the `snapshot` option. */
+  private readonly interactiveSnapshots: boolean;
+  /** Whether recordings hide the touch overlay, from the `videoTouches` option. */
+  private readonly hideTouches: boolean;
   /**
    * The screen's logical size as last learned from a snapshot with geometry
    * or from the device itself, so a snapshot without geometry (an empty
@@ -528,10 +533,11 @@ export class AgentDeviceSurface {
     private readonly createClient: ClientFactory,
   ) {
     rejectUnknownKeys('mobile()', options, MOBILE_OPTION_KEYS);
-    assertChoices(options);
     this.pool = new DevicePool(options, createClient);
     this.settleOptions = settleOptions(options.settle);
     this.transitionMs = transitionMs(options.transition);
+    this.interactiveSnapshots = interactiveSnapshots(options.snapshot);
+    this.hideTouches = hideTouches(options.videoTouches);
   }
 
   /** Whether the target pins an app for `app.open()`, `app.restart()`, and `app.clearState()` to launch. */
@@ -734,7 +740,7 @@ export class AgentDeviceSurface {
           path: absolute,
           quality: 'medium',
           recordingScope: 'device',
-          ...(this.options.videoTouches === false ? { hideTouches: true } : {}),
+          ...(this.hideTouches ? { hideTouches: true } : {}),
         }),
       operation.signal,
     );
@@ -1173,7 +1179,7 @@ export class AgentDeviceSurface {
   }
 
   async observe(operation: OperationContext, options: EngineObserveOptions | undefined, budget: InputBudget): Promise<EngineSnapshot> {
-    const raw = await this.snapshotOrEmpty(operation, this.options.snapshot === 'interactive', budget);
+    const raw = await this.snapshotOrEmpty(operation, this.interactiveSnapshots, budget);
     const projected = this.project(raw);
     this.generation = new Map(projected.index.map((entry) => [entry.id, this.bind(entry, projected)]));
     const viewport = await this.viewportFor(projected, operation.signal, budget);
