@@ -988,18 +988,23 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
     .command('doctor')
     .summary('check that e2e run can start here, without starting anything')
     .description(
-      'Check the runtime, load and resolve the config, ask each target\'s engine what it needs on this machine, and name the model each agent resolved to. Starts no app and no worker, only the server of an engine that runs in its own process, and calls no model unless --check-model is given. Ctrl-C stops the checks and reports what ran. A model on an e2e login passes when the login is stored; any other model reads its own credential, which doctor reports as unknown. Exits 0 when no check failed, 2 otherwise, and 130 when interrupted.',
+      'Check the runtime, load and resolve the config, ask each target\'s engine what it needs on this machine, and name the model each agent resolved to. Starts no app and no worker, only the server of an engine that runs in its own process, and calls no model unless --check-model is given. A model named with --model needs no config entry and is checked even when the config fails. Ctrl-C stops the checks and reports what ran. A model on an e2e login passes when the login is stored; any other model reads its own credential, which doctor reports as unknown. Exits 0 when no check failed, 2 otherwise, and 130 when interrupted.',
     )
     .option('--config <path>', 'config file (default: the nearest e2e.config.ts, .mts, .js, or .mjs)')
     .option('--target <ids>', 'target names, comma-separated or repeated (default: all targets)', parseNames('target'))
+    .option(
+      '--model <ids>',
+      'models to check without a config entry, comma-separated or repeated, each <provider>/<model-id> with provider openai, github-copilot, opencode-console, or spacexai',
+      parseNames('model'),
+    )
     .option('--headed', 'check for what a headed run needs, when the engine tells the two apart')
-    .option('--check-model', "call each agent's model once to prove it answers; costs one small request per model")
+    .option('--check-model', "call each agent's model, and each model --model names, once to prove it answers; costs one small request per model")
     .option('--json', 'print the doctor-1 report as JSON instead of one line per check')
     .addHelpText(
       'after',
-      ['', examples(['e2e doctor', 'e2e doctor --json', 'e2e doctor --check-model', 'e2e doctor --target web --headed']), '', docsLine('/reference/cli#e2e-doctor')].join('\n'),
+      ['', examples(['e2e doctor', 'e2e doctor --json', 'e2e doctor --check-model', 'e2e doctor --model openai/gpt-6-luna', 'e2e doctor --target web --headed']), '', docsLine('/reference/cli#e2e-doctor')].join('\n'),
     )
-    .action(async (options: { config?: string; target?: string[]; headed?: boolean; checkModel?: boolean; json?: boolean }) => {
+    .action(async (options: { config?: string; target?: string[]; model?: string[]; headed?: boolean; checkModel?: boolean; json?: boolean }) => {
       const { doctor, formatDoctorReport } = await import('./doctor.ts');
       const output = claimRunnerOutput();
       if (options.json === true) output.keepStdoutForReport();
@@ -1015,6 +1020,7 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
           env: process.env,
           config: options.config,
           targets: options.target,
+          models: options.model,
           headed: options.headed === true,
           checkModel: options.checkModel === true,
           signal: signals.interruptSignal,

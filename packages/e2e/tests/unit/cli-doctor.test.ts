@@ -5,7 +5,7 @@
 
 import { existsSync } from 'node:fs';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { doctor, type DoctorOptions, type DoctorReport } from '../../src/cli/doctor.ts';
 import { cancelledError } from '../../src/internal/time.ts';
 import { withProcessOutput } from '../../src/run/process-output.ts';
@@ -16,6 +16,7 @@ const projects: FixtureProject[] = [];
 
 afterEach(() => {
   for (const project of projects.splice(0)) project.cleanup();
+  vi.unstubAllEnvs();
 });
 
 /** A project whose one target's engine checks until aborted, then closes its connection 200 ms later, marking `closed`. */
@@ -83,6 +84,48 @@ describe('doctor', () => {
       status: 'fail',
       code: 'ENGINE_FAILURE',
       message: 'engine "slow" did not finish its checks within 100ms',
+    });
+  });
+
+  it('checks the models --model names even when no config loads, and refuses a name that is not one', async () => {
+    const project = createProject({ 'README.md': '' });
+    projects.push(project);
+    vi.stubEnv('XDG_CONFIG_HOME', path.join(project.dir, '.config'));
+    vi.stubEnv('E2E_OAUTH_CREDENTIALS', '');
+    const invalid = await run(project, new AbortController().signal, { models: ['bogus', 'other/gpt-6', 'openai/'] });
+    expect(invalid.checks.map(({ id, status, code }) => ({ id, status, code }))).toEqual([
+      { id: 'node', status: 'pass', code: undefined },
+      { id: 'config', status: 'fail', code: 'CONFIG_NOT_FOUND' },
+      { id: 'model', status: 'fail', code: 'INVALID_CONFIG' },
+      { id: 'model', status: 'fail', code: 'INVALID_CONFIG' },
+      { id: 'model', status: 'fail', code: 'INVALID_CONFIG' },
+    ]);
+    expect(invalid.checks[2]?.message).toContain('provider one of openai, github-copilot, opencode-console, spacexai');
+    const absent = await run(project, new AbortController().signal, { models: ['openai/gpt-6-luna'] });
+    expect(absent.checks.at(-1)).toMatchObject({
+      id: 'model',
+      status: 'fail',
+      login: 'openai',
+      code: 'MODEL_UNAVAILABLE',
+      model: { modelId: 'gpt-6-luna' },
+    });
+    // Without a login the credential fails first, so --check-model never reaches the network.
+    const called = await run(project, new AbortController().signal, { models: ['openai/gpt-6-luna'], checkModel: true });
+    expect(called.checks.at(-1)).toMatchObject({ id: 'model', status: 'fail', code: 'MODEL_UNAVAILABLE' });
+  });
+
+  it('passes a named model whose provider key is set, without calling it', async () => {
+    const project = createProject({ 'README.md': '' });
+    projects.push(project);
+    vi.stubEnv('XDG_CONFIG_HOME', path.join(project.dir, '.config'));
+    vi.stubEnv('OPENCODE_API_KEY', 'test-key');
+    const report = await run(project, new AbortController().signal, { models: ['opencode-console/deepseek-v4.1-flash'] });
+    expect(report.checks.at(-1)).toMatchObject({
+      id: 'model',
+      status: 'pass',
+      login: 'opencode-console',
+      model: { modelId: 'deepseek-v4.1-flash' },
+      message: 'OPENCODE_API_KEY is set',
     });
   });
 });

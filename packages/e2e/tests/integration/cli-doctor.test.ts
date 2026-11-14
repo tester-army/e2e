@@ -290,4 +290,24 @@ describe('e2e doctor', () => {
     expect(stored.exitCode).toBe(0);
     expect(stored.report.checks.at(-1)).toMatchObject({ id: 'model', status: 'pass', login: 'openai', model: { modelId: 'gpt-6-luna' } });
   });
+
+  it('checks a model --model names with no config entry, and refuses a name that is not one', () => {
+    const absent = doctorJson({ 'README.md': '' }, ['--model', 'openai/gpt-6-luna']);
+    expect(absent.exitCode).toBe(2);
+    expect(absent.report.checks.map(({ id, status }) => ({ id, status }))).toEqual([
+      { id: 'node', status: 'pass' },
+      { id: 'config', status: 'fail' },
+      { id: 'model', status: 'fail' },
+    ]);
+    expect(absent.report.checks.at(-1)).toMatchObject({ id: 'model', login: 'openai', code: 'MODEL_UNAVAILABLE', model: { modelId: 'gpt-6-luna' } });
+    const stored = doctorJson({ 'README.md': '' }, ['--model', 'openai/gpt-6-luna'], { E2E_OAUTH_CREDENTIALS: JSON.stringify({ openai: { access: 'a', refresh: 'r', expires: 0 } }) });
+    expect(stored.report.checks.at(-1)).toMatchObject({ id: 'model', status: 'pass', login: 'openai', model: { modelId: 'gpt-6-luna' } });
+    // The config still fails, so the report does; the named model passed regardless.
+    expect(stored.exitCode).toBe(2);
+    const called = doctorJson({ 'README.md': '' }, ['--model', 'openai/gpt-6-luna', '--check-model']);
+    expect(called.report.checks.at(-1)).toMatchObject({ id: 'model', status: 'fail', code: 'MODEL_UNAVAILABLE' });
+    const bad = doctorJson({ 'README.md': '' }, ['--model', 'bogus']);
+    expect(bad.report.checks.at(-1)).toMatchObject({ id: 'model', status: 'fail', code: 'INVALID_CONFIG' });
+    expect(bad.report.checks.at(-1)?.message).toContain('provider one of openai, github-copilot, opencode-console, spacexai');
+  });
 });
