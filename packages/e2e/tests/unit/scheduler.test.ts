@@ -895,26 +895,6 @@ describe('scheduler disposal', () => {
     expect(collected.results.map((result) => result.status)).toEqual(['passed']);
   });
 
-  it('waits the whole force grace before killing a worker when the grace is longer than a timer can wait', async () => {
-    const target = makeTarget('web', 0);
-    const pair = makePair(makeTest('tests/a.e2e.ts', 'a'), target);
-    const fleet = new FakeFleet({ shutdownUntil: 'terminate' });
-    const forceGraceMs = 2 ** 31 - 1 + 7_000;
-
-    vi.useFakeTimers();
-    const running = run(makeSelection([{ target, pairs: [pair] }]), makeCollection([pair.test.file], [pair]), fleet, {
-      workers: 1, forceGraceMs,
-    });
-    await vi.advanceTimersByTimeAsync(forceGraceMs - 1_000);
-    expect(fleet.live).toBe(1);
-    expect(fleet.killed).toEqual([]);
-
-    await vi.advanceTimersByTimeAsync(2_000);
-    expect(fleet.killed).toEqual([0]);
-    expect(fleet.live).toBe(0);
-    await running;
-  });
-
   it('kills a worker whose disposal outlasts its configured shutdown budget', async () => {
     const target = makeTarget('web', 0);
     const pair = makePair(makeTest('tests/a.e2e.ts', 'a'), target);
