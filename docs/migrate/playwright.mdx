@@ -9,14 +9,14 @@ import { SetupPrompt } from '../snippets/setup-prompt-card.jsx';
 
 export const migrationPrompt = `Migrate this project's Playwright tests to e2e, one spec at a time. Docs: \`https://e2e.com/docs/migrate/playwright.md\`
 
-1. Read the migration guide above. It maps every Playwright config key, API, and CLI flag to e2e and marks what e2e does not have yet.
+1. Read the migration guide above. It maps the Playwright config keys, APIs, and CLI flags that work in e2e, and lists what e2e doesn't have yet.
 2. If the project has no e2e config (\`e2e.config.ts\`, \`.mts\`, \`.js\`, or \`.mjs\`), run \`npx e2e init --yes\` (or the pnpm or bun equivalent). It writes a config and an example test, and installs nothing yet.
 3. Read the e2e skill (\`npx e2e guide\` prints it, \`npx e2e guide <topic>\` prints a topic) and follow it for every step below.
 4. If you ran init, ask me which model to use for agent steps: a ChatGPT, GitHub Copilot, OpenCode Console, or SuperGrok subscription, an API key, or a local model. Configure it with its provider package. If it needs a sign-in, give me the \`npx e2e login\` command and wait until I confirm.
-5. Port \`playwright.config.ts\` into the e2e config with the guide's config tables. Keep \`@playwright/test\` installed and the two file patterns apart.
+5. Port \`playwright.config.ts\` into the e2e config with the guide's config table. Keep \`@playwright/test\` installed and the two file patterns apart.
 6. Install dependencies.
 7. List the Playwright specs and ask me which one to move first. Suggest a flow whose steps change often, such as a wizard or a checkout.
-8. Rewrite that spec as a \`.e2e.ts\` file under \`tests/\` (e2e runs \`tests/**/*.e2e.ts\` by default). Map each \`page\` call to \`screen\`, \`app\`, or \`browser\` with the guide. Where a Playwright query matched a fragment, add \`{ exact: false }\` or a RegExp. Where the guide marks a feature missing, use the workaround it gives, or leave that test in Playwright and tell me why.
+8. Check each Playwright API in that spec against "What e2e doesn't have yet". Use the "Use today" or "Use instead" entry, or leave that test in Playwright and tell me why. Then rewrite the spec as a \`.e2e.ts\` file under \`tests/\` (e2e runs \`tests/**/*.e2e.ts\` by default). Map each \`page\` call to \`screen\`, \`app\`, or \`browser\` with the guide. Where a Playwright query matched a fragment, add \`{ exact: false }\` or a RegExp.
 9. Keep navigation and the final assertions deterministic, with \`app.open()\` and locator assertions. Where a run of scripted interactions breaks often, propose an \`agent.act\` goal for it instead.
 10. Run the new file with \`npx e2e run <file>\` and fix it until it passes. Keep the Playwright spec until I confirm it can go.
 11. Summarize which tests moved, which stayed in Playwright, and why.`;
@@ -42,51 +42,23 @@ A Playwright key such as `testDir`, `baseURL`, `use`, `webServer`, or
 `projects` fails with a message that names the e2e key to use. The
 [config reference](/reference/config) lists every key.
 
-### App, targets, and output
-
-| Playwright | e2e | Status |
-| --- | --- | --- |
-| `use.baseURL` | `app: { url }` on the target | renamed |
-| `webServer` | `app: { url, command }` on the target, see [Starting your app](/web#starting-your-app) | renamed |
-| `webServer` array | `app: { url, command }` on each target; targets declaring the same command share one process. Other dependency processes are not started by this version | missing |
-| `webServer.reuseExistingServer` | `app.command: { reuseExisting: true }`; CI ignores it | renamed |
-| `globalSetup`, `globalTeardown` | `test.setup` for sign-in, hooks and fixtures for setup code | missing |
-| `projects` | `targets`, one engine instance each | renamed |
-| `testDir`, `testMatch` | `tests`, globs relative to the project root | renamed |
-| `testIgnore` | a `tests` entry with a leading `!`: `tests: ['tests/**/*.e2e.ts', '!tests/wip/**']` | renamed |
-| `fullyParallel` | a file's tests run in order on one worker, files run in parallel | missing |
-| `maxFailures` | `--max-failures <n>`; no config key | renamed |
-| `globalTimeout` | `maxDuration`, or `--max-duration <ms>`; the clock starts with the tests, not app startup | renamed |
-| `reporter` | `reporters: ['list', 'junit']`; also `json` and `markdown` | renamed |
-| `reporter: 'html'` | `htmlReporter()` from `@e2e-dev/html-reporter` writes `.e2e/report.html` | renamed |
-| `outputDir` | `output`, default `.e2e`, holding `results/` (cleared when a run starts, like `outputDir`) beside the report | renamed |
-| `metadata` | not yet | missing |
-
-### Browser, timeouts, and artifacts
-
-| Playwright | e2e | Status |
-| --- | --- | --- |
-| `use.viewport`, `use.browserName` | `web({ viewport, browser })` | renamed |
-| `use.testIdAttribute` | `web({ testIdAttribute })` | renamed |
-| `use.httpCredentials` | `web({ basicAuth })`, answered for the app's origin only; `credentialOrigins` adds more | renamed |
-| `use.extraHTTPHeaders` | `web({ headers })`, sent on requests that start at the app's origin; `credentialOrigins` adds more | renamed |
-| `chromium.connectOverCDP(url)` | `web({ connect: { cdpEndpoint: () => url } })`, chromium only | renamed |
-| `use.connectOptions` (`wsEndpoint`) | `web({ connect })` attaches over CDP only | missing |
-| `retries`, `workers`, `timeout` | the same names at the top level. `workers` takes an integer from 1 to 1024, not `'50%'`; `retries` stops at 10. The defaults differ, see [below](#defaults-that-differ) | renamed |
-| `expect.timeout` | `assertionTimeout` | renamed |
-| `use.actionTimeout` | `actionTimeout` | renamed |
-| `use.navigationTimeout` | `timeout`, the test budget; `browser.goto(url, { timeout })` overrides one call | renamed |
-| `use.storageState`, a `setup` project in `projects[].dependencies` | `test.setup(title, { sessions }, fn)` with `session.save(name)`, then `{ session }` on a test, see [Authentication](/authentication); no file, see [What differs on purpose](#what-differs-on-purpose) | by design |
-| `use.storageState: { cookies }` with fixed values | `browser.setCookies(cookies)` in a fixture | renamed |
-| `use.trace` | `trace`: `'off'`, `'on'`, `'retain-on-failure'`, `'on-first-retry'`, or `'on-all-retries'`, at the top of the config, per target, per test, or `--trace [mode]`. A trace is a markdown page, `trace.md`, in each test's directory under `.e2e/results/`, not a zip, with no viewer. No `'retain-on-first-failure'`, `'retain-on-failure-and-retries'`, or object form. The default differs, see [below](#defaults-that-differ) | renamed |
-| `use.video` | `video`, with the modes and places of `trace`, and `--video [mode]`; no `{ mode, size }` object | renamed |
-| `use.headless: false` | `--headed` on the CLI | renamed |
-| `use.locale`, `use.timezoneId` | `web({ locale, timezoneId })` | renamed |
-| `use.colorScheme`, `use.reducedMotion` | `web({ colorScheme, reducedMotion })` | renamed |
-| `use.userAgent` | `web({ userAgent })` | renamed |
-| `devices['iPhone 15']`, `deviceScaleFactor`, `isMobile`, `hasTouch` | `web({ viewport })` sets the size only | missing |
-| `use.permissions` | `app.permissions` on the target, `{ 'clipboard-read': 'grant' }`: `grant` only, held by every page on any origin, see [Granting browser permissions](/web#granting-browser-permissions) | renamed |
-| `geolocation` (the position; the permission is `app.permissions` above), `ignoreHTTPSErrors`, `bypassCSP`, `offline`, `launchOptions`, `proxy` | not yet | missing |
+| Playwright | e2e |
+| --- | --- |
+| `use.baseURL`, `webServer` | `app: { url, command }` on the target, see [Starting your app](/web#starting-your-app) |
+| `webServer.reuseExistingServer` | `app.command: { reuseExisting: true }`; CI ignores it |
+| `projects` | `targets`, one engine instance each |
+| `testDir`, `testMatch`, `testIgnore` | `tests`, globs from the project root; a leading `!` excludes |
+| `retries`, `workers`, `timeout` | the same names, with [other defaults](#defaults-that-differ); `workers` is an integer |
+| `expect.timeout`, `use.actionTimeout`, `globalTimeout` | `assertionTimeout`, `actionTimeout`, `maxDuration`; the `maxDuration` clock starts with the tests, not app startup |
+| `maxFailures`, `use.headless: false` | `--max-failures <n>` and `--headed` on the CLI |
+| `reporter`, `outputDir` | `reporters: ['list', 'junit', htmlReporter()]`, with `htmlReporter` from `@e2e-dev/html-reporter`; also `json` and `markdown`; `output`, default `.e2e` |
+| `use.viewport`, `locale`, `timezoneId`, `colorScheme`, `reducedMotion`, `userAgent`, `testIdAttribute` | the same keys in `web({ ... })` |
+| `use.browserName`, `httpCredentials`, `extraHTTPHeaders` | `web({ browser, basicAuth, headers })`; `basicAuth` and `headers` apply to the app's origin only, [`credentialOrigins`](/reference/web#credentialorigins) adds more |
+| `chromium.connectOverCDP(url)` | `web({ connect: { cdpEndpoint: () => url } })`, chromium only |
+| `use.trace`, `use.video` | `trace`, `video`: a mode in the config, on a target, or on a test. `web({ screencast: { size } })` sets the video size |
+| `use.permissions` | `app.permissions` on the target, see [Granting browser permissions](/web#granting-browser-permissions) |
+| `use.storageState` from a `setup` project | `test.setup` with `session.save(name)`, then `{ session }` on a test, see [Authentication](/authentication) |
+| `use.storageState: { cookies }` with fixed values | `browser.setCookies(cookies)` in a fixture |
 
 ## Rewrite one spec
 
@@ -124,215 +96,97 @@ can also stay fully deterministic, with a `screen.getBy*` line for every
 
 ## Map each API
 
-`Status` is `same`, `renamed`, `web only`, `by design`, or `missing` with what
-to do today. See [What differs on purpose](#what-differs-on-purpose) for the
-`by design` rows. Calls on `browser` run only in a browser, so a test that
-uses it declares `requires: ['browser']` and other targets skip it. Calls on
-`screen`, `app`, `agent`, and `expect(locator)` run on every target.
+Every row works today. For an API that is not here, check
+[What e2e doesn't have yet](#what-e2e-doesnt-have-yet). Calls on `browser`
+run only in a browser, so a test that uses it declares
+`requires: ['browser']` and other targets skip it.
 
 <AccordionGroup>
 <Accordion title="Locators">
 
-| Playwright | e2e | Status |
-| --- | --- | --- |
-| `page.getByRole`, `getByLabel`, `getByText`, `getByTestId`, `getByPlaceholder` | the same on `screen`; `getByRole` also takes the name positionally, `getByRole('button', 'Save')` | same |
-| `getByRole(role, { name })`, `getByLabel`, `getByPlaceholder`, `getByText` with a string | an exact, case-sensitive match, see [What differs on purpose](#what-differs-on-purpose) | by design |
-| `getByRole('img')` | the same; `img` is an alias of `image` | same |
-| `getByAltText(alt)` | `getByRole('image', alt)` | renamed |
-| `getByTitle` | the node carries no title | missing |
-| `getByRole(role, { includeHidden })` | a role query never matches a hidden node; `{ visible: true }` on the other queries drops hidden twins | by design |
-| `locator.filter({ hasText, hasNotText, has, hasNot })`, `first()`, `last()`, `nth(i)`, `count()` | the same | same |
-| `locator.or(other)` | the same; web branches need identical literal frame-selector chains. A locator is strict, so add `first()` when both match | same |
-| `locator.and(other)` | not yet | missing |
-| `locator.all()`, `allTextContents()` | the same; `allInnerTexts()` is `allTextContents()` | same |
-| `page.locator('css')`, `page.locator('xpath=...')` | `browser.locator('css')`: the string is a Playwright selector, so `xpath=` (or a leading `//`) and `>>` chains work too | web only |
-| `page.waitForSelector(selector)` | `browser.locator(selector).waitFor()`; a locator is strict, see [What differs on purpose](#what-differs-on-purpose) | renamed |
-| `page.click(selector)`, `page.fill(selector, value)`, `page.getAttribute(selector, name)`, and the other `page` methods that take a selector | `browser.locator(selector).tap()`, `.fill(value)`, `.getAttribute(name)`. Playwright acts on the first match; a locator is strict, so add `first()` for the old behavior, see [What differs on purpose](#what-differs-on-purpose) | renamed |
-| `locator.locator('css')` | a semantic query inside the scope (`cell.getByRole('textbox')` for `cell.locator('input')`), `browser.locator('css').getByRole(...)` the other way round, or one `browser.locator` selector for the whole path | missing |
-| `page.frameLocator('#frame')` | `browser.frameLocator('#frame')`, then `screen` queries inside it. An element inside a `visibility: hidden` iframe reads as visible | web only |
+| Playwright | e2e |
+| --- | --- |
+| `page.getByRole`, `getByLabel`, `getByText`, `getByTestId`, `getByPlaceholder` | the same on `screen`; a string matches [the whole text](#what-differs-on-purpose) |
+| `getByAltText(alt)` | `getByRole('image', alt)` |
+| `filter({ hasText, hasNotText, has, hasNot })`, `first()`, `last()`, `nth(i)`, `count()`, `or()`, `all()` | the same |
+| `page.locator(selector)`, `page.frameLocator(selector)` | the same on `browser`; CSS, `xpath=`, and `>>` chains work |
+| `page.click(selector)`, `page.fill(selector, value)`, `page.waitForSelector(selector)` | `browser.locator(selector).tap()`, `.fill(value)`, `.waitFor()` |
 
 </Accordion>
 <Accordion title="Actions">
 
-| Playwright | e2e | Status |
-| --- | --- | --- |
-| `locator.click()` | `locator.tap()`; `click()` is an alias | same |
-| `click({ button: 'right' })` | `secondaryTap()` | renamed |
-| `dblclick()` | `doubleTap()`; `dblclick()` is an alias | same |
-| `click({ position })` | `tap({ position })`, an offset from the node's top-left corner inside its border | renamed |
-| `click({ force })` | `tap({ position })` skips every actionability check but the scroll into view | missing |
-| `click({ modifiers })`, `dblclick({ modifiers })` | `tap({ modifiers })`, `doubleTap({ modifiers })` or `dblclick({ modifiers })`, `secondaryTap({ modifiers })`; not beside `position` yet | renamed |
-| `click({ clickCount, delay, trial })` | not yet | missing |
-| `{ trial }`, `{ force }`, `{ noWaitAfter }` on `check()`, `fill()`, and the other actions | an unknown option is `INVALID_ARGUMENT`, never ignored | missing |
-| `fill(value)` | the same; also takes a `Secret` | same |
-| `pressSequentially(text, { delay })` | the same; keystrokes through the platform keyboard, a `Secret` is refused | same |
-| `press(key)` | the same; modifiers join with `+`, see the [key grammar](/reference/engine#keys) | same |
-| `clear()`, `focus()`, `hover()`, `setInputFiles()`, `dragTo()` | the same verbs, each with `timeout` as the only option: no `force`, `trial`, `position`, `modifiers`, or `sourcePosition`. Another key is `INVALID_ARGUMENT`. `setInputFiles` is web only, and `setInputFiles([])` clears the input | renamed |
-| `check()`, `uncheck()` | the same, except when the state updates late or the click removes the control, see [What differs on purpose](#what-differs-on-purpose). `uncheck()` on a checked native radio is `ACTION_FAILED`; a `role=radio` is clicked, as in Playwright | by design |
-| `selectOption('pro')` | `selectOption('Pro')`: a string matches the option's label only, where Playwright matches its value or its label; `selectOption({ value: 'pro' })` for the value | by design |
-| `selectOption(['a', 'b'])` | one option per call. An array is `INVALID_ARGUMENT` | missing |
-| `setInputFiles({ name, buffer })` | paths only, resolved from the project root | missing |
-| `scrollIntoViewIfNeeded()` | `scrollIntoView()` | renamed |
-| `locator.innerText()` | `textContent()`, whitespace collapsed to single spaces | renamed |
-| `locator.textContent()` | the rendered text, what `innerText()` reads, see [What differs on purpose](#what-differs-on-purpose) | by design |
-| `getAttribute()`, `isVisible()`, `isHidden()`, `isEnabled()`, `isDisabled()`, `isChecked()`, `boundingBox()` | the same | same |
-| `inputValue()` | the same, and reads a `contenteditable` editor, where Playwright throws | by design |
-| `inputValue()`, `isChecked()` on a `<label>` | throws, where Playwright reads its control. Locate the control with `getByLabel` | missing |
-| `isEditable()` | not yet | missing |
-| `waitFor({ state: 'visible' })`, `'hidden'`, `'attached'`, `'detached'` | the same | same |
-| `locator.evaluate(fn)`, `evaluateAll(fn)` | `browser.evaluate(fn, selector)` with a CSS selector argument | missing |
-| `locator.screenshot()` | `app.screenshot(label)` captures the viewport | missing |
-| `innerHTML()`, `dispatchEvent()`, `selectText()`, `blur()`, `highlight()` | `browser.evaluate` | missing |
-| `ariaSnapshot()` | not yet | missing |
-| `page.keyboard.press`, `keyboard.type` | `browser.keyboard.press`, `browser.keyboard.type`; plain text only, never a `Secret` | web only |
-| `keyboard.down`, `keyboard.up` | `browser.keyboard.down`, `browser.keyboard.up`; keys and modifiers stay held until released | web only |
-| `keyboard.insertText` | not yet | missing |
-| `page.mouse.click(x, y)` | `screen.tapAt({ x, y })`, viewport coordinates | renamed |
-| `mouse.move`, `down`, `up` as a drag | `screen.swipe({ from, to })` | renamed |
-| `page.dragAndDrop(source, target, { sourcePosition, targetPosition })` | `source.dragTo(target)`, which takes no positions; for `sourcePosition` or `targetPosition`, `screen.swipe({ from, to })` with each `boundingBox()` origin plus its offset | renamed |
-| `page.mouse.dblclick(x, y)` | `screen.doubleTapAt({ x, y })`, viewport coordinates | renamed |
-| `page.mouse.move`, `wheel`, `down`, `up` | `browser.mouse.*` | web only |
+| Playwright | e2e |
+| --- | --- |
+| `click()`, `dblclick()` | `tap()`, `doubleTap()`; `click()` and `dblclick()` are aliases |
+| `click({ button: 'right' })`, `click({ delay })` | `secondaryTap()`, `longPress({ duration })` |
+| `click({ position })`, `click({ modifiers })` | `tap({ position })`, `tap({ modifiers })` |
+| `fill()`, `pressSequentially()`, `clear()`, `focus()`, `hover()`, `check()`, `uncheck()`, `dragTo()`, `setInputFiles(path)`, `selectOption({ label })` or `{ value }` | the same, without `force`, `trial`, or `position` |
+| `press(key)` | the same for one character or a [named key](/reference/engine#keys); `browser.keyboard.press` after `focus()` for a key code |
+| `innerText()`, `allInnerTexts()`, `scrollIntoViewIfNeeded()` | `textContent()`, `allTextContents()`, `scrollIntoView()` |
+| `textContent()`, `allTextContents()`, `inputValue()`, `getAttribute()`, `boundingBox()`, `isVisible()`, `isHidden()`, `isEnabled()`, `isDisabled()`, `isChecked()`, `waitFor({ state })` | the same |
+| `page.keyboard.press`, `type`, `down`, `up`; `page.mouse.move`, `wheel`, `down`, `up` | the same on `browser.keyboard` and `browser.mouse` |
+| `page.mouse.click(x, y)`, `page.mouse.dblclick(x, y)`, `page.dragAndDrop(source, target)` | `screen.tapAt({ x, y })`, `screen.doubleTapAt({ x, y })`, `source.dragTo(target)` |
 
 </Accordion>
 <Accordion title="Assertions">
 
-| Playwright | e2e | Status |
-| --- | --- | --- |
-| `expect(locator).toBeVisible()`, `toBeHidden()`, `toBeEnabled()`, `toBeDisabled()`, `toBeFocused()`, `toHaveValue()`, `toHaveAttribute()`, `toHaveCount()`, `toHaveAccessibleName()` | the same | same |
-| a Playwright `Locator` (`page.getByRole(...)`) passed to `expect` from `e2e` | a plain value, so `toBeVisible()` and the other locator matchers fail to compile (`TS2339` on `ValueExpectation`). Rewrite the query on `screen` | missing |
-| `toBeChecked()` | the same on a checkable node; on any other node `.not.toBeChecked()` passes, see [What differs on purpose](#what-differs-on-purpose) | by design |
-| `toHaveText()`, `toContainText()` | compare the rendered text, see [What differs on purpose](#what-differs-on-purpose) | by design |
-| `toHaveText(['a', 'b'])`, `toContainText([...])` on several matches | the same: `toHaveText` needs the count to match, `toContainText` an ordered subsequence | same |
-| `toBeChecked({ checked: false })`, `toBeEnabled({ enabled })`, `toBeVisible({ visible })`, `toBeAttached({ attached })` | the same | same |
-| `{ ignoreCase }` on `toHaveText()`, `toContainText()`, `toHaveAccessibleName()`, `toHaveAttribute(name, value)` | the same | same |
-| `toBeChecked({ indeterminate })`, `{ useInnerText }` | `INVALID_ARGUMENT`, so the matcher never passes on its default | missing |
-| `toHaveAttribute('aria-selected', 'true')`, `'aria-expanded'` | `toBeSelected()`, `toBeExpanded()` | renamed |
-| `.not.toBeVisible()`, `.not.toBeChecked()`, `.not.toBeEnabled()` | `toBeHidden()`, `toBeChecked({ checked: false })`, `toBeDisabled()`. A `.not` locator matcher holds for up to 1 s before it passes, see [What differs on purpose](#what-differs-on-purpose) | by design |
-| a positive matcher on several matches | `LOCATOR_AMBIGUOUS` at once, see [What differs on purpose](#what-differs-on-purpose) | by design |
-| `toBeAttached()` | the same; passes on a hidden match too | same |
-| `toBeEmpty()`, `toBeInViewport()`, `toBeEditable()`, `toHaveRole()`, `toHaveAccessibleDescription()` | not yet | missing |
-| `expect(locator).toHaveClass(cls)` | `expect(browser).toHaveClass(locator, cls)`; a DOM fact is asserted through `browser`; reads the `class` attribute, so `''` matches `class=""` and not a missing attribute | web only |
-| `toHaveCSS()`, `toHaveId()`, `toHaveJSProperty()`, `toContainClass()`, `toHaveValues()` | `browser.evaluate` plus a value matcher | missing |
-| `expect(page).toHaveURL()`, `toHaveTitle()` | `expect(browser).toHaveURL()`, `toHaveTitle()`; `toHaveURL` takes `ignoreCase` | web only |
-| `expect(page).toHaveScreenshot()`, `expect(locator).toHaveScreenshot()` | `expect(screen).toHaveScreenshot()`, `expect(locator).toHaveScreenshot()` on every target, a device included, with `threshold`, `maxDiffPixels`, `maxDiffPixelRatio`, `mask`, `maskColor`, and `timeout`. See [Visual comparison](/visual-testing) | same |
-| `toHaveScreenshot({ fullPage, clip, animations, caret, scale, stylePath })` | always the viewport, at CSS scale, animations stopped and the caret hidden | missing |
-| `toMatchSnapshot()`, `toMatchAriaSnapshot()` | not yet | missing |
-| `expect(value).toBe()`, `toEqual()`, `toMatchObject()`, `toBeTruthy()`, `toBeFalsy()`, `toBeNull()`, `toBeUndefined()`, `toBeDefined()`, `toHaveLength()`, `toHaveProperty()`, `toMatch()`, `toBeGreaterThan()`, `toBeGreaterThanOrEqual()`, `toBeLessThan()`, `toBeLessThanOrEqual()`, `toBeCloseTo()` | the same, plus `toMatchSchema()`, see [value matchers](/reference/expect#value-matchers). `toContain` differs, below | same |
-| `expect(collection).toContain()` | compares items by deep equality, like Playwright's `toContainEqual`, so `toContain({ id: 1 })` passes on `[{ id: 1 }]`. Containment in a string is the same | by design |
-| `toStrictEqual()`, `toThrow()`, `toBeInstanceOf()`, `toBeNaN()`, `toContainEqual()` | `toEqual` on the shape you need; `toContain` for `toContainEqual` | missing |
-| `expect.any()`, `anything()`, `objectContaining()`, `arrayContaining()`, `stringMatching()`, `stringContaining()` | the same, see [asymmetric matchers](/reference/expect#asymmetric-matchers) | same |
-| `expect.closeTo()`, `expect.not.objectContaining()` and the other `expect.not.*` | not yet | missing |
-| `expect(async () => { ... }).toPass()` | `expect.poll(async () => { ...; return true }).toBe(true)` retries the block. Its timeout is `assertionTimeout` (5 s), not the test timeout, with one fixed interval | missing |
-| `expect.poll(read, { intervals })` | `expect.poll(read, { interval })`, one number in ms, default 100 | renamed |
-| `expect.soft()` | the same; kept failures fail the attempt once the body settles. In `afterEach` a soft failure throws at once. See [soft assertions](/reference/expect#soft-assertions) | same |
-| `expect(locator, 'message')` | `expect(locator)`; a locator failure already names the locator, the matcher, and what was observed. Only a value expectation takes a message | by design |
-| `expect.extend()` | not yet | missing |
-| `expect(promise).resolves`, `.rejects` | `await` first, then `expect(value)` | missing |
+| Playwright | e2e |
+| --- | --- |
+| `toBeVisible()`, `toBeHidden()`, `toBeEnabled()`, `toBeDisabled()`, `toBeChecked()`, `toBeFocused()`, `toBeAttached()`, `toHaveText()`, `toContainText()`, `toHaveValue()`, `toHaveAttribute()`, `toHaveCount()`, `toHaveAccessibleName()` | the same, with `{ visible }`, `{ enabled }`, `{ checked }`, `{ attached }`, and `{ ignoreCase }` |
+| `toHaveId(id)`, `toContainClass(name)` | `toHaveAttribute('id', id)`, `toHaveAttribute('class', RegExp)` |
+| `expect(page).toHaveURL()`, `toHaveTitle()` | `expect(browser).toHaveURL()`, `toHaveTitle()` |
+| `expect(page).toHaveScreenshot()`, `expect(locator).toHaveScreenshot()` | `expect(screen).toHaveScreenshot()` and the locator form, see [Visual comparison](/visual-testing) |
+| `expect(value)` with `toBe()`, `toEqual()`, `toMatchObject()`, `toContain()`, `toHaveLength()`, `toHaveProperty()`, `toMatch()`, and the truthiness and number matchers | the same, see [value matchers](/reference/expect#value-matchers) |
+| `expect.any()`, `anything()`, `objectContaining()`, `arrayContaining()`, `stringMatching()`, `stringContaining()`, `expect.poll()`, `expect.soft()` | the same; `poll` takes one `interval` |
 
 </Accordion>
 <Accordion title="Navigation and app">
 
-| Playwright | e2e | Status |
-| --- | --- | --- |
-| `page.goto(path)` | `app.open(path)`; `browser.goto(url, { waitUntil, timeout })` for the browser options | renamed |
-| `page.goto('data:text/html,...')` | `POLICY_DENIED`, see [What differs on purpose](#what-differs-on-purpose). Serve the HTML from a `browser.route` with `route.fulfill({ body, contentType: 'text/html' })` on an app URL | by design |
-| `const response = await page.goto()` | `app.open` and `browser.goto` resolve to `void`; take the response from `browser.waitForResponse` | by design |
-| `page.goBack()` | `app.back()`, or `browser.back()` | renamed |
-| `page.goForward()`, `page.reload()` | `browser.forward()`, `browser.reload()` | web only |
-| `page.url()`, `page.title()` | `browser.url()`, `browser.title()` | web only |
-| `page.waitForURL()` | `browser.waitForURL()`, with a string or `RegExp` and `timeout` as the only option. A string is an absolute URL, or a relative one resolved against `app.url`, matched exactly, not a glob: `'**/orders'` never matches, so pass a `RegExp` | web only |
-| `page.waitForLoadState()` | `browser.goto(url, { waitUntil })` on the navigation itself | missing |
-| `page.waitForFunction(fn)` | `expect.poll(() => browser.evaluate(fn)).toBeTruthy()` | missing |
-| `page.waitForTimeout(ms)` | a locator assertion on the state you are waiting for: `toBeVisible()` on what appears, `toBeHidden()` on what goes away | by design |
-| `page.setViewportSize()` | `browser.setViewport()`, before or after the first navigation | web only |
-| `page.viewportSize()` | `browser.evaluate(() => ({ width: innerWidth, height: innerHeight }))` | missing |
-| `page.screenshot()` | `app.screenshot(label)`: the viewport, redacted, attached to the report; no `fullPage` | renamed |
-| a fresh `context` per test | every attempt starts in a fresh context; `app.restart()` recreates it, `app.clearState()` also clears storage. No page opens before the first `app.open` or `browser.goto`, where Playwright starts on `about:blank` | same |
-| `page.pause()` | `--step --headed` runs the first step, then holds each later one until a key; [`e2e mcp`](/mcp-server) to drive the app from a coding agent | missing |
+| Playwright | e2e |
+| --- | --- |
+| `page.goto(path)` | `app.open(path)`; `browser.goto(url, { waitUntil, timeout })` for the options |
+| `page.goBack()`, `goForward()`, `reload()`, `url()`, `title()`, `setViewportSize()` | `browser.back()`, `forward()`, `reload()`, `url()`, `title()`, `setViewport()` |
+| `page.waitForURL(url)` | `browser.waitForURL(url)` with a `RegExp` or an exact URL, not a glob |
+| `page.screenshot()` | `app.screenshot(label)`, the viewport, attached to the report |
+| A fresh `context` for each test | the same for each attempt; `app.restart()` recreates it, `app.clearState()` also clears storage |
 
 </Accordion>
 <Accordion title="Network and browser">
 
-| Playwright | e2e | Status |
-| --- | --- | --- |
-| `page.route(pattern, handler)` | `browser.route(pattern, handler)`; a string or `RegExp` pattern, no predicate function; the handler decides exactly once. A string is a glob on the full URL, never resolved against `app.url`. `?` matches any one character on purpose, where Playwright reads it literally; `{a,b}` is literal, and `**/` needs at least one segment | web only |
-| `route.fulfill({ json, body, path, status, headers, contentType })` | the same; one of `json`, `body`, or `path`, and `path` is relative to the project root. `body` is a string, `Buffer`, or `Uint8Array`, and a `\n`-joined `set-cookie` sets each cookie | web only |
-| `route.continue({ url, method, headers, postData })`, `route.fallback()` | the same; a `url` resolves against `app.url` and keeps the request's `http` or `https` scheme. A header set to `undefined` is dropped; configured headers still apply to an allowed origin. `fallback()` takes no overrides | web only |
-| `route.fetch()` | argument-free: no `timeout`, `headers`, or `maxRedirects` options, and redirects return unfollowed; returns `{ url, status, headers, body(), text(), json() }` without deciding the route | web only |
-| `route.abort(code)`, `route.fallback(overrides)` | none yet; `abort()` takes no error code | missing |
-| `page.unroute()` | `browser.unroute()` | web only |
-| `page.unrouteAll()` | `browser.unrouteAll()` | web only; clears test routes |
-| `page.waitForResponse(pattern)` | `browser.waitForResponse(pattern)`: a string or `RegExp`, no predicate function; `url`, `status`, `headers`, `body()`, `json()`, `text()`. A string is the glob of `browser.route`, tested against the whole URL, query included: Playwright's `'/api/orders'` is the full URL or `'**/api/orders'`, and `'\\?'` is a literal `?` | web only |
-| `{ timeout: 0 }` for no timeout | the same; the test timeout, or `cleanupTimeout` in `afterEach`, still bounds it | same |
-| `response.ok()`, `response.request()` | `status` | missing |
-| `page.waitForRequest()`, `request.postDataJSON()` | none yet for `waitForRequest`; `route.request.postData` is a string | missing |
-| `routeFromHAR()`, `routeWebSocket()` | not yet | missing |
-| `page.on('dialog')` | `browser.onDialog('accept')`, or a handler that calls `accept` or `dismiss` | web only |
-| `page.waitForEvent('download')` | `browser.waitForDownload(() => trigger)` | web only |
-| `page.waitForEvent('popup')` | `browser.waitForPopup(() => trigger)`, which also makes the tab active. Without it, a tab the app opens stays in the background, as in Playwright. When the active tab closes, its opener is active again, or the tab active most recently when the opener is gone | web only |
-| `context.on('page')`, `context.pages()`, `context.newPage()`, `page.bringToFront()` | `browser.tabs()`, `browser.newTab()`, `tab.activate()`; no event per new page | web only |
-| `page.on('console')`, `page.on('pageerror')` | assert on what the page shows | missing |
-| `page.evaluate(fn, arg)` | `browser.evaluate(fn, arg)`; JSON in and out, no handles. It and the locator reads run in the page's main world, so a page that deletes a global such as `Map` or `Array` breaks them | web only |
-| `page.addInitScript(script, arg)`, `context.addInitScript()` | `browser.addInitScript(script, arg)`, or `web({ initScripts })` for every test; pass `{ content }` as a plain string | web only |
-| `page.emulateMedia({ colorScheme, reducedMotion })` | `browser.emulateMedia()`, for every open tab and every tab opened after it; `media`, `forcedColors`, and `contrast` are not yet supported | web only |
-| `page.exposeFunction()`, `addStyleTag()`, `setExtraHTTPHeaders()`, `clock` | none yet; for `addStyleTag`, `browser.evaluate` can append a `<style>` once the page is open | missing |
-| `context.addCookies()`, `context.cookies()` | `browser.setCookies()`, `browser.cookies()` | web only |
-| `context.clearCookies(options)` | `browser.clearCookies(options)` | web only |
-| `request` fixture | Node `fetch`, see [API](/api-testing) | by design |
-| `context.storageState({ path })` | no file, see [What differs on purpose](#what-differs-on-purpose) | by design |
+| Playwright | e2e |
+| --- | --- |
+| `page.route(pattern, handler)`, `unroute()`, `unrouteAll()` | the same on `browser`; a pattern is a `RegExp` or a glob on the full URL |
+| `route.fulfill()`, `continue()`, `fallback()`, `abort()`, `fetch()` | the same, see [`route`](/reference/web#route) for the options each takes |
+| `page.waitForResponse(pattern)` | `browser.waitForResponse(pattern)`; `'**/api/orders'`, not `'/api/orders'` |
+| `page.on('dialog')`, `page.waitForEvent('download')` | `browser.onDialog('accept')` or a handler; `browser.waitForDownload(() => trigger)` |
+| `page.waitForEvent('popup')` | `browser.waitForPopup(() => trigger)`, which makes the new tab active, see [Tabs](/reference/web#tabs) |
+| `context.pages()`, `context.newPage()`, `page.bringToFront()` | `browser.tabs()`, `browser.newTab()`, `tab.activate()`; no `context.on('page')` event |
+| `page.evaluate(fn, arg)` | `browser.evaluate(fn, arg)`, JSON in and out |
+| `page.addInitScript()`, `page.emulateMedia({ colorScheme, reducedMotion })` | `browser.addInitScript()` or `web({ initScripts })`; `browser.emulateMedia()` |
+| `context.addCookies()`, `cookies()`, `clearCookies()` | `browser.setCookies()`, `browser.cookies()`, `browser.clearCookies()` |
 
 </Accordion>
 <Accordion title="Test structure">
 
-| Playwright | e2e | Status |
-| --- | --- | --- |
-| `import { test, expect } from '@playwright/test'` | `import { test } from '@e2e-dev/web'` and `import { expect } from 'e2e'` | renamed |
-| `test(title, fn)`, `test.describe`, `beforeEach`, `afterEach` | the same; `describe` and the hooks are also top-level imports. A hook takes no title and gets the fixtures only, no `testInfo`, so `afterEach` can't read the test's status | renamed |
-| `test.beforeAll`, `afterAll` | the same, with `platform` as the only fixture; no `browser`, `request`, or `workerInfo`. A failed test re-imports the file, so `beforeAll` runs again for the tests after it | renamed |
-| `{ page }` in a test | `{ screen, app, browser }`; no raw `Page` in tests, see [What differs on purpose](#what-differs-on-purpose) | by design |
-| `test.skip(title, fn)` | the same | same |
-| `test.skip(condition, reason)` | the same inside a test body or a `beforeEach` hook. At file or describe level it is a `COLLECTION_ERROR`, and `test.skip(({ ... }) => condition)` is missing: use `platforms`, `{ skip }`, or `test.describe(title, { skip: true }, fn)` | renamed |
-| `test.only` | the same; CI rejects it with `ONLY_IN_CI` | same |
-| `test.describe.only` | `test.only` on each member | missing |
-| `test.describe.skip` | `test.describe(title, { skip: true }, fn)` | renamed |
-| `test.describe.serial`, `describe.configure({ mode: 'serial' })` | `test.describe(title, { serial: true }, fn)`: one retry unit with shared app state | renamed |
-| `describe.configure({ mode: 'parallel' })` | a file's tests run in order on one worker | missing |
-| `describe.configure({ retries, timeout })` | `{ retries, timeout }` on the group | renamed |
-| `test.setTimeout(ms)`, `test.slow()` | a fixed `test(title, { timeout }, fn)` or `test.describe(title, { timeout }, fn)`; no change at runtime | missing |
-| `test.fixme()` | `{ skip: 'reason' }` | missing |
-| `test.fail()` | the same inside a test or `beforeEach`, plus a `fail` option; no file or group form, so mark each test; serial group members and setup tests can't be marked; a timeout counts as the expected failure; infrastructure errors are not covered, see [`test.fail`](/reference/test#test-fail) | same |
-| `test.step(title, fn)` | every `screen`, `browser`, and `agent` call is already a named step in the report, with its arguments redacted | missing |
-| `test.info()`, `attach()`, `annotations` | `app.screenshot(label)` attaches a screenshot | missing |
-| `{ tag: '@smoke' }` | `{ tags: ['smoke'] }` on a test or group | renamed |
-| `test.use({ ... })` | no file or describe override. Runner options go on the group: `test.describe(title, { timeout, retries, agent, trace, video, session }, fn)`. Engine options go per target in the config; `browser.setViewport` at runtime, web only | missing |
-| `test.extend({ fixture })` | the same shape; a fixture that needs another goes in a chained `extend`. Not yet on demand: every fixture of the chain sets up for every test on that `test`, named or not. Give each setup its own `test` | missing |
-| `{ scope: 'worker' }` fixtures, option fixtures | `beforeAll` for per-file setup | missing |
+| Playwright | e2e |
+| --- | --- |
+| `import { test, expect } from '@playwright/test'` | `import { test } from '@e2e-dev/web'` and `import { expect } from 'e2e'` |
+| `{ page }` in a test | `{ screen, app, browser }` |
+| `test()`, `test.describe()`, `test.only`, `test.fail()`, `test.skip(title, fn)`, `test.skip(condition, reason)` | the same; the conditional `skip` works inside a test body or `beforeEach` |
+| `beforeEach`, `afterEach`, `beforeAll`, `afterAll` | the same, with no title; `beforeAll` and `afterAll` get the `platform` fixture only |
+| `test.describe.skip`, `test.describe.serial`, `describe.configure({ mode: 'serial', retries, timeout })` | `test.describe(title, { skip, serial, retries, timeout }, fn)` |
+| `{ tag: '@smoke' }` | `{ tags: ['smoke'] }` on a test or group |
+| `test.extend({ fixture })` | the same shape; a fixture that needs another goes in a chained `extend` |
 
 </Accordion>
 <Accordion title="CLI">
 
-| Playwright | e2e | Status |
-| --- | --- | --- |
-| `npx playwright test` | `npx e2e run` | renamed |
-| `npx playwright test tests/login.spec.ts` | `npx e2e run tests/login.e2e.ts`; a directory, a bare name, or a glob also selects | same |
-| `--project web` | `--target web` | renamed |
-| `-g`, `--grep`, `--grep-invert` | `--grep` and `--grep-invert`, no `-g`; matched against the describe titles and the test title joined by spaces; tags are `--tag` and `--exclude-tag` | renamed |
-| `tests/login.spec.ts:12` | `tests/login.e2e.ts:12`, the test whose `test(` call opens on that line. A `describe` line or `file:line:column` selects nothing | renamed |
-| `--debug` | `--step --headed` runs the first step, then holds each later one until a key; there is no inspector. `e2e run --debug` prints phase timings and the agent step table | renamed |
-| `--ui` | `--watch` reruns on save with vitest's keys, `--headed` to watch, `e2e mcp` to drive the app from a coding agent | missing |
-| `--headed`, `--retries`, `--workers`, `--config`, `--pass-with-no-tests` | the same long flags, no `-j` or `-c`. `--workers` takes a number, not `50%`; `--config` takes a file, not a directory | renamed |
-| `--reporter` | the same flag; the ids are `list`, `json`, `junit`, `markdown`. No `dot`, `line`, `html`, `blob`, `github`, or `null`; a custom reporter goes in the config's `reporters` | renamed |
-| `--output` | `--output`, the results directory; each test's trace page and artifacts are in its `results/` | same |
-| `--trace <mode>` | `--trace [mode]` with the five modes of `trace`, no `retain-on-first-failure` or `retain-on-failure-and-retries`; a bare `--trace` is `on` | renamed |
-| `--last-failed`, `--shard`, `--repeat-each`, `--max-failures` | the same names; `--shard` keeps serial groups together | same |
-| `--only-changed` | `--changed-since <ref>` with a [test filter](/filters) in `filters`, such as `decisionFilter({ model })`, which asks a model which tests the change can affect | by design |
-| `--quiet` | not yet | missing |
-| `-u`, `--update-snapshots` | Playwright's `-u changed`: writes the stored screenshots that are missing or differ. No mode argument (`all`, `missing`, `none`) and no `updateSnapshots` config key. In CI a missing screenshot is written only with `-u` | renamed |
-| `--list` | `npx e2e list`, with the same selection flags | renamed |
-| `npx playwright codegen` | `npx e2e explore` walks the app from a goal and reports what it found; `npx e2e mcp` lets a coding agent drive the app while it writes the test, see [MCP server](/mcp-server) | renamed |
-| `npx playwright show-trace` | no viewer; open the `trace.md` under `.e2e/results/` that the terminal names | by design |
-| `npx playwright show-report` | `.e2e/summary.md` from the `markdown` reporter | missing |
-| `npx playwright install` | `npx @e2e-dev/web install`, for the Playwright version the engine pins; a run also installs a missing browser on its own | renamed |
+| Playwright | e2e |
+| --- | --- |
+| `npx playwright test tests/login.spec.ts:12` | `npx e2e run tests/login.e2e.ts:12`; a directory, a bare name, or a glob also selects |
+| `--project web`, `--list` | `--target web`, `npx e2e list` |
+| `--grep`, `--grep-invert`, `--headed`, `--retries`, `--workers`, `--config`, `--output`, `--reporter`, `--trace`, `--shard`, `--repeat-each`, `--max-failures`, `--last-failed`, `--pass-with-no-tests`, `-u` | the same; of the short flags, only `-u` |
+| `npx playwright install` | `npx @e2e-dev/web install`; a run also installs a missing browser |
 
 </Accordion>
 </AccordionGroup>
@@ -340,8 +194,7 @@ uses it declares `requires: ['browser']` and other targets skip it. Calls on
 ## Port page objects
 
 A page object takes `screen` for queries and actions, and `browser` for
-keyboard, mouse, CSS selectors, and `evaluate`. Hand page objects out as
-fixtures, so every test gets them without a `beforeEach`:
+keyboard, mouse, CSS selectors, and `evaluate`. Hand it out as a fixture:
 
 ```ts title="tests/page-models/account-page.ts"
 import type { Locator, Screen } from 'e2e';
@@ -376,22 +229,122 @@ export const test = base.extend<{ accountPage: AccountPage }>({
 });
 ```
 
-A fixture that reads `browser` makes every test on that `test` web only. See
-[Keep it portable](/page-object-model#keep-it-portable).
+A fixture that reads `browser` makes every test on that `test` web only, see
+[Keep it portable](/page-object-model#keep-it-portable). Drop `newPage()` and
+`page.close()` from the hooks: every attempt starts in a fresh context.
 
-`locator.page()` has no counterpart, so pass `browser` with the locator. Drop
-`newPage()` and `page.close()` from the hooks: every attempt starts in a fresh
-context.
+## What e2e doesn't have yet
+
+Planned is on the roadmap. Not yet has no date. Not planned is left out on
+purpose. Use the workaround, or keep the test in Playwright.
+
+### Planned
+
+<AccordionGroup>
+<Accordion title="Locators and actions">
+
+| Playwright | Use today |
+| --- | --- |
+| `locator.locator(selector)`, `locator.and()`, `filter({ visible })` | One `browser.locator` selector, such as `'.card >> .close'`, or a `screen` query inside the scope |
+| `locator.evaluate()`, `expect(locator).toHaveClass()`, `toHaveCSS()`, `dispatchEvent()` | `browser.evaluate(fn, selector)`; `expect(browser).toHaveClass(locator, cls)` |
+| `setInputFiles({ buffer })`, `selectOption([...])`, `click({ clickCount })`, `hover({ position })` | A temp file path; `browser.evaluate` for a multi-select; `browser.mouse` with `boundingBox()` |
+
+</Accordion>
+<Accordion title="Assertions">
+
+| Playwright | Use today |
+| --- | --- |
+| `expect(fn).toPass()`, `expect.poll(fn, { intervals })` | `expect.poll(async () => { ...; return true }).toBe(true)` |
+| `toBeEmpty()`, `toBeEditable()`, `toBeInViewport()`, `toHaveRole()` | `toHaveValue('')` on a form control, `toHaveText('')` on other elements; `toBeEnabled()` and `.not.toHaveAttribute('readonly')`; `expect.poll` over `boundingBox()`; a `getByRole` query |
+| `locator.screenshot()`, `{ fullPage, clip }`, `snapshotPathTemplate`, `ignoreSnapshots` | The viewport or one locator in `toHaveScreenshot`; a tag and `--exclude-tag` to skip visual tests |
+| `expect(locator, 'message')`, `expect.configure()` | Drop the message, the failure names the locator and the matcher; `{ timeout }` on each call |
+| `@axe-core/playwright` | axe-core through `browser.addInitScript({ path: 'node_modules/axe-core/axe.min.js' })`, then `axe.run()` in `browser.evaluate` |
+| `.resolves`, `.rejects`, `toThrow()`, `toStrictEqual()`, `toContainEqual()`, `toBeInstanceOf()`, `expect.closeTo()` | `await` first, or catch the error and assert on it; `toEqual`; `toContain`, which compares by deep equality; `toBeCloseTo` |
+| A `.not` locator matcher that passes on the first read | It passes after the condition holds for 1 s. The positive inverse passes on the first read: `toBeHidden()`, `toBeDisabled()`, `toBeChecked({ checked: false })` |
+
+</Accordion>
+<Accordion title="Navigation, network, and browser">
+
+| Playwright | Use today |
+| --- | --- |
+| `devices['iPhone 15']`, `isMobile`, `hasTouch`, `deviceScaleFactor` | `web({ viewport, userAgent })`; a mobile target for real touch |
+| `waitForURL(glob)`, `waitForFunction()` | A `RegExp`; `expect.poll` over `browser.evaluate` |
+| `waitForResponse(predicate)`, `waitForRequest()`, `page.on('request')`, `response.ok()` | `browser.waitForResponse(pattern)`, then check the response in the test, `status` for `ok()`. For requests, a `browser.route` handler that records `route.request`, then calls `route.fallback()` |
+| `route.fulfill({ response })`, `route.abort(code)`, `route.fetch(options)`, `request.postDataJSON()` | `status`, `headers`, and `body` from `route.fetch()`; `JSON.parse(route.request.postData)` |
+| `page.addLocatorHandler()` | Dismiss the overlay in `beforeEach`, or set its consent cookie with `browser.setCookies` |
+| `page.on('console')`, `page.on('pageerror')`, `page.clock` | A `browser.addInitScript` that records to a `window` array, or that stubs `Date` |
+| `context.setOffline()`, `setGeolocation()`, `grantPermissions()` | A route that aborts every request; a `browser.addInitScript` stub; `app.permissions` on the target |
+| `ignoreHTTPSErrors`, `proxy`, `channel`, `launchOptions` | Serve the app over `http`; start the browser yourself and attach with `web({ connect })` |
+| The `request` fixture, `page.request`, `expect(response).toBeOK()` | Node `fetch` with `app.baseUrl`, see [API](/api-testing); `expect(response.status).toBe(200)` |
+
+</Accordion>
+<Accordion title="Test structure, reports, and CLI">
+
+| Playwright | Use today |
+| --- | --- |
+| `test.step()`, `testInfo.attach()` | Each call is already a named step in the report; `app.screenshot(label)` attaches a screenshot |
+| `test.info()`, `testInfo` in hooks and fixtures, `annotations` | Your own fixture or module state; an issue id in the title or a tag |
+| `fullyParallel`, `describe.configure({ mode: 'parallel' })` | Split the file. Files run in parallel, a file's tests in order |
+| On-demand, worker-scoped, and `{ auto: true }` fixtures; `mergeTests()` | One `test` for each fixture set; `beforeAll` for per-file setup |
+| `globalSetup`, `globalTeardown`, a `webServer` array | A script around the run, or one `app.command` that starts every process |
+| `projects[].testMatch`, `testDir`, `testIgnore`, `grep` | `platforms` or tags on the tests, or one run for each target |
+| `--ui`, `npx playwright show-report`, `--reporter html` | `--watch --headed`; open `.e2e/report.html`, which `htmlReporter()` writes |
+| `test.setTimeout()`, `test.slow()`, `test.fixme()`, `test.describe.only()`, `test.fail()` on a describe | `{ timeout }` or `{ skip: 'reason' }` on the test or group; `test.only` and `test.fail()` on each test |
+| `failOnFlakyTests`, `use.navigationTimeout`, `--timeout`, `--quiet` | `run.summary.flaky` in `report.json`; `browser.goto(url, { timeout })`; `timeout` in the config |
+| The `blob` reporter and `merge-reports` | One report for each shard |
+| The Playwright Docker image | The image for the `playwright-core` version `@e2e-dev/web` pins, or `npx @e2e-dev/web install chromium --with-deps` |
+| `test.use({ ... })` in a file or describe | Runner options on the group, engine options on a target, `browser.setViewport` at runtime |
+| `projects[].dependencies`, `teardown` | A top-level `test.setup` for sign-in; a script around the run |
+| `page.pause()` | `--step --headed` holds each step until a key |
+| The `line`, `dot`, and `github` reporters | `list`; `github()` posts a pull request comment |
+
+</Accordion>
+</AccordionGroup>
+
+### Not yet
+
+| Playwright | Use today |
+| --- | --- |
+| `projects[].retries`, `projects[].timeout` | Options on a group |
+| `--debug`, the VS Code extension | `--step --headed` holds each step until a key; `screen.debug()` prints the tree |
+| Option fixtures, overriding `page` or `context` in `extend` | `process.env` in the fixture; a new fixture under its own name |
+| `const response = await page.goto()` | Start `browser.waitForResponse` before the navigation |
+| A Playwright `Reporter` class, third-party reporters | A [custom reporter](/reference/reporters#custom-reporters) with `onEvent` and `onRunFinished`; `junit.xml` for a dashboard |
+| `browser.newContext()` for a second user | Drive the second user through the API with `fetch` |
+| `page.exposeFunction()`, `addStyleTag()`, `innerHTML()`, `page.viewportSize()` | `browser.evaluate` |
+| `routeFromHAR()`, `routeWebSocket()`, `page.setExtraHTTPHeaders()` | A `browser.route` for each endpoint or header; a `browser.addInitScript` that stubs `WebSocket` |
+| `emulateMedia({ media, forcedColors, contrast })` | - |
+| `expect.extend()` | An async helper that calls `expect` |
+| `npx playwright show-trace`, `trace.zip`, `context.tracing` | `trace.md` in the test's directory under `.e2e/results/`. A trace is a markdown page, with no zip and no viewer |
+
+### Not planned
+
+| Playwright | Use instead |
+| --- | --- |
+| `selectOption('pro')` by value | `selectOption({ value: 'pro' })`. A bare string matches the label only |
+| `use.storageState: 'file.json'`, `context.storageState({ path })` | `test.setup` and `{ session }`. [Sessions last one run](#what-differs-on-purpose), so there is no file |
+| `page.waitForTimeout(ms)`, `page.waitForNavigation()` | A locator assertion on the state you wait for; `browser.waitForURL(url)` |
+| `?` as a literal and `{a,b}` in a route glob | A `RegExp`. In a glob, `?` is a wildcard and `{a,b}` is literal |
+| `--only-changed` | `--changed-since <ref>` with a [test filter](/filters) in `filters` |
+| `page.$()`, `$eval()`, `elementHandle()`, non-JSON `evaluate` values, `locator.page()` | Locators, and `browser.evaluate` with JSON in and out, which the report records and redacts. Pass `browser` to a page object |
+| A dialog with no handler, dismissed silently | `browser.onDialog('dismiss')`. An unhandled dialog fails the next step |
+| `page.goto('data:...')`, `'file://...'` | `route.fulfill({ body, contentType: 'text/html' })` on an app URL. Only `http` and `https` open |
+| `getByRole(role, { includeHidden })` | `browser.locator('role=button[include-hidden=true]')`. A role query follows the accessibility tree |
+| `--grep @smoke` for a tag, a regex positional, `file:line:column` | `--tag smoke`; a glob or a bare name; `file:line` |
+| `getByTitle()` | `browser.locator('[title="Close"]')`. A title is a DOM attribute, so it has no `screen` query |
+| `page.waitForLoadState()` | An assertion on what the next page shows. A navigation waits for `load`, and each action and assertion waits for its node |
+| `npx playwright codegen`, the Inspector | [`npx e2e mcp`](/mcp-server) lets a coding agent drive the app while it writes the test; `screen.debug()` prints the tree |
+| `{ force: true }`, `{ trial: true }` | `tap({ position })` skips the actionability checks; `toBeVisible()` and `toBeEnabled()` for a trial |
+| `ariaSnapshot()`, `toMatchAriaSnapshot()`, `toMatchSnapshot()` | `expect(await screen.tree()).toContain(...)`; a fixture file and `toEqual` |
+| `keyboard.insertText()`, `inputValue()` on a `<label>` | `fill()`; the control itself, located with `getByLabel` |
+| `use.connectOptions`, trace modes `retain-on-first-failure` and `retain-on-failure-and-retries` | `web({ connect })` over CDP, chromium only; `retain-on-failure` |
 
 ## What differs on purpose
 
-- A string name is exact. Playwright's `getByRole` names, `getByLabel`,
-  `getByPlaceholder`, and `getByText` match a case-insensitive substring, so
-  `Save` also hits `Save as draft`. In e2e a string matches the whole text,
-  case-sensitive. Pass `{ exact: false }` or a `RegExp` for a fragment, and
-  drop Playwright's `{ exact: true }`, which is the default here. A
-  query that misses passes a negated assertion, so check it with a positive
-  one first. See [queries](/reference/screen#queries).
+- A string matches the whole text, case-sensitive. Playwright's `getByRole`
+  name, `getByLabel`, `getByPlaceholder`, and `getByText` match a
+  case-insensitive substring. Pass `{ exact: false }` or a `RegExp` for a
+  fragment. See [queries](/reference/screen#queries).
 
   ```ts
   // <button>Save changes</button>, <label>Email address <input></label>
@@ -400,49 +353,18 @@ context.
   screen.getByRole('button', 'save changes');          // no match, case differs
   screen.getByLabel('Email');                                    // no match
   ```
-- Text reads are rendered text. On the web, `textContent()` and `toHaveText`
-  read what `innerText` returns, like Playwright's `{ useInnerText: true }`.
-  Playwright reads the DOM's `textContent` by default. Queries still match
-  the source text: `getByText('Draft')` finds the tag below,
-  `getByText('DRAFT')` does not. `browser.evaluate`
-  reads the raw DOM text. See [locator reads](/reference/screen#locator-reads).
-
-  ```ts
-  // <span data-testid="tag" style="text-transform: uppercase">Draft</span>
-  // <p data-testid="total">Total <span style="display: none">debug</span>42</p>
-  // <p data-testid="address">Line one<br>Line two</p>
-  await expect(screen.getByTestId('tag')).toHaveText('DRAFT');                 // Playwright: 'Draft'
-  await expect(screen.getByTestId('total')).toHaveText('Total 42');            // Playwright: 'Total debug42'
-  await expect(screen.getByTestId('address')).toHaveText('Line one Line two'); // Playwright: 'Line oneLine two'
-  ```
-- `.not.toBeChecked()` passes on a button or a heading, where Playwright
-  throws, as `isChecked()` does. Query a checkable control by role, so the
-  query fails when the control changes kind.
-
-  ```ts
-  await expect(screen.getByRole('checkbox', 'Subscribe')).not.toBeChecked();
-  ```
-- A negated locator matcher passes only after its condition holds for 1 s,
-  or for its whole timeout when that is shorter. The positive inverse,
-  such as `toBeHidden()`, passes on the first read that holds.
-- `check()` and `uncheck()` read the state back until the action timeout,
-  so a controlled checkbox that updates late passes. A click that removes the
-  control passes too, where Playwright fails. Assert on what replaced it.
-- One match or `LOCATOR_AMBIGUOUS`, `isVisible()` included, where Playwright
-  reads the first match silently. Narrow with `filter`, `first()`, or
-  `{ visible: true }`, or add a `>> visible=true` step to a
-  `browser.locator` selector. See [screen](/reference/screen).
-- Navigation opens `http`, `https`, and `about:blank` only. `data:`, `file:`,
-  and every other scheme are `POLICY_DENIED`, whether from `app.open`,
-  `browser.goto`, or `route.continue({ url })`.
-- `browser.evaluate` takes and returns JSON only, so the report can record
-  and redact the result. Pass values in through `arg`.
-- A password is a `Secret` with no string value, and the model never sees
-  it. See [Authentication](/authentication).
-- Sessions are per run. `test.setup` saves state under a name, one time per
-  run and target, and `{ session }` restores it. The file is encrypted and
-  deleted at cleanup, so there is no `.auth/user.json` to reuse across runs.
-- No raw `Page` in tests. Nothing on a raw page is recorded, redacted, or
+- Text reads are rendered text. `textContent()`, `toHaveText`, and
+  `toContainText` read what `innerText` returns, so hidden text is left out
+  and `text-transform` applies. See [locator reads](/reference/screen#locator-reads).
+- A locator is strict. An action, a read, or a positive matcher on several
+  matches is `LOCATOR_AMBIGUOUS`, where Playwright's `page.click(selector)`
+  and `isVisible()` take the first. Narrow with `filter` or `first()`.
+- `.not.toBeChecked()` passes on a button or a heading. Query the control
+  by its role, so the assertion fails when the control changes kind.
+- Sessions last one run. `test.setup` saves state under a name and
+  `{ session }` restores it. The file is encrypted and deleted at cleanup,
+  so there is no `.auth/user.json` to reuse.
+- Tests get no raw `Page`, because nothing on one is recorded, redacted, or
   masked. `surfaceOf(engine)` is for
   [custom executors](/executors#driving-the-page-yourself), not test code.
 

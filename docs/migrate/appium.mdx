@@ -7,7 +7,7 @@ import { SetupPrompt } from '../snippets/setup-prompt-card.jsx';
 
 export const migrationPrompt = `Migrate this project's Appium tests to e2e, one test at a time. Docs: \`https://e2e.com/docs/migrate/appium.md\` and \`https://e2e.com/docs/mobile.md\`
 
-1. Read the migration guide above. It maps Appium capabilities, selectors, and commands to e2e and marks what has no equivalent. The mobile guide covers devices and app builds.
+1. Read the migration guide above. It maps Appium capabilities, selectors, and commands to e2e, and lists what e2e doesn't have yet. The mobile guide covers devices and app builds.
 2. e2e tests run in Node, in TypeScript by default or in JavaScript. If the Appium suite is Java, Python, or another language, or the project has no \`package.json\`, create the test project in an \`e2e/\` folder beside the app.
 3. If the test project has no e2e config (\`e2e.config.ts\`, \`.mts\`, \`.js\`, or \`.mjs\`), run \`npx e2e init --yes --engine mobile\` (or the pnpm or bun equivalent) there. It writes a mobile config with one target for this machine's platform and an example test against the Settings app, and installs nothing yet. Rewrite \`tests/example.e2e.ts\` for your app or delete it.
 4. Read the e2e skill (\`npx e2e guide\` prints it, \`npx e2e guide <topic>\` prints a topic) and follow it for every step below.
@@ -15,7 +15,7 @@ export const migrationPrompt = `Migrate this project's Appium tests to e2e, one 
 6. Port the capabilities into the e2e config with the guide's table: one target per platform with \`mobile({ platform, device })\`, and \`app: { bundleId, appPath, launchArguments, permissions }\` on each target. Move passwords and tokens into \`credentials\` or \`secrets\`.
 7. Install dependencies, then run \`npx e2e doctor\` (e2e 0.23.0 or newer) and fix what it reports.
 8. List the Appium tests and ask me which one to move first. Suggest one with XPath selectors or explicit waits that often break.
-9. Rewrite that test as a \`.e2e.ts\` file under \`tests/\` (e2e runs \`tests/**/*.e2e.ts\` by default). Start it with \`app.open()\`, since nothing launches on its own. Follow the guide's "Rewrite selectors" section: XPath has no port, and e2e fails on several matches. Where the guide says "Not yet" or "No equivalent", use the workaround it gives, or leave that test in Appium and tell me why.
+9. Rewrite that test as a \`.e2e.ts\` file under \`tests/\` (e2e runs \`tests/**/*.e2e.ts\` by default). Start it with \`app.open()\`, since nothing launches on its own. Follow the guide's "Rewrite selectors" section: XPath has no port, and e2e fails on several matches. Before you port a test, check the guide's "What e2e doesn't have yet" section for each capability and command the test uses. Use the "Use today" workaround, or leave that test in Appium and tell me why.
 10. Keep the launch and the final assertions deterministic, with \`app.open()\` and locator assertions. Where a run of scripted taps breaks often, propose an \`agent.act\` goal for it instead.
 11. Build and install the app, run the new file with \`npx e2e run <file>\` on each platform target, and fix it until it passes. Keep the Appium test until I confirm it can go.
 12. Summarize which tests moved, which stayed in Appium, and why.`;
@@ -24,11 +24,11 @@ e2e replaces the Appium server, its drivers, and the client library with
 one Node package. `@e2e-dev/mobile` drives iOS simulators, Android
 emulators, and connected phones through
 [agent-device](https://github.com/callstack/agent-device), which it
-includes. Your app build and its accessibility ids stay as they are.
+includes. Capabilities become a target in `e2e.config.ts`, and `driver`
+commands become the `app` and `device` fixtures. Your app build and its
+accessibility ids stay as they are.
 
-This guide is for suites that test a mobile app through Appium's XCUITest or
-UiAutomator2 driver, from WebdriverIO or another client. The examples use
-WebdriverIO. A Java or Python client maps the same way.
+The examples use WebdriverIO. A Java or Python client maps the same way.
 
 <SetupPrompt>
 
@@ -38,47 +38,24 @@ WebdriverIO. A Java or Python client maps the same way.
 
 For a migration that spans several sessions, the [`migrate-to-e2e` skill](/coding-agents#migrate-an-existing-suite) records what moved in a progress file and keeps the old suite running until you retire each test.
 
-## What replaces each Appium part
-
-| Appium | e2e |
-| --- | --- |
-| The Appium server, started before the run | No server. The engine starts agent-device's daemon |
-| Drivers (`appium driver install xcuitest`) | `mobile({ platform: 'ios' })` or `'android'`, one engine per platform; nothing else to install |
-| Capabilities | A target in `e2e.config.ts`: engine options plus `app` |
-| A session (`remote()`, `deleteSession()`) | One device session per worker, which the runner opens and closes |
-| Selector strategies (accessibility id, id, XPath) | `screen.getByTestId`, `getByLabel`, `getByText`, `getByRole` |
-| Element commands (`click`, `setValue`) | Locator actions (`tap`, `fill`), which wait for one actionable match |
-| `driver` and `mobile:` commands | The `device` and `app` fixtures |
-| expect-webdriverio, implicit and explicit waits | `expect(locator)` matchers, which retry until their timeout |
-| The WebdriverIO testrunner, Mocha, TestNG, pytest | `test`, `describe`, hooks, and `npx e2e run` |
-| Nothing in Appium | Agent steps: `agent.act`, `agent.assert`, and `agent.extract` take a goal in plain words |
-
 ## Port the capabilities
 
 <Note>Set up a target with the [mobile guide](/mobile) and a model with the [quickstart](/quickstart). Only agent steps need a model.</Note>
 
-On this page, "Not yet" marks a capability or command e2e doesn't have
-today, and "No equivalent" one it leaves out on purpose.
-
-| Capability | e2e |
+| Appium | e2e |
 | --- | --- |
-| `platformName` | `mobile({ platform: 'ios' })` or `'android'` |
-| `appium:automationName` | Nothing to set |
-| `appium:deviceName`, `appium:udid` | `mobile({ device: 'iPhone 17' })`: a name, a simulator UDID, or an `emulator-5554` serial; a list is a pool, one worker per device |
-| `appium:platformVersion` | Not yet. Name a simulator or emulator that runs that version |
-| `appium:app` | `app: { appPath }` on the target, installed by the suite, see the note after the config |
+| `platformName`, `appium:automationName` | `mobile({ platform: 'ios' })` or `'android'` |
+| `appium:deviceName`, `appium:udid` | `mobile({ device: 'iPhone 17' })`: a name, a simulator UDID, or an `emulator-5554` serial. A phone goes by its name |
+| `appium:app` | `app: { appPath }`. Install the build yourself, see [Point at your app](/mobile#point-at-your-app) |
 | `appium:bundleId`, `appium:appPackage` | `app: { bundleId }`, the app `app.open()` launches |
-| `appium:appActivity`, `appium:appWaitActivity` | Not yet. e2e opens the app by its package |
-| `appium:processArguments`, `appium:optionalIntentArguments` | `app.launchArguments`, a list of strings: process arguments on iOS, `am start` arguments on Android. `processArguments.env` is not yet supported |
-| `appium:autoGrantPermissions`, `appium:permissions` | `app.permissions: { camera: 'grant' }`, set before every fresh launch; nothing is granted unless named |
-| `appium:autoAcceptAlerts`, `appium:autoDismissAlerts` | Not yet. Set `app.permissions` so the prompt never shows, or call `device.alert('accept')` |
-| `appium:noReset: true` | The default. Nothing clears the app's data unless a test asks |
-| `appium:noReset: false` | `app.clearState()` at the start of the test |
+| `appium:processArguments`, `appium:optionalIntentArguments` | `app.launchArguments`, a list of strings |
+| `appium:permissions` | `app.permissions: { camera: 'grant' }`. Each [`DevicePermission`](/reference/mobile#device-fixture) name takes `grant`, `deny`, or `reset` |
+| `appium:noReset` | `true` is the default, so nothing clears the app's data. For `false`, call `app.clearState()` at the start of the test |
 | `appium:fullReset` | `device.installApp(path, { reinstall: true })` |
 | `appium:newCommandTimeout`, WebDriverAgent timeouts | Not needed. Actions use `actionTimeout`, assertions `assertionTimeout`, and tests `timeout` |
-| `appium:language`, `appium:locale` | On iOS, `app.launchArguments: ['-AppleLanguages', '(fr)', '-AppleLocale', 'fr_FR']`; see [Run the app in another language](/mobile#run-the-app-in-another-language). On a hosted device, `language` and `locale` on [`browserstack()`](/integrations/browserstack) or [`testmu()`](/integrations/testmu). On a local Android device, set its language before the run |
 | `bstack:options`, `lt:options` | A device provider: [`browserstack()`](/integrations/browserstack) or [`testmu()`](/integrations/testmu) |
-| Several capabilities, `maxInstances` | One target per platform, `workers`, and a `device` pool |
+| `appium:platformVersion`, `appium:language`, `appium:locale` on a hosted device | `osVersion`, `language`, and `locale` on `browserstack()` and `testmu()`; `android.osVersion` on [`limrun()`](/integrations/limrun) |
+| Several capabilities, `maxInstances` | One target per platform, `workers`, and a `device` list with one worker per device |
 
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
@@ -110,10 +87,6 @@ export default {
   workers: 1,
 } satisfies E2EConfig;
 ```
-
-`appPath` names the build, but the suite installs it. Install it in CI
-before the run, or call `device.installApp()` in a fixture. See
-[Point at your app](/mobile#point-at-your-app).
 
 ## Rewrite one test
 
@@ -148,11 +121,11 @@ test('signs in', async ({ app, screen }) => {
 - Actions wait for their element and assertions retry, so the explicit
   wait goes away.
 
-Where a run of scripted taps breaks often, one goal can replace it. The
-agent reads the screen and finds the fields. The [replay cache](/cache)
-records its actions once a later check passes, and the next run replays them
-without a model call. A password belongs in
-[configured credentials](/authentication), which the model never sees:
+Where a run of scripted taps breaks often, one `agent.act` goal can replace
+it. The [replay cache](/cache) records its actions once a later check
+passes, and the next run replays them without a model call. A password
+belongs in [configured credentials](/authentication), which the model never
+sees:
 
 ```ts
 import { credentials } from 'e2e';
@@ -170,23 +143,17 @@ await agent.act('sign in as {username}', { params: { username: ada.username, pas
 | `$('id=com.example:id/email')`, `resourceId` | `screen.getByTestId('email')`; the `com.example:id/` prefix is optional |
 | `-ios predicate string:label == "Sign in"`, `android=new UiSelector().text("Sign in")` | `screen.getByText('Sign in')` or `getByLabel('Sign in')` |
 | `-ios class chain`, class names (`XCUIElementTypeButton`, `android.widget.Button`) | `screen.getByRole('button', 'Sign in')` |
-| XPath | No equivalent. Chain queries (`screen.getByTestId('row').getByText('Delete')`), or use `filter({ has, hasText })` |
 | `$$(selector)[2]` | `.nth(2)`; `.all()` returns every match |
-| `-image` selectors | No equivalent. Use a goal, or `screen.tapAt({ x, y })` |
 | A selector the queries can't express | `device.locator('role=text label="Total"')`, agent-device's selector syntax |
-
-Three differences from Appium cause most edits:
 
 - `getByText`, `getByLabel`, and `getByTestId` match the whole string, case
   included. Pass a `RegExp`, or `{ exact: false }` for a case-insensitive
   substring of text or label.
-- Appium's `$()` returns the first match. An e2e action or single-element
-  read needs exactly one, and fails with `LOCATOR_AMBIGUOUS` on several.
-  Narrow it with `.filter()`, `.first()`, or `.nth()`.
-- Appium reads the tree in each platform's own terms, as the iOS class in
-  the XPath above shows. e2e maps native controls to shared roles such as
-  `button`, `textbox`, and `switch`, so one test runs on both platforms. The
-  [capabilities table](/reference/mobile#capabilities) lists the mapping.
+- Appium's `$()` returns the first match. An e2e action needs exactly one
+  and fails with `LOCATOR_AMBIGUOUS` on several. Narrow it with `.filter()`,
+  `.first()`, or `.nth()`.
+- Roles such as `button`, `textbox`, and `switch` are the same on iOS and
+  Android, so one test runs on both. See [Roles](/reference/mobile#roles).
 
 ## Map each command
 
@@ -194,115 +161,79 @@ Calls on `device` run only on a device. A suite that also runs on the web
 declares `requires: ['device']` on those tests.
 
 <AccordionGroup>
-<Accordion title="Element commands">
+<Accordion title="Elements and gestures">
 
-| Appium (WebdriverIO) | e2e |
+| Appium | e2e |
 | --- | --- |
-| `.click()` | `.tap()` |
-| `.doubleClick()` | `.doubleTap()` |
-| `mobile: longClickGesture`, `mobile: touchAndHold` | `.longPress({ duration })` |
-| `.setValue(t)` | `.fill(t)`, which replaces the content |
-| `.addValue(t)` | `.pressSequentially(t)`, which taps the field and types key by key at the cursor |
-| `.clearValue()` | `.clear()` |
-| `driver.keys('Enter')`, `pressKeyCode(66)` | `.press('Enter')` on the field; a device takes only `Enter`, `Space`, or one character |
-| `.getText()` | `.textContent()` |
-| `.getValue()`, `.getAttribute('value')` | `.inputValue()` |
-| `.getAttribute(name)` | `.getAttribute('placeholder')`; `placeholder` is the only attribute on a device |
-| `.isDisplayed()`, `.isEnabled()` | `.isVisible()`, `.isEnabled()` |
-| `.isSelected()` | `await expect(locator).toBeSelected()`; there is no selected read |
-| `.getAttribute('checked')` | `.isChecked()` |
+| `.click()`, `.doubleClick()` | `.tap()`, `.doubleTap()` |
+| `mobile: longClickGesture`, `mobile: touchAndHold` on an element | `.longPress({ duration })` |
+| `.setValue(t)`, `.clearValue()` | `.fill(t)`, which replaces the content, and `.clear()` |
+| `.addValue(t)` | `.pressSequentially(t)`, which types key by key at the cursor |
+| `driver.keys('Enter')`, `pressKeyCode(66)` | `.press('Enter')` on the field |
+| `.getText()`, `.getValue()`, `.getAttribute('value')` | `.textContent()`, `.inputValue()` |
+| `.isDisplayed()`, `.isEnabled()`, `.getAttribute('checked')` | `.isVisible()`, `.isEnabled()`, `.isChecked()` |
 | `.isExisting()` | `(await locator.count()) > 0` |
 | `.getLocation()`, `.getSize()` | `.boundingBox()` |
 | `.waitForDisplayed({ timeout })` | `await expect(locator).toBeVisible({ timeout })`, or `locator.waitFor()` |
 | `.waitForDisplayed({ reverse: true })` | `await expect(locator).toBeHidden()` |
-
-</Accordion>
-<Accordion title="Gestures">
-
-| Appium (WebdriverIO) | e2e |
-| --- | --- |
-| `mobile: swipeGesture`, `mobile: swipe`, `driver.swipe({ direction: 'up' })` | `locator.swipe({ direction: 'down' })` or `screen.swipe(...)`; Appium names the finger's direction, e2e the content's |
+| `mobile: swipeGesture`, `mobile: swipe`, `driver.swipe({ direction: 'up' })` | `locator.swipe({ direction: 'down' })` or `screen.swipe(...)`. e2e names the content's direction, not the finger's |
 | `mobile: scrollGesture`, `mobile: scroll` to an element, `.scrollIntoView()` | `screen.scrollUntilVisible(locator)` |
-| `mobile: dragGesture`, `mobile: dragFromToForDuration`, `.dragAndDrop(target)` | `locator.dragTo(target)` |
+| `.dragAndDrop(target)`, a drag that ends on an element | `locator.dragTo(target)` |
 | A `performActions` swipe between two points | `screen.swipe({ from: { x, y }, to: { x, y } })` |
 | A tap at coordinates | `screen.tapAt({ x, y })`; inside an element, `.tap({ position: { x, y } })` |
-| `mobile: pinchOpenGesture`, `mobile: pinch`, multi-finger `performActions` | Not yet |
 
 </Accordion>
-<Accordion title="Assertions">
+<Accordion title="App and device">
 
-| expect-webdriverio | e2e |
-| --- | --- |
-| `toBeDisplayed()`, `not.toBeDisplayed()` | `toBeVisible()`, `toBeHidden()` |
-| `toExist()` | `toBeAttached()` |
-| `toHaveText(t)`, `toHaveText(t, { containing: true })` | `toHaveText(t)`, `toContainText(t)` |
-| `toHaveValue(v)` | `toHaveValue(v)` |
-| `toBeEnabled()`, `toBeDisabled()` | `toBeEnabled()`, `toBeDisabled()` |
-| `toBeSelected()`, `toBeChecked()` | `toBeSelected()`, `toBeChecked()` |
-| `toBeElementsArrayOfSize(n)` | `toHaveCount(n)` |
-| `@wdio/visual-service` screen comparison | `await expect(screen).toHaveScreenshot('name.png')`, see [Visual comparison](/visual-testing) |
-
-</Accordion>
-<Accordion title="App lifecycle">
-
-| Appium (WebdriverIO) | e2e |
+| Appium | e2e |
 | --- | --- |
 | The launch at session start | `app.open()`, a fresh launch of the target's app |
 | `driver.activateApp(id)` | `device.openApp(id)`; `{ relaunch: true }` restarts it |
-| `driver.terminateApp(id)` | `device.closeApp()`, for the session's app only. It ends the session, so open an app next |
+| `driver.terminateApp(id)` on the app under test | `device.closeApp()`. It ends the session, so open an app next |
 | `terminateApp`, then `activateApp` | `app.restart()` |
-| `mobile: clearApp` | `app.clearState()` |
-| `driver.installApp(path)` | `device.installApp(path)` |
-| `driver.removeApp(id)` | Not yet. `device.unstable_raw.client.apps.uninstall({ ...device.unstable_raw.selection, app: 'com.example.app' })` removes it, see [`unstable_raw`](/reference/mobile#unstable_raw); `device.installApp(path, { reinstall: true })` installs with no data |
-| `driver.isAppInstalled(id)` | Not yet. `device.unstable_raw.client.apps.list(device.unstable_raw.selection)` lists the installed user apps as `Name (id)`; on Android, only apps with a launcher icon |
-| `queryAppState(id)` | Not yet. On Android, `device.foregroundApp()` names the app on screen |
+| `mobile: clearApp`, `driver.installApp(path)` | `app.clearState()`, `device.installApp(path)` |
 | `driver.background(seconds)` | `device.home()`, then `device.openApp(id)` |
 | `driver.url('myapp://x')`, `mobile: deepLink` | `device.openLink('myapp://x')` |
-| `driver.back()` | `app.back()` |
-| `driver.hideKeyboard()` | `device.dismissKeyboard()` |
+| `driver.back()`, `driver.hideKeyboard()`, `pressKeyCode` for Home | `app.back()`, `device.dismissKeyboard()`, `device.home()` |
 | `driver.getPageSource()` | `screen.tree()`, or `screen.debug()` to print it |
 | `driver.takeScreenshot()` | `app.screenshot('label')`, secure fields masked |
 | `startRecordingScreen()`, `stopRecordingScreen()` | `app.startRecording()`, `app.stopRecording()`, or `npx e2e run --video` |
-
-</Accordion>
-<Accordion title="Device">
-
-| Appium (WebdriverIO) | e2e |
-| --- | --- |
 | `mobile: setPermission`, `mobile: changePermissions` | `device.setPermission('camera', 'grant')`, one per call, before `app.open()` |
 | `driver.acceptAlert()`, `driver.dismissAlert()` | `device.alert('accept')`, `device.alert('dismiss')` |
 | `driver.setGeoLocation({ latitude, longitude })` | `device.setLocation({ latitude, longitude })` |
-| `driver.setOrientation('LANDSCAPE')` | `device.setOrientation('landscape-left')` |
-| `mobile: setAppearance` | `device.setAppearance('dark')` |
-| `driver.setClipboard(t)`, `driver.getClipboard()` | `device.setClipboard(t)`, `device.clipboard()`, plain text where Appium uses base64. Neither works on an Android build with no clipboard shell command |
-| `driver.toggleWiFi(false)`, `mobile: setConnectivity` with `wifi: false` | `device.setNetwork('offline')`, which turns off Wi-Fi only; Android only |
+| `driver.setOrientation('LANDSCAPE')`, `mobile: setAppearance` | `device.setOrientation('landscape-left')`, `device.setAppearance('dark')` |
+| `driver.setClipboard(t)`, `driver.getClipboard()` | `device.setClipboard(t)`, `device.clipboard()`, plain text where Appium uses base64 |
+| `driver.toggleWiFi(false)`, `mobile: setConnectivity` with `wifi: false` | `device.setNetwork('offline')`, Wi-Fi only; Android only |
 | `driver.toggleAirplaneMode()`, `mobile: setConnectivity` with `airplaneMode: true` | `device.setAirplaneMode(true)`, Wi-Fi and cellular; Android 11 or later |
-| `mobile: enrollBiometric` | `device.enrollBiometrics('faceid', true)` |
-| `mobile: sendBiometricMatch`, `driver.fingerPrint(1)` | `device.setBiometrics('faceid', 'match')`, `device.setBiometrics('fingerprint', 'match')` |
-| `pressKeyCode` for Home | `device.home()` |
-| `driver.lock()`, `pressKeyCode` for power or volume, `mobile: pressButton` for volume | Not yet. `device.unstable_raw.client.command.hardwareButton({ ...device.unstable_raw.selection, button })` presses one: `'power'`, `'volume-up'`, or `'volume-down'` on Android; on iOS only the volume keys, on a physical device, not a simulator |
+| `mobile: enrollBiometric`, `mobile: sendBiometricMatch`, `driver.fingerPrint(1)` | `device.enrollBiometrics('faceid', true)`, `device.setBiometrics('faceid', 'match')`, or `'fingerprint'` |
 | `mobile: clearKeychains` | `device.clearKeychain()`; iOS simulator only |
 | `driver.isIOS`, `driver.isAndroid` | `{ platforms: ['ios'] }` on the test, or the `platform` fixture |
 
 </Accordion>
-<Accordion title="Runner and tooling">
+<Accordion title="Assertions and runner">
 
-| Appium (WebdriverIO) | e2e |
+| Appium | e2e |
 | --- | --- |
+| `toBeDisplayed()`, `not.toBeDisplayed()` | `toBeVisible()`, `toBeHidden()` |
+| `toExist()`, `toBeElementsArrayOfSize(n)` | `toBeAttached()`, `toHaveCount(n)` |
+| `toHaveText(t)`, `toHaveText(t, { containing: true })` | `toHaveText(t)`, `toContainText(t)` |
+| `toHaveValue`, `toBeEnabled`, `toBeDisabled`, `toBeSelected`, `toBeChecked` | The same |
+| `@wdio/visual-service` screen comparison | `await expect(screen).toHaveScreenshot('name.png')`, see [Visual comparison](/visual-testing) |
+| `remote()`, `deleteSession()` | Nothing to call. The runner opens and closes one device session per worker |
 | `specs` in `wdio.conf.ts` | `tests`, default `tests/**/*.e2e.ts` |
 | `specFileRetries`, Mocha `retries` | `retries` in the config, or `{ retries }` on a test |
 | Mocha `--grep`, tags in titles | `--grep`, or `{ tags }` on a test and `--tag` |
 | `before`, `beforeEach` hooks | `beforeAll`, `beforeEach` |
-| JUnit, Allure, spec reporters | `--reporter list,junit` writes `.e2e/junit.xml`; `markdown` writes a summary page |
-| Appium Inspector | `screen.debug()`, or `npx e2e mcp` for a coding agent's live session, see [MCP server](/mcp-server) |
+| JUnit and spec reporters | `--reporter list,junit`, which writes `.e2e/junit.xml` |
+| An HTML report | [`htmlReporter()`](/reference/reporters#htmlreporter) from `@e2e-dev/html-reporter` |
 
 </Accordion>
 </AccordionGroup>
 
 ## Permissions and deep links
 
-Appium grants permissions through capabilities or `mobile:` commands, and
-opens links through `driver.url()`:
+Set a permission before `app.open()`, since a change stops a running app on
+iOS. Permissions every test needs go in `app.permissions`.
 
 ```js title="Appium (WebdriverIO)"
 await driver.execute('mobile: setPermission', {
@@ -326,15 +257,10 @@ test('opens an order from a link', async ({ app, device, screen }) => {
 });
 ```
 
-Set a permission before `app.open()`: a change terminates a running app on
-iOS. Permissions every test needs go in `app.permissions`, see
-[Launch arguments and permissions](/mobile#launch-arguments-and-permissions).
-
 ## Run in CI
 
-An Appium job starts the server with `appium &`, then the client with
-`npx wdio run wdio.conf.ts`. An e2e job has no server. It installs the build
-and runs the suite:
+With no server to start, an e2e job installs the build and runs the suite.
+Each platform needs its own job, see [Mobile jobs](/ci#mobile-jobs).
 
 <CodeGroup>
 ```bash npm
@@ -353,35 +279,90 @@ bunx e2e run --target ios --reporter list,junit
 ```
 </CodeGroup>
 
-Each platform needs its own job: iOS on macOS, Android on Linux with KVM.
-[Mobile jobs](/ci#mobile-jobs) has the full setup.
+## What e2e doesn't have yet
 
-## Migration checklist
+Planned rows are on the roadmap, and Not yet rows have no date. Not planned
+rows are left out on purpose. A call through [`unstable_raw`](/reference/mobile#unstable_raw)
+is not a step, so it skips the report and secret redaction.
 
-1. Install e2e beside the app, or in an `e2e/` folder for a Java or Python
-   suite. Run `npx e2e doctor`.
-2. Port the capabilities to one target per platform.
-3. Rewrite one flaky test. Replace XPath with test ids, labels, and roles,
-   and add an id where the app has none.
-4. Run it with `npx e2e run <file>` on each target until it passes.
-5. Add the e2e job to CI beside the Appium job.
-6. Delete the Appium test, and repeat. After the last one, remove the Appium
-   server and drivers from CI.
+### Planned
 
-## What has no direct equivalent
+<AccordionGroup>
+<Accordion title="Capabilities and devices">
 
-The tables above mark single commands. These gaps cut across a whole suite:
+| Appium | Use today |
+| --- | --- |
+| `appium:autoGrantPermissions`, Android permissions off the list, iOS location `always` | List each permission in `app.permissions`, or run `adb shell pm grant` before the run. For iOS location `always`, tap the prompt's button |
+| Device settings and alerts on a `browserstack()` or `testmu()` device | Tap the prompt as UI. Run those tests on a local device |
+| `bstack:options.local`, `lt:options.tunnel` | Point the app at a backend the hosted device can reach |
+| `appium:appActivity`, `appWaitActivity`, `startActivity()` | `device.openLink(url)`, or `client.apps.open` through [`unstable_raw`](/reference/mobile#unstable_raw) |
+| `appium:processArguments.env` | Pass a launch argument and read it in the app |
+| `appium:language`, `appium:locale` on a local device | On iOS, `app.launchArguments: ['-AppleLanguages', '(fr)', '-AppleLocale', 'fr_FR']`, see [Run the app in another language](/mobile#run-the-app-in-another-language). On Android, set the device language before the run |
+| `appium:disableWindowAnimation`, `reduceMotion` | On Android, `client.settings.update` through [`unstable_raw`](/reference/mobile#unstable_raw) |
 
-- **Webview contexts.** Not yet. There is no `getContexts` or
-  `switchContext`, and no script runs in a webview.
-- **Device shell and files.** Not yet. No `mobile: shell`, `pushFile`,
-  `pullFile`, `startActivity`, or performance data. For what
-  agent-device supports, `device.unstable_raw` exposes its client. Its calls
-  aren't steps, so they skip the report and secret redaction.
-- **Sauce Labs and other Appium grids.** Not yet. BrowserStack, TestMu AI,
-  Limrun, and [Expo Simulators](/integrations/eas) have providers.
-- **Session reuse.** No equivalent. A device has no `test.setup` or
-  `{ session }`, see [what differs from the web](/mobile#what-differs-from-the-web).
+</Accordion>
+<Accordion title="Elements and gestures">
+
+| Appium | Use today |
+| --- | --- |
+| `.getAttribute()` for a label, id, or class, `.isSelected()`, `.getTagName()` | `toHaveAccessibleName` for a label, `toBeSelected` for the selected state. No read for an id, class, or tag name |
+| `pressKeyCode(code)`, `driver.keys('Backspace')`, `isKeyboardShown()` | `.press()` takes `Enter`, `Space`, or one character. Use `.clear()` and `.fill()` |
+| `driver.getWindowRect()`, `getWindowSize()`, `mobile: deviceInfo` | Swipe by direction, or read `.boundingBox()` of a full-screen element |
+| `UiScrollable` `scrollToEnd()`, `scrollToBeginning()` | Loop `locator.swipe({ direction: 'down' })` until `allTextContents()` stops changing; `'up'` for the beginning |
+| `mobile: selectPickerWheelValue`, date and time pickers, slider values | Swipe the wheel and read `.inputValue()`, or use an `agent.act` goal |
+| `mobile: pinchOpenGesture`, `mobile: pinch`, `mobile: dragGesture` to coordinates, `mobile: dragFromToForDuration` | `client.interactions.pinch` or `.drag` through [`unstable_raw`](/reference/mobile#unstable_raw) |
+
+</Accordion>
+<Accordion title="App, device, and runner">
+
+| Appium | Use today |
+| --- | --- |
+| `driver.getLogs('logcat')`, `'syslog'`, `'crashlog'` | Run `adb logcat` or `xcrun simctl spawn <udid> log stream` from a hook |
+| `driver.removeApp(id)`, `isAppInstalled(id)`, `queryAppState(id)` | `client.apps.uninstall` or `.list` through [`unstable_raw`](/reference/mobile#unstable_raw) |
+| `driver.lock()`, `unlock()`, power and volume buttons | `client.command.hardwareButton` through [`unstable_raw`](/reference/mobile#unstable_raw) |
+| `driver.openNotifications()`, `mobile: pushNotification` | `screen.swipe({ from, to })` from the top edge; `xcrun simctl push` from Node |
+| `driver.pushFile()`, `pullFile()`, `pullFolder()` | `adb push`, `adb pull`, or `xcrun simctl addmedia` from Node; local devices only |
+| `driver.getAlertText()` | `screen.getByRole('alert').textContent()` on iOS, `getByText` on Android |
+| `wdio.conf.ts` hooks such as `onPrepare` and `afterTest` | `afterEach`, a fixture, or a [custom reporter](/reference/reporters#custom-reporters) |
+
+</Accordion>
+</AccordionGroup>
+
+### Not yet
+
+| Appium | Use today |
+| --- | --- |
+| `appium:autoAcceptAlerts`, `appium:autoDismissAlerts` | Set `app.permissions`, or call `device.alert('accept')` |
+| Webview contexts: `getContexts()`, `switchContext()`, CSS selectors, `execute(js)` | Query the webview's accessibility nodes with `getByText` and `getByRole` |
+| Mobile web: `browserName: 'Safari'` or `'Chrome'` | A `web()` target at a [phone viewport](/web#viewports), layout only |
+| `appium:unlockType`, `unlockKey` | Keep the device unlocked |
+| `driver.getPageSource()` as XML | No XML export. `screen.tree()` returns the tree as text, and `client.capture.snapshot()` through [`unstable_raw`](/reference/mobile#unstable_raw) returns its nodes. Keep XML consumers in Appium |
+| `performActions()` with several fingers or waypoints | Single gestures, or `client.interactions.gesture` through [`unstable_raw`](/reference/mobile#unstable_raw) |
+| `mobile: shell`, `getPerformanceData()` | Run `adb` or `simctl` from Node with `device.unstable_raw.deviceId`; local devices only |
+| `mobile: setSimulatedLocation`, `mobile: setAppearance`, `mobile: setPasteboard` on an iPhone | Run those tests on a simulator, see [Physical devices](/mobile#physical-devices) |
+| Other `bstack:options` keys, such as `gpsLocation` and `uploadMedia` | - |
+| `appium:platformVersion` on a local device, a phone's `appium:udid` | Name a simulator or emulator that runs the version. Put the phone's name in `device` |
+| `appium:avd`, `avdArgs`, `isHeadless` | Boot the emulator before the run and name its serial |
+| Tests in Java, Python, Ruby, or C# | e2e tests run in Node. Rewrite them in TypeScript in an `e2e/` folder beside the app |
+
+### Not planned
+
+| Appium | Use instead |
+| --- | --- |
+| XPath | Chain queries (`screen.getByTestId('row').getByText('Delete')`) or use `filter({ has, hasText })`. XPath ties a test to one platform's tree |
+| `-image` selectors, `findImage` | `screen.tapAt({ x, y })`, or an `agent.act` goal |
+| `$(selector)` acting on the first of several matches | `.first()`, see [Rewrite selectors](#rewrite-selectors) |
+| WebDriverAgent capabilities such as `usePrebuiltWDA` | Nothing to set. agent-device builds and signs its own runner |
+| Compound `-ios predicate string` logic, `UiSelector` flags and `fromParent()` | A `getBy*` query with `filter({ has })` or a `RegExp` |
+| Gherkin feature files | One test per scenario. A step can be an `agent.act` goal |
+| Saved sessions, `test.setup` and `{ session }` | Sign in per test or seed the app. A device has no session to save, see [What differs from the web](/mobile#what-differs-from-the-web) |
+| A device grid or hub, other device clouds | A hosted provider, or a `DeviceProvider` you write |
+| `sauce:options` | Write a [`DeviceProvider`](/mobile#hosted-devices) |
+| Appium Inspector | `screen.debug()`, or [`npx e2e mcp`](/mcp-server) for a coding agent's live session |
+| `driver.updateSettings()`, `appium:settings[...]` | `snapshot`, `settle`, and `transition` on [`mobile()`](/reference/mobile#engine) |
+| `.getAttribute('clickable')`, `.isClickable()` | Act on the element. The action waits until it is actionable |
+| A remote Appium server (`hostname`, `port`) | Run e2e on the machine that has the devices |
+| Allure | Feed it `.e2e/junit.xml`, or use `htmlReporter()` |
 
 ## Next
 
