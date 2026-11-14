@@ -323,6 +323,22 @@ export const FIXTURE_PAGES: readonly FixturePage[] = [
     `,
   },
   {
+    name: 'modal dialog a command reopens',
+    html: `
+      <main><button>Page button</button></main>
+      <dialog id="reopened" aria-label="Reopened by a command"><button>Reopened dialog button</button></dialog>
+      <dialog id="between" aria-label="Shown while it was closed"><button id="again" commandfor="reopened" command="show-modal">Back</button></dialog>
+      <script>
+        document.getElementById('reopened').showModal();
+        document.getElementById('reopened').close();
+        document.getElementById('between').showModal();
+        // A show-modal command opens the first dialog again, on top, without calling showModal().
+        document.getElementById('again').click();
+        document.activeElement.blur();
+      </script>
+    `,
+  },
+  {
     name: 'modal dialog nested in a modal dialog',
     html: `
       <dialog id="outer" aria-label="Edit order"><button>Save order</button>
