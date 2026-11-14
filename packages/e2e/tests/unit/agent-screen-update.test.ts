@@ -236,6 +236,127 @@ describe('ScreenPresenter', () => {
   });
 });
 
+describe('ScreenPresenter folds large unchanged subtrees in the full-screen fallback', () => {
+  /** A sidebar of `count` links under a navigation node, ids #n3 and up. */
+  function sidebar(count: number): string[] {
+    return [
+      ' #n2 navigation "Sidebar"',
+      ...Array.from({ length: count }, (_, i) => `  #n${String(i + 3)} link "Item ${String(i + 1)}"`),
+    ];
+  }
+
+  const MAIN_LIST = [
+    ' #n20 main "Order list"',
+    '  #n21 heading "Orders"',
+    '  #n22 button "Order 1"',
+    '  #n23 button "Order 2"',
+  ];
+
+  const MAIN_DETAILS = [
+    ' #n20 main "Order details"',
+    '  #n30 heading "Order 42"',
+    '  #n31 text "Total $12"',
+    '  #n32 text "Placed yesterday"',
+    '  #n33 button "Refund"',
+    '  #n34 button "Ship"',
+    '  #n35 button "Print"',
+    '  #n36 button "Archive"',
+    '  #n37 link "Back to orders"',
+  ];
+
+  function orderScreen(main: readonly string[], sidebarCount: number): string[] {
+    return ['#n1 document "Orders"', ...sidebar(sidebarCount), ...main];
+  }
+
+  it('folds a large unchanged sidebar, and lists the changed main in full', () => {
+    const presenter = new ScreenPresenter();
+    presenter.initial(screen('b1', orderScreen(MAIN_LIST, 12)));
+    const text = presenter.update(screen('b2', orderScreen(MAIN_DETAILS, 12), { path: '/orders' }), { lead: 'Tapped #n22.' });
+    expect(text).toContain('The screen changed substantially since revision b1.');
+    expect(text).toContain('Current screen (revision b2, path /orders, 23 nodes):');
+    expect(text).toContain(' #n2 navigation "Sidebar" (12 nodes inside, unchanged since revision b1)');
+    expect(text).not.toContain('#n3 link "Item 1"');
+    expect(text).not.toContain('#n14 link "Item 12"');
+    expect(text).toContain(' #n30 heading "Order 42"');
+    expect(text).toContain(' #n37 link "Back to orders"');
+  });
+
+  it('keeps a small unchanged subtree listed in full', () => {
+    const presenter = new ScreenPresenter();
+    presenter.initial(screen('b1', orderScreen(MAIN_LIST, 3)));
+    const text = presenter.update(screen('b2', orderScreen(MAIN_DETAILS, 3)), { lead: 'Tapped #n22.' });
+    expect(text).toContain('The screen changed substantially since revision b1.');
+    expect(text).not.toContain('nodes inside, unchanged since revision');
+    expect(text).toContain(' #n3 link "Item 1"');
+    expect(text).toContain(' #n30 heading "Order 42"');
+  });
+
+  it('folds an unchanged group inside a changed sidebar, and lists the changed sibling', () => {
+    const presenter = new ScreenPresenter();
+    const before = [
+      '#n1 document "Orders"',
+      ' #n2 navigation "Sidebar"',
+      '  #n3 list "Sections"',
+      ...Array.from({ length: 12 }, (_, i) => `   #n${String(i + 40)} link "Section ${String(i + 1)}"`),
+      '  #n60 link "Settings"',
+      ...MAIN_LIST,
+    ];
+    presenter.initial(screen('b1', before));
+    const after = before.map((line) => (line.includes('#n60 ') ? '  #n60 link "Settings (2)"' : line));
+    after.splice(after.indexOf(' #n20 main "Order list"'), 4, ...MAIN_DETAILS);
+    const text = presenter.update(screen('b2', after), { lead: 'Tapped #n22.' });
+    expect(text).toContain('The screen changed substantially since revision b1.');
+    expect(text).toContain('  #n3 list "Sections" (12 nodes inside, unchanged since revision b1)');
+    expect(text).not.toContain('#n40 link "Section 1"');
+    expect(text).toContain('  #n60 link "Settings (2)"');
+    expect(text).not.toContain('navigation "Sidebar" (');
+  });
+
+  it('does not fold a subtree that lost a node, even when the rest is unchanged', () => {
+    const presenter = new ScreenPresenter();
+    presenter.initial(screen('b1', orderScreen(MAIN_LIST, 12)));
+    const after = orderScreen(MAIN_DETAILS, 12).filter((line) => !line.includes('#n5 '));
+    const text = presenter.update(screen('b2', after), { lead: 'Tapped #n22.' });
+    expect(text).toContain('The screen changed substantially since revision b1.');
+    expect(text).not.toContain('nodes inside, unchanged since revision');
+    expect(text).toContain(' #n3 link "Item 1"');
+  });
+
+  it('does not fold a subtree holding the focused node', () => {
+    const presenter = new ScreenPresenter();
+    presenter.initial(screen('b1', orderScreen(MAIN_LIST, 12)));
+    const after = orderScreen(MAIN_DETAILS, 12).map((line) =>
+      (line.includes('#n8 ') ? '  #n8 link "Item 6" [focused]' : line),
+    );
+    const text = presenter.update(screen('b2', after), { lead: 'Tapped #n22.' });
+    expect(text).toContain('The screen changed substantially since revision b1.');
+    expect(text).not.toContain('nodes inside, unchanged since revision');
+    expect(text).toContain('#n8 link "Item 6" [focused]');
+  });
+
+  it('does not fold on a truncated listing, whose cut nodes are unknown', () => {
+    const presenter = new ScreenPresenter();
+    presenter.initial(screen('b1', orderScreen(MAIN_LIST, 12)));
+    // Twelve more added nodes, so the change still trips the whole-screen fallback
+    // even though a truncated listing reports no removals.
+    const extra = Array.from({ length: 12 }, (_, i) => `  #n${String(i + 40)} button "Extra ${String(i + 1)}"`);
+    const after = [...orderScreen(MAIN_DETAILS, 12), ...extra];
+    const text = presenter.update(screen('b2', after, { truncated: true }), { lead: 'Tapped #n22.' });
+    expect(text).toContain('The screen changed substantially since revision b1.');
+    expect(text).not.toContain('nodes inside, unchanged since revision');
+    expect(text).toContain(' #n3 link "Item 1"');
+  });
+
+  it('sends the first screen whole, with no folding', () => {
+    const presenter = new ScreenPresenter();
+    const text = presenter.initial(screen('b1', orderScreen(MAIN_LIST, 12)));
+    expect(text).toContain('Current screen (revision b1, 18 nodes):');
+    expect(text).not.toContain('nodes inside, unchanged since revision');
+    expect(text).toContain(' #n3 link "Item 1"');
+    expect(text).toContain(' #n14 link "Item 12"');
+  });
+});
+
 describe('ScreenPresenter and the on-screen keyboard', () => {
   const KEYBOARD = [
     ' #n20 keyboard "Padding-Left"',

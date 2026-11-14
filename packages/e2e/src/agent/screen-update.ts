@@ -6,7 +6,9 @@
  * the lines that appeared, the lines that changed, the lines that went away.
  * Node ids are stable for as long as an element exists, so a line the model
  * saw earlier still names the same element, and a diff is a complete update
- * rather than a hint. A screen that changed mostly goes out whole again.
+ * rather than a hint. A screen that changed mostly goes out whole again,
+ * with large subtrees the model already holds folded to one line each, so a
+ * persistent sidebar is not repeated on every page transition.
  *
  * A screen may carry its pixels too. The presenter is where a screenshot
  * joins the text: it notes the image's size and coordinate space under the
@@ -29,6 +31,9 @@ const MAX_DIFF_LINES = 60;
 /** A diff touching more than this share of the new screen goes out whole. */
 const MAX_DIFF_SHARE = 0.5;
 
+/** A subtree folds only when it holds at least this many nodes below its root. */
+const MIN_FOLD_NODES = 10;
+
 /** Every full screen is introduced by this phrase; the transcript elision looks for it. */
 export const FULL_SCREEN_PATTERN = /Current screen \(revision /;
 
@@ -38,6 +43,8 @@ interface ShownScreen {
   /** Node lines in document order, without indentation or focus; the truncation marker is not a node. */
   readonly order: readonly string[];
   readonly byId: ReadonlyMap<string, string>;
+  /** Leading spaces of each node line, so a subtree can be found in `order`. */
+  readonly indent: ReadonlyMap<string, number>;
   readonly nodes: number;
   /** The listing is cut short (byte limit or engine cap): nodes beyond it exist but are not listed. */
   readonly truncated: boolean;
@@ -165,7 +172,7 @@ export class ScreenPresenter {
       return `${lead}${renderUnchanged(previous.revision, observation, expectChange, pixels)}${closed}`;
     }
     if (changes >= MAX_DIFF_LINES || changes > MAX_DIFF_SHARE * next.order.length) {
-      return `${lead}The screen changed substantially since revision ${previous.revision}. ${renderFull(observation)}${closed}`;
+      return `${lead}The screen changed substantially since revision ${previous.revision}. ${renderFull(observation, previous)}${closed}`;
     }
     const assurance = observation.truncated
       ? 'The screen listing is truncated: nodes past the cut are not listed and none is reported removed; every listed node keeps the id you have.'
@@ -266,13 +273,118 @@ function describeCounts(diff: readonly string[]): string {
   return counts === '' ? 'no listed node changed' : counts;
 }
 
-/** One full screen, headed so the elision can find it later. */
-function renderFull(observation: ExecutorObservation): string {
+/** One full screen, headed so the elision can find it later. A screen that
+ * follows one the model holds folds its large unchanged subtrees: the root
+ * line stays, with the count of the nodes inside and the revision they were
+ * last seen at, and the nodes inside are left out. The first screen of a
+ * step has nothing to fold against, and a truncated listing never folds,
+ * since the nodes past the cut are unknown. */
+function renderFull(observation: ExecutorObservation, previous?: ShownScreen): string {
   if (observation.treeUnavailable === true) {
     return `Current screen (revision ${observation.revision}${describeLocation(observation)}, semantic capture unavailable):\n${observation.text}`;
   }
   const nodes = indexScreen(observation).nodes;
-  return `Current screen (revision ${observation.revision}${describeLocation(observation)}, ${String(nodes)} nodes):\n${observation.text}`;
+  const text = previous !== undefined && !observation.truncated
+    ? foldUnchangedSubtrees(observation, previous)
+    : observation.text;
+  return `Current screen (revision ${observation.revision}${describeLocation(observation)}, ${String(nodes)} nodes):\n${text}`;
+}
+
+/** A node line of a screen listing, with its depth and id. */
+interface TreeEntry {
+  readonly raw: string;
+  readonly indent: number;
+  readonly id: string | undefined;
+}
+
+/** Leading spaces of one listing line: its depth in the tree. */
+function indentOf(line: string): number {
+  return line.length - line.trimStart().length;
+}
+
+/** True when the line's state bracket names the focused node. */
+function hasFocus(line: string): boolean {
+  const states = / \[([^\]]*)\]$/.exec(line)?.[1];
+  return states !== undefined && states.split(' ').includes('focused');
+}
+
+/**
+ * The screen listing with every large unchanged subtree replaced by its root
+ * line plus a summary. A subtree folds only when it is not the document
+ * root, holds enough nodes to be worth the hiding, carries no focused node,
+ * and reads exactly as the model last saw it, with the same node ids: a node
+ * added, changed, or removed inside it keeps the whole subtree listed, and
+ * its children are then considered on their own.
+ */
+function foldUnchangedSubtrees(observation: ExecutorObservation, previous: ShownScreen): string {
+  const entries: TreeEntry[] = observation.text.split('\n').map((raw) => ({
+    raw,
+    indent: indentOf(raw),
+    id: lineId(raw),
+  }));
+  const out: string[] = [];
+  let index = 0;
+  while (index < entries.length) {
+    const entry = entries[index]!;
+    if (entry.id === undefined) {
+      out.push(entry.raw);
+      index += 1;
+      continue;
+    }
+    let end = index + 1;
+    while (end < entries.length) {
+      const next = entries[end]!;
+      if (next.id === undefined || next.indent <= entry.indent) break;
+      end += 1;
+    }
+    const inside = end - index - 1;
+    if (index > 0 && entry.indent > 0 && inside >= MIN_FOLD_NODES && subtreeUnchanged(entries, index, end, previous)) {
+      out.push(`${entry.raw} (${String(inside)} nodes inside, unchanged since revision ${previous.revision})`);
+      index = end;
+    } else {
+      out.push(entry.raw);
+      index += 1;
+    }
+  }
+  return out.join('\n');
+}
+
+/**
+ * True when every node line in the span reads as the model last saw it and
+ * the span holds the same node ids it held then. Focus alone never counts
+ * as a change, but a subtree holding the focused node never folds: the fold
+ * would hide where focus is.
+ */
+function subtreeUnchanged(entries: readonly TreeEntry[], start: number, end: number, previous: ShownScreen): boolean {
+  const current = new Set<string>();
+  for (let index = start; index < end; index += 1) {
+    const entry = entries[index]!;
+    if (entry.id === undefined || hasFocus(entry.raw)) return false;
+    if (previous.byId.get(entry.id) !== withoutFocus(entry.raw).trimStart()) return false;
+    current.add(entry.id);
+  }
+  const before = previousSubtreeIds(previous, entries[start]!.id!);
+  if (before === undefined || before.size !== current.size) return false;
+  for (const id of current) if (!before.has(id)) return false;
+  return true;
+}
+
+/** The node ids of the subtree rooted at `rootId` in the shown screen. */
+function previousSubtreeIds(previous: ShownScreen, rootId: string): Set<string> | undefined {
+  const rootIndex = previous.order.findIndex((line) => lineId(line) === rootId);
+  if (rootIndex === -1) return undefined;
+  const rootIndent = previous.indent.get(rootId);
+  if (rootIndent === undefined) return undefined;
+  const ids = new Set<string>();
+  for (let index = rootIndex; index < previous.order.length; index += 1) {
+    const id = lineId(previous.order[index]!);
+    if (id === undefined) return undefined;
+    const indent = previous.indent.get(id);
+    if (indent === undefined) return undefined;
+    if (index > rootIndex && indent <= rootIndent) break;
+    ids.add(id);
+  }
+  return ids;
 }
 
 /**
@@ -363,6 +475,7 @@ function withoutFocus(line: string): string {
 function indexScreen(observation: ExecutorObservation): ShownScreen {
   const order: string[] = [];
   const byId = new Map<string, string>();
+  const indent = new Map<string, number>();
   for (const raw of observation.text.split('\n')) {
     const id = lineId(raw);
     if (id === undefined) continue;
@@ -371,11 +484,13 @@ function indexScreen(observation: ExecutorObservation): ShownScreen {
     const line = withoutFocus(raw).trimStart();
     order.push(line);
     byId.set(id, line);
+    indent.set(id, indentOf(raw));
   }
   return {
     revision: observation.revision,
     order,
     byId,
+    indent,
     nodes: byId.size,
     truncated: observation.truncated,
     keyboard: order.some((line) => KEYBOARD_LINE.test(line)),
