@@ -81,7 +81,8 @@ const EXAMPLE = "pass an AI SDK decision model, e.g. decisionFilter({ model: gat
  * runs. A test the model does not judge runs,
  * and the note says why. It also scores every test it is handed, so the run
  * starts the likeliest to fail first: 1 for a test the change touches, the
- * model's probability for one it judged, and 0.5 for one it did not. When
+ * model's probability for one it judged, and `unjudgedRelevance` (0.5 by
+ * default) for one it did not. When
  * every call fails, as without a key, or git or a file read fails, the filter
  * throws, so the run warns and runs every test; the error carries the scores
  * the change alone gives, so the tests it touches still start first.
@@ -93,17 +94,26 @@ export function decisionFilter(options: DecisionFilterOptions): TestFilter {
   requireDecide('decisionFilter');
   checkModel(options.model, { caller: 'decisionFilter', questionType: 'boolean', example: EXAMPLE });
   checkProviderOptions(options.providerOptions, 'decisionFilter');
+  checkUnjudgedRelevance(options.unjudgedRelevance);
   const { model, providerOptions } = options;
   const settings: DecisionFilterOptions = { model, ...(providerOptions === undefined ? {} : { providerOptions }) };
+  const unjudged = options.unjudgedRelevance ?? UNJUDGED_RELEVANCE;
   return {
     name: 'decision',
     filter: (tests, context) =>
-      judge(tests, context, settings).catch((error: unknown) => {
+      judge(tests, context, settings, unjudged).catch((error: unknown) => {
         // An abort ends with its reason, not the AbortError of a git or file read it cut short.
         context.signal.throwIfAborted();
-        throw withRelevance(error, unaskedRelevance(tests, touchedBy(context)));
+        throw withRelevance(error, unaskedRelevance(tests, touchedBy(context), unjudged));
       }),
   };
+}
+/** Fails an `unjudgedRelevance` outside 0 to 1, or not a number, at config load, before any call is made. */
+function checkUnjudgedRelevance(value: number | undefined): void {
+  if (value === undefined) return;
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 1) {
+    throw new ConfigurationError('INVALID_CONFIG', `decisionFilter({ unjudgedRelevance }) must be a number from 0 to 1; got ${String(value)}`);
+  }
 }
 /** One question to the model, redacted: whether the change can affect a test, or break a setup file and the session it saves. */
 type Question = { readonly kind: 'test'; readonly test: TestFilterCandidate; readonly text: string } | { readonly kind: 'setup'; readonly file: string; readonly text: string };
@@ -142,19 +152,19 @@ interface Answers {
  * it and its setup are unlikely to be affected. A failed call leaves its
  * tests in, and after `MAX_FAILURES` no more calls are made. Every test it
  * is handed is scored for the run's order, however it ends: 1 for a test the
- * change touches, the model's answer for one it judged, 0.5 for one it did
- * not. The note names
+ * change touches, the model's answer for one it judged, `unjudgedScore` for
+ * one it did not. The note names
  * the tests that ran without asking, what the model did not judge, and
  * what the calls spent. Throws when git or a file read fails, the first
  * failure's first line when calls fail and none answers, and on an abort;
  * `decisionFilter` puts the scores of the change alone on any throw but the
  * abort.
  */
-async function judge(given: readonly TestFilterCandidate[], context: TestFilterContext, options: DecisionFilterOptions): Promise<TestFilterResult> {
+async function judge(given: readonly TestFilterCandidate[], context: TestFilterContext, options: DecisionFilterOptions, unjudgedScore: number): Promise<TestFilterResult> {
   const { changes, signal, log, redact } = context;
   const touched = touchedBy(context);
   const tests = given.filter((test) => !touched(test.file) && !touched(test.setupFile));
-  const relevance = unaskedRelevance(given, touched);
+  const relevance = unaskedRelevance(given, touched, unjudgedScore);
   const everything = runAllFile(context);
   if (everything !== undefined) return result({}, relevance, `${everything} changed, so the decision filter left nothing out`);
   const unasked = tests.length === given.length ? undefined : `${counted(given.length - tests.length, 'test')} ran without asking: the test file, setup file, or stored screenshots changed`;
@@ -169,13 +179,13 @@ async function judge(given: readonly TestFilterCandidate[], context: TestFilterC
   const { batches, tooLarge } = pack(await subjects(tests, context), Buffer.byteLength(diff));
   const { answers, spend, failures } = await askAll(batches, diff, options, signal);
   if (spend.calls === 0 && failures.length > 0) throw new Error(firstLine(failures[0]), { cause: failures[0] });
-  const verdict = verdicts(tests, answers);
+  const verdict = verdicts(tests, answers, unjudgedScore);
   const unjudged = verdict.missed.length === 0 ? undefined : `${modelId} did not judge ${testsIn(verdict.missed)}: ${unjudgedBecause(failures, tooLarge)}`;
   return answered(verdict.exclude, { ...relevance, ...verdict.relevance }, [unasked, unjudged], spend);
 }
-/** How likely each of `given` is to fail before the model says anything: `TOUCHED_RELEVANCE` for a test the change touches, `UNJUDGED_RELEVANCE` for the rest. */
-function unaskedRelevance(given: readonly TestFilterCandidate[], touched: (file: string | undefined) => boolean): Record<string, number> {
-  return Object.fromEntries(given.map((test) => [test.id, touched(test.file) || touched(test.setupFile) ? TOUCHED_RELEVANCE : UNJUDGED_RELEVANCE]));
+/** How likely each of `given` is to fail before the model says anything: `TOUCHED_RELEVANCE` for a test the change touches, `unjudged` for the rest. */
+function unaskedRelevance(given: readonly TestFilterCandidate[], touched: (file: string | undefined) => boolean, unjudged: number): Record<string, number> {
+  return Object.fromEntries(given.map((test) => [test.id, touched(test.file) || touched(test.setupFile) ? TOUCHED_RELEVANCE : unjudged]));
 }
 /**
  * `error` with `relevance` on it, which the run reads off a filter that
@@ -190,12 +200,13 @@ function withRelevance(error: unknown, relevance: Record<string, number>): unkno
 /**
  * The tests to leave out, each with its reason; how likely each test is to
  * fail, the higher of the model's two answers, with a missing one counting as
- * `UNJUDGED_RELEVANCE`; and the tests the model did not answer for, itself
+ * `unjudged`; and the tests the model did not answer for, itself
  * or its setup.
  */
 function verdicts(
   tests: readonly TestFilterCandidate[],
   answers: Answers,
+  unjudged: number,
 ): { readonly exclude: Record<string, string>; readonly relevance: Record<string, number>; readonly missed: readonly TestFilterCandidate[] } {
   const exclude: Record<string, string> = {};
   const relevance: Record<string, number> = {};
@@ -205,7 +216,7 @@ function verdicts(
     const setup = test.setupFile === undefined ? 0 : answers.setups.get(test.setupFile);
     if (own === undefined || setup === undefined) missed.push(test);
     else if (Math.max(own, setup) < MIN_PROBABILITY) exclude[test.id] = `${Math.round(Math.max(own, setup) * 100)}% likely affected`;
-    relevance[test.id] = Math.max(own ?? UNJUDGED_RELEVANCE, setup ?? UNJUDGED_RELEVANCE);
+    relevance[test.id] = Math.max(own ?? unjudged, setup ?? unjudged);
   }
   return { exclude, relevance, missed };
 }
