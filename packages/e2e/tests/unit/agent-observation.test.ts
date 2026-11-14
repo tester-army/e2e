@@ -1,14 +1,14 @@
 import { assert, describe, expect, it, vi } from 'vitest';
-import type { Observation, SemanticNode } from '../../src/engine/surface.ts';
-import { changeShape, interactiveNodeCount, isTransitionalObservation, observationShape, prepareObservation, projectTree, redactNode, redactNodesAgain, settleObservation } from '../../src/agent/observation.ts';
-import { OBSERVED_NAME_LIMIT, OBSERVED_TEXT_LIMIT } from '../../src/engine/contract.ts';
-import { SecretLedger } from '../../src/internal/redact.ts';
-import { describeDelta } from '../../src/cache/anchors.ts';
-import { ObservationFeed } from '../../src/agent/observation-feed.ts';
-import { OperationQueue } from '../../src/agent/operation-queue.ts';
-import type { AgentContext } from '../../src/agent/invocation.ts';
-import type { StepAccounting } from '../../src/agent/step-accounting.ts';
-import { StepRecorder } from '../../src/run/steps.ts';
+import type { Observation, SemanticNode } from 'e2e-core/lib/engine/surface';
+import { changeShape, interactiveNodeCount, isTransitionalObservation, observationShape, prepareObservation, projectTree, redactNode, redactNodesAgain, settleObservation } from 'e2e-core/lib/agent/observation';
+import { OBSERVED_NAME_LIMIT, OBSERVED_TEXT_LIMIT } from 'e2e-core/lib/engine/contract';
+import { SecretLedger } from 'e2e-core/lib/internal/redact';
+import { describeDelta } from 'e2e-core/lib/cache/anchors';
+import { ObservationFeed } from 'e2e-core/lib/agent/observation-feed';
+import { OperationQueue } from 'e2e-core/lib/agent/operation-queue';
+import type { AgentContext } from 'e2e-core/lib/agent/invocation';
+import type { StepAccounting } from 'e2e-core/lib/agent/step-accounting';
+import { StepRecorder } from 'e2e-core/lib/run/steps';
 
 function node(id: string, extra: Partial<SemanticNode> = {}): SemanticNode {
   return { ref: { id, revision: 'r1' }, ...extra };

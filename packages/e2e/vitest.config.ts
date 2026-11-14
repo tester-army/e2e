@@ -38,6 +38,9 @@ export default defineConfig({
         test: {
           name: 'integration',
           include: ['tests/integration/**/*.test.ts'],
+          // e2e-core's too, so the runner and a test reach one copy of its module state.
+          // Unit tests load it through Vite's runner instead, where `vi.mock` reaches its modules.
+          server: { deps: { external: [/[\\/]packages[\\/](?:core|e2e|web|mobile|github|kernel|eas)[\\/]dist[\\/]/] } },
           testTimeout: 30_000,
           hookTimeout: 30_000,
           pool: 'forks',

@@ -10,21 +10,21 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { AppProcesses } from '../../src/run/managed-process.ts';
-import type { ProcessPool } from '../../src/run/process-pool.ts';
-import type { Target } from '../../src/types.ts';
+import type { AppProcesses } from 'e2e-core/lib/run/managed-process';
+import type { ProcessPool } from 'e2e-core/lib/run/process-pool';
+import type { Target } from 'e2e-core/lib/types';
 import { createFakeEngine } from '../helpers/fake-engine.ts';
 import { freePort } from '../helpers/free-port.ts';
 import { startupLog, writeStartupScripts } from '../helpers/startup-scripts.ts';
 
-const provisionModule = new URL('../../dist/run/provision.js', import.meta.url).href;
-const { startDeclaredProcesses } = (await import(provisionModule)) as typeof import('../../src/run/provision.ts');
-const poolModule = new URL('../../dist/run/process-pool.js', import.meta.url).href;
-const { SharedAppProcesses } = (await import(poolModule)) as typeof import('../../src/run/process-pool.ts');
+const provisionModule = 'e2e-core/lib/run/provision';
+const { startDeclaredProcesses } = (await import(provisionModule)) as typeof import('e2e-core/lib/run/provision');
+const poolModule = 'e2e-core/lib/run/process-pool';
+const { SharedAppProcesses } = (await import(poolModule)) as typeof import('e2e-core/lib/run/process-pool');
 const resolveModule = new URL('../../dist/config/resolve-run.js', import.meta.url).href;
 const { resolveConfig } = (await import(resolveModule)) as typeof import('../../src/config/resolve-run.ts');
-const debugModule = new URL('../../dist/internal/debug.js', import.meta.url).href;
-const { DebugTrace } = (await import(debugModule)) as typeof import('../../src/internal/debug.ts');
+const debugModule = 'e2e-core/lib/internal/debug';
+const { DebugTrace } = (await import(debugModule)) as typeof import('e2e-core/lib/internal/debug');
 
 /** How long a test waits for the app process to start: vitest's 1 s default is too short on a loaded machine. */
 const PROCESS_POLL = { timeout: 5_000 };

@@ -9,13 +9,13 @@ import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import type { CollectedTest } from '../../src/collect/collect.ts';
 import type { ResolvedTestOptions, TestTargetPair } from '../../src/collect/select.ts';
-import type { ResolvedTarget } from '../../src/config/resolve.ts';
-import { createEngineSession } from '../../src/engine/session.ts';
-import { classifyError, serializeError } from '../../src/internal/errors.ts';
+import type { ResolvedTarget } from 'e2e-core/lib/config/resolve';
+import { createEngineSession } from 'e2e-core/lib/engine/session';
+import { classifyError, serializeError } from 'e2e-core/lib/internal/errors';
 import { buildReport } from '../../src/report/build.ts';
 import { outcome } from '../../src/report/outcome.ts';
 import { RealmManager } from '../../src/run/realm.ts';
-import type { AttemptRecord, ResultRecord, SerialAttemptRecord, SerialGroupRecord } from '../../src/run/records.ts';
+import type { AttemptRecord, ResultRecord, SerialAttemptRecord, SerialGroupRecord } from 'e2e-core/lib/run/records';
 import { runSerialUnit, type SerialHost } from '../../src/run/serial.ts';
 
 const OPTIONS: ResolvedTestOptions = {

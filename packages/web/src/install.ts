@@ -5,7 +5,7 @@ import { existsSync, readdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
-import { EngineError, InfrastructureError, type EngineDoctorCheck } from 'e2e/engine';
+import { EngineError, InfrastructureError, type EngineDoctorCheck } from 'e2e-core/engine';
 import { browserType, type BrowserName } from './browser-connection.ts';
 
 /** Whether `chromium_headless_shell-<revision>` under `browsersPath` finished installing and holds its executable. */

@@ -9,8 +9,8 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import os from 'node:os';
-import { isCiMode } from '../config/resolve.ts';
-import { envValue } from '../internal/env.ts';
+import { isCiMode } from 'e2e-core/lib/config/resolve';
+import { envValue } from 'e2e-core/lib/internal/env';
 import { detectPackageManager } from '../internal/package-manager.ts';
 import { plainToken } from './token.ts';
 

@@ -1,7 +1,7 @@
 /** A model the provider refuses stops the run once, naming the model, from whichever tier met it first, and once only across two workers. */
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { StepExecutor } from '../../src/agent/executor.ts';
+import type { StepExecutor } from 'e2e-core/lib/agent/executor';
 import { explore } from '../../src/explore/index.ts';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 import { createProject, runExisting, runProjectWithConfigFile, type FixtureProject } from '../helpers/run-project.ts';

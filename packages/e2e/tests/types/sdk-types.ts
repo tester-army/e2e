@@ -553,7 +553,7 @@ void screen.getByLabel('Plan').selectOption({ value: 'pro', index: 1 });
 screen.getByRole('button', { hidden: true });
 
 // Coordinate input: a viewport point on screen, a node-relative one on a locator.
-declare const point: import('../../src/types.ts').Point;
+declare const point: import('../../src/index.ts').Point;
 void (executorContext.actions.tapAt(point) satisfies Promise<PointTapResult>);
 void (executorContext.actions.hitTest(point) satisfies Promise<PointHit>);
 void (executorContext.actions.dragAt(point, point) satisfies Promise<PointDragResult>);

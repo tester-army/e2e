@@ -11,7 +11,7 @@
  */
 
 import type { Browser, Page } from 'playwright-core';
-import type { SemanticNode } from 'e2e/engine';
+import type { SemanticNode } from 'e2e-core/engine';
 import { CLOSED_SHADOW_ROOTS_INIT_SCRIPT } from '../../src/closed-shadow.ts';
 import { captureDocument } from '../../src/observation.ts';
 import { Published } from '../helpers/published.ts';

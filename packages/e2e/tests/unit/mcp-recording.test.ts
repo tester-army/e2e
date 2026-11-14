@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { OperationContext, VideoSegment } from '../../src/engine/surface.ts';
+import type { OperationContext, VideoSegment } from 'e2e-core/lib/engine/surface';
 import { describeRecording, SessionRecorder } from '../../src/mcp/recording.ts';
 
 describe('SessionRecorder', () => {

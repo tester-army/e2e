@@ -1,9 +1,9 @@
 /** A target only a minted test id identifies: counted among the nodes of its shape, and re-found by that shape once its own id is gone. */
 
 import { describe, expect, it } from 'vitest';
-import { describePosition, relocateDescriptor } from '../../src/cache/relocate.ts';
-import type { SemanticNode } from '../../src/engine/surface.ts';
-import type { RedactedNode } from '../../src/agent/observation.ts';
+import { describePosition, relocateDescriptor } from 'e2e-core/lib/cache/relocate';
+import type { SemanticNode } from 'e2e-core/lib/engine/surface';
+import type { RedactedNode } from 'e2e-core/lib/agent/observation';
 import { redactedNodes } from '../helpers/redacted.ts';
 
 const A = 'rf__node-3f9c2a1b-7d4e-4c1a-9b2e-0a1b2c3d4e5f';

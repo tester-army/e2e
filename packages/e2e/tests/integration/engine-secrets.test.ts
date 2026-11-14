@@ -17,7 +17,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { web } from '@e2e-dev/web';
 import type { E2EConfig } from '../../src/index.ts';
 import type { RunOutcome } from '../../src/run/runner.ts';
-import { secrets } from '../../src/secrets.ts';
+import { secrets } from 'e2e-core/lib/secrets';
 import { createFakeEngine, FAKE_APP, FAKE_APP_URL } from '../helpers/fake-engine.ts';
 import { fakeCalls, installFakeModel, judgment } from '../helpers/fake-model.ts';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';

@@ -11,11 +11,11 @@
 import { mkdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import picocolors from 'picocolors';
-import { isCiMode } from '../config/resolve.ts';
-import { writeFileAtomicSync } from '../internal/atomic-write.ts';
-import { envFlag } from '../internal/env.ts';
+import { isCiMode } from 'e2e-core/lib/config/resolve';
+import { writeFileAtomicSync } from 'e2e-core/lib/internal/atomic-write';
+import { envFlag } from 'e2e-core/lib/internal/env';
 import { detectWorkspacePackageManager, execCommand, readPackageManifest } from '../internal/package-manager.ts';
-import { isPlainObject } from '../internal/options.ts';
+import { isPlainObject } from 'e2e-core/lib/internal/options';
 import { isRelease, latestRelease, olderThan } from '../internal/release.ts';
 import { telemetryConfigDir } from '../telemetry/store.ts';
 

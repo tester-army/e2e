@@ -5,12 +5,12 @@ import path from 'node:path';
 import { chmod, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { describe, expect, it } from 'vitest';
-import { createAgentCacheContext, settleStagedTraces } from '../../src/cache/context.ts';
-import { FileCacheStore } from '../../src/cache/store.ts';
-import { buildTraceEntry } from '../../src/cache/trace.ts';
-import { readTraceEntry } from '../../src/cache/trace-read.ts';
+import { createAgentCacheContext, settleStagedTraces } from 'e2e-core/lib/cache/context';
+import { FileCacheStore } from 'e2e-core/lib/cache/store';
+import { buildTraceEntry } from 'e2e-core/lib/cache/trace';
+import { readTraceEntry } from 'e2e-core/lib/cache/trace-read';
 import { resolveConfig } from '../../src/config/resolve-run.ts';
-import type { ActionTrace, CacheStore } from '../../src/types.ts';
+import type { ActionTrace, CacheStore } from 'e2e-core/lib/types';
 import type { E2EConfig } from '../../src/run-types.ts';
 
 const ROOT = path.resolve('/tmp/e2e-cache-config-tests');

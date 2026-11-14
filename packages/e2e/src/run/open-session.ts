@@ -1,16 +1,16 @@
 /** Hosted test runners keep a worker alive while opening isolated per-test attempts. */
 
 import { discoverConfig, loadConfigModule, missingConfigError } from '../config/load.ts';
-import { type ResolvedConfig } from '../config/resolve.ts';
+import { type ResolvedConfig } from 'e2e-core/lib/config/resolve';
 import { resolveConfig } from '../config/resolve-run.ts';
-import { classifyError, ConfigurationError, E2EError, serializeError, type SerializedError } from '../internal/errors.ts';
-import type { TestFixtures } from '../types.ts';
+import { classifyError, ConfigurationError, E2EError, serializeError, type SerializedError } from 'e2e-core/lib/internal/errors';
+import type { TestFixtures } from 'e2e-core/lib/types';
 import type { E2EConfig, Report } from '../run-types.ts';
 import { allocateTargetPorts } from './app-ports.ts';
-import { processSecrets, registerStaticSecrets } from './secrecy.ts';
+import { processSecrets, registerStaticSecrets } from 'e2e-core/lib/run/secrecy';
 import { selectTarget } from './select-target.ts';
 import { openStandaloneHost } from './standalone-kinds.ts';
-import type { StepProgress, StepRecord } from './steps.ts';
+import type { StepProgress, StepRecord } from 'e2e-core/lib/run/steps';
 import { reserveHostedRun } from './public-ownership.ts';
 
 export interface OpenHostOptions {

@@ -5,7 +5,7 @@
 
 import type { RunEvent, RunExitCode, RunStatus } from './run/events.ts';
 import type { Report1Document } from './report/build.ts';
-import type { ProjectConfig } from './types.ts';
+import type { ProjectConfig } from 'e2e-core/lib/types';
 
 /** The reporters the runner ships, named by id; each is a `Reporter` on the same contract. */
 export type BuiltinReporter = 'list' | 'json' | 'junit' | 'markdown';

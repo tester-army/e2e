@@ -10,7 +10,7 @@
 import { existsSync, lstatSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import type { PackageManager } from '../../internal/package-manager.ts';
-import { realpathOfExisting } from '../../internal/paths.ts';
+import { realpathOfExisting } from 'e2e-core/lib/internal/paths';
 import { readCodexConfig, updateCodexConfig } from './codex-config.ts';
 
 interface McpLocation {

@@ -8,13 +8,13 @@
  * hard-stops the same way; only the brain is the host instead of a model.
  */
 
-import type { ResolvedAgentConfig } from '../config/agent.ts';
-import { ConfigurationError } from '../internal/errors.ts';
-import type { AgentParams } from '../types.ts';
-import { dispatchAgentStep, type DispatchAgent } from './act.ts';
-import { validateParams } from './act-validation.ts';
-import type { StepExecutor, StepExecutorContext, StepVerdict } from './executor.ts';
-import type { AgentContext } from './invocation.ts';
+import type { ResolvedAgentConfig } from 'e2e-core/lib/config/agent';
+import { ConfigurationError } from 'e2e-core/lib/internal/errors';
+import type { AgentParams } from 'e2e-core/lib/types';
+import { dispatchAgentStep, type DispatchAgent } from 'e2e-core/lib/agent/act';
+import { validateParams } from 'e2e-core/lib/agent/act-validation';
+import type { StepExecutor, StepExecutorContext, StepVerdict } from 'e2e-core/lib/agent/executor';
+import type { AgentContext } from 'e2e-core/lib/agent/invocation';
 
 /** Action and model-call budgets a host-driven step never reaches; the timeout is the real bound. */
 const UNBOUNDED = 1_000_000;

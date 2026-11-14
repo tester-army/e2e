@@ -9,7 +9,7 @@
 
 import type { SnapshotNode } from 'agent-device';
 import { listSelectorChainMatches, parseSelectorChain } from 'agent-device/selectors';
-import { EngineError } from 'e2e/engine';
+import { EngineError } from 'e2e-core/engine';
 import type { ProjectedNode } from './nodes.ts';
 import type { MobilePlatform } from './options.ts';
 import { message } from './errors.ts';

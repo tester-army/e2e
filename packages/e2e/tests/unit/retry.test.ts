@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { isCutSerialRetry, isRetryEligible, retryVerdict, runWithRetries, type RetryAttempt } from '../../src/run/retry.ts';
-import type { SerializedError } from '../../src/internal/errors.ts';
+import type { SerializedError } from 'e2e-core/lib/internal/errors';
 
 function error(category: SerializedError['category']): SerializedError {
   return { category, code: 'X', message: 'x', retryable: false };

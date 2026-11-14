@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { AgentError, isAgentError } from '../../src/agent/error.ts';
-import { setSecretRegistry } from '../../src/secrets.ts';
-import { isSecret } from '../../src/secrets.ts';
+import { AgentError, isAgentError } from 'e2e-core/lib/agent/error';
+import { setSecretRegistry } from 'e2e-core/lib/secrets';
+import { isSecret } from 'e2e-core/lib/secrets';
 import { CONSECUTIVE_FAILURE_LIMIT, createExploreBody } from '../../src/explore/body.ts';
 import { ExploreState } from '../../src/explore/state.ts';
-import type { Agent, App, TestFixtures } from '../../src/types.ts';
+import type { Agent, App, TestFixtures } from 'e2e-core/lib/types';
 import type { ZodType } from 'zod';
 
 type PlanAnswer = { decision: 'step'; title: string; instruction: string } | { decision: 'finish' | 'skip'; summary: string };

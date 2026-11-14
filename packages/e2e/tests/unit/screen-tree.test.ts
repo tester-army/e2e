@@ -5,7 +5,7 @@
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { SemanticNode } from '../../src/engine/index.ts';
+import type { SemanticNode } from 'e2e-core/lib/engine/index';
 import { screenOver } from '../helpers/screen-over.ts';
 import { snapshot } from '../helpers/snapshot.ts';
 

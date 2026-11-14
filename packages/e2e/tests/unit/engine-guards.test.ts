@@ -5,7 +5,7 @@
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { raceAbort, withinCleanupBudget } from '../../src/engine/index.ts';
+import { raceAbort, withinCleanupBudget } from 'e2e-core/lib/engine/index';
 
 afterEach(() => {
   vi.useRealTimers();

@@ -1,7 +1,7 @@
 /** Routes: a location reduced to the screen it names, across the URL shapes apps use. */
 
 import { describe, expect, it } from 'vitest';
-import { appLocation, appNavigation, sameRoute } from '../../src/cache/route.ts';
+import { appLocation, appNavigation, sameRoute } from 'e2e-core/lib/cache/route';
 
 /** Whether every location names the same screen as the first. */
 const alike = (first: string, ...others: string[]) => others.every((other) => sameRoute(first, other));

@@ -18,8 +18,8 @@ import { fileURLToPath } from 'node:url';
 import { sourceRoots } from './error-codes.ts';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
-const TYPES_FILE = 'packages/e2e/src/types.ts';
-const CONTRACT_FILE = 'packages/e2e/src/engine/contract.ts';
+const TYPES_FILE = 'packages/core/src/types.ts';
+const CONTRACT_FILE = 'packages/core/src/engine/contract.ts';
 const ERRORS_PAGE = 'docs/reference/errors.mdx';
 const ENGINE_PAGE = 'docs/reference/engine.mdx';
 

@@ -7,7 +7,7 @@
  * works across the src/dist realm boundary.
  */
 
-import type { ModelInstance } from '../../src/types.ts';
+import type { ModelInstance } from 'e2e-core/lib/types';
 import { createScriptedInstance, scriptedResult } from './scripted-model.ts';
 
 /**

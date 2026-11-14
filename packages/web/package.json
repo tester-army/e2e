@@ -58,12 +58,14 @@
     "playwright-core": "1.65.0"
   },
   "peerDependencies": {
-    "e2e": ">=0.23.1 <1"
+    "e2e": ">=0.23.1 <1",
+    "e2e-core": ">=0.23.1 <1"
   },
   "devDependencies": {
     "@napi-rs/image": "1.16.0",
     "@types/node": "26.6.6",
     "e2e": "workspace:*",
+    "e2e-core": "workspace:*",
     "typescript": "7.0.2",
     "vitest": "5.1.0"
   },

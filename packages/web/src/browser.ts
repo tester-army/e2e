@@ -36,7 +36,7 @@ import {
   type LocatorExpression,
   type OperationContext,
   type TextPattern,
-} from 'e2e/engine';
+} from 'e2e-core/engine';
 import { classifyInputError } from './actions.ts';
 import type { AttemptTab } from './attempt-session.ts';
 import type { DialogHandler } from './dialogs.ts';

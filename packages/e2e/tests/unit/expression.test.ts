@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { LocatorExpression } from '../../src/engine/surface.ts';
+import type { LocatorExpression } from 'e2e-core/lib/engine/surface';
 import {
   describeExpression,
   expressionHints,
@@ -9,7 +9,7 @@ import {
   roleQuery,
   testIdQuery,
   textQuery,
-} from '../../src/locator/expression.ts';
+} from 'e2e-core/lib/locator/expression';
 
 describe('locator expressions', () => {
   it('builds role queries with name and states', () => {

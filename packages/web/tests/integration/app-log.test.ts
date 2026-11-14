@@ -14,7 +14,7 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { AppLogEntry, EngineCleanupContext, EngineFixtureContext, EngineSnapshot, OperationContext } from 'e2e/engine';
+import type { AppLogEntry, EngineCleanupContext, EngineFixtureContext, EngineSnapshot, OperationContext } from 'e2e-core/engine';
 import { createBrowserFixture } from '../../src/browser.ts';
 import { PlaywrightSurface } from '../../src/surface.ts';
 import { ignoreTrace, noSecrets } from '../helpers/secrets.ts';

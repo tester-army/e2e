@@ -2,11 +2,11 @@
 
 import { types } from 'node:util';
 import { equals, isAsymmetric, iterableEquality, subsetEquality } from '@vitest/expect';
-import { TestError } from '../internal/errors.ts';
-import { testPattern } from '../internal/regexp.ts';
-import { describeIssue, requireStandardSchema } from '../internal/standard-schema.ts';
-import { toTextPattern } from '../internal/text.ts';
-import type { AsymmetricMatcher, NegatedValueExpectation, PropertyPath, StandardSchemaV1, ValueExpectation } from '../types.ts';
+import { TestError } from 'e2e-core/lib/internal/errors';
+import { testPattern } from 'e2e-core/lib/internal/regexp';
+import { describeIssue, requireStandardSchema } from 'e2e-core/lib/internal/standard-schema';
+import { toTextPattern } from 'e2e-core/lib/internal/text';
+import type { AsymmetricMatcher, NegatedValueExpectation, PropertyPath, StandardSchemaV1, ValueExpectation } from 'e2e-core/lib/types';
 
 function fail(message: string): never {
   throw new TestError('ASSERTION_FAILED', message);

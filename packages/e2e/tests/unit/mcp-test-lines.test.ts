@@ -7,12 +7,12 @@
 
 import type { ToolSet } from 'ai';
 import { describe, expect, it } from 'vitest';
-import type { ExecutorActions, ExecutorNode, ExecutorObservation, ExecutorObserveOptions, StepExecutorContext } from '../../src/agent/executor.ts';
-import { GRAMMAR_TOOL_NAMES } from '../../src/agent/action-names.ts';
-import { createGrammarTools } from '../../src/agent/primitives.ts';
-import type { LocatorExpression, NodeRef, SemanticNode } from '../../src/engine/surface.ts';
-import { TestError } from '../../src/internal/errors.ts';
-import { describeExpression } from '../../src/locator/expression.ts';
+import type { ExecutorActions, ExecutorNode, ExecutorObservation, ExecutorObserveOptions, StepExecutorContext } from 'e2e-core/lib/agent/executor';
+import { GRAMMAR_TOOL_NAMES } from 'e2e-core/lib/agent/action-names';
+import { createGrammarTools } from 'e2e-core/lib/agent/primitives';
+import type { LocatorExpression, NodeRef, SemanticNode } from 'e2e-core/lib/engine/surface';
+import { TestError } from 'e2e-core/lib/internal/errors';
+import { describeExpression } from 'e2e-core/lib/locator/expression';
 import { locateQuery } from '../../src/mcp/catalog.ts';
 import { navigationLine, nodeQueries, SessionTestLines } from '../../src/mcp/test-lines.ts';
 import { invokeTool } from '../../src/mcp/tools.ts';

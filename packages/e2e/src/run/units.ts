@@ -9,9 +9,9 @@ import path from 'node:path';
 import type { Collection } from '../collect/collect.ts';
 import { testIdentity } from '../collect/collect.ts';
 import type { Selection, TestTargetPair } from '../collect/select.ts';
-import type { SkipInfo } from './records.ts';
-import type { ResolvedTarget } from '../config/resolve.ts';
-import type { ResultRecord } from './records.ts';
+import type { SkipInfo } from 'e2e-core/lib/run/records';
+import type { ResolvedTarget } from 'e2e-core/lib/config/resolve';
+import type { ResultRecord } from 'e2e-core/lib/run/records';
 import type { WirePair } from './worker/protocol.ts';
 
 /**

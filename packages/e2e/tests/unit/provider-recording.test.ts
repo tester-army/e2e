@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { isProviderRecording, stopProviderRecording, type ProviderRecording, type ProviderRecordingResult } from '../../src/engine/index.ts';
+import { isProviderRecording, stopProviderRecording, type ProviderRecording, type ProviderRecordingResult } from 'e2e-core/lib/engine/index';
 
 describe('stopProviderRecording', () => {
   const made: string[] = [];

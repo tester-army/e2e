@@ -1,7 +1,7 @@
 /** One observation transaction: settling, semantic capture, masked pixels, and staged refs. */
 
 import type { Page } from 'playwright-core';
-import { EngineError, type EngineObserveOptions, type EngineSnapshot, type OperationContext } from 'e2e/engine';
+import { EngineError, type EngineObserveOptions, type EngineSnapshot, type OperationContext } from 'e2e-core/engine';
 import { CaptureScope } from './capture-scope.ts';
 import { captureDocument, ROOT_NODE_ID } from './observation.ts';
 import { capturePixels } from './observe.ts';

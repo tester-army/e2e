@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { engineAppInfo } from '../../src/config/app.ts';
-import { assignPorts, type PortAssignments } from '../../src/config/resolve.ts';
+import { engineAppInfo } from 'e2e-core/lib/config/app';
+import { assignPorts, type PortAssignments } from 'e2e-core/lib/config/resolve';
 import { resolveConfig } from '../../src/config/resolve-run.ts';
-import { defineEngine } from '../../src/engine/index.ts';
-import type { TargetApp } from '../../src/types.ts';
+import { defineEngine } from 'e2e-core/lib/engine/index';
+import type { TargetApp } from 'e2e-core/lib/types';
 import { allocateAppPorts, allocateTargetPorts } from '../../src/run/app-ports.ts';
 import { snapshot } from '../helpers/snapshot.ts';
 

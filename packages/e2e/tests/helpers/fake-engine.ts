@@ -27,7 +27,7 @@ import type {
   Secret,
   SemanticNode,
   ViewportPoint,
-} from '../../src/engine/index.ts';
+} from 'e2e-core/lib/engine/index';
 import { defineEngine, ENGINE_SPI_VERSION, LOCATOR_ACTION_KINDS } from './engine-runtime.ts';
 import { createScene, type Scene, type ScriptedNode, type Stage } from './scripted-scene.ts';
 

@@ -12,7 +12,7 @@ import {
   type NodeRef,
   type SemanticNode,
   type ViewportPoint,
-} from 'e2e/engine';
+} from 'e2e-core/engine';
 import {
   readDocumentSemanticsFunction,
   SECURE_FIELD_SELECTOR,

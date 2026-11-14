@@ -11,8 +11,8 @@
  */
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { StepExecutor } from '../../src/agent/executor.ts';
-import { defineEngine, type LocatorAction, type NodeRef } from '../../src/engine/index.ts';
+import type { StepExecutor } from 'e2e-core/lib/agent/executor';
+import { defineEngine, type LocatorAction, type NodeRef } from 'e2e-core/lib/engine/index';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 import { installFakeLoopModel, loopCalls, type LoopCall } from '../helpers/fake-loop-model.ts';
 import { resultByTitle, runProject, type FixtureProject } from '../helpers/run-project.ts';

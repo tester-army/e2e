@@ -8,7 +8,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { nextRerunDir, pruneArtifacts } from '../../src/run/artifacts.ts';
+import { nextRerunDir, pruneArtifacts } from 'e2e-core/lib/run/artifacts';
 
 let root: string;
 

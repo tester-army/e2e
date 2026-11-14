@@ -1,7 +1,7 @@
 /** Agent steps report when any semantic observation was truncated. */
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { defineEngine, type EngineSnapshot } from '../../src/engine/index.ts';
+import { defineEngine, type EngineSnapshot } from 'e2e-core/lib/engine/index';
 import { installFakeLoopModel } from '../helpers/fake-loop-model.ts';
 import { installFakeModel, judgment } from '../helpers/fake-model.ts';
 import { assertValidReport } from '../helpers/report-schema.ts';

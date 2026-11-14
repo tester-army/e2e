@@ -9,7 +9,7 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import type { AppLogEntry, EngineAttemptContext } from '../../src/engine/index.ts';
+import type { AppLogEntry, EngineAttemptContext } from 'e2e-core/lib/engine/index';
 import type { E2EConfig } from '../../src/index.ts';
 import type { RunEvent } from '../../src/run/events.ts';
 import { createFakeEngine, FAKE_APP, FAKE_APP_URL } from '../helpers/fake-engine.ts';

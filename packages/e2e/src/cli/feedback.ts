@@ -18,10 +18,10 @@
  * command prints a prefilled issue link and sends nothing.
  */
 
-import { uuidv7, timestamp } from '../internal/ids.ts';
-import { createRedactor } from '../internal/redact.ts';
+import { uuidv7, timestamp } from 'e2e-core/lib/internal/ids';
+import { createRedactor } from 'e2e-core/lib/internal/redact';
 import { latestRelease, olderThan } from '../internal/release.ts';
-import { MIN_SECRET_LENGTH, secretLength } from '../config/secrets.ts';
+import { MIN_SECRET_LENGTH, secretLength } from 'e2e-core/lib/config/secrets';
 import { collectEnvironment, type TelemetryEnvironment } from '../telemetry/environment.ts';
 import { postBatch, type PostHogEvent } from '../telemetry/posthog.ts';
 import type { Telemetry, TelemetryDisabledBy } from '../telemetry/telemetry.ts';

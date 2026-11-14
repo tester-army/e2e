@@ -1,6 +1,6 @@
 /** Where the keyboard-dismissing drag may start on a screen without pressing anything. */
 
-import type { ViewportSize } from 'e2e/engine';
+import type { ViewportSize } from 'e2e-core/engine';
 import { SCREEN_KINDS, type ProjectedSnapshot } from './nodes.ts';
 import type { Point, Rect } from './support.ts';
 

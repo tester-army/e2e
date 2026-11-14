@@ -7,7 +7,7 @@
  */
 
 import type { BrowserContext } from 'playwright-core';
-import type { ResolveSecretOptions, Secret } from 'e2e/engine';
+import type { ResolveSecretOptions, Secret } from 'e2e-core/engine';
 import type { BrowserName } from './browser-connection.ts';
 import type { WebBasicAuth } from './surface.ts';
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SecretLedger } from '../../src/internal/redact.ts';
+import { SecretLedger } from 'e2e-core/lib/internal/redact';
 import { RunnerOutput, type OutputStream } from '../../src/run/process-output.ts';
 
 const TOKEN = 'runner-output-token-1';

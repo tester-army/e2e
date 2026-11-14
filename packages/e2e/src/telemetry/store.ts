@@ -20,9 +20,9 @@ import { randomBytes } from 'node:crypto';
 import { mkdirSync, readFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { writeFileAtomicSync } from '../internal/atomic-write.ts';
-import { envValue } from '../internal/env.ts';
-import { timestamp } from '../internal/ids.ts';
+import { writeFileAtomicSync } from 'e2e-core/lib/internal/atomic-write';
+import { envValue } from 'e2e-core/lib/internal/env';
+import { timestamp } from 'e2e-core/lib/internal/ids';
 
 interface Preferences {
   enabled?: boolean;

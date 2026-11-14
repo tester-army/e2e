@@ -1,7 +1,7 @@
 import { describe, expect as vexpect, it } from 'vitest';
-import type { SemanticNode } from '../../src/engine/surface.ts';
+import type { SemanticNode } from 'e2e-core/lib/engine/surface';
 import { expect as expectFixture } from '../../src/expect/index.ts';
-import type { AsyncExpectation } from '../../src/types.ts';
+import type { AsyncExpectation } from 'e2e-core/lib/types';
 import { createScreenFixture } from '../helpers/screen-fixture.ts';
 import { useFakeTime } from '../helpers/fake-time.ts';
 

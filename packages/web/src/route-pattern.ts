@@ -1,6 +1,6 @@
 /** Route URL pattern grammar. */
 
-import type { TextPattern } from 'e2e/engine';
+import type { TextPattern } from 'e2e-core/engine';
 
 /** Escapes one character for literal use inside a regexp source. */
 function escapeRegexpChar(ch: string): string {

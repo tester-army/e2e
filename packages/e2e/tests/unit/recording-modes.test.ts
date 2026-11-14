@@ -1,7 +1,7 @@
 /** Which attempts keep a trace or a video under each mode, how firmly the engine is asked for the video, and one keep rule for both. */
 
 import { describe, expect, it } from 'vitest';
-import { attemptKeep, attemptVideo, keeps, recordsOnSomeAttempt } from '../../src/internal/recording-modes.ts';
+import { attemptKeep, attemptVideo, keeps, recordsOnSomeAttempt } from 'e2e-core/lib/internal/recording-modes';
 
 const set = { source: 'run' } as const;
 

@@ -90,6 +90,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Pack
         run: |
+          pnpm --filter e2e-core pack --out "$RUNNER_TEMP/packed/core.tgz"
           pnpm --filter e2e pack --out "$RUNNER_TEMP/packed/e2e.tgz"
           pnpm --filter @e2e-dev/web pack --out "$RUNNER_TEMP/packed/web.tgz"
           pnpm --filter @e2e-dev/mobile pack --out "$RUNNER_TEMP/packed/mobile.tgz"

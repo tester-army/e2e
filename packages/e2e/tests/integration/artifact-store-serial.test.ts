@@ -10,7 +10,7 @@
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { ArtifactStore, StoredArtifact } from '../../src/types.ts';
+import type { ArtifactStore, StoredArtifact } from 'e2e-core/lib/types';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 import { assertValidReport } from '../helpers/report-schema.ts';
 import { createProject, runExisting, type FixtureProject } from '../helpers/run-project.ts';

@@ -8,7 +8,7 @@
  */
 
 import type { CaptureSnapshotResult, SnapshotNode } from 'agent-device';
-import type { SemanticNode, ViewportSize } from 'e2e/engine';
+import type { SemanticNode, ViewportSize } from 'e2e-core/engine';
 import type { Rect } from './support.ts';
 
 /**

@@ -1,11 +1,21 @@
 {
   "$schema": "https://unpkg.com/@changesets/config@4.0.0/schema.json",
-  "changelog": ["@changesets/changelog-github", { "repo": "e2e-inc/e2e" }],
+  "changelog": [
+    "@changesets/changelog-github",
+    {
+      "repo": "e2e-inc/e2e"
+    }
+  ],
   "commit": false,
   "access": "public",
   "baseBranch": "main",
   "updateInternalDependencies": "patch",
-  "fixed": [],
+  "fixed": [
+    [
+      "e2e",
+      "e2e-core"
+    ]
+  ],
   "linked": [],
   "ignore": [],
   "privatePackages": false,

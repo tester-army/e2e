@@ -2,8 +2,8 @@
 
 import { JsColorType, Transformer } from '@napi-rs/image';
 import { describe, expect, it } from 'vitest';
-import type { ObservationPixels } from '../../src/engine/surface.ts';
-import { downscalePixels } from '../../src/agent/pixels.ts';
+import type { ObservationPixels } from 'e2e-core/lib/engine/surface';
+import { downscalePixels } from 'e2e-core/lib/agent/pixels';
 
 /** A width by height PNG: white, with a black box at the given rect. */
 function picture(width: number, height: number, box: { x: number; y: number; w: number; h: number }): ObservationPixels {

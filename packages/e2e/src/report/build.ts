@@ -2,21 +2,21 @@
 
 import os from 'node:os';
 import path from 'node:path';
-import { BLOCKABLE_CODES } from '../agent/executor.ts';
-import { DEFAULT_LIMITS } from '../config/agent.ts';
-import type { ResolvedConfig, ResolvedLimits, ResolvedTarget } from '../config/resolve.ts';
-import type { AgentErrorCode } from '../types.ts';
-import type { ErrorCategory, ErrorDetails, ErrorPhase, HookScope, SerializedError } from '../internal/errors.ts';
-import { resultId, timestamp } from '../internal/ids.ts';
-import { obj } from '../internal/objects.ts';
-import { packageVersion } from '../internal/package-version.ts';
+import { BLOCKABLE_CODES } from 'e2e-core/lib/agent/executor';
+import { DEFAULT_LIMITS } from 'e2e-core/lib/config/agent';
+import type { ResolvedConfig, ResolvedLimits, ResolvedTarget } from 'e2e-core/lib/config/resolve';
+import type { AgentErrorCode } from 'e2e-core/lib/types';
+import type { ErrorCategory, ErrorDetails, ErrorPhase, HookScope, SerializedError } from 'e2e-core/lib/internal/errors';
+import { resultId, timestamp } from 'e2e-core/lib/internal/ids';
+import { obj } from 'e2e-core/lib/internal/objects';
+import { packageVersion } from 'e2e-core/lib/internal/package-version';
 import { onBun } from '../internal/runtime.ts';
-import { projectRelativePath } from '../internal/source.ts';
+import { projectRelativePath } from 'e2e-core/lib/internal/source';
 import type { VcsInfo } from '../internal/vcs.ts';
-import type { SkipInfo } from '../run/records.ts';
-import { expectedFailureOf, memberRan, someSkippedAfterFailure } from '../run/records.ts';
-import { describeTarget, type TargetProvenance } from '../run/provision.ts';
-import type { EngineSpiVersion } from '../engine/contract.ts';
+import type { SkipInfo } from 'e2e-core/lib/run/records';
+import { expectedFailureOf, memberRan, someSkippedAfterFailure } from 'e2e-core/lib/run/records';
+import { describeTarget, type TargetProvenance } from 'e2e-core/lib/run/provision';
+import type { EngineSpiVersion } from 'e2e-core/lib/engine/contract';
 import type {
   ArtifactRecord,
   AttemptRecord,
@@ -26,7 +26,7 @@ import type {
   SerialAttemptRecord,
   SerialGroupRecord,
   SerialMemberRecord,
-} from '../run/records.ts';
+} from 'e2e-core/lib/run/records';
 import type {
   AppLogRecord,
   StepCacheRecord,
@@ -36,7 +36,7 @@ import type {
   StepRecord,
   StepTurn,
   VisionDegradation,
-} from '../run/steps.ts';
+} from 'e2e-core/lib/run/steps';
 
 export interface ReportSource {
   file: string;

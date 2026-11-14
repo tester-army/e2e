@@ -7,26 +7,26 @@
  */
 
 import picocolors from 'picocolors';
-import { createModelAdapter } from '../agent/model/sdk.ts';
-import { ModelOutputInvalidError } from '../agent/model/adapter.ts';
-import { loadAiSdk } from '../agent/ai-sdk.ts';
-import { AgentError, isAgentError } from '../agent/error.ts';
-import { engineAppInfo } from '../config/app.ts';
-import { modelLabel, type ResolvedAgentConfig, type ResolvedModel } from '../config/agent.ts';
+import { createModelAdapter } from 'e2e-core/lib/agent/model/sdk';
+import { ModelOutputInvalidError } from 'e2e-core/lib/agent/model/adapter';
+import { loadAiSdk } from 'e2e-core/lib/agent/ai-sdk';
+import { AgentError, isAgentError } from 'e2e-core/lib/agent/error';
+import { engineAppInfo } from 'e2e-core/lib/config/app';
+import { modelLabel, type ResolvedAgentConfig, type ResolvedModel } from 'e2e-core/lib/config/agent';
 import { discoverConfig, loadConfigModule, missingConfigError } from '../config/load.ts';
-import { type ResolvedConfig } from '../config/resolve.ts';
+import { type ResolvedConfig } from 'e2e-core/lib/config/resolve';
 import { resolveConfig } from '../config/resolve-run.ts';
-import type { ResolvedTarget } from '../config/targets.ts';
+import type { ResolvedTarget } from 'e2e-core/lib/config/targets';
 import { selectTargets } from '../collect/select.ts';
-import type { EngineDoctorCheck } from '../engine/index.ts';
-import { classifyError, InfrastructureError } from '../internal/errors.ts';
+import type { EngineDoctorCheck } from 'e2e-core/lib/engine/index';
+import { classifyError, InfrastructureError } from 'e2e-core/lib/internal/errors';
 import { onBun, SUPPORTED_BUN_RANGE, SUPPORTED_NODE_RANGE } from '../internal/runtime.ts';
-import { budgetText, cancelledError, NEVER_ABORTS, withAbort, withinCleanupBudget } from '../internal/time.ts';
+import { budgetText, cancelledError, NEVER_ABORTS, withAbort, withinCleanupBudget } from 'e2e-core/lib/internal/time';
 import { loginOf } from '../oauth/login-model.ts';
 import { apiKeyFor, getProvider, loginHint, type ProviderId } from '../oauth/providers.ts';
 import { defaultCredentialStore } from '../oauth/store.ts';
 import { bounded } from '../report/format.ts';
-import { processSecrets, registerStaticSecrets } from '../run/secrecy.ts';
+import { processSecrets, registerStaticSecrets } from 'e2e-core/lib/run/secrecy';
 import type { RunnerOutput } from '../run/process-output.ts';
 
 /** The `schemaVersion` of `e2e doctor --json`, described by `schema/doctor-v1.schema.json`. */

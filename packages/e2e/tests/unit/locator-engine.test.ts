@@ -12,14 +12,14 @@ import {
   type NodeRef,
   type SemanticNode,
   type OperationContext,
-} from '../../src/engine/surface.ts';
-import { LocatorEngine, isNodeVisible, translateLocatorError } from '../../src/locator/engine.ts';
-import { E2EError } from '../../src/internal/errors.ts';
-import { Deadline, sleep, withTimeout } from '../../src/internal/time.ts';
-import { AttemptBudget } from '../../src/run/budget.ts';
-import { defineEngine, LOCATOR_ACTION_KINDS } from '../../src/engine/index.ts';
-import { createEngineSession } from '../../src/engine/session.ts';
-import { describeExpression, filterExpression, indexExpression, roleQuery, testIdQuery, textQuery } from '../../src/locator/expression.ts';
+} from 'e2e-core/lib/engine/surface';
+import { LocatorEngine, isNodeVisible, translateLocatorError } from 'e2e-core/lib/locator/engine';
+import { E2EError } from 'e2e-core/lib/internal/errors';
+import { Deadline, sleep, withTimeout } from 'e2e-core/lib/internal/time';
+import { AttemptBudget } from 'e2e-core/lib/run/budget';
+import { defineEngine, LOCATOR_ACTION_KINDS } from 'e2e-core/lib/engine/index';
+import { createEngineSession } from 'e2e-core/lib/engine/session';
+import { describeExpression, filterExpression, indexExpression, roleQuery, testIdQuery, textQuery } from 'e2e-core/lib/locator/expression';
 import { snapshot } from '../helpers/snapshot.ts';
 import { useFakeTime } from '../helpers/fake-time.ts';
 

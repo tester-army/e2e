@@ -6,7 +6,7 @@
 
 import type { ModelMessage, ToolResultPart } from 'ai';
 import { describe, expect, it } from 'vitest';
-import { compactScreenHistory, compactScreenshotHistory } from '../../src/agent/transcript-compaction.ts';
+import { compactScreenHistory, compactScreenshotHistory } from 'e2e-core/lib/agent/transcript-compaction';
 
 const png = Buffer.from('not really a png').toString('base64');
 const image = { type: 'file', data: { type: 'data', data: png }, mediaType: 'image/png' } as const;

@@ -13,7 +13,7 @@ import { existsSync, mkdirSync, renameSync } from 'node:fs';
 import path from 'node:path';
 import type { ToolSet } from 'ai';
 import { z } from 'zod';
-import type { OperationContext, VideoSegment } from '../engine/surface.ts';
+import type { OperationContext, VideoSegment } from 'e2e-core/lib/engine/surface';
 
 export interface SessionRecorderOptions {
   /** The engine's video hooks. */

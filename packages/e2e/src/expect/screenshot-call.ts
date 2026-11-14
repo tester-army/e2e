@@ -1,14 +1,14 @@
 /** The arguments of one `toHaveScreenshot` call, checked and named before anything is read. */
 
 import { createHash } from 'node:crypto';
-import type { LocatorExpression } from '../engine/surface.ts';
-import { TestError } from '../internal/errors.ts';
-import type { ImageTolerance } from '../internal/image.ts';
-import { checkStepTimeout } from '../internal/time.ts';
-import { isPlainObject, rejectUnknownOptions } from '../internal/options.ts';
-import { locatorInternals } from '../locator/screen.ts';
-import type { ScreenshotContext } from '../run/screenshots.ts';
-import type { ScreenshotOptions } from '../types.ts';
+import type { LocatorExpression } from 'e2e-core/lib/engine/surface';
+import { TestError } from 'e2e-core/lib/internal/errors';
+import type { ImageTolerance } from 'e2e-core/lib/internal/image';
+import { checkStepTimeout } from 'e2e-core/lib/internal/time';
+import { isPlainObject, rejectUnknownOptions } from 'e2e-core/lib/internal/options';
+import { locatorInternals } from 'e2e-core/lib/locator/screen';
+import type { ScreenshotContext } from 'e2e-core/lib/run/screenshots';
+import type { ScreenshotOptions } from 'e2e-core/lib/types';
 
 /** One checked call. */
 export interface ScreenshotCall {

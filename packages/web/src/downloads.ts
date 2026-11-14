@@ -9,7 +9,7 @@
 import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { Browser, CDPSession, Download, Page } from 'playwright-core';
-import { EngineError } from 'e2e/engine';
+import { EngineError } from 'e2e-core/engine';
 import type { LeaseDownloads } from './provider.ts';
 import { invalidState, message } from './support.ts';
 

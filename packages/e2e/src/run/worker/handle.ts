@@ -4,7 +4,7 @@ import { fork, type ChildProcess } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { WARNED_TSCONFIGS_ENV, warnedTsconfigs } from '../../config/tsconfig.ts';
-import { InfrastructureError } from '../../internal/errors.ts';
+import { InfrastructureError } from 'e2e-core/lib/internal/errors';
 import type { SpawnUnitRunner, UnitRunner, UnitRunnerEvents } from '../unit-runner.ts';
 import type {
   ChildProcessInbound,

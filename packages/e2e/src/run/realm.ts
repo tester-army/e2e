@@ -1,17 +1,17 @@
 /** Suite realm lifecycle: module re-import, beforeAll/afterAll scope tracking. */
 
 import { importModule } from '../config/load.ts';
-import { PollScope, runInPollScope } from '../expect/poll-scope.ts';
+import { PollScope, runInPollScope } from 'e2e-core/lib/expect/poll-scope';
 import {
   classifyError,
   E2EError,
   serializeError,
   TestTimeoutError,
   type SerializedError,
-} from '../internal/errors.ts';
-import { DebugTrace } from '../internal/debug.ts';
-import { titlePathKey } from '../internal/ids.ts';
-import { withTimeout } from '../internal/time.ts';
+} from 'e2e-core/lib/internal/errors';
+import { DebugTrace } from 'e2e-core/lib/internal/debug';
+import { titlePathKey } from 'e2e-core/lib/internal/ids';
+import { withTimeout } from 'e2e-core/lib/internal/time';
 import type { CollectedFile, CollectedTest } from '../collect/collect.ts';
 import {
   collectModule,
@@ -25,8 +25,8 @@ import {
   type TestHook,
 } from '../collect/registry.ts';
 import type { TestTargetPair } from '../collect/select.ts';
-import type { SuiteFixtures } from '../types.ts';
-import type { RunError } from './records.ts';
+import type { SuiteFixtures } from 'e2e-core/lib/types';
+import type { RunError } from 'e2e-core/lib/run/records';
 
 /**
  * A suite scope of one realm: a describe group, or `undefined` for the file

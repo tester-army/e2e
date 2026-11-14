@@ -7,13 +7,13 @@
  */
 
 import { afterEach, describe, expect, it } from 'vitest';
-import type { AgentContext } from '../../src/agent/invocation.ts';
-import { authorizeSecretFill } from '../../src/agent/secrets.ts';
-import type { ResolvedCredential, ResolvedSecret } from '../../src/config/resolve.ts';
-import type { SemanticNode } from '../../src/engine/surface.ts';
-import { secretBrand } from '../../src/internal/brands.ts';
-import type { Secret } from '../../src/types.ts';
-import { credentials, setSecretRegistry } from '../../src/secrets.ts';
+import type { AgentContext } from 'e2e-core/lib/agent/invocation';
+import { authorizeSecretFill } from 'e2e-core/lib/agent/secrets';
+import type { ResolvedCredential, ResolvedSecret } from 'e2e-core/lib/config/resolve';
+import type { SemanticNode } from 'e2e-core/lib/engine/surface';
+import { secretBrand } from 'e2e-core/lib/internal/brands';
+import type { Secret } from 'e2e-core/lib/types';
+import { credentials, setSecretRegistry } from 'e2e-core/lib/secrets';
 
 const adminPassword: ResolvedSecret = { name: 'admin.password', purpose: 'password', value: 'hunter2' };
 const admin: ResolvedCredential = { name: 'admin', username: 'admin@example.com', password: adminPassword };

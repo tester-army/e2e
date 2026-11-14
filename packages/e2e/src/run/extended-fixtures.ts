@@ -1,8 +1,8 @@
 /** The fixtures a test's `test.extend()` chain adds to one attempt. */
 
 import type { FixtureDefinition } from '../collect/registry.ts';
-import { pollLineage, type PollLineage } from '../expect/poll-scope.ts';
-import { ConfigurationError } from '../internal/errors.ts';
+import { pollLineage, type PollLineage } from 'e2e-core/lib/expect/poll-scope';
+import { ConfigurationError } from 'e2e-core/lib/internal/errors';
 
 /** One set-up fixture's teardown: the rest of its function after `use`. */
 export interface FixtureTeardown {

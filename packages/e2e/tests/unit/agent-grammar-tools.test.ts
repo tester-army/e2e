@@ -7,11 +7,11 @@
 import type { ToolSet } from 'ai';
 import { z } from 'zod';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
-import { aiSdk, loadAiSdk } from '../../src/agent/ai-sdk.ts';
-import { GRAMMAR_TOOL_NAMES } from '../../src/agent/action-names.ts';
-import { createGrammarTools, createVerdictTool } from '../../src/agent/primitives.ts';
-import { createBuiltInAgent, projectTools } from '../../src/agent/default-agent.ts';
-import { defineTool } from '../../src/agent/tool.ts';
+import { aiSdk, loadAiSdk } from 'e2e-core/lib/agent/ai-sdk';
+import { GRAMMAR_TOOL_NAMES } from 'e2e-core/lib/agent/action-names';
+import { createGrammarTools, createVerdictTool } from 'e2e-core/lib/agent/primitives';
+import { createBuiltInAgent, projectTools } from 'e2e-core/lib/agent/default-agent';
+import { defineTool } from 'e2e-core/lib/agent/tool';
 import { fakeExecutorContext } from '../helpers/fake-executor-context.ts';
 import { installFakeLoopModel } from '../helpers/fake-loop-model.ts';
 

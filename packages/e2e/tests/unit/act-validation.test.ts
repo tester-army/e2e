@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { redactParams, validateActOptions, validateParams } from '../../src/agent/act-validation.ts';
-import { templateParams } from '../../src/cache/template.ts';
-import { unique } from '../../src/params.ts';
-import { ConfigurationError } from '../../src/internal/errors.ts';
+import { redactParams, validateActOptions, validateParams } from 'e2e-core/lib/agent/act-validation';
+import { templateParams } from 'e2e-core/lib/cache/template';
+import { unique } from 'e2e-core/lib/params';
+import { ConfigurationError } from 'e2e-core/lib/internal/errors';
 
 describe('validateActOptions', () => {
   it('accepts the options bag and an absent one', () => {

@@ -5,7 +5,7 @@ import type {
   Selection,
   TestTargetPair,
 } from '../../src/collect/select.ts';
-import type { ResolvedTarget } from '../../src/config/resolve.ts';
+import type { ResolvedTarget } from 'e2e-core/lib/config/resolve';
 import {
   buildWorkPlans,
   failureLimitSkip,
@@ -17,7 +17,7 @@ import {
   type TargetWorkPlan,
 } from '../../src/run/units.ts';
 import { decodeResult } from '../../src/run/worker/protocol.ts';
-import { encodeResult, type ResultRecord } from '../../src/run/records.ts';
+import { encodeResult, type ResultRecord } from 'e2e-core/lib/run/records';
 
 const EMPTY_APP: ResolvedTarget['app'] = {
   base: undefined,

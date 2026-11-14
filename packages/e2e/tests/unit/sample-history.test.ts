@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { SampleHistory } from '../../src/expect/samples.ts';
+import { SampleHistory } from 'e2e-core/lib/expect/samples';
 
 describe('SampleHistory', () => {
   it('counts the reads of a poll that passed at once and tells no readings', () => {

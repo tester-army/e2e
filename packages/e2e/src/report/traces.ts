@@ -11,8 +11,8 @@
 
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { displayPath } from '../internal/paths.ts';
-import { resultSegment } from '../run/artifacts.ts';
+import { displayPath } from 'e2e-core/lib/internal/paths';
+import { resultSegment } from 'e2e-core/lib/run/artifacts';
 import type { Report1Document, ReportExplore, ReportResult } from './build.ts';
 import { renderTracePage } from './failure-text.ts';
 import { outcome, type Outcome } from './outcome.ts';

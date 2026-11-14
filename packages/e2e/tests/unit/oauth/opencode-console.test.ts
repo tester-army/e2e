@@ -1,7 +1,7 @@
 import { generateText, tool } from 'ai';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-import { promptCacheKey } from '../../../src/agent/model/provider-hints.ts';
+import { promptCacheKey } from 'e2e-core/lib/agent/model/provider-hints';
 import { createOAuthFetch } from '../../../src/oauth/fetch.ts';
 import { opencodeConsole } from '../../../src/oauth/opencode-console.ts';
 import { listModels } from '../../../src/oauth/models.ts';

@@ -4,8 +4,8 @@
  * matchers can be exercised without a browser.
  */
 
-import { resolveExpression, type SemanticNode } from '../../src/engine/index.ts';
-import type { Screen } from '../../src/types.ts';
+import { resolveExpression, type SemanticNode } from 'e2e-core/lib/engine/index';
+import type { Screen } from 'e2e-core/lib/types';
 import { screenOver } from './screen-over.ts';
 import { snapshot } from './snapshot.ts';
 

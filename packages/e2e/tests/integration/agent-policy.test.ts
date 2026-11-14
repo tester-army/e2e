@@ -5,19 +5,19 @@
  */
 
 import { z } from 'zod';
-import { defineTool } from '../../src/agent/tool.ts';
+import { defineTool } from 'e2e-core/lib/agent/tool';
 import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { OBSERVED_NAME_LIMIT, OBSERVED_TEXT_LIMIT, type SemanticNode } from '../../src/engine/contract.ts';
+import { OBSERVED_NAME_LIMIT, OBSERVED_TEXT_LIMIT, type SemanticNode } from 'e2e-core/lib/engine/contract';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 import { installFakeLoopModel, loopCalls, nodeIdFor } from '../helpers/fake-loop-model.ts';
 import { extracted, fakeCalls, installFakeModel, judgment } from '../helpers/fake-model.ts';
 import type { FakeCall } from '../helpers/fake-model.ts';
 import { createProject, resultByTitle, runExisting, runProject, type FixtureProject } from '../helpers/run-project.ts';
 import type { RunOutcome } from '../helpers/run-project.ts';
-import type { SdkLanguageModel } from '../../src/agent/ai-sdk.ts';
-import type { StepExecutor } from '../../src/agent/executor.ts';
+import type { SdkLanguageModel } from 'e2e-core/lib/agent/ai-sdk';
+import type { StepExecutor } from 'e2e-core/lib/agent/executor';
 import { createFakeEngine, FAKE_APP, FAKE_APP_URL } from '../helpers/fake-engine.ts';
 
 const SUITE = `import { test, credentials } from 'e2e';

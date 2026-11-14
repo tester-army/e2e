@@ -5,7 +5,7 @@
  * or repeats counts once.
  */
 
-import type { SkipInfo } from '../run/records.ts';
+import type { SkipInfo } from 'e2e-core/lib/run/records';
 
 /** How many tests each test filter left out of `results`, by its name in the order first seen. */
 export function leftOutTests(results: Iterable<{ readonly testId: string; readonly skip?: SkipInfo | undefined }>): Map<string, number> {

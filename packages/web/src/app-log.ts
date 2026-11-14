@@ -7,7 +7,7 @@
  */
 
 import type { BrowserContext, ConsoleMessage, Frame, Page, Request, Response } from 'playwright-core';
-import type { AppLogEntry } from 'e2e/engine';
+import type { AppLogEntry } from 'e2e-core/engine';
 
 /** Console message types worth a line; `debug` and the rest are the app talking to itself. */
 const CONSOLE_LEVELS: Readonly<Record<string, AppLogEntry['level']>> = {

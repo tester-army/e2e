@@ -10,7 +10,7 @@
  * members.
  */
 
-import type { App, AsyncExpectation, Locator, Screen } from '../types.ts';
+import type { App, AsyncExpectation, Locator, Screen } from 'e2e-core/lib/types';
 
 /** Something a statement can call members on. */
 export type Receiver = 'screen' | 'locator' | 'app' | 'locator-expectation';

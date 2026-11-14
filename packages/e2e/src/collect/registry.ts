@@ -3,17 +3,17 @@
 import { realpathSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { testCaseBrand } from '../internal/brands.ts';
-import { describeValue } from '../config/validate.ts';
-import { isRecordingMode, legacyTraceSpelling, RECORDING_MODES } from '../internal/recording-modes.ts';
-import { CollectionError } from '../internal/errors.ts';
-import { MAX_TIMER_MS } from '../internal/time.ts';
-import { validateTitle } from '../internal/ids.ts';
-import { realmSlot } from '../internal/realm-slot.ts';
-import { markRunningTestExpectedToFail } from '../internal/expected-failure.ts';
+import { testCaseBrand } from 'e2e-core/lib/internal/brands';
+import { describeValue } from 'e2e-core/lib/config/validate';
+import { isRecordingMode, legacyTraceSpelling, RECORDING_MODES } from 'e2e-core/lib/internal/recording-modes';
+import { CollectionError } from 'e2e-core/lib/internal/errors';
+import { MAX_TIMER_MS } from 'e2e-core/lib/internal/time';
+import { validateTitle } from 'e2e-core/lib/internal/ids';
+import { realmSlot } from 'e2e-core/lib/internal/realm-slot';
+import { markRunningTestExpectedToFail } from 'e2e-core/lib/internal/expected-failure';
 import { parseModifierCall, skipRunningTest } from '../internal/skip.ts';
-import { unknownKeyMessage } from '../internal/options.ts';
-import type { SourceLocation } from '../internal/source.ts';
+import { unknownKeyMessage } from 'e2e-core/lib/internal/options';
+import type { SourceLocation } from 'e2e-core/lib/internal/source';
 import type {
   DescribeOptions,
   FixtureFn,
@@ -25,7 +25,7 @@ import type {
   TestFn,
   TestHookFn,
   TestOptions,
-} from '../types.ts';
+} from 'e2e-core/lib/types';
 
 export interface GroupNode {
   readonly title: string;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { readCost } from '../../src/agent/model/sdk.ts';
+import { readCost } from 'e2e-core/lib/agent/model/sdk';
 
 describe('readCost', () => {
   it('reads what the Vercel AI Gateway billed, falling back to its market estimate on a BYOK route', () => {

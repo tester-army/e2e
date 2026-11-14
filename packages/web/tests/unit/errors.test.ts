@@ -5,8 +5,8 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { EngineError } from 'e2e/engine';
-import { ConfigurationError, TestError } from 'e2e/engine';
+import { EngineError } from 'e2e-core/engine';
+import { ConfigurationError, TestError } from 'e2e-core/engine';
 import type { Page } from 'playwright-core';
 import { isTestErrorCode, navigationStaleOr, pageScriptFailure, staleOr, translatePwError } from '../../src/support.ts';
 

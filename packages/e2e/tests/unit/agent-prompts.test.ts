@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import type { Observation } from '../../src/engine/surface.ts';
-import { judgmentShape, prepareObservation } from '../../src/agent/observation.ts';
-import { buildPrompt, EXTRACT_REQUEST, JUDGMENT_REQUEST } from '../../src/agent/prompts.ts';
+import type { Observation } from 'e2e-core/lib/engine/surface';
+import { judgmentShape, prepareObservation } from 'e2e-core/lib/agent/observation';
+import { buildPrompt, EXTRACT_REQUEST, JUDGMENT_REQUEST } from 'e2e-core/lib/agent/prompts';
 
 const REDACT = (text: string): string => text.replaceAll('hunter2', '<secret:token>');
 

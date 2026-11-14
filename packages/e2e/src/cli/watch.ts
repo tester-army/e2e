@@ -12,7 +12,7 @@ import { Writable } from 'node:stream';
 import * as clack from '@clack/prompts';
 import picocolors from 'picocolors';
 import { discoverConfig } from '../config/load.ts';
-import { compileGlob, compileGlobList, GLOB_SYNTAX, literalPrefix, matchesGlob, type CompiledGlobList } from '../internal/globs.ts';
+import { compileGlob, compileGlobList, GLOB_SYNTAX, literalPrefix, matchesGlob, type CompiledGlobList } from 'e2e-core/lib/internal/globs';
 import type { RunOptions, RunOutcome } from '../run/runner.ts';
 import { Keyboard, type Keypress } from './keyboard.ts';
 import type { SignalLadder } from './signals.ts';

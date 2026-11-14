@@ -12,7 +12,8 @@ implementation, derives its capabilities, and returns a handle for `targets`
 in the config. The runner drives it over the
 [engine protocol](/reference/engine-protocol), in its own process; see
 [Engines](/engines). Use `test.extend` fixtures for resources outside the UI,
-such as APIs or databases.
+such as APIs or databases. `e2e-core/engine` is the same module, and a
+published engine imports it from there and peers on `e2e-core`.
 
 This sketch assumes a `connect` adapter for the platform:
 

@@ -9,14 +9,14 @@
 
 import path from 'node:path';
 import picocolors from 'picocolors';
-import type { SkipInfo } from '../run/records.ts';
-import type { SerializedError } from '../internal/errors.ts';
-import { resultId } from '../internal/ids.ts';
-import { packageVersion } from '../internal/package-version.ts';
+import type { SkipInfo } from 'e2e-core/lib/run/records';
+import type { SerializedError } from 'e2e-core/lib/internal/errors';
+import { resultId } from 'e2e-core/lib/internal/ids';
+import { packageVersion } from 'e2e-core/lib/internal/package-version';
 import type { RunEvent, RunEventFact, RunEventOf, RunEventResult, SetupStep } from '../run/events.ts';
 import type { StepPrompt } from '../run/step-hold.ts';
-import type { AppLogRecord, StepRecord } from '../run/steps.ts';
-import { cleanupErrorsOf, expectedFailureOf, failureBeforeSkip, type ArtifactRecord, type AttemptRecord, type AttemptStatus, type FailureEvidence, type ResultStatus, type SerialGroupRecord } from '../run/records.ts';
+import type { AppLogRecord, StepRecord } from 'e2e-core/lib/run/steps';
+import { cleanupErrorsOf, expectedFailureOf, failureBeforeSkip, type ArtifactRecord, type AttemptRecord, type AttemptStatus, type FailureEvidence, type ResultStatus, type SerialGroupRecord } from 'e2e-core/lib/run/records';
 import type { Reporter, ReporterSummary } from '../run-types.ts';
 import { projectSource } from './build.ts';
 import { codeFrame, userFrame } from './code-frame.ts';

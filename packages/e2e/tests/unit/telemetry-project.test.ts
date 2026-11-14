@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { afterAll, describe, expect, it } from 'vitest';
-import { sha256Hex } from '../../src/internal/ids.ts';
+import { sha256Hex } from 'e2e-core/lib/internal/ids';
 import { anonymousProjectId } from '../../src/telemetry/project.ts';
 import { initRepo, runGit } from '../helpers/git-repo.ts';
 

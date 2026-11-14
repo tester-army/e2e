@@ -7,7 +7,7 @@
  */
 
 import { afterAll, beforeAll, expect } from 'vitest';
-import type { AttemptRecord } from '../../src/run/records.ts';
+import type { AttemptRecord } from 'e2e-core/lib/run/records';
 import { FAKE_APP_URL, type FakeEngineHandle } from './fake-engine.ts';
 import { engineConfig } from './fixture-config.ts';
 import { resultByTitle, runProject, type FixtureProject, type RunOutcome } from './run-project.ts';

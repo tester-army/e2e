@@ -1,6 +1,6 @@
-import { currentAttempt } from '../expect/attempt.ts';
-import { ConfigurationError, InfrastructureError } from '../internal/errors.ts';
-import { realmSlot } from '../internal/realm-slot.ts';
+import { currentAttempt } from 'e2e-core/lib/expect/attempt';
+import { ConfigurationError, InfrastructureError } from 'e2e-core/lib/internal/errors';
+import { realmSlot } from 'e2e-core/lib/internal/realm-slot';
 import { onBun } from '../internal/runtime.ts';
 
 interface RunnerOwners {

@@ -12,7 +12,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { secrets } from 'e2e';
-import type { EngineCleanupContext, EngineFixtureContext, OperationContext } from 'e2e/engine';
+import type { EngineCleanupContext, EngineFixtureContext, OperationContext } from 'e2e-core/engine';
 import { createBrowserFixture, type Browser } from '../../src/browser.ts';
 import { PlaywrightSurface, type WebOptions } from '../../src/surface.ts';
 import { ignoreTrace, noSecrets } from '../helpers/secrets.ts';

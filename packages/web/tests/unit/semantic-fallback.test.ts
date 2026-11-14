@@ -1,7 +1,7 @@
 import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Browser, JSHandle, Page } from 'playwright-core';
-import { EngineError, TestError, type OperationContext } from 'e2e/engine';
+import { EngineError, TestError, type OperationContext } from 'e2e-core/engine';
 import { ElementList } from '../../src/element-list.ts';
 import { captureDocument, ROOT_NODE_ID } from '../../src/observation.ts';
 import { PlaywrightSurface } from '../../src/surface.ts';

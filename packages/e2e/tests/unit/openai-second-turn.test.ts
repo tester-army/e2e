@@ -10,7 +10,7 @@
 import { createOpenAI } from '@ai-sdk/openai';
 import { jsonSchema, stepCountIs, tool, ToolLoopAgent } from 'ai';
 import { describe, expect, it } from 'vitest';
-import { promptCacheKey, providerHints, type ProviderModelRef } from '../../src/agent/model/provider-hints.ts';
+import { promptCacheKey, providerHints, type ProviderModelRef } from 'e2e-core/lib/agent/model/provider-hints';
 
 const USAGE = {
   input_tokens: 3,

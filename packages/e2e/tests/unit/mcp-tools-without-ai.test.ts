@@ -1,7 +1,7 @@
 import type { ToolSet } from 'ai';
 import { z } from 'zod';
 import { describe, expect, it, vi } from 'vitest';
-import { loadAiSdk } from '../../src/agent/ai-sdk.ts';
+import { loadAiSdk } from 'e2e-core/lib/agent/ai-sdk';
 import { catalogLine, invokeTool, toolJsonSchema } from '../../src/mcp/tools.ts';
 
 // A project that never installed the optional `ai` peer.

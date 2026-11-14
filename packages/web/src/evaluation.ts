@@ -1,6 +1,6 @@
 /** Separates exceptions thrown by trusted page code from failures of the evaluation transport. */
 import type { JsonValue } from 'e2e';
-import { TestError } from 'e2e/engine';
+import { TestError } from 'e2e-core/engine';
 import { message } from './support.ts';
 
 /** The `__name` helper tsx's `keepNames` output calls, declared beside test code serialized into the page; it takes `defineProperty` before that code runs. */

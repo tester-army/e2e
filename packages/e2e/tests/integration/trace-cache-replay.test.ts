@@ -11,7 +11,7 @@ import { readFileSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { stripVTControlCharacters } from 'node:util';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import type { TraceEntry } from '../../src/cache/trace.ts';
+import type { TraceEntry } from 'e2e-core/lib/cache/trace';
 import { main } from '../../src/cli/index.ts';
 import type { E2EConfig } from '../../src/index.ts';
 import { loopCalls } from '../helpers/fake-loop-model.ts';

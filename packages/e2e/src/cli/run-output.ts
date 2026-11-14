@@ -6,10 +6,10 @@
  * only the list reporter writes to the terminal past it.
  */
 
-import { leftWorkBehind } from '../internal/abandoned.ts';
-import { killManagedProcessGroups, stopsSettled } from '../run/managed-process.ts';
+import { leftWorkBehind } from 'e2e-core/lib/internal/abandoned';
+import { killManagedProcessGroups, stopsSettled } from 'e2e-core/lib/run/managed-process';
 import { claimProcessOutput, type RunnerOutput } from '../run/process-output.ts';
-import { processSecrets } from '../run/secrecy.ts';
+import { processSecrets } from 'e2e-core/lib/run/secrecy';
 
 /** The process's claimed output, once claimed: the wrappers stay for the rest of the process. */
 let claimed: RunnerOutput | undefined;

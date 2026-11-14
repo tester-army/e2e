@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isTypoOf, suggest } from '../../src/internal/suggest.ts';
+import { isTypoOf, suggest } from 'e2e-core/lib/internal/suggest';
 
 const KEYS = ['targets', 'tests', 'timeout', 'retries', 'workers', 'reporters', 'agent', 'cache'];
 

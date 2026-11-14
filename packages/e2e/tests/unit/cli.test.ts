@@ -5,7 +5,7 @@ import { stripVTControlCharacters } from 'node:util';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ListOptions, ListedPair } from '../../src/runner.ts';
 import type { RunOptions } from '../../src/run/runner.ts';
-import { ConfigurationError } from '../../src/internal/errors.ts';
+import { ConfigurationError } from 'e2e-core/lib/internal/errors';
 import { SAMPLE_REPORT_SECRETS, sampleReport } from '../helpers/sample-report.ts';
 
 const runMock = vi.hoisted(() => vi.fn());

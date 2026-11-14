@@ -1,9 +1,9 @@
 /** JUnit XML reporter: the report-1 document as `.e2e/junit.xml`. */
 
 import path from 'node:path';
-import { envValue } from '../internal/env.ts';
-import { sanitizeText } from '../internal/errors.ts';
-import { realpathOfExisting, relativeToProjectRoot } from '../internal/paths.ts';
+import { envValue } from 'e2e-core/lib/internal/env';
+import { sanitizeText } from 'e2e-core/lib/internal/errors';
+import { realpathOfExisting, relativeToProjectRoot } from 'e2e-core/lib/internal/paths';
 import type { FinishedRun } from '../run-types.ts';
 import type { Report1Document, ReportError, ReportResult, ReportSerialGroup } from './build.ts';
 import { repeatSuffix } from './format.ts';

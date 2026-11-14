@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { Browser, Dialog, Route } from 'playwright-core';
 import { secrets } from 'e2e';
-import type { EngineFixtureContext, OperationContext } from 'e2e/engine';
+import type { EngineFixtureContext, OperationContext } from 'e2e-core/engine';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { PlaywrightSurface } from '../../src/surface.ts';
 import { createBrowserFixture } from '../../src/browser.ts';

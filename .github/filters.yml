@@ -13,6 +13,7 @@ runner: &runner
   - '.github/actions/workspace-install/**'
   - '.github/scripts/agent-device.cjs'
   - 'packages/e2e/**'
+  - 'packages/core/**'
   - '!packages/*/tests/**'
   - '!**/*.md'
   - 'package.json'

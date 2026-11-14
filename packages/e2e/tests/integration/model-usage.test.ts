@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { defineEngine } from '../../src/engine/index.ts';
+import { defineEngine } from 'e2e-core/lib/engine/index';
 import { judgment } from '../helpers/fake-model.ts';
 import { assertValidReport } from '../helpers/report-schema.ts';
 import { createProject, runExisting } from '../helpers/run-project.ts';

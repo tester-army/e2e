@@ -1,6 +1,6 @@
 import type { ModelMessage } from 'ai';
 import { describe, expect, it } from 'vitest';
-import { shapeOf } from '../../src/agent/message-shape.ts';
+import { shapeOf } from 'e2e-core/lib/agent/message-shape';
 
 const bytes = () => new Uint8Array([137, 80, 78, 71]);
 

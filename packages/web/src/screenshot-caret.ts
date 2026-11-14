@@ -9,7 +9,7 @@
  * not blocked by a `style-src` policy.
  */
 
-import { withTimeout } from 'e2e/engine';
+import { withTimeout } from 'e2e-core/engine';
 import type { Frame, JSHandle, Page } from 'playwright-core';
 
 /** The most one frame may hold the capture while taking or giving back the sheet. */

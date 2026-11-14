@@ -6,10 +6,10 @@
  * without values, and the readiness URL loses userinfo and query.
  */
 
-import type { ResolvedTarget } from '../config/resolve.ts';
-import { launchesPinnedApp } from '../config/targets.ts';
-import { printableUrl } from '../internal/urls.ts';
-import type { CommandConfig } from '../types.ts';
+import type { ResolvedTarget } from 'e2e-core/lib/config/resolve';
+import { launchesPinnedApp } from 'e2e-core/lib/config/targets';
+import { printableUrl } from 'e2e-core/lib/internal/urls';
+import type { CommandConfig } from 'e2e-core/lib/types';
 
 /**
  * The `App:` and `Process:` lines for a session on `target`. `ranTest` is

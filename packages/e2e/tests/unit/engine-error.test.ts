@@ -1,8 +1,8 @@
 /** The engine error contract: closed codes and closed retryability, local and foreign. */
 
 import { describe, expect, it } from 'vitest';
-import { ENGINE_ERROR_CODES, EngineError, RETRYABLE_ENGINE_ERROR_CODES } from '../../src/engine/contract.ts';
-import { asEngineError } from '../../src/internal/errors.ts';
+import { ENGINE_ERROR_CODES, EngineError, RETRYABLE_ENGINE_ERROR_CODES } from 'e2e-core/lib/engine/contract';
+import { asEngineError } from 'e2e-core/lib/internal/errors';
 
 /** An EngineError thrown by another copy of the module: same shape, different class. */
 function foreign(code: string, retryable: boolean): Error {

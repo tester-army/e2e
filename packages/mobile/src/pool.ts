@@ -20,7 +20,7 @@ import {
   type EngineFinishInfo,
   type EnginePrepareInfo,
   type EnginePrepareResult,
-} from 'e2e/engine';
+} from 'e2e-core/engine';
 import { bindingsVariable, decodeBindings, deviceLabel, encodeBindings, pinnedApp, type DeviceSource, type SlotBinding } from './bindings.ts';
 import { isRunnerFailure, message, runCommand } from './errors.ts';
 import type { AgentDeviceClient, MobileOptions, MobilePlatform, ClientFactory } from './options.ts';

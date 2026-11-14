@@ -1,14 +1,14 @@
 import { APICallError, createGateway } from 'ai';
 import { describe, expect, it, vi } from 'vitest';
-import { type CliOverrides } from '../../src/config/resolve.ts';
+import { type CliOverrides } from 'e2e-core/lib/config/resolve';
 import { resolveConfig } from '../../src/config/resolve-run.ts';
 import { z } from 'zod';
-import { defineTool } from '../../src/agent/tool.ts';
-import { createToolLoopExecutor } from '../../src/agent/tool-loop.ts';
-import { TRANSPORT_RETRIES } from '../../src/agent/model/sdk.ts';
-import type { SdkLanguageModel } from '../../src/agent/ai-sdk.ts';
+import { defineTool } from 'e2e-core/lib/agent/tool';
+import { createToolLoopExecutor } from 'e2e-core/lib/agent/tool-loop';
+import { TRANSPORT_RETRIES } from 'e2e-core/lib/agent/model/sdk';
+import type { SdkLanguageModel } from 'e2e-core/lib/agent/ai-sdk';
 import type { E2EConfig } from '../../src/run-types.ts';
-import { HARNESS_TOOL_NAMES } from '../../src/agent/action-names.ts';
+import { HARNESS_TOOL_NAMES } from 'e2e-core/lib/agent/action-names';
 import { FINDING_TOOL_NAME } from '../../src/explore/executor.ts';
 import { recordingTools } from '../../src/mcp/recording.ts';
 
@@ -361,7 +361,7 @@ describe('model error classification', () => {
   it('separates an aborted attempt from an elapsed step budget', async () => {
     // A slow provider is a test timeout (exit 1); only an aborted attempt is a
     // runner cancellation (exit 3). Verified through the public adapter.
-    const { createModelAdapter } = await import('../../src/agent/model/sdk.ts');
+    const { createModelAdapter } = await import('e2e-core/lib/agent/model/sdk');
     const model = createGateway({ apiKey: 'x', baseURL: 'https://127.0.0.1:1/v1' }).languageModel('openai/unreachable');
     const adapter = createModelAdapter({ provider: model.provider, id: model.modelId, model });
 
@@ -424,7 +424,7 @@ const TRANSPORT_BACKOFF_BUDGET_MS = 120_000;
 
 /** Builds the adapter for a caller-supplied AI SDK model instance. */
 async function instanceAdapter(model: unknown) {
-  const { createModelAdapter } = await import('../../src/agent/model/sdk.ts');
+  const { createModelAdapter } = await import('e2e-core/lib/agent/model/sdk');
   return createModelAdapter({
     provider: 'scripted',
     id: 'always-fails',

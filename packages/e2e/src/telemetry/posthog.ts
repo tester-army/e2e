@@ -8,7 +8,7 @@
  * telemetry, telemetry that delays or fails a command is a bug.
  */
 
-import type { JsonValue } from '../types.ts';
+import type { JsonValue } from 'e2e-core/lib/types';
 
 /** The PostHog Cloud EU ingestion host. */
 export const POSTHOG_HOST = 'https://eu.i.posthog.com';

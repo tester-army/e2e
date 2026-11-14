@@ -45,7 +45,7 @@ import {
   type ViewportSize,
   ConfigurationError,
   TestError,
-} from 'e2e/engine';
+} from 'e2e-core/engine';
 import { isAppNotRunning, isSnapshotPresentationFailure, isUnreadableCapture, runCommand, staleOr } from './errors.ts';
 import { pointerInteraction, DEFAULT_LONG_PRESS_MS } from './actions.ts';
 import { resolveExpression } from './locate.ts';

@@ -17,7 +17,7 @@ import { assertValidReport } from '../helpers/report-schema.ts';
 import { freePort } from '../helpers/free-port.ts';
 import { resultByTitle, runProject } from '../helpers/run-project.ts';
 import type { E2EConfig } from '../../src/index.ts';
-import { TestError } from '../../src/engine/index.ts';
+import { TestError } from 'e2e-core/lib/engine/index';
 
 const APP_URL = FAKE_APP_URL;
 

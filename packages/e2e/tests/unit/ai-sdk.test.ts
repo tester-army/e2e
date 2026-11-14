@@ -11,11 +11,11 @@ import { describe, expect, it, vi } from 'vitest';
 
 describe('ai-sdk loader cache', () => {
   it('shares the loaded SDK across module realms via the globalThis slot', async () => {
-    const first = await import('../../src/agent/ai-sdk.ts');
+    const first = await import('e2e-core/lib/agent/ai-sdk');
     await first.loadAiSdk();
     // A fresh module registry simulates a project's separate copy of e2e.
     vi.resetModules();
-    const second = await import('../../src/agent/ai-sdk.ts');
+    const second = await import('e2e-core/lib/agent/ai-sdk');
     expect(second).not.toBe(first);
     expect(() => second.aiSdk()).not.toThrow();
     expect(second.aiSdk()).toBe(await first.loadAiSdk());

@@ -24,7 +24,7 @@ import {
   type EnginePrepareResult,
   type ProviderRecordContext,
   type ProviderRecording,
-} from 'e2e/engine';
+} from 'e2e-core/engine';
 import type { CdpTarget } from './browser-connection.ts';
 import { connectionAbort } from './operation-budget.ts';
 import { invalidState, message } from './support.ts';

@@ -2,8 +2,8 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
-import { compileGlob, matchesGlob } from './globs.ts';
-import { isPlainObject } from './options.ts';
+import { compileGlob, matchesGlob } from 'e2e-core/lib/internal/globs';
+import { isPlainObject } from 'e2e-core/lib/internal/options';
 
 export type PackageManager = 'npm' | 'pnpm' | 'yarn' | 'bun';
 

@@ -8,7 +8,7 @@ import type { LanguageModelV4 } from '@ai-sdk/provider';
 import { createXai } from '@ai-sdk/xai';
 import { createOAuthFetch } from './fetch.ts';
 import { withLogin } from './login-model.ts';
-import { USER_AGENT } from '../internal/client-identity.ts';
+import { USER_AGENT } from 'e2e-core/lib/internal/client-identity';
 import { loginHint } from './providers.ts';
 import { createXaiProvider } from './providers/xai.ts';
 import { defaultCredentialStore } from './store.ts';

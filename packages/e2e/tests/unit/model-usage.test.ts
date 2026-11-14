@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ModelUsage } from '../../src/agent/usage.ts';
+import { ModelUsage } from 'e2e-core/lib/agent/usage';
 
 const provenance = { provider: 'test', model: 'test', endpoint: 'default', adapterVersion: '1', policyVersion: '1' };
 

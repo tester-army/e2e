@@ -1,4 +1,4 @@
-import { toTextPattern } from 'e2e/engine';
+import { toTextPattern } from 'e2e-core/engine';
 import { describe, expect, it } from 'vitest';
 import { compileRoutePattern, routePatternMatches, routePatternsEqual } from '../../src/route-pattern.ts';
 

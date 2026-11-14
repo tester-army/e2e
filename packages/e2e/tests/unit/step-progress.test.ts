@@ -2,8 +2,8 @@
 
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { StepRecorder, type StepProgress } from '../../src/run/steps.ts';
-import { AgentError } from '../../src/agent/error.ts';
+import { StepRecorder, type StepProgress } from 'e2e-core/lib/run/steps';
+import { AgentError } from 'e2e-core/lib/agent/error';
 
 function recorder(): { steps: StepRecorder; heard: StepProgress[] } {
   const heard: StepProgress[] = [];

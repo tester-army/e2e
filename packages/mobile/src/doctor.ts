@@ -6,7 +6,7 @@
 
 import { stat } from 'node:fs/promises';
 import path from 'node:path';
-import { obj, type EngineDoctorCheck, type EngineDoctorInfo } from 'e2e/engine';
+import { obj, type EngineDoctorCheck, type EngineDoctorInfo } from 'e2e-core/engine';
 import { runCommand } from './errors.ts';
 import type { ClientFactory, MobileOptions } from './options.ts';
 import { deviceSelection, isDeviceList } from './pool.ts';

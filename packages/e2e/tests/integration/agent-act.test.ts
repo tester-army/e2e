@@ -12,7 +12,7 @@ import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 import { installFakeLoopModel, loopCalls, nodeIdFor } from '../helpers/fake-loop-model.ts';
 import { resultByTitle, runProject, type FixtureProject } from '../helpers/run-project.ts';
 import type { RunOutcome } from '../helpers/run-project.ts';
-import type { StepExecutor, StepExecutorContext } from '../../src/agent/executor.ts';
+import type { StepExecutor, StepExecutorContext } from 'e2e-core/lib/agent/executor';
 
 const SUITE = `import { test, expect } from 'e2e';
 

@@ -9,7 +9,7 @@
  */
 
 import { setTimeout as sleep } from 'node:timers/promises';
-import { envFlag } from '../internal/env.ts';
+import { envFlag } from 'e2e-core/lib/internal/env';
 
 const ESC = '\u001b';
 const SYNC_START = `${ESC}[?2026h`;

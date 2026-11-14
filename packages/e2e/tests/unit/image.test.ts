@@ -3,7 +3,7 @@
 import { crc32, deflateSync } from 'node:zlib';
 import { Transformer } from '@napi-rs/image';
 import { describe, expect, it } from 'vitest';
-import { clipBox, compareImages, cropImage, decodePng, encodePng, fillBoxes, resampleImage, type RgbaImage } from '../../src/internal/image.ts';
+import { clipBox, compareImages, cropImage, decodePng, encodePng, fillBoxes, resampleImage, type RgbaImage } from 'e2e-core/lib/internal/image';
 
 /** A width by height image of one gray level. */
 function gray(width: number, height: number, level: number): RgbaImage {

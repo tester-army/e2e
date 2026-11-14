@@ -18,7 +18,7 @@ import {
   type FixtureProject,
   type RunOutcome,
 } from '../helpers/run-project.ts';
-import type { AiTraceDocument } from '../../src/internal/ai-trace.ts';
+import type { AiTraceDocument } from 'e2e-core/lib/internal/ai-trace';
 
 const SUITE = `import { test, expect } from 'e2e';
 

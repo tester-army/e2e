@@ -4,9 +4,9 @@
  */
 
 import { assert, describe, expect, it } from 'vitest';
-import type { Observation, SemanticNode } from '../../src/engine/surface.ts';
-import { prepareObservation } from '../../src/agent/observation.ts';
-import { samePlace } from '../../src/agent/scroll-target.ts';
+import type { Observation, SemanticNode } from 'e2e-core/lib/engine/surface';
+import { prepareObservation } from 'e2e-core/lib/agent/observation';
+import { samePlace } from 'e2e-core/lib/agent/scroll-target';
 
 function node(id: string, extra: Partial<SemanticNode> = {}): SemanticNode {
   return { ref: { id, revision: 'r1' }, ...extra };

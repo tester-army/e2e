@@ -6,7 +6,7 @@
 
 import type { Locator as PwLocator, Page } from 'playwright-core';
 import { describe, expect, it } from 'vitest';
-import type { LocatorExpression, TextPattern } from 'e2e/engine';
+import type { LocatorExpression, TextPattern } from 'e2e-core/engine';
 import { applyPostSteps, frameSelectors, projectExpression as projectWith, type PostStep } from '../../src/locators.ts';
 
 /** A chain-recording stand-in for a Playwright locator. */

@@ -12,9 +12,9 @@ import { createRequire, isBuiltin } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { ENGINE_SPI_VERSION } from '../engine/contract.ts';
-import { isEngineHandle, type EngineHandle } from '../engine/index.ts';
-import { ConfigurationError, errorMessage, isE2EError } from '../internal/errors.ts';
+import { ENGINE_SPI_VERSION } from 'e2e-core/lib/engine/contract';
+import { isEngineHandle, type EngineHandle } from 'e2e-core/lib/engine/index';
+import { ConfigurationError, errorMessage, isE2EError } from 'e2e-core/lib/internal/errors';
 
 /** npm's package name grammar with an optional subpath, so a path, a URL, or a `..` segment is never resolved. */
 const PACKAGE = /^(?:@[a-z0-9][a-z0-9._~-]*\/)?[a-z0-9][a-z0-9._~-]*(?:\/[A-Za-z0-9][A-Za-z0-9._~-]*)*$/;

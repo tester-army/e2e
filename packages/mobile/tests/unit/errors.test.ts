@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { AppError } from 'agent-device';
-import { EngineError, TestError, type OperationContext, type SemanticNode } from 'e2e/engine';
+import { EngineError, TestError, type OperationContext, type SemanticNode } from 'e2e-core/engine';
 import { isAppNotInstalled, isRunnerFailure, isSnapshotPresentationFailure, staleOr, translateError } from '../../src/errors.ts';
 import { SETTINGS_SNAPSHOT } from '../helpers/fake-client.ts';
 import { boot, harness, PROJECT_ROOT, type Harness } from '../helpers/harness.ts';

@@ -1,7 +1,7 @@
 /** Scrolling to text settles each page once, including on a zero-turn replay. */
 
 import { describe, expect, it } from 'vitest';
-import type { StepExecutor } from '../../src/agent/executor.ts';
+import type { StepExecutor } from 'e2e-core/lib/agent/executor';
 import { createFakeEngine, FAKE_APP, FAKE_APP_URL } from '../helpers/fake-engine.ts';
 import { nodeIdFor } from '../helpers/fake-loop-model.ts';
 import { createProject, resultByTitle, runExisting } from '../helpers/run-project.ts';

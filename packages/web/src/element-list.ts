@@ -1,7 +1,7 @@
 /** The elements one document's observation walk read, kept behind a single in-page array. */
 
 import type { ElementHandle, JSHandle } from 'playwright-core';
-import { EngineError } from 'e2e/engine';
+import { EngineError } from 'e2e-core/engine';
 import { navigationStaleOr } from './support.ts';
 
 /**

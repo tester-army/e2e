@@ -2,9 +2,9 @@
 
 The mobile engine for [`e2e`](https://www.npmjs.com/package/e2e), built on
 [agent-device](https://github.com/callstack/agent-device): iOS simulators,
-Android emulators, and connected phones through the same `e2e/engine` contract the browser engine
+Android emulators, and connected phones through the same `e2e-core/engine` contract the browser engine
 implements. A test written against `screen`, `expect`, `app`, and `agent` runs
-on a device target unchanged; nothing in `e2e` core knows this package exists.
+on a device target unchanged; neither `e2e` nor `e2e-core` imports this package.
 
 ## Install
 

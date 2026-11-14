@@ -4,7 +4,7 @@ import path from 'node:path';
 import { PassThrough } from 'node:stream';
 import picocolors from 'picocolors';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { compileGlobList } from '../../src/internal/globs.ts';
+import { compileGlobList } from 'e2e-core/lib/internal/globs';
 import type { RunOptions, RunOutcome } from '../../src/run/runner.ts';
 import { SignalLadder } from '../../src/cli/signals.ts';
 import {

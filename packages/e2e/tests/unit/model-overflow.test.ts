@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isContextOverflow } from '../../src/agent/model/overflow.ts';
+import { isContextOverflow } from 'e2e-core/lib/agent/model/overflow';
 
 describe('isContextOverflow', () => {
   it.each([

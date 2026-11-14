@@ -17,15 +17,15 @@ import {
   type NodeRef,
   type OperationContext,
   type SemanticNode,
-} from '../../src/engine/index.ts';
-import { prepareObservation } from '../../src/agent/observation.ts';
-import { createEngineSession } from '../../src/engine/session.ts';
-import { Deadline } from '../../src/internal/time.ts';
-import { LocatorEngine } from '../../src/locator/engine.ts';
-import { createScreen } from '../../src/locator/screen.ts';
-import { AttemptBudget } from '../../src/run/budget.ts';
-import { StepRecorder } from '../../src/run/steps.ts';
-import type { Screen } from '../../src/types.ts';
+} from 'e2e-core/lib/engine/index';
+import { prepareObservation } from 'e2e-core/lib/agent/observation';
+import { createEngineSession } from 'e2e-core/lib/engine/session';
+import { Deadline } from 'e2e-core/lib/internal/time';
+import { LocatorEngine } from 'e2e-core/lib/locator/engine';
+import { createScreen } from 'e2e-core/lib/locator/screen';
+import { AttemptBudget } from 'e2e-core/lib/run/budget';
+import { StepRecorder } from 'e2e-core/lib/run/steps';
+import type { Screen } from 'e2e-core/lib/types';
 
 export interface ScreenOverOptions {
   /** Answers every `locate`, with the operation it runs under. */

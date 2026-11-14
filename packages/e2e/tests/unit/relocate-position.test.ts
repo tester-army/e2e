@@ -1,12 +1,12 @@
 /** Positional recording: twins the description cannot tell apart resolve by place, at the same count only. */
 
 import { describe, expect, it } from 'vitest';
-import { describeAction } from '../../src/agent/actions.ts';
-import { describePosition, relocateDescriptor } from '../../src/cache/relocate.ts';
-import { buildTraceEntry, type ActionTrace } from '../../src/cache/trace.ts';
-import { readTraceEntry } from '../../src/cache/trace-read.ts';
-import type { SemanticNode } from '../../src/engine/surface.ts';
-import type { RedactedNode } from '../../src/agent/observation.ts';
+import { describeAction } from 'e2e-core/lib/agent/actions';
+import { describePosition, relocateDescriptor } from 'e2e-core/lib/cache/relocate';
+import { buildTraceEntry, type ActionTrace } from 'e2e-core/lib/cache/trace';
+import { readTraceEntry } from 'e2e-core/lib/cache/trace-read';
+import type { SemanticNode } from 'e2e-core/lib/engine/surface';
+import type { RedactedNode } from 'e2e-core/lib/agent/observation';
 import { redactedNodes } from '../helpers/redacted.ts';
 
 function button(id: string, name = 'Set up'): SemanticNode {

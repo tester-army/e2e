@@ -14,8 +14,8 @@
 
 import type { Argument, CallExpression, Directive, Expression, MemberExpression, Node, ObjectExpression, PropertyKey, Span, Statement as SourceStatement } from 'oxc-parser';
 import { oxcParser } from '../config/typescript.ts';
-import { ConfigurationError } from '../internal/errors.ts';
-import { suggest } from '../internal/suggest.ts';
+import { ConfigurationError } from 'e2e-core/lib/internal/errors';
+import { suggest } from 'e2e-core/lib/internal/suggest';
 import { LEFT_OUT, RECEIVER_LABELS, SURFACE, type Arity, type Member, type Receiver } from './code-surface.ts';
 
 /**

@@ -9,8 +9,8 @@ import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 import { nodeIdFor } from '../helpers/fake-loop-model.ts';
 import { createProject, resultByTitle, runExisting, type FixtureProject } from '../helpers/run-project.ts';
 import { readEntries } from '../helpers/trace-cache.ts';
-import type { StepExecutor, StepExecutorContext } from '../../src/agent/executor.ts';
-import type { ActionTrace, TraceTargetDescriptor } from '../../src/cache/trace.ts';
+import type { StepExecutor, StepExecutorContext } from 'e2e-core/lib/agent/executor';
+import type { ActionTrace, TraceTargetDescriptor } from 'e2e-core/lib/cache/trace';
 
 const GRAPH_SUITE = `import { test, expect } from 'e2e';
 

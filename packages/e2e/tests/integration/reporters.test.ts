@@ -14,8 +14,8 @@ import { createProject, runExisting, type FixtureProject } from '../helpers/run-
 import type { FinishedRun, Reporter, RunEvent } from '../../src/index.ts';
 
 // The built runner's flag. It stays set for the rest of the process, so only the first reporter given up on can show it.
-const abandonedModule = new URL('../../dist/internal/abandoned.js', import.meta.url).href;
-const { leftWorkBehind } = (await import(abandonedModule)) as typeof import('../../src/internal/abandoned.ts');
+const abandonedModule = 'e2e-core/lib/internal/abandoned';
+const { leftWorkBehind } = (await import(abandonedModule)) as typeof import('e2e-core/lib/internal/abandoned');
 
 const SUITE = `import { test, expect } from 'e2e';
 

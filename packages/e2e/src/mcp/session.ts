@@ -14,23 +14,23 @@
  */
 
 import { z } from 'zod';
-import { loadAiSdkIfInstalled } from '../agent/ai-sdk.ts';
+import { loadAiSdkIfInstalled } from 'e2e-core/lib/agent/ai-sdk';
 import { openInteractiveStep, type InteractiveStep } from '../agent/interactive-step.ts';
-import { ScreenPresenter } from '../agent/screen-update.ts';
-import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
-import { launchesPinnedApp } from '../config/targets.ts';
-import { secretHandle } from '../secrets.ts';
-import { classifyError, ConfigurationError, errorMessage, InfrastructureError, type SerializedError } from '../internal/errors.ts';
-import { LocatorEngine } from '../locator/engine.ts';
+import { ScreenPresenter } from 'e2e-core/lib/agent/screen-update';
+import type { ResolvedConfig, ResolvedTarget } from 'e2e-core/lib/config/resolve';
+import { launchesPinnedApp } from 'e2e-core/lib/config/targets';
+import { secretHandle } from 'e2e-core/lib/secrets';
+import { classifyError, ConfigurationError, errorMessage, InfrastructureError, type SerializedError } from 'e2e-core/lib/internal/errors';
+import { LocatorEngine } from 'e2e-core/lib/locator/engine';
 import { allocateTargetPorts } from '../run/app-ports.ts';
 import { selectTarget } from '../run/select-target.ts';
-import { SharedAppProcesses } from '../run/process-pool.ts';
-import { outputLayout } from '../run/output.ts';
-import { processSecrets, registerStaticSecrets } from '../run/secrecy.ts';
+import { SharedAppProcesses } from 'e2e-core/lib/run/process-pool';
+import { outputLayout } from 'e2e-core/lib/run/output';
+import { processSecrets, registerStaticSecrets } from 'e2e-core/lib/run/secrecy';
 import { openStandaloneAttempt, type OneShotAttempt } from '../run/standalone-kinds.ts';
-import type { StandaloneAttempt } from '../run/standalone-attempt.ts';
+import type { StandaloneAttempt } from 'e2e-core/lib/run/standalone-attempt';
 import { selectStandaloneTest, testLocation } from '../run/standalone-test.ts';
-import type { AgentParams } from '../types.ts';
+import type { AgentParams } from 'e2e-core/lib/types';
 import { createSessionCatalog, isGrammarVerb, type SessionCatalog } from './catalog.ts';
 import { appLines } from './app-lines.ts';
 import { SESSION_BOUNDS } from './bounds.ts';

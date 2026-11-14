@@ -69,7 +69,8 @@
   },
   "peerDependencies": {
     "ai": "^7.0.0",
-    "e2e": ">=0.22.1 <1"
+    "e2e": ">=0.23.1 <1",
+    "e2e-core": ">=0.23.1 <1"
   },
   "peerDependenciesMeta": {
     "ai": {
@@ -80,6 +81,7 @@
     "@types/node": "26.6.6",
     "ai": "7.0.170",
     "e2e": "workspace:*",
+    "e2e-core": "workspace:*",
     "typescript": "7.0.2",
     "vitest": "5.1.0"
   },

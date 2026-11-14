@@ -6,7 +6,7 @@
  */
 
 import type { Page } from 'playwright-core';
-import { stopProviderRecording, type VideoSegment } from 'e2e/engine';
+import { stopProviderRecording, type VideoSegment } from 'e2e-core/engine';
 import { connectionAbort } from './operation-budget.ts';
 import type { LeaseRecording } from './provider.ts';
 import type { AttemptVideo } from './video.ts';

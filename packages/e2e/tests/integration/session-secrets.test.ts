@@ -9,8 +9,8 @@
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { defineEngine, LOCATOR_ACTION_KINDS } from '../../src/engine/index.ts';
-import type { EngineState } from '../../src/engine/index.ts';
+import { defineEngine, LOCATOR_ACTION_KINDS } from 'e2e-core/lib/engine/index';
+import type { EngineState } from 'e2e-core/lib/engine/index';
 import { assertValidReport } from '../helpers/report-schema.ts';
 import { createProject, runExisting } from '../helpers/run-project.ts';
 import { snapshot } from '../helpers/snapshot.ts';

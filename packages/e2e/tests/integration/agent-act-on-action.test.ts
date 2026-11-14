@@ -11,7 +11,7 @@ import { nodeIdFor } from '../helpers/fake-loop-model.ts';
 import { createProject, resultByTitle, runExisting, runProject, type FixtureProject, type RunOutcome } from '../helpers/run-project.ts';
 import { writeFileSync } from 'node:fs';
 import { readEntries } from '../helpers/trace-cache.ts';
-import type { StepExecutor, StepExecutorContext } from '../../src/agent/executor.ts';
+import type { StepExecutor, StepExecutorContext } from 'e2e-core/lib/agent/executor';
 
 const TITLE = 'screenshots every action';
 

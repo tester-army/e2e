@@ -1,5 +1,5 @@
 import { afterEach, beforeAll, beforeEach, vi } from 'vitest';
-import { loadAiSdk } from '../../src/agent/ai-sdk.ts';
+import { loadAiSdk } from 'e2e-core/lib/agent/ai-sdk';
 
 /**
  * Runs every test in the calling file on fake time that jumps to each next
@@ -10,7 +10,7 @@ import { loadAiSdk } from '../../src/agent/ai-sdk.ts';
  */
 export function runAgentStepsOnFakeTime(): void {
   beforeAll(async () => {
-    await import('../../src/agent/default-agent.ts');
+    await import('e2e-core/lib/agent/default-agent');
     await loadAiSdk();
   });
   beforeEach(() => {

@@ -2,7 +2,7 @@
 
 import { existsSync, lstatSync, readdirSync, readFileSync, readlinkSync, realpathSync, type Stats } from 'node:fs';
 import path from 'node:path';
-import { insideProjectRoot, realpathOfExisting } from '../../internal/paths.ts';
+import { insideProjectRoot, realpathOfExisting } from 'e2e-core/lib/internal/paths';
 import { MISSING_SKILL_MESSAGE, SKILL_NAME, type SkillFile } from '../skill.ts';
 
 interface SkillLocation {

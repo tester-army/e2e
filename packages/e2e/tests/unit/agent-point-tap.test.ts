@@ -4,9 +4,9 @@
  */
 
 import { assert, describe, expect, it } from 'vitest';
-import type { Observation, SemanticNode } from '../../src/engine/surface.ts';
-import { prepareObservation } from '../../src/agent/observation.ts';
-import { describePointAction, hitTest, imagePointToViewport, nodeLine } from '../../src/agent/point-tap.ts';
+import type { Observation, SemanticNode } from 'e2e-core/lib/engine/surface';
+import { prepareObservation } from 'e2e-core/lib/agent/observation';
+import { describePointAction, hitTest, imagePointToViewport, nodeLine } from 'e2e-core/lib/agent/point-tap';
 
 function node(id: string, extra: Partial<SemanticNode> = {}): SemanticNode {
   return { ref: { id, revision: 'r1' }, ...extra };

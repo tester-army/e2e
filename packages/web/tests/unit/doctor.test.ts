@@ -3,7 +3,7 @@
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import type { EngineDoctorInfo } from 'e2e/engine';
+import type { EngineDoctorInfo } from 'e2e-core/engine';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { web, type BrowserProvider } from '../../src/index.ts';
 

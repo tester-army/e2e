@@ -9,8 +9,8 @@ import { Readable } from 'node:stream';
 import { createGunzip } from 'node:zlib';
 import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { USER_AGENT } from '../../internal/client-identity.ts';
-import { packageVersion } from '../../internal/package-version.ts';
+import { USER_AGENT } from 'e2e-core/lib/internal/client-identity';
+import { packageVersion } from 'e2e-core/lib/internal/package-version';
 import { dependencyRange, recordedSiblingRange } from './versions.ts';
 
 export interface ExamplePreset {

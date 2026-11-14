@@ -4,7 +4,7 @@
  */
 
 import type { Dialog as PwDialog } from 'playwright-core';
-import { TestError } from 'e2e/engine';
+import { TestError } from 'e2e-core/engine';
 import { describe, expect, it, vi } from 'vitest';
 import { DialogRouter } from '../../src/dialogs.ts';
 import { ErrorLatch } from '../../src/support.ts';

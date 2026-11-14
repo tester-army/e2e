@@ -1,11 +1,11 @@
 /** Anchors: the step's delta as relocatable descriptors, both what appeared and what vanished. */
 
 import { describe, expect, it } from 'vitest';
-import { deltaEvidenced, deltaMismatch, describeDelta } from '../../src/cache/anchors.ts';
-import { MAX_TRACE_ANCHORS } from '../../src/cache/trace.ts';
-import type { RedactedNode } from '../../src/agent/observation.ts';
-import type { SemanticNode } from '../../src/engine/surface.ts';
-import { createRedactor } from '../../src/internal/redact.ts';
+import { deltaEvidenced, deltaMismatch, describeDelta } from 'e2e-core/lib/cache/anchors';
+import { MAX_TRACE_ANCHORS } from 'e2e-core/lib/cache/trace';
+import type { RedactedNode } from 'e2e-core/lib/agent/observation';
+import type { SemanticNode } from 'e2e-core/lib/engine/surface';
+import { createRedactor } from 'e2e-core/lib/internal/redact';
 import { redactedNodes } from '../helpers/redacted.ts';
 
 function nodes(list: SemanticNode[]): ReadonlyMap<string, RedactedNode> {

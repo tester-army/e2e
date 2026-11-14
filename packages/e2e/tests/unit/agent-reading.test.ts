@@ -1,9 +1,9 @@
 /** The rules `scroll_to` pages by: which node reads a text, within which list, and what counts as the screen moving. */
 
 import { describe, expect, it } from 'vitest';
-import type { SemanticNode } from '../../src/engine/surface.ts';
-import type { RedactedNode } from '../../src/agent/observation.ts';
-import { nodeReading, normalizeReading, pageLanded, pageMoved, readPage } from '../../src/agent/reading.ts';
+import type { SemanticNode } from 'e2e-core/lib/engine/surface';
+import type { RedactedNode } from 'e2e-core/lib/agent/observation';
+import { nodeReading, normalizeReading, pageLanded, pageMoved, readPage } from 'e2e-core/lib/agent/reading';
 import { redacted } from '../helpers/redacted.ts';
 
 function node(id: string, extra: Partial<SemanticNode> = {}): SemanticNode {

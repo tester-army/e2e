@@ -12,8 +12,8 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { ExecutorNode } from '../../src/agent/executor.ts';
-import type { ArtifactStore, StoredArtifact } from '../../src/types.ts';
+import type { ExecutorNode } from 'e2e-core/lib/agent/executor';
+import type { ArtifactStore, StoredArtifact } from 'e2e-core/lib/types';
 import type { RunOutcome } from '../../src/run/runner.ts';
 import { findNode } from '../helpers/executor-tree.ts';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';

@@ -7,7 +7,7 @@
 
 import { z } from 'zod';
 import type { ReportExploreStep } from '../report/build.ts';
-import type { Agent } from '../types.ts';
+import type { Agent } from 'e2e-core/lib/types';
 import { MAX_TITLE_CHARS, type ExploreState } from './state.ts';
 
 const MIN_SUMMARY_CHARS = 10;

@@ -30,8 +30,8 @@ import type {
   ReplayedPrefix,
   StepExecutor,
   StepExecutorContext,
-} from '../../src/agent/executor.ts';
-import type { ActionTrace, TraceEntry } from '../../src/cache/trace.ts';
+} from 'e2e-core/lib/agent/executor';
+import type { ActionTrace, TraceEntry } from 'e2e-core/lib/cache/trace';
 
 const SUITE = `import { test, expect } from 'e2e';
 

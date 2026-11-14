@@ -1,11 +1,11 @@
 /** The `--debug` agent step table: one row per agent step, a `via` column only when the steps named several models. */
 
 import { describe, expect, it } from 'vitest';
-import type { ResolvedTarget } from '../../src/config/resolve.ts';
+import type { ResolvedTarget } from 'e2e-core/lib/config/resolve';
 import { agentStepTable } from '../../src/report/debug-steps.ts';
 import { stepModelLabel } from '../../src/report/format.ts';
-import type { AttemptRecord, ResultRecord, SerialGroupRecord, SerialMemberRecord } from '../../src/run/records.ts';
-import type { StepModelInfo, StepRecord } from '../../src/run/steps.ts';
+import type { AttemptRecord, ResultRecord, SerialGroupRecord, SerialMemberRecord } from 'e2e-core/lib/run/records';
+import type { StepModelInfo, StepRecord } from 'e2e-core/lib/run/steps';
 
 const AT = '2026-01-01T00:00:00.000Z';
 

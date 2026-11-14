@@ -1,8 +1,8 @@
 /** `unique()` params: slots in the key and the recording, filled from each call. */
 
 import { describe, expect, it } from 'vitest';
-import { validateParams } from '../../src/agent/act-validation.ts';
-import { paramsDigest } from '../../src/cache/identity.ts';
+import { validateParams } from 'e2e-core/lib/agent/act-validation';
+import { paramsDigest } from 'e2e-core/lib/cache/identity';
 import {
   expandText,
   expandTrace,
@@ -12,9 +12,9 @@ import {
   templateText,
   templateTrace,
   type ParamTemplate,
-} from '../../src/cache/template.ts';
-import type { ActionTrace } from '../../src/cache/trace.ts';
-import { unique } from '../../src/params.ts';
+} from 'e2e-core/lib/cache/template';
+import type { ActionTrace } from 'e2e-core/lib/cache/trace';
+import { unique } from 'e2e-core/lib/params';
 
 const admin = { kind: 'secret', name: 'admin', purpose: 'password' } as const;
 

@@ -5,7 +5,7 @@
  * `init` for one worker slot.
  */
 
-import { obj, type EngineAppInfo, type EngineHandle, type EnginePrepareInfo, type EnginePrepareResult } from 'e2e/engine';
+import { obj, type EngineAppInfo, type EngineHandle, type EnginePrepareInfo, type EnginePrepareResult } from 'e2e-core/engine';
 import { buildEngine } from '../../src/engine.ts';
 import type { MobileOptions } from '../../src/options.ts';
 import type { DeviceConnection } from '../../src/bindings.ts';

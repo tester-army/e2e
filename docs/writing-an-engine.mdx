@@ -34,16 +34,18 @@ Return a handle from `defineEngine`. It validates the manifest and computes
 the engine's capabilities when the config loads.
 
 <Note>
-Import types and helpers from `e2e/engine` only; there is no internal
-subpath. Declare `e2e` as a peer dependency, so the engine and the runner
-share one set of error classes.
+Import types and helpers from `e2e-core/engine` only; there is no internal
+subpath. Declare `e2e-core` as a peer dependency, so the engine and the runner
+share one set of error classes. `e2e/engine`
+re-exports the same module, so an engine that imports it and peers on `e2e`
+still runs under the runner.
 </Note>
 
 This skeleton assumes a `createClient` adapter for your platform. Its nodes
 must follow the [semantic tree rules](#nodes-and-refs).
 
 ```ts title="src/index.ts" expandable
-import { ConfigurationError, defineEngine, resolveExpression, type EngineHandle } from 'e2e/engine';
+import { ConfigurationError, defineEngine, resolveExpression, type EngineHandle } from 'e2e-core/engine';
 
 export function hyperdrive(options: { device: string }): EngineHandle {
   const client = createClient(options);
@@ -215,7 +217,7 @@ An engine option can take a secret too, such as a password the engine sends
 to the app:
 
 1. Accept `string | Secret`. Tell them apart with `isSecret` from
-   `e2e/engine`.
+   `e2e-core/engine`.
 2. List each handle in the engine's `secrets`. The config load rejects a
    name that no secret has.
 3. Read the value in `startAttempt` with `context.resolveSecret(secret)`.

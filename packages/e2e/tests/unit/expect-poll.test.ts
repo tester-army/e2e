@@ -1,13 +1,13 @@
 import { describe, expect as vexpect, it } from 'vitest';
 import { z } from 'zod';
-import { currentAttempt, publishAttempt } from '../../src/expect/attempt.ts';
+import { currentAttempt, publishAttempt } from 'e2e-core/lib/expect/attempt';
 import { expect as e2eExpect } from '../../src/expect/index.ts';
-import { currentPollScope, pollLineage, PollScope, runInPollScope } from '../../src/expect/poll-scope.ts';
-import { isAbandonedRejection } from '../../src/internal/abandoned.ts';
-import { SoftFailures } from '../../src/expect/soft.ts';
-import { ConfigurationError, TestError } from '../../src/internal/errors.ts';
-import { Deadline } from '../../src/internal/time.ts';
-import { AttemptBudget } from '../../src/run/budget.ts';
+import { currentPollScope, pollLineage, PollScope, runInPollScope } from 'e2e-core/lib/expect/poll-scope';
+import { isAbandonedRejection } from 'e2e-core/lib/internal/abandoned';
+import { SoftFailures } from 'e2e-core/lib/expect/soft';
+import { ConfigurationError, TestError } from 'e2e-core/lib/internal/errors';
+import { Deadline } from 'e2e-core/lib/internal/time';
+import { AttemptBudget } from 'e2e-core/lib/run/budget';
 import { useFakeTime } from '../helpers/fake-time.ts';
 
 useFakeTime();

@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import type { RedactedNode } from '../../src/agent/observation.ts';
-import type { SemanticNode } from '../../src/engine/surface.ts';
+import type { RedactedNode } from 'e2e-core/lib/agent/observation';
+import type { SemanticNode } from 'e2e-core/lib/engine/surface';
 import { redacted } from '../helpers/redacted.ts';
-import { containerKey, describeAction } from '../../src/agent/actions.ts';
-import { describePosition, relocateDescriptor } from '../../src/cache/relocate.ts';
+import { containerKey, describeAction } from 'e2e-core/lib/agent/actions';
+import { describePosition, relocateDescriptor } from 'e2e-core/lib/cache/relocate';
 
 const identity = (text: string): string => text;
 

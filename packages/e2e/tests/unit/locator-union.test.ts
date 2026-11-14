@@ -5,8 +5,8 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { resolveExpression, type LocatorExpression, type SemanticNode } from '../../src/engine/index.ts';
-import type { Locator } from '../../src/types.ts';
+import { resolveExpression, type LocatorExpression, type SemanticNode } from 'e2e-core/lib/engine/index';
+import type { Locator } from 'e2e-core/lib/types';
 import { invalid } from '../helpers/invalid.ts';
 import { screenOver } from '../helpers/screen-over.ts';
 import { snapshot } from '../helpers/snapshot.ts';

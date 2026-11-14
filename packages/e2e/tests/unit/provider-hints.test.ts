@@ -3,7 +3,7 @@ import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import type { LanguageModelV4 } from '@ai-sdk/provider';
 import type { ModelMessage } from 'ai';
 import { describe, expect, it } from 'vitest';
-import { promptCacheKey, providerHints, type ProviderModelRef } from '../../src/agent/model/provider-hints.ts';
+import { promptCacheKey, providerHints, type ProviderModelRef } from 'e2e-core/lib/agent/model/provider-hints';
 
 const BREAKPOINT = { cacheControl: { type: 'ephemeral' } };
 

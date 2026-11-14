@@ -11,7 +11,7 @@ import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { chromium, type Browser, type Page } from 'playwright-core';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import type { LocatorAction, SemanticNode } from 'e2e/engine';
+import type { LocatorAction, SemanticNode } from 'e2e-core/engine';
 import { classifyActionError, dispatchLocatorAction } from '../../src/actions.ts';
 import { ElementList } from '../../src/element-list.ts';
 import { captureDocument } from '../../src/observation.ts';

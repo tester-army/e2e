@@ -14,7 +14,7 @@
  */
 
 import { COMMIT_HASH, git } from '../internal/git.ts';
-import { sha256Hex } from '../internal/ids.ts';
+import { sha256Hex } from 'e2e-core/lib/internal/ids';
 
 /** The lexically first root commit reachable from HEAD; undefined outside git and in a shallow clone. */
 async function rootCommit(cwd: string): Promise<string | undefined> {

@@ -1,6 +1,6 @@
 import { createRequire } from 'node:module';
 import { describe, expect, it } from 'vitest';
-import { packageVersion, readJson } from '../../src/internal/package-version.ts';
+import { packageVersion, readJson } from 'e2e-core/lib/internal/package-version';
 
 describe('packageVersion', () => {
   it('reads the version of a resolvable package.json (mirrors a driver manifest)', () => {

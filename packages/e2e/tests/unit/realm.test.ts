@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { collectModule, test } from '../../src/collect/registry.ts';
 import type { TestTargetPair } from '../../src/collect/select.ts';
 import { RealmManager, findRegistered, type Realm } from '../../src/run/realm.ts';
-import type { RunError } from '../../src/run/records.ts';
+import type { RunError } from 'e2e-core/lib/run/records';
 
 /**
  * The hook lifecycle contract, checked on the realm

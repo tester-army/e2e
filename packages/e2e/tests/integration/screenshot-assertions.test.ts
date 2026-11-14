@@ -9,7 +9,7 @@ import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { JsColorType, Transformer } from '@napi-rs/image';
 import { describe, expect, it } from 'vitest';
-import type { EngineObserveOptions, ObservationPixels, SemanticNode } from '../../src/engine/index.ts';
+import type { EngineObserveOptions, ObservationPixels, SemanticNode } from 'e2e-core/lib/engine/index';
 import type { E2EConfig } from '../../src/index.ts';
 import { engineFailure } from '../helpers/engine-runtime.ts';
 import { createFakeEngine, FAKE_APP, FAKE_APP_URL, type FakeEngineHandle } from '../helpers/fake-engine.ts';

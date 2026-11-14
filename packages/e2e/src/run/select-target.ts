@@ -1,7 +1,7 @@
 /** The target a session opens: named, or the only one the config declares. */
 
-import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
-import { ConfigurationError } from '../internal/errors.ts';
+import type { ResolvedConfig, ResolvedTarget } from 'e2e-core/lib/config/resolve';
+import { ConfigurationError } from 'e2e-core/lib/internal/errors';
 
 /**
  * `name` must be a declared target; without one, the config must declare

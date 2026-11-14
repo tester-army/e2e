@@ -1,11 +1,11 @@
 import { describe, expect as vexpect, it } from 'vitest';
 import { z } from 'zod';
-import { publishAttempt } from '../../src/expect/attempt.ts';
+import { publishAttempt } from 'e2e-core/lib/expect/attempt';
 import { expect as e2eExpect } from '../../src/expect/index.ts';
-import { SoftFailures, soften } from '../../src/expect/soft.ts';
-import { TestError } from '../../src/internal/errors.ts';
-import { Deadline } from '../../src/internal/time.ts';
-import { AttemptBudget } from '../../src/run/budget.ts';
+import { SoftFailures, soften } from 'e2e-core/lib/expect/soft';
+import { TestError } from 'e2e-core/lib/internal/errors';
+import { Deadline } from 'e2e-core/lib/internal/time';
+import { AttemptBudget } from 'e2e-core/lib/run/budget';
 
 /** Publishes a fake attempt with its own soft-failure collector; `end()` clears it. */
 function attempt(): { soft: SoftFailures; end: () => void } {

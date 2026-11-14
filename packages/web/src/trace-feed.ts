@@ -6,7 +6,7 @@
  */
 
 import type { Page } from 'playwright-core';
-import type { EngineAttemptContext, OperationContext } from 'e2e/engine';
+import type { EngineAttemptContext, OperationContext } from 'e2e-core/engine';
 import { captureObservation, type CaptureSettings } from './observation-capture.ts';
 import { withOperationDeadline } from './operation-budget.ts';
 import { RefRegistry } from './refs.ts';

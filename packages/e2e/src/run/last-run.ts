@@ -1,8 +1,8 @@
 /** What `--last-failed` reads back from the previous run's report. */
 
 import { readFile } from 'node:fs/promises';
-import { ConfigurationError, errorMessage } from '../internal/errors.ts';
-import { resultId } from '../internal/ids.ts';
+import { ConfigurationError, errorMessage } from 'e2e-core/lib/internal/errors';
+import { resultId } from 'e2e-core/lib/internal/ids';
 import type { Report1Document } from '../report/build.ts';
 
 type ReportResult = Report1Document['run']['results'][number];

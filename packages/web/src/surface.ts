@@ -40,8 +40,8 @@ import {
   type VideoSegment,
   type ViewportPoint,
   type ViewportSize,
-} from 'e2e/engine';
-import { matchesText } from 'e2e/engine';
+} from 'e2e-core/engine';
+import { matchesText } from 'e2e-core/engine';
 import { classifyActionError, classifyInputError, dispatchLocatorAction, dispatchPointerAction } from './actions.ts';
 import { BrowserConnection, connectCdp, type BrowserName } from './browser-connection.ts';
 import { AttemptSession, type AttemptTab, type StorageState } from './attempt-session.ts';

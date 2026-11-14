@@ -11,7 +11,7 @@ import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { CaptureSnapshotResult } from 'agent-device';
-import type { SemanticNode } from 'e2e/engine';
+import type { SemanticNode } from 'e2e-core/engine';
 import { keyboardBand, projectSnapshot, screenRoot, screenTitle } from '../../src/nodes.ts';
 
 const ROOT = path.join(import.meta.dirname, '../fixtures/snapshots');

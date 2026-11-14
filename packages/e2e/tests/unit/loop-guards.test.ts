@@ -8,7 +8,7 @@ import {
   type GuardToolCall,
   type GuardToolResult,
   isFailedResult,
-} from '../../src/agent/loop-guards.ts';
+} from 'e2e-core/lib/agent/loop-guards';
 
 const call = (toolName: string, input = '{}'): GuardToolCall => ({ toolName, input });
 

@@ -1,7 +1,7 @@
 /** Deadline and handle ownership for one observation capture operation. */
 
 import type { JSHandle } from 'playwright-core';
-import { EngineError, raceAbort, withTimeout } from 'e2e/engine';
+import { EngineError, raceAbort, withTimeout } from 'e2e-core/engine';
 import { cancelled } from './support.ts';
 
 /** Releases acquired and late-arriving handles without waiting on the transport. */

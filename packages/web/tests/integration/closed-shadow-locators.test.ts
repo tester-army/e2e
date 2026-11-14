@@ -18,7 +18,7 @@ import type {
   SemanticNode,
   SemanticQuery,
   TextPattern,
-} from 'e2e/engine';
+} from 'e2e-core/engine';
 import { web } from '../../src/index.ts';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 import { ignoreTrace, noSecrets } from '../helpers/secrets.ts';

@@ -7,8 +7,8 @@
  */
 
 import { describe, expect, it, vi } from 'vitest';
-import { resolveExpression, type KeyModifier, type LocatorAction, type LocatorExpression } from '../../src/engine/index.ts';
-import type { ActionOptions, Locator, Screen } from '../../src/types.ts';
+import { resolveExpression, type KeyModifier, type LocatorAction, type LocatorExpression } from 'e2e-core/lib/engine/index';
+import type { ActionOptions, Locator, Screen } from 'e2e-core/lib/types';
 import { invalid } from '../helpers/invalid.ts';
 import { screenOver } from '../helpers/screen-over.ts';
 import { snapshot } from '../helpers/snapshot.ts';

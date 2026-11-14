@@ -9,7 +9,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSyn
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { authorizeUploadPaths } from '../../src/agent/upload-paths.ts';
+import { authorizeUploadPaths } from 'e2e-core/lib/agent/upload-paths';
 
 let root: string;
 let outside: string;

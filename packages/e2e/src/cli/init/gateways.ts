@@ -5,7 +5,7 @@
  * entry here.
  */
 
-import { isLoopbackHost } from '../../internal/urls.ts';
+import { isLoopbackHost } from 'e2e-core/lib/internal/urls';
 
 /** The local server an OpenAI-compatible gateway points at unless an endpoint is given. */
 export const DEFAULT_ENDPOINT = 'http://127.0.0.1:11434/v1';

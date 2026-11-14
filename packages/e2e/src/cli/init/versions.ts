@@ -4,7 +4,7 @@
  * Absent when running from source. Both preset tables read from here.
  */
 
-import { readJson } from '../../internal/package-version.ts';
+import { readJson } from 'e2e-core/lib/internal/package-version';
 
 const SIBLING_VERSIONS = readJson(import.meta.url, './sibling-versions.json') as Readonly<Record<string, string>> | undefined;
 

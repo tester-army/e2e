@@ -8,10 +8,10 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { isAgentError } from '../../src/agent/error.ts';
-import { createModelAdapter } from '../../src/agent/model/sdk.ts';
-import type { ModelCall } from '../../src/agent/model/adapter.ts';
-import type { ModelInstance } from '../../src/types.ts';
+import { isAgentError } from 'e2e-core/lib/agent/error';
+import { createModelAdapter } from 'e2e-core/lib/agent/model/sdk';
+import type { ModelCall } from 'e2e-core/lib/agent/model/adapter';
+import type { ModelInstance } from 'e2e-core/lib/types';
 import { createScriptedInstance, scriptedResult } from '../helpers/scripted-model.ts';
 
 function adapter(model: ModelInstance) {

@@ -3,13 +3,13 @@
  * the reporters and test filters only a run reads.
  */
 
-import { ConfigurationError } from '../internal/errors.ts';
-import { didYouMean } from '../internal/suggest.ts';
+import { ConfigurationError } from 'e2e-core/lib/internal/errors';
+import { didYouMean } from 'e2e-core/lib/internal/suggest';
 import { BUILTIN_REPORTER_LIST, BUILTIN_REPORTERS, isBuiltinReporter } from '../report/builtin.ts';
 import { ellipsize } from '../report/format.ts';
 import type { BuiltinReporter, E2EConfig, Reporter, TestFilter } from '../run-types.ts';
-import { resolveProjectConfig, type CliOverrides, type ResolvedConfig } from './resolve.ts';
-import { TARGET_NAME_PATTERN } from './targets.ts';
+import { resolveProjectConfig, type CliOverrides, type ResolvedConfig } from 'e2e-core/lib/config/resolve';
+import { TARGET_NAME_PATTERN } from 'e2e-core/lib/config/targets';
 
 /** A resolved config with what only a run reads. */
 export interface ResolvedRunConfig extends ResolvedConfig {

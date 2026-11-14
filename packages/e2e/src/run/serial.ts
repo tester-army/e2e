@@ -1,27 +1,27 @@
 /** Serial-group execution: one shared session per group attempt. */
 
-import type { TargetSession } from '../engine/surface.ts';
+import type { TargetSession } from 'e2e-core/lib/engine/surface';
 import {
   classifyError,
   ConfigurationError,
   serializeError,
   type SerializedError,
-} from '../internal/errors.ts';
-import { canonicalDigest, timestamp, uuidv7 } from '../internal/ids.ts';
+} from 'e2e-core/lib/internal/errors';
+import { canonicalDigest, timestamp, uuidv7 } from 'e2e-core/lib/internal/ids';
 import type { CollectedTest } from '../collect/collect.ts';
 import { groupTitles, type RegisteredTest } from '../collect/registry.ts';
 import { pairRecordings, type TestTargetPair } from '../collect/select.ts';
-import type { SkipInfo } from './records.ts';
-import type { ResolvedTarget } from '../config/resolve.ts';
-import type { ArtifactStore } from '../types.ts';
-import { attemptSegments, createAttemptArtifacts, resultSegment } from './artifacts.ts';
+import type { SkipInfo } from 'e2e-core/lib/run/records';
+import type { ResolvedTarget } from 'e2e-core/lib/config/resolve';
+import type { ArtifactStore } from 'e2e-core/lib/types';
+import { attemptSegments, createAttemptArtifacts, resultSegment } from 'e2e-core/lib/run/artifacts';
 import type { AttemptContext } from './execute.ts';
-import type { ClosingRecord, SessionClose, SessionPlan } from './engine-sessions.ts';
-import type { ArtifactSink } from './fixtures.ts';
-import type { StepRecord } from './steps.ts';
+import type { ClosingRecord, SessionClose, SessionPlan } from 'e2e-core/lib/run/engine-sessions';
+import type { ArtifactSink } from 'e2e-core/lib/run/fixtures';
+import type { StepRecord } from 'e2e-core/lib/run/steps';
 import { findRegistered, type FileRef, type Realm, RealmManager } from './realm.ts';
-import type { AttemptRecord, ResultRecord, ResultStatus, SerialAttemptRecord, SerialGroupRecord, SerialMemberRecord, FailedStatus } from './records.ts';
-import { isFailedStatus } from './records.ts';
+import type { AttemptRecord, ResultRecord, ResultStatus, SerialAttemptRecord, SerialGroupRecord, SerialMemberRecord, FailedStatus } from 'e2e-core/lib/run/records';
+import { isFailedStatus } from 'e2e-core/lib/run/records';
 import { isCutSerialRetry, isRetryEligible, retryVerdict, runWithRetries } from './retry.ts';
 import { interruptedSkip, pairResult } from './units.ts';
 

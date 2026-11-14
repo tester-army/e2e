@@ -3,13 +3,13 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { resultId } from '../../src/internal/ids.ts';
+import { resultId } from 'e2e-core/lib/internal/ids';
 import { visibleWidth } from '../../src/report/format.ts';
 import { ListReporter } from '../../src/report/list.ts';
 import { userFrame } from '../../src/report/code-frame.ts';
-import type { CacheWrite } from '../../src/cache/context.ts';
+import type { CacheWrite } from 'e2e-core/lib/cache/context';
 import type { RunEventFact, RunEventOf, RunEventResult } from '../../src/run/events.ts';
-import type { ResultStatus, AttemptRecord, SerialGroupRecord, SerialMemberRecord } from '../../src/run/records.ts';
+import type { ResultStatus, AttemptRecord, SerialGroupRecord, SerialMemberRecord } from 'e2e-core/lib/run/records';
 
 // eslint-disable-next-line no-control-regex
 const ANSI_PATTERN = /\u001b\[[0-9;?]*[a-zA-Z]/g;

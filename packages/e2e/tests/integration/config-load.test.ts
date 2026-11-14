@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 const loaderModule = '../../dist/config/load.js';
 const { loadConfigModule } = (await import(loaderModule)) as typeof import('../../src/config/load.ts');
 const SDK = new URL('../../dist/index.js', import.meta.url).href;
-const ENGINE = new URL('../../dist/engine/index.js', import.meta.url).href;
+const ENGINE = import.meta.resolve('e2e-core/lib/engine/index');
 
 let dir: string;
 

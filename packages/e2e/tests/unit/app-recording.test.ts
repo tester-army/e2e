@@ -8,9 +8,9 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { OperationContext, TargetSession, VideoSegment } from '../../src/engine/surface.ts';
-import { sessionRecordings } from '../../src/run/recordings.ts';
-import type { ArtifactSink } from '../../src/run/fixtures.ts';
+import type { OperationContext, TargetSession, VideoSegment } from 'e2e-core/lib/engine/surface';
+import { sessionRecordings } from 'e2e-core/lib/run/recordings';
+import type { ArtifactSink } from 'e2e-core/lib/run/fixtures';
 
 const operation: OperationContext = { signal: new AbortController().signal, timeoutMs: 1_000, runId: 'run', attemptId: 'attempt', origin: 'test' };
 

@@ -7,15 +7,15 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import type { LocatorExpression } from '../engine/surface.ts';
-import { writeFileAtomic } from '../internal/atomic-write.ts';
-import { InfrastructureError, TestError } from '../internal/errors.ts';
-import { compareImages, decodePng, encodePng, type ImageComparison, type RgbaImage } from '../internal/image.ts';
-import { pollReads, type Deadline, type ReadWindow } from '../internal/time.ts';
-import { describeExpression } from '../locator/expression.ts';
-import type { ScreenContext } from '../locator/screen.ts';
-import type { ScreenshotContext } from '../run/screenshots.ts';
-import type { ScreenExpectation, ScreenshotOptions } from '../types.ts';
+import type { LocatorExpression } from 'e2e-core/lib/engine/surface';
+import { writeFileAtomic } from 'e2e-core/lib/internal/atomic-write';
+import { InfrastructureError, TestError } from 'e2e-core/lib/internal/errors';
+import { compareImages, decodePng, encodePng, type ImageComparison, type RgbaImage } from 'e2e-core/lib/internal/image';
+import { pollReads, type Deadline, type ReadWindow } from 'e2e-core/lib/internal/time';
+import { describeExpression } from 'e2e-core/lib/locator/expression';
+import type { ScreenContext } from 'e2e-core/lib/locator/screen';
+import type { ScreenshotContext } from 'e2e-core/lib/run/screenshots';
+import type { ScreenExpectation, ScreenshotOptions } from 'e2e-core/lib/types';
 import { parseScreenshotCall, type ScreenshotCall } from './screenshot-call.ts';
 import { screenshotCapturer, type Capture } from './screenshot-capture.ts';
 

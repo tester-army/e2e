@@ -1,7 +1,7 @@
 /** Scrolling to text reads each page once when it landed, and keeps reading when it may not have. */
 
 import { describe, expect, it } from 'vitest';
-import type { StepExecutor } from '../../src/agent/executor.ts';
+import type { StepExecutor } from 'e2e-core/lib/agent/executor';
 import { createFakeEngine, FAKE_APP, FAKE_APP_URL } from '../helpers/fake-engine.ts';
 import { createProject, runExisting } from '../helpers/run-project.ts';
 import type { ScriptedNode } from '../helpers/scripted-scene.ts';

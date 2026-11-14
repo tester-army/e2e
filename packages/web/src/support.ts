@@ -2,8 +2,8 @@
 
 import { setTimeout } from 'node:timers/promises';
 import type { ElementHandle, FrameLocator, Locator as PwLocator, Mouse, Page } from 'playwright-core';
-import { EngineError, withinCleanupBudget, type EngineCleanupContext, type Momentum, type ScrollDirection, type ViewportPoint, type ViewportSize } from 'e2e/engine';
-import { ConfigurationError, InfrastructureError, TestError } from 'e2e/engine';
+import { EngineError, withinCleanupBudget, type EngineCleanupContext, type Momentum, type ScrollDirection, type ViewportPoint, type ViewportSize } from 'e2e-core/engine';
+import { ConfigurationError, InfrastructureError, TestError } from 'e2e-core/engine';
 
 export const DEFAULT_VIEWPORT = { width: 1280, height: 720 } as const;
 

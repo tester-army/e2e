@@ -22,7 +22,7 @@ describe('planSchema', () => {
 
   it('requires every field to be present, as strict providers demand', async () => {
     expect(PLAN_SCHEMA.safeParse({ decision: 'step', title: 'Cart', instruction: 'open' }).success).toBe(false);
-    const { deriveJsonSchema } = await import('../../src/agent/model/schema.ts');
+    const { deriveJsonSchema } = await import('e2e-core/lib/agent/model/schema');
     const json = (await deriveJsonSchema(PLAN_SCHEMA)) as { required?: string[]; properties?: Record<string, unknown> };
     expect([...(json.required ?? [])].toSorted()).toEqual(Object.keys(json.properties ?? {}).toSorted());
   });

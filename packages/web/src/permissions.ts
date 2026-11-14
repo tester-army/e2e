@@ -3,7 +3,7 @@
  * attempt holds. The surface grants them on each context the attempt opens.
  */
 
-import { ConfigurationError, rejectUnknownKeys, type AppPermissionState } from 'e2e/engine';
+import { ConfigurationError, rejectUnknownKeys, type AppPermissionState } from 'e2e-core/engine';
 import type { BrowserName } from './browser-connection.ts';
 
 /** The permission names Playwright grants on each browser (playwright-core 1.65). */

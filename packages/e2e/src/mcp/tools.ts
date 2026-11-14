@@ -17,12 +17,12 @@
 
 import type { JSONSchema7, Tool, ToolExecutionOptions, ToolSet } from 'ai';
 import type { z } from 'zod';
-import { loadAiSdk, loadAiSdkIfInstalled, loadedAiSdk } from '../agent/ai-sdk.ts';
-import { isFailedResult } from '../agent/loop-guards.ts';
-import { codedMessage, ConfigurationError, errorMessage, InfrastructureError } from '../internal/errors.ts';
-import { describeIssue } from '../internal/standard-schema.ts';
-import { processSecrets } from '../run/secrecy.ts';
-import type { StandardSchemaV1 } from '../types.ts';
+import { loadAiSdk, loadAiSdkIfInstalled, loadedAiSdk } from 'e2e-core/lib/agent/ai-sdk';
+import { isFailedResult } from 'e2e-core/lib/agent/loop-guards';
+import { codedMessage, ConfigurationError, errorMessage, InfrastructureError } from 'e2e-core/lib/internal/errors';
+import { describeIssue } from 'e2e-core/lib/internal/standard-schema';
+import { processSecrets } from 'e2e-core/lib/run/secrecy';
+import type { StandardSchemaV1 } from 'e2e-core/lib/types';
 
 /** One MCP content part this server emits. */
 export type McpContent =

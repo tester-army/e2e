@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { resultSegment } from '../../src/run/artifacts.ts';
+import { resultSegment } from 'e2e-core/lib/run/artifacts';
 
 const SAFE_SEGMENT = /^[a-z0-9-]+$/;
 const ID = '1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d';

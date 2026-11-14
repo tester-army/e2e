@@ -5,9 +5,9 @@ import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { InfrastructureError } from '../../src/internal/errors.ts';
-import { ManagedProcess, stopsSettled } from '../../src/run/managed-process.ts';
-import type { CommandConfig } from '../../src/types.ts';
+import { InfrastructureError } from 'e2e-core/lib/internal/errors';
+import { ManagedProcess, stopsSettled } from 'e2e-core/lib/run/managed-process';
+import type { CommandConfig } from 'e2e-core/lib/types';
 import { freePort } from '../helpers/free-port.ts';
 
 describe('ManagedProcess', () => {
