@@ -351,6 +351,24 @@ const MOBILE_OPTION_KEYS: readonly string[] = Object.keys({
   videoTouches: true,
 } satisfies Record<keyof MobileOptions, true>);
 
+/** Every `snapshot` value, kept equal to `MobileOptions['snapshot']` by the compiler. */
+const SNAPSHOT_MODES: readonly string[] = Object.keys({ full: true, interactive: true } satisfies Record<NonNullable<MobileOptions['snapshot']>, true>);
+
+/**
+ * Refuses a `snapshot` or `videoTouches` value the engine would otherwise
+ * read as its default: `snapshot: 'Interactive'` captured the full tree and
+ * `videoTouches: 'false'` drew the touches.
+ */
+function assertChoices(options: MobileOptions): void {
+  const { snapshot, videoTouches } = options as { readonly snapshot?: unknown; readonly videoTouches?: unknown };
+  if (snapshot !== undefined && !SNAPSHOT_MODES.includes(snapshot as string)) {
+    throw new ConfigurationError('INVALID_CONFIG', `mobile: \`snapshot\` must be ${SNAPSHOT_MODES.map((mode) => `'${mode}'`).join(' or ')}, got ${JSON.stringify(snapshot) ?? String(snapshot)}`);
+  }
+  if (videoTouches !== undefined && typeof videoTouches !== 'boolean') {
+    throw new ConfigurationError('INVALID_CONFIG', `mobile: \`videoTouches\` must be true or false, got ${JSON.stringify(videoTouches) ?? String(videoTouches)}`);
+  }
+}
+
 /** Every state a permission takes, kept equal to `PermissionState` by the compiler. */
 const PERMISSION_STATES: readonly string[] = Object.keys({ grant: true, deny: true, reset: true } satisfies Record<PermissionState, true>);
 
@@ -504,6 +522,7 @@ export class AgentDeviceSurface {
     private readonly createClient: ClientFactory,
   ) {
     rejectUnknownKeys('mobile()', options, MOBILE_OPTION_KEYS);
+    assertChoices(options);
     this.pool = new DevicePool(options, createClient);
     this.settleOptions = settleOptions(options.settle);
     this.transitionMs = transitionMs(options.transition);

@@ -96,6 +96,8 @@ declaration.
 | --- | --- |
 | `INVALID_CONFIG` | An empty `device` list, a blank `device` name, or a blank or non-string list entry. |
 | `INVALID_CONFIG` | A `device` value that is neither a string, a list, nor a valid provider: a provider without a non-empty `name`, without `acquire()` or `release()`, or with a `record` that is not a function. |
+| `INVALID_CONFIG` | `platform` is missing or not `'ios'` or `'android'`; the match is case-sensitive. |
+| `INVALID_CONFIG` | `snapshot` is not `'full'` or `'interactive'`, or `videoTouches` is not a boolean. |
 | `INVALID_CONFIG` | An option `mobile()` does not take, such as `mobile({ app })` and the other old app options. The message names the nearest known option for a likely typo, else every option. |
 | `INVALID_CONFIG` | `settle` or `transition` is not a non-negative integer of milliseconds (`settle` may also be `false`). |
 
