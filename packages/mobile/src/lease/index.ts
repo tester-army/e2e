@@ -14,6 +14,8 @@ import type { DeviceLease, DeviceReleaseContext, DeviceRequest } from '../provid
 import { startDriver, stopDriver } from './daemon.ts';
 import { LEASE_TTL_MS, startHeartbeat } from './heartbeat.ts';
 
+export { agentDevicePlugin, type AgentDevicePlugin } from './plugin.ts';
+
 type ProviderSelector = Extract<keyof DeviceClientConfig, `provider${string}`>;
 
 /** The device a lease asks the service for, and the `provider*` capabilities its session starts with. */
@@ -31,7 +33,11 @@ export interface AgentDeviceLeaseOptions {
 export interface AgentDeviceLeaseRequest {
   /** Set on the daemon's environment over the run's: the service's credentials. */
   readonly env: Readonly<Record<string, string>>;
-  /** Allocated with the lease and put on its `client`, so the worker's session matches it. */
+  /**
+   * Allocated with the lease. All but `device` are also put on its `client`, so
+   * the worker's session matches it; the lease scope already picks the one
+   * device the daemon holds, which a plugin may list under its own name.
+   */
   readonly selectors: LeaseSelectors;
   /** What the progress line names once the lease is granted, after `lease <id>: `. */
   readonly summary: string;
@@ -113,7 +119,9 @@ export function agentDeviceLeases({ provider, label }: AgentDeviceLeaseOptions):
         resource.stopHeartbeat = await startHeartbeat(resource.stateDir, scope, request.log);
         request.log(`lease ${id}: ${summary}`);
         // The worker's client is created with these fields: the scope picks the lease, and the selectors match the session it holds.
-        return { id, client: { stateDir: resource.stateDir, ...scope, ...allocated } };
+        // `device` stays off: agent-device would send it as a `--device` selector on every command.
+        const { device: _device, ...clientSelectors } = allocated;
+        return { id, client: { stateDir: resource.stateDir, ...scope, ...clientSelectors } };
       } catch (cause) {
         // The engine releases only leases `acquire` returned.
         try {

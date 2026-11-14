@@ -1,34 +1,17 @@
 import { execFile, fork } from 'node:child_process';
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import type { DriverGrant, DriverRequest } from './driver.ts';
+import { field, installedPackage } from './package.ts';
 
 const exec = promisify(execFile);
 
-/** A property of a parsed JSON value, or undefined when the value is not an object. */
-function field(value: unknown, key: string): unknown {
-  return typeof value === 'object' && value !== null ? Reflect.get(value, key) : undefined;
-}
-
 /** The installed agent-device CLI entry, resolved from its package without importing it. */
 function agentDeviceBin(): string {
-  let directory = path.dirname(fileURLToPath(import.meta.resolve('agent-device')));
-  while (true) {
-    let manifest: unknown;
-    try {
-      manifest = JSON.parse(readFileSync(path.join(directory, 'package.json'), 'utf8'));
-    } catch { /* The entry may be several directories below its package. */ }
-    if (field(manifest, 'name') === 'agent-device') {
-      const bin = field(field(manifest, 'bin'), 'agent-device');
-      if (typeof bin !== 'string') throw new Error('The installed agent-device package has no agent-device bin');
-      return path.join(directory, bin);
-    }
-    const parent = path.dirname(directory);
-    if (parent === directory) throw new Error('Cannot find the installed agent-device package');
-    directory = parent;
-  }
+  const { directory, manifest } = installedPackage(import.meta.resolve('agent-device'));
+  const bin = field(field(manifest, 'bin'), 'agent-device');
+  if (typeof bin !== 'string') throw new Error('The installed agent-device package has no agent-device bin');
+  return path.join(directory, bin);
 }
 
 /**

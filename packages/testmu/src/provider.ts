@@ -7,15 +7,16 @@
 
 import { isAbsolute, resolve } from 'node:path';
 import type { DeviceLease, DeviceProvider, DeviceRequest } from '@e2e-dev/mobile';
-import { agentDeviceLeases, type LeaseSelectors } from '@e2e-dev/mobile/lease';
+import { agentDeviceLeases, agentDevicePlugin, type LeaseSelectors } from '@e2e-dev/mobile/lease';
 import { ConfigurationError, rejectUnknownKeys, type ProviderRecordContext, type ProviderRecording } from 'e2e/engine';
 import { testmuCredentials } from './credentials.ts';
-import { assertPluginVersion, installPlugin } from './daemon.ts';
 import { DEFAULT_PROJECT, defaultSessionName } from './dashboard.ts';
 import { findSession, sessionVideoUrl, testmuApiEndpoint, type SessionRef } from './sessions.ts';
 
 /** agent-device's name for TestMu AI, as the lease provider and the tenant. */
 const PROVIDER = 'testmu';
+
+const plugin = agentDevicePlugin(import.meta.resolve('@agent-device/testmu'));
 
 const DEVICE_TYPES: ReadonlySet<string> = new Set(['virtual', 'real']);
 
@@ -129,7 +130,7 @@ export function testmu(options: TestmuOptions): DeviceProvider {
   return {
     name: PROVIDER,
     async acquire(request: DeviceRequest): Promise<DeviceLease> {
-      assertPluginVersion(request.agentDeviceVersion);
+      plugin.assertVersion(request.agentDeviceVersion);
       if (request.appPath !== undefined) throw new Error("TestMu AI installs the app from `app`; leave the target's `app.appPath` out");
       const credentials = testmuCredentials(request.env);
       const selectors = {
@@ -146,7 +147,7 @@ export function testmu(options: TestmuOptions): DeviceProvider {
         env: { LT_USERNAME: credentials.username, LT_ACCESS_KEY: credentials.accessKey },
         selectors,
         summary: `${device}, ${request.platform} ${osVersion} (${deviceType}); session ${selectors.providerSessionName} started`,
-        prepareHome: installPlugin,
+        prepareHome: plugin.prepareHome,
       });
     },
     release: (lease, context) => leases.release(lease, context),

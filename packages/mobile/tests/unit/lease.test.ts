@@ -92,7 +92,7 @@ describe('agentDeviceLeases()', () => {
     expect(lease.id).toBe('lease-1');
   });
 
-  it('hands the worker the lease scope and the selectors as JSON client configuration, without credentials', async () => {
+  it('hands the worker the lease scope and the selectors but `device` as JSON client configuration, without credentials', async () => {
     const req = request();
     const lease = await leases().acquire(req, allocation);
     expect(lease).toEqual({
@@ -106,7 +106,6 @@ describe('agentDeviceLeases()', () => {
         leaseProvider: 'cloud',
         platform: 'android',
         target: 'mobile',
-        device: 'Google Pixel 9',
         providerOsVersion: '16.0',
         providerApp: 'cloud://APP0',
       },

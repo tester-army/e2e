@@ -597,7 +597,8 @@ For [Expo Simulators](/integrations/eas), use `expoSimulators()` from
 `@e2e-dev/eas`. For [TestMu AI](/integrations/testmu), use `testmu()` from
 `@e2e-dev/testmu`. For [BrowserStack](/integrations/browserstack), use
 `browserstack()` from `@e2e-dev/browserstack`. For Android on [E2B](/integrations/e2b), use `e2b()` from
-`@e2e-dev/e2b`. For another service, write a provider of a few dozen lines,
+`@e2e-dev/e2b`. For [Revyl](/integrations/revyl), use `revyl()` from
+`@e2e-dev/revyl`. For another service, write a provider of a few dozen lines,
 such as `hostedDevices` in the example below:
 
 ```ts
@@ -742,8 +743,14 @@ agent-device daemon per worker slot with the credentials in `env`, allocates
 a lease with the `selectors`, keeps it alive while the run holds it, and on
 release fails unless agent-device confirms the session ended. `testmu()`
 from `@e2e-dev/testmu` works this way for [TestMu AI](/integrations/testmu),
-and `browserstack()` from `@e2e-dev/browserstack` for
-[BrowserStack](/integrations/browserstack).
+`browserstack()` from `@e2e-dev/browserstack` for
+[BrowserStack](/integrations/browserstack), and `revyl()` from
+`@e2e-dev/revyl` for [Revyl](/integrations/revyl).
+
+When the cloud needs an agent-device provider plugin, depend on it and pass
+`agentDevicePlugin(import.meta.resolve('@agent-device/<plugin>'))`: call its
+`assertVersion(request.agentDeviceVersion)` in `acquire`, and pass its
+`prepareHome` with the lease, which registers the plugin in the daemon's home.
 
 ```ts title="device-cloud-provider.ts" expandable
 import type { DeviceProvider } from '@e2e-dev/mobile';
